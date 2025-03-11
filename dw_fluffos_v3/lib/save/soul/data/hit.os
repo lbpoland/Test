@@ -1,1 +1,0 @@
-({({"<indirect:any-living>",}),({({"You hit yourself.","$mcname$ hit$s$ $mobj$self.",0,}),0,}),({({"You hit $hcname$.","$mcname$ hit$s$ $hcname$.","$mcname$ hit$s$ you.",0,0,0,}),0,}),})

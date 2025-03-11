@@ -1,1 +1,0 @@
-({({"<indirect:any-living>",}),({({"You bap to the beat.","$mcname$ bap$s$ to the beat.",0,}),0,}),({({"You bap $hcname$ on the head.","$mcname$ bap$s$ $hcname$ on the head.","$mcname$ bap$s$ you on the head.",0,0,0,}),0,}),})

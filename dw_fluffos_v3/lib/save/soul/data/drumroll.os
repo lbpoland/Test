@@ -1,1 +1,0 @@
-({({"[for] <indirect:any-living>",}),({({"You do a drumroll.  K'tisssh!","$mcname$ do$s$ a drumroll.  K'tisssh!",0,}),0,}),({({"You do a drumroll for $hcname$.  K'tisssh!","$mcname$ do$s$ a drumroll for $hcname$.  K'tisssh!","$mcname$ do$s$ a drumroll for you.  K'tisssh!",0,0,0,}),0,}),})

@@ -1,1 +1,0 @@
-({({"<string>",}),({0,({"You roll up $arg$.","$mcname$ roll$s$ up $arg$.",0,({"an enormous spliff","a cigarette","#",}),}),}),0,})

@@ -1,1 +1,0 @@
-({({"<indirect:any-living>",}),({({"T H W O K K ! !","$mcname$ 'T H W O K K ! !'s.",0,}),0,}),({({"You thwok $hcname$.","$mcname$ thwoks $hcname$.","You are summarily thwokked by $mcname$.",0,0,0,}),0,}),})
