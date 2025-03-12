@@ -1,0 +1,19684 @@
+
+==================================================
+FILE: c/cackle.s
+==================================================
+
+(cackle
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments     
+      (self "You cackle with glee.")
+      (rest "$mcname$ throw$s$ back $mposs$ head and cackle$s$ with glee.")
+    )
+    (arguments
+      (arguments  with glee, happily, sadly, brightly, curtly, patiently, 
+                  slowly, eagerly, expectantly, firmly, sagely, emphatically,
+                  knowingly, vigorously, in disagreement, tentatively, 
+                  angrily, manically, mischievously, nastily, despairingly, 
+                  insanely, inanely, womblely, backwards, #)
+        (self "You cackle $arg$.")
+        (rest "$mcname$ cackle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You cackle at $hcname$.")
+      (target "$mcname$ cackle$s$ at $hcname$.")
+      (rest   "$mcname$ cackle$s$ at $hcname$.")
+	   )
+    (arguments
+      (arguments  with glee, happily, sadly, brightly, curtly, patiently, 
+                  slowly, eagerly, expectantly, firmly, sagely, emphatically,
+                  knowingly, vigorously, in disagreement, tentatively, 
+                  angrily, manically, mischievously, nastily, despairingly, 
+                  insanely, inanely, womblely, backwards, #)
+        (self   "You cackle $arg$ at $hcname$.")
+        (target "$mcname$ cackle$s$ $arg$ at you.")
+        (rest   "$mcname$ cackle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cancan.s
+==================================================
+
+(cancan
+   (pattern "<indirect:any-living>")
+   (pattern "<string> <indirect:any-living>")
+   (pattern "<indirect:any-living> <string>")
+   (targeted
+      (arguments
+	(arguments knickers, French knickers, frilly underpants, stockings and suspenders, #)
+         (self   "You put on your best $arg$ and cancan wildly with with $hcname$.")
+         (target "$mcname$ puts $mposs$ best $arg$ on and cancans wildly with you.")
+         (rest   "$mcname$ puts $mposs$ best $arg$ on and cancans wildly with $hcname$.")
+      )
+   )
+)
+
+
+
+
+
+
+==================================================
+FILE: c/canoodle.s
+==================================================
+
+(canoodle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ a long and warm canoodle that makes $hposs$ hair stand on
+ end.")
+      (target "$mcname$ give$s$ you a long and warm canoodle that makes your hair stand on end.")
+      (rest  "$mcname$ give$s$ $hcname$ a long and warm canoodle that makes $mhcname$ hair stand
+ on end.")
+    )
+  )
+)
+/* Hobbes 970806, suggested by Zaika */
+
+
+==================================================
+FILE: c/caper.s
+==================================================
+
+(caper
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "[around] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You caper around.")
+      (rest "$mcname$ caper$s$ around.")
+    )
+    (arguments
+      (arguments  madly, merrily, happily, sadly, #)
+      (self "You caper around $arg$.")
+      (rest "$mcname$ caper$s$ around $arg$.")
+    )
+    (arguments
+      (arguments  womble with its pants on fire, chicken, jester, bimbo, 
+                  blonde, sulam, seductress, eager person, vivacious person, 
+                  madman, madwoman, madperson, frog on the run, happy chap, 
+                  polite gentle person, woman, no we aren't sexist, fool)
+      (self "You caper around like $article$ $arg$.")
+      (rest "$mcname$ caper$s$ around like $article$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You caper around $hcname$.")
+      (target "$mcname$ caper$s$ around you.")
+      (rest   "$mcname$ caper$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments  madly, merrily, happily, sadly, #)
+      (self   "You caper around $hcname$ $arg$.")
+      (target "$mcname$ caper$s$ around you $arg$.")
+      (rest   "$mcname$ caper$s$ around $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  womble with its pants on fire, chicken, jester, bimbo, 
+                  blonde, sulam, seductress, eager person, vivacious person, 
+                  madman, madwoman, madperson, frog on the run, happy chap, 
+                  polite gentle person, woman, no we aren't sexist, fool)
+      (self   "You caper around $hcname$ like $article$ $arg$.")
+      (target "$mcname$ caper$s$ around you like $article$ $arg$.")
+      (rest   "$mcname$ caper$s$ around $hcname$ like $article$ $arg$.")
+    )
+  )
+)
+/* Recoded by Hobbes, 970931 */
+/* Put $article$ in, Saffra, 10-15-00 */
+
+
+==================================================
+FILE: c/care.s
+==================================================
+
+(care
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You care.")
+      (rest "$mcname$ care$s$.")
+    )
+    (arguments
+    (arguments frogs, string, free radicals, sheep, old people,
+               new people, fluff, pocket watches, world politics,  
+               everything, fluoridation, pool cleaners, stuff in a 
+               Rywfol like manner, #)
+      (self "You care about $arg$.")
+      (rest "$mcname$ care$s$ about $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You care for $hcname$.")
+      (target "$mcname$ care$s$ for you.")
+      (rest   "$mcname$ care$s$ for $hcname$.")
+    )
+    (arguments
+    (arguments frogs, string, free radicals, sheep, old people,
+               new people, fluff, pocket watches, world politics, 
+               everything, fluoridation, pool cleaners, stuff in a 
+               Rywfol like manner, #)
+      (self   "You care about $arg$ for $hcname$.")
+      (target "$mcname$ care$s$ about $arg$ for you.")
+      (rest   "$mcname$ care$s$ about $arg$ for $hcname$.")
+    )
+  )
+)
+/* Recoded by Hobbes, 970931 */
+
+
+==================================================
+FILE: c/caress.s
+==================================================
+
+(caress
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You caress $hcname$.")
+      (target "$mcname$ caress$s$ you.")
+      (rest  "$mcname$ caress$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  gently, strangely, violently, firmly, seductively,
+                  suggestively, slightly, sensually, reluctantly, politely,
+                  lovingly, vigorously, eagerly, vivaciously)
+      (self   "You caress $hcname$ $arg$.")
+      (target "$mcname$ caress$s$ you $arg$.")
+      (rest  "$mcname$ caress$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  ear, nose, cheek, hand, forehead, eyebrow,
+                  finger, foot, toe, fingernail, arm, thigh,
+                  upper thigh, calf, elbow, knee, fingers, neck,
+                  shoulder, palm, toes, hair)
+      (self   "You caress $mhcname$ $arg$.")
+      (target "$mcname$ caress$s$ your $arg$.")
+      (rest  "$mcname$ caress$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/catch.s
+==================================================
+
+(catch
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You catch yourself.")
+      (rest "$mcname$ catch$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments  stupid, silly, absurd, caring, helpful, 
+                  potentially hazardous, mundane)
+      (self "You catch yourself before you do something $arg$.")
+      (rest "$mcname$ catch$s$ $mobj$self before $mpronoun$ does something $arg$.")
+    )
+    (arguments
+      (arguments  a disease, a passing ball, on, the drift, #)
+      (self "You catch $arg$.")
+      (rest "$mcname$ catch$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You catch $hcname$.")
+      (target "$mcname$ catch$s$ you.")
+      (rest   "$mcname$ catch$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  just in time, quickly, warmly, happily, lovingly, 
+                  in a net, out, telling the truth, lying, 
+                  eating icecream, eating brussel sprouts, 
+                  unawares, under the stairs, twice, in your arms, #)
+      (self   "You catch $hcname$ $arg$.")
+      (target "$mcname$ catch$s$ you $arg$.")
+      (rest   "$mcname$ catch$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  attention, disease, enthusiasm, despondence, eye, 
+                  ear, teddy bears, drift, meaning, intent, kiss)
+      (self   "You catch $hcname$'s $arg$.")
+      (target "$mcname$ catch$s$ your $arg$.")
+      (rest   "$mcname$ catch$s$ $hcname$'s $arg$.")
+    )
+    (arguments
+      (arguments  on)
+      (self   "You catch $arg$ about what $hcname$ is saying.")
+      (target "$mcname$ catch$s$ $arg$ about what you are saying.")
+      (rest   "$mcname$ catch$s$ $arg$ about what $hcname$ is saying.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/challenge.s
+==================================================
+
+(challenge
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "Make your own challenges to $hcname$.")
+      (target "$mcname$ turn$s$ $hcname$ into a fish.")
+      (rest   "$mcname$ turn$s$ $hcname$ into a fish.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/charm.s
+==================================================
+
+(charm
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You charm $hcname$.")
+      (target "$mcname$ charm$s$ you.")
+      (rest  "$mcname$ charm$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  gently,strangely,firmly,seductively,suggestively,
+                  quickly,excitedly,with a log fire,over a nice dinner,
+                  slightly,sensually,reluctantly,politely,lovingly,
+                  backwards,into space,using a coffee table,
+                  vigorously,eagerly,vivaciously,like pinkfish)
+      (self   "You charm $hcname$ $arg$.")
+      (target "$mcname$ charm$s$ you $arg$.")
+      (rest  "$mcname$ charm$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments the pants off,the towel off)
+      (self   "You charm $arg$ $hcname$.")
+      (target "$mcname$ charm$s$ $arg$ $hcname$.")
+      (rest   "$mcname$ charm$s$ $arg$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/chase.s
+==================================================
+
+(chase
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You chase $hcname$.")
+      (target "$mcname$ chase$s$ you.")
+      (rest   "$mcname$ chase$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  around the room, around the Disc, into a corner, up a tree,
+                  to the Counterweight Continent and back, off to bed, #)
+     (self   "You chase $hcname$ $arg$.")
+      (target "$mcname$ chase$s$ you $arg$.")
+      (rest   "$mcname$ chase$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+
+==================================================
+FILE: c/chastise.s
+==================================================
+
+(chastise
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You chastise $hcname$.")
+      (target "$mcname$ chastise$s$ you.")
+      (rest  "$mcname$ chastise$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  loudly,insistently,argumentatively,unmercifully,unexpectedly,enthusiastically,calmly,rationally,insanely,madly,lovingly,politely,suggestively,eagerly,reluctantly,firmly,excitedly,understandably,irrationally,imaginatively,destructively,cunningly,thoughtlessly,carefully,offhandedly,absolutely)
+      (self   "You chastise $hcname$ $arg$.")
+      (target "$mcname$ chastise$s$ you $arg$.")
+      (rest  "$mcname$ chastise$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cheep.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker: presto $
+# $Id: cheep.s,v 1.1 2002/05/03 03:12:52 saffra Exp presto $
+#
+#
+#
+
+(cheep
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern " <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string> ")
+  (single
+    (no-arguments
+      (self "You cheep like a cute fluffy chick.")
+      (rest "$mcname$ cheep$s$ like a cute fluffy chick.")
+    )
+    (arguments
+      (arguments cutely, adorably, fluffily, brightly, quietly,
+                 like a wet hen, like a ruffled chicken, like a 
+                 marshmallow peep,  # )
+      (self "You cheep $arg$.")
+      (rest "$mcname$ cheep$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You cheep at $hcname$ like a cute fluffy chick.")
+      (target "$mcname$ cheep$s$ at you like a cute fluffy chick.")
+      (rest "$mcname$ cheep$s$ at $hcname$ like a cute fluffy chick.")
+    )
+    (arguments
+      (arguments cutely, adorably, fluffily, brightly, quietly,
+                 like a wet hen, like a ruffled chicken, like a 
+                 marshmallow peep,  # )
+      (self   "You cheep $arg$ at $hcname$.")
+      (target "$mcname$ cheep$s$ $arg$ at you.")
+      (rest  "$mcname$ cheep$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Saffra 6-14-00 */
+
+
+==================================================
+FILE: c/cheer.s
+==================================================
+
+(cheer
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments enthusiastically, excitedly, quietly, calmly, carefully, 
+                 politely, wildly, oddly, unconvincingly, happily, slightly, 
+                 up, loudly, lamely, drunkenly, #)
+      (self "You cheer $arg$.")
+      (rest "$mcname$ cheer$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments enthusiastically, excitedly, quietly, calmly, carefully, 
+                 politely, wildly, oddly, unconvincingly, happily, slightly, 
+                 up, loudly, lamely, drunkenly, #)
+      (self   "You cheer $arg$ at $hcname$.")
+      (target "$mcname$ cheer$s$ $arg$ at you.")
+      (rest  "$mcname$ cheer$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/chew.s
+==================================================
+
+(chew
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[in] <string>")
+  (pattern "[in] <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> [in] <string>")
+  (single
+    (arguments
+	(arguments your cheek thoughtfully,#)
+      (self "You chew $arg$.")
+      (rest "$mcname$ chews $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+	(arguments
+leg,arm,bones,dinner,cat,keyboard,code,nose,frog,toe,ankles,finger,neck,#) 
+      (self   "You chew on $mhcname$ $arg$.")
+      (target "$mcname$ chews on your $arg$.")
+      (rest  "$mcname$ chews on $mhcname$ $arg$.") 
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/chicken.s
+==================================================
+
+(chicken
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+   (targeted
+    (no-arguments
+   (self   "You flap your arms and cluck like a chicken at $hcname$.")
+   (target "$mcname$ flaps $mposs$ arms and clucks like a chicken at you.")
+   (rest  "$mcname$ flaps $mposs$ arms and clucks like a chicken at $hcname$.")
+         )
+       )
+    )
+/*Hobbes 970317 */
+
+
+==================================================
+FILE: c/chiko.s
+==================================================
+
+(chiko
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments happily, sadly, joyfully, sagely, knowingly, quickly,
+                 loudly, carefully, balefully, excitedly, nervously,
+                 brightly, uncertainly, threateningly, grumpily, fluffily,
+                 evilly)
+      (self "You chiko $arg$.")
+      (rest "$mcname$ chikos $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  happily, sadly, joyfully, sagely, knowingly, quickly,
+                  excitedly, nervously, brightly, uncertainly, grumpily,
+                  loudly, carefully, balefully, threateningly, fluffily,
+                  evilly)
+      (self   "You chiko $arg$ at $hcname$.")
+      (target "$mcname$ chikos $arg$ at you.")
+      (rest  "$mcname$ chikos $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/choke.s
+==================================================
+
+(choke
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You choke.")
+      (rest "$mcname$ chokes.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You choke $hcname$.")
+      (target "$mcname$ chokes you.")
+      (rest  "$mcname$ chokes $hcname$.")
+      
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/chomp.s
+==================================================
+
+(chomp
+  (pattern "[on] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (arguments
+	(arguments on a bone happily,#)
+      (self "You chomp $arg$.")
+      (rest "$mcname$ chomps $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+	(arguments
+           leg,arm,bones,dinner,cat,keyboard,code,nose,frog,toe,ankles,finger,neck,crayons,#) 
+      (self  "You chomp on $mhcname$ $arg$.")
+      (target "$mcname$ chomps on your $arg$.")
+      (rest  "$mcname$ chomps on $mhcname$ $arg$.") 
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/chortle.s
+==================================================
+
+(chortle
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "[around] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You chortle in joy.")
+      (rest "$mcname$ chortles in joy.")
+    )
+    (arguments
+      (arguments  in joy, in glee, maniacally, wickedly, #)
+      (self "You chortle $arg$.")
+      (rest "$mcname$ chortles $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You chortle in joy at $hcname$.")
+      (target "$mcname$ chortles in joy at you.")
+      (rest   "$mcname$ chortles in joy at $hcname$.")
+    )
+    (arguments
+      (arguments  in joy, in glee, maniacally, wickedly, #)
+      (self   "You chortle $arg$ at $hcname$.")
+      (target "$mcname$ chortles $arg$ at you.")
+      (rest   "$mcname$ chortles $arg$ at $hcname$.")
+    )
+  )
+)
+/* Made targetable, added args. 11-28-00.  Saffra */
+
+
+==================================================
+FILE: c/chuck.s
+==================================================
+
+(chuck
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You chuck $hcname$ gently under the chin.")
+      (target "$mcname$ chucks $hcname$ gently under the chin.")
+      (rest   "$mcname$ chucks $hcname$ gently under the chin.")
+    )
+    (arguments
+      (arguments gently,lovingly,happily,smugly,hopefully,ironically,sweetly)
+      (self   "You chuck $hcname$ $arg$ under the chin.")
+      (target "$mcname$ chucks you $arg$ under the chin.")
+      (rest   "$mcname$ chucks $hcname$ $arg$ under the chin.")
+    )
+  )
+)
+
+/* Hobbes, 961027. Suggested by Emily */ 
+
+==================================================
+FILE: c/chuckle.s
+==================================================
+
+(chuckle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You chuckle.")
+      (rest "$mcname$ chuckles.")
+    )
+   (arguments 
+     (arguments politely,nastily,demonically,ironically,like a train,
+      sarcastically,patiently,slightly,carefully,happily)
+      (self "You chuckle $arg$.")
+      (rest "$mcname$ chuckles $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You chuckle at $hcname$.")
+      (target "$mcname$ chuckles at you.")
+      (rest  "$mcname$ chuckles at $hcname$.")      
+    )
+    (arguments
+      (arguments  politely,nastily,demonically,ironically,like a train,
+       sarcastically,patiently,slightly,carefully,happily)
+      (self   "You chuckle $arg$ at $hcname$.")
+      (target "$mcname$ chuckles $arg$ at you.")
+      (rest  "$mcname$ chuckles $arg$ at $hcname$.")
+     )
+   )
+ )
+
+
+==================================================
+FILE: c/clap.s
+==================================================
+
+(clap
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You clap your hands.")
+      (rest "$mcname$ claps $mposs$ hands.")
+    )
+    (arguments
+      (arguments  briefly, loudly, enthusiastically, halfheartedly, 
+                  sarcastically, #)
+      (self "You clap your hands $arg$.")
+      (rest "$mcname$ claps $mposs$ hands $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  wholeheartedly, loudly, softly, vaguely, briefly, 
+                  sarcastically, #)
+      (self   "You clap at $hcname$ $arg$.")
+      (target "$mcname$ claps at you $arg$.")
+      (rest   "$mcname$ claps at $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+
+
+==================================================
+FILE: c/clasp.s
+==================================================
+
+(clasp
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You clasp $hcname$.")
+      (target "$mcname$ clasps you.")
+      (rest  "$mcname$ clasps $hcname$.")
+    )
+    (arguments
+      (arguments  tightly,loosely,wetly,happily,lovingly,passionately,prudently,seductively)
+      (self   "You clasp $mhcname$ hand $arg$.")
+      (target "$mcname$ clasps your hand $arg$.")
+      (rest  "$mcname$ clasps $mhcname$ hand $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/clear.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker: presto $
+# $Id: clear.s,v 1.1 2001/12/27 11:34:28 saffra Exp presto $
+#
+#
+#
+
+(clear
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You clear your throat.")
+      (rest "$mcname$ clears $mposs$ throat.")
+    )
+    (arguments
+      (arguments loudly, quietly, politely, thoroughly, impatiently, 
+                 unobtrusively, rudely, phlegmatically, #)
+      (self "You clear your throat $arg$.")
+      (rest "$mcname$ clears $mposs$ throat $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments loudly, quietly, politely, thoroughly, impatiently, 
+                 unobtrusively, rudely, phlegmatically, #)
+      (self   "You clear your throat $arg$ at $hcname$.")
+      (target "$mcname$ clears $mposs$ throat $arg$ at you.")
+      (rest  "$mcname$ clears $mposs$ throat $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001 */
+
+==================================================
+FILE: c/click.s
+==================================================
+
+(click
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You click your fingers.")
+      (rest "$mcname$ clicks $mposs$ fingers.")
+    )
+    (arguments
+      (arguments slowly, loudly, happily, quickly, like Bertie Beetle, #)
+      (self "You click $arg$.")
+      (rest "$mcname$ clicks $arg$.")
+    )      
+  )
+  (targeted
+    (no-arguments
+      (self "You click your fingers at $hcname$.")
+      (target "$mcname$ clicks $mposs$ fingers at you.")
+      (rest "$mcname$ clicks $mposs$ fingers at $hcname$.")
+    )
+    (arguments
+      (arguments slowly, loudly, happily, quickly, like Bertie Beetle, #)
+      (self "You click $arg$ at $hcname$.")
+      (target "$mcname$ clicks $arg$ at you.")
+      (rest "$mcname$ clicks $arg$ at $hcname$.")
+    )      
+  )
+)
+
+
+==================================================
+FILE: c/cling.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker: presto $
+# $Id: cling.s,v 1.1 2002/02/01 07:56:01 saffra Exp presto $
+#
+#
+#
+
+(cling
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single    
+    (no-arguments
+      (self  "You cling on for dear life.")
+      (rest  "$mcname$ clings on for dear life.")
+    )
+    (arguments
+      (arguments tightly, passionately, fearfully, possessively, paranoically,   
+                 like a pair of socks, like static, by your fingertips, for 
+                 dear life, desperately, like a wool sweater, like a groupie, 
+                 to the north face of the Uxbridge Road, #)
+      (self "You cling on $arg$.")
+      (rest "$mcname$ clings on $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You cling onto $hcname$.")
+      (target "$mcname$ clings onto you.")
+      (rest   "$mcname$ clings onto $hcname$.")
+    )
+    (arguments
+      (arguments tightly, passionately, fearfully, possessively, paranoically,   
+                 like a pair of socks, like static, by your fingertips, for 
+                 dear life, desperately, like a wool sweater, like a groupie, 
+                 to the north face of the Uxbridge Road, #)
+      (self   "You cling onto $hcname$ $arg$.")
+      (target "$mcname$ clings onto you $arg$.")
+      (rest  "$mcname$ cling onto $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra, for idea rep, 2-1-02 */
+
+
+
+==================================================
+FILE: c/clown.s
+==================================================
+
+(clown
+(pattern "[at] <indirect:any-living>")
+(pattern "<string>")
+(pattern "<string> [at] <indirect:any-living>")
+(pattern "[at] <indirect:any-living> <string>")
+(single
+(no-arguments
+(self "You clown around like Bozo the clown.")
+(rest "$mcname$ clowns around like Bozo the clown.")
+)
+(arguments
+(arguments like a newbie,as if there is no tomorrow, in big pants, wearing
+ a red nose, with huge shoes on, like a liaison, like a Lord, like someone 
+ with baggy pants and unreasonably large shoes and an orange wig who's just 
+ been hit in the face with a giant custard pie, # )
+(self "You clown around $arg$.")
+(rest "$mcname$ clowns around $arg$.")
+)
+)
+(targeted
+(no-arguments
+(self   "You clown $hcname$ like Bozo the clown.")
+(target "$mcname$ clowns around you like Bozo the clown.")
+(rest  "$mcname$ clowns around $hcname$ like Bozo the clown.")
+)
+(arguments
+(arguments like a newbie,as if there is no tomorrow, in big pants, wearing
+ a red nose, with huge shoes on, like a liaison, like a Lord, like someone 
+ with baggy pants and unreasonably large shoes and an orange wig who's just 
+ been hit in the face with a giant custard pie, # )
+(self   "You clown around $hcname$ $arg$.")
+(target "$mcname$ clowns around you $arg$.")
+(rest  "$mcname$ clowns around $hcname$ $arg$.")
+)
+)
+)
+
+
+==================================================
+FILE: c/club.s
+==================================================
+
+(club
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You club yourself over the head.")
+      (rest "$mcname$ clubs $mobj$self over the head.")
+    )
+      (arguments
+      (arguments like a harp seal, with a harp seal, like a
+                 Canadian sailor, with a paper umbrella,
+                 over the head, club-club-clubbity-club-club,
+                 extremely painfully, on the noggin, with a
+                nail in, with a heavy object, #)
+      (self "You club yourself $arg$.")
+      (rest "$mcname$ clubs $mobj$self $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You club $hcname$ over the head.")
+      (target "$mcname$ clubs you over the head.")
+      (rest  "$mcname$ clubs $hcname$ over the head.")
+    )
+    (arguments
+      (arguments like a harp seal, with a harp seal, like a
+                 Canadian sailor, with a paper umbrella,
+                 over the head, club-club-clubbity-club-club,
+                 extremely painfully, on the noggin, with a
+                 nail in, with a heavy object, #)
+      (self   "You club $hcname$ $arg$.")
+      (target "$mcname$ clubs you $arg$.")
+      (rest  "$mcname$ clubs $hcname$ $arg$.")
+    )
+  )
+)
+      (arguments like a harp seal, with a harp seal, like a
+
+
+==================================================
+FILE: c/code.s
+==================================================
+
+(code
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments like Pinkfish,like Deutha,something to annoy all the players,a bug,#)
+      (self "You code $arg$.")
+      (rest "$mcname$ codes $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+       (arguments like Pinkfish,like Deutha,something to annoy all the players,a bug,#)
+      (self   "You code $arg$ at $hcname$.")
+      (target "$mcname$ codes $arg$ at you.")
+      (rest  "$mcname$ codes $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/comfort.s
+==================================================
+
+(comfort
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You comfort $hcname$.")
+      (target "$mcname$ comforts you.")
+      (rest   "$mcname$ comforts $hcname$.")
+    )
+    (arguments
+      (arguments  sincerely, wholeheartedly, mischievously, halfheartedly, 
+                  vaguely, eagerly, completely, lovingly, gently, tenderly, 
+                  sadly, in earnest, with your frog, in the ear, in the leg, 
+                  twice, anxiously, carefully, delicately, like someone else, #)
+      (self   "You comfort $hcname$ $arg$.")
+      (target "$mcname$ comforts you $arg$.")
+      (rest   "$mcname$ comforts $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/complain.s
+==================================================
+
+(complain
+   (pattern "[about] <string>")
+   (pattern "[about] <string> [to] <indirect:any-living>")
+   (single
+      (arguments
+         (arguments the weather, the country you live in,
+                    a country you do not live in,
+                    the quality of help these days,
+                    the good old days, chickens eating your food,
+                    snow, rain, heat, cold, frogs, ice, drinks,
+                    chocolate, smoking, fur, cats, dogs,
+                    yesterday, today, pinkfish, allana,
+                    too many souls, rubber boots, holes in your jeans,
+                    hobbes, love, not getting any, #)
+         (self "You complain about $arg$.")
+         (rest "$mcname$ complains about $arg$.")
+      )
+   )
+   (targeted
+     (arguments
+         (arguments the weather, the country you live in,
+                    a country you do not live in,
+                    the quality of help these days,
+                    the good old days, chickens eating your food,
+                    snow, rain, heat, cold, frogs, ice, drinks,
+                    chocolate, smoking, fur, cats, dogs,
+                    yesterday, today, pinkfish, allana,
+                    too many souls, rubber boots, holes in your jeans,
+                    hobbes, love, not getting any, #)
+         (self "You complain about $arg$ to $hcname$.")
+         (target "$mcname$ complains about $arg$ to you.")
+         (rest "$mcname$ complains about $arg$ to $hcname$.")
+      )
+    )
+  )
+)
+
+
+==================================================
+FILE: c/condemn.s
+==================================================
+
+(condemn
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You condemn $hcname$.")
+      (target "$mcname$ condemns you.")
+      (rest  "$mcname$ condemns $hcname$.")
+    )
+    (arguments
+      (arguments  for trapping frogs in traps baited with honey,#)
+      (self   "You condemn $hcname$ $arg$.")
+      (target "$mcname$ condemns you $arg$.")
+      (rest  "$mcname$ condemns $hcname$ $arg$.")
+    )
+  )
+)
+/*Hobbes & Gruper 970425 */
+
+
+==================================================
+FILE: c/confess.s
+==================================================
+
+(confess
+  (pattern "[to] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You confess it all.")
+      (rest "$mcname$ confesses it all.")
+    )
+    (arguments
+      (arguments  to being a witch,#)
+      (self "You confess $arg$.")
+      (rest "$mcname$ confesses $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You confess to $hcname$.")
+      (target "$mcname$ confesses to you.")
+      (rest  "$mcname$ confesses to $hcname$.")
+    )
+    (arguments
+      (arguments  to being a witch,#)
+      (self   "You confess $arg$ to $hcname$.")
+      (target "$mcname$ confesses $arg$ to you.")
+      (rest  "$mcname$ confesses $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/congrat.s
+==================================================
+
+(congrat
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You congratulate everyone.")
+      (rest "$mcname$ congratulates everyone.")
+    )
+    (arguments
+      (arguments  heartily, warmly, cheerfully, sadly, sincerely, 
+                  sarcastically, ruefully, #)
+      (self "You congratulate everyone $arg$.")
+      (rest "$mcname$ congratulates everyone $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You congratulate $hcname$.")
+      (target "$mcname$ congratulates you.")
+      (rest   "$mcname$ congratulates $hcname$.")
+    )
+    (arguments
+      (arguments  heartily, warmly, cheerfully, sadly, sincerely, 
+                  sarcastically, ruefully, #)
+      (self   "You congratulate $hcname$ $arg$.")
+      (target "$mcname$ congratulates you $arg$.")
+      (rest   "$mcname$ congratulates $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/corrupt.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker: presto $
+# $Id: corrupt.s,v 1.1 2002/05/03 03:17:14 saffra Exp presto $
+#
+#
+#
+
+(corrupt
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You corrupt $hcname$.")
+      (target "$mcname$ corrupts you.")
+      (rest   "$mcname$ corrupts $hcname$.")
+    )
+    (arguments
+      (arguments  lasciviously, lewdly, wickedly, smarmily, seductively,
+                  like a dirty old man, like a dirty old woman, like a
+                  sailor on a lonely night, with a whip on a train, 
+whilst waiting for dinner, #)
+       (self   "You corrupt $hcname$ $arg$.")
+       (target "$mcname$ corrupts you $arg$.")
+       (rest   "$mcname$ corrupts $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  code, bits, computer, toes, lips, fika, earlobes, monkey, 
+                  great big blunt bonus, eyebrow, food, mouse, toys, underwear,             
+                  fork, frog, womble, sarcasm, innuendo, pants, oranges, 
+                  cucumbers, strawberries, leer)
+       (self   "You corrupt $mhcname$ $arg$.")
+       (target "$mcname$ corrupts your $arg$.")
+       (rest   "$mcname$ corrupts $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/cough.s
+==================================================
+
+(cough
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You cough.")
+      (rest "$mcname$ coughs.")
+    )
+    (arguments
+      (arguments up someting nasty,up a frog,politely,sarcastically,
+       manically,evilly,wickedly,insanely,mischievously,devilishly,
+       impishly,cheekily,idiotically,tentatively,wryly,sceptically,#)
+      (self "You cough $arg$.")
+      (rest "$mcname$ coughs $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You cough at $hcname$.")
+      (target "$mcname$ coughs at you.")
+      (rest  "$mcname$ coughs at $hcname$.")
+    )
+    (arguments
+      (arguments up someting nasty,up a frog,politely,sarcastically,
+       manically,evilly,wickedly,insanely,mischievously,devilishly,
+       impishly,cheekily,idiotically,tentatively,wryly,sceptically,
+       some germs,#)
+      (self   "You cough $arg$ at $hcname$.")
+      (target "$mcname$ coughs $arg$ at you.")
+      (rest  "$mcname$ coughs $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cover.s
+==================================================
+
+(cover
+  (pattern "<indirect:any-living> in <string>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments frogs, cream, butter, maple syrup,
+                 compliments, a sheet, cheese, crabs, socks,
+                 carrots, sharpened carrots, red paint,
+                 spam, parakeets, pocket watches,
+                 false moustaches, lilies, roses, carnations, honey,
+                 ducks, fruit, lemons, green glass balls, spider web,
+                 cupcakes, fluff, fluffy animals, coffee tables,#)
+      (self "You cover yourself in $arg$.")
+      (rest "$mcname$ covers $mobj$self in $arg$.")
+    )
+    (arguments
+      (arguments up)
+      (self "You cover yourself $arg$.")
+      (rest "$mcname$ covers $mobj$self $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments frogs, cream, butter, maple syrup,
+                 compliments, a sheet, cheese, crabs, socks, honey,
+                 ducks, fruit, lemons, green glass balls, spider web,
+                 false moustaches, lilies, roses, carnations,
+                 carrots, sharpened carrots, socks, red paint,
+                 spam, parakeets, pocket watches,
+                 cupcakes, fluff, fluffy animals, coffee tables,#)
+      (self "You cover $hcname$ in $arg$.")
+      (target "$mcname$ covers you in $arg$.")
+      (rest "$mcname$ covers $hcname$ in $arg$.")
+    )
+    (arguments
+      (arguments up)
+      (self "You cover $hcname$ $arg$.")
+      (target "$mcname$ covers you $arg$.")
+      (rest "$mcname$ covers $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/covet.s
+==================================================
+
+(covet
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You covet $hcname$.")
+      (target "$mcname$ covets you.")
+      (rest  "$mcname$ covets $hcname$.")
+    )
+    (arguments
+      (arguments  neighbor, wife, husband, computer, brownies, cookies,
+                  net connection, skills, stats, fabulous hair,  #)
+      (self   "You covet $mhcname$ $arg$.")
+      (target "$mcname$ covets your $arg$.")
+      (rest  "$mcname$ covets $mhcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra 2-20-00 */
+
+
+==================================================
+FILE: c/cower.s
+==================================================
+
+(cower
+  (pattern "[from] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [from] <indirect:any-living>")
+  (pattern "[from] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You cower in a corner.")
+      (rest "$mcname$ cowers in a corner.")
+    )
+    (arguments
+      (arguments fearfully,slyly,shyly,in shame,nastily,the head,the
+                 sensitive parts,#)
+      (self "You cower $arg$.")
+      (rest "$mcname$ cowers $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You cower in a corner from $hcname$.")
+      (target "$mcname$ cowers in a corner from you.")
+      (rest  "$mcname$ cowers in a corner from $hcname$.")
+    )
+    (arguments
+      (arguments fearfully,slyly,shyly,in shame,nastily,the head,the 
+                 sensitive parts,#)
+      (self   "You cower $arg$ from $hcname$.")
+      (target "$mcname$ cowers $arg$ from you.")
+      (rest  "$mcname$ cowers $arg$ from $hcname$.")
+    )
+     (arguments
+       (arguments before)
+          (self "You cower $arg$ $hcname$.")
+	  (target "$mcname$ cowers $arg$ you.")
+          (rest  "$mcname$ cowers $arg$ $hcname$".)
+      )
+   )
+)
+
+
+==================================================
+FILE: c/crash.s
+==================================================
+
+(crash
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern " <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string> ")
+  (single
+    (no-arguments
+      (self "You crash.")
+      (rest "$mcname$ crash.")
+    )
+    (arguments
+      (arguments onto the ground, onto the floor, into the wall, into the 
+                 crowd, into the Disc, like a caffeine addict, like a bugge, 
+                 disasterously, with an explosion, # )
+      (self "You crash $arg$.")
+      (rest "$mcname$ crash $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You crash into $hcname$.")
+      (target "$mcname$ crashes into you.")
+      (rest "$mcname$ crashes into $hcname$.")
+    )
+    (arguments
+      (arguments onto the ground, onto the floor, into the wall, into the 
+                 crowd, into the Disc, into a tree, into a house)
+      (self   "You crash $hcname$ $arg$.")
+      (target "$mcname$ crashes you $arg$.")
+      (rest   "$mcname$ crashes $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments like a caffeine addict, like a bugge, like the Disc,   
+                 disasterously, with an explosion, #)
+      (self   "You crash into $hcname$ $arg$.")
+      (target "$mcname$ crashes into you $arg$.")
+      (rest   "$mcname$ crashes into $hcname$ $arg$.")
+    )
+
+  )
+)
+/* Saffra Mar 30 2003 */
+
+
+==================================================
+FILE: c/cringe.s
+==================================================
+
+(cringe
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You cringe.")
+      (rest "$mcname$ cringes.")
+    )
+    (arguments
+    (arguments terror,embarrassment,anticipation,#)
+      (self "You cringe in $arg$.")
+      (rest "$mcname$ cringes in $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You cringe at $hcname$.")
+      (target "$mcname$ cringes at you.")
+      (rest  "$mcname$ cringes at $hcname$.")
+    )
+    (arguments
+      (arguments terror,embarrassment,anticipation,#)
+      (self   "You cringe in $arg$ at $hcname$.")
+      (target "$mcname$ cringes in $arg$ at you.")
+      (rest  "$mcname$ cringes in $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/croak.s
+==================================================
+
+(croak
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern " <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string> ")
+  (single
+    (no-arguments
+      (self "Ribbit.")
+      (rest "$mcname$ croaks (ribbit).")
+    )
+    (arguments
+      (arguments like a frog, like a toad, like a tree frog, like a bullfrog, 
+                 like a horny toad, like a dissected frog, like a spotted toad,
+                 like a bad joke, # )
+      (self "You croak $arg$.")
+      (rest "$mcname$ croaks $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You croak (ribbit) at $hcname$.")
+      (target "$mcname$ croaks (ribbit) at you.")
+      (rest "$mcname$ croaks (ribbit) at $hcname$.")
+    )
+    (arguments
+      (arguments like a frog, like a toad, like a tree frog, like a bullfrog, 
+                 like a horny toad, like a dissected frog, like a spotted toad,
+                 like a bad joke, # )
+      (self "You croak $arg$ at $hcname$.")
+      (target "$mcname$ croaks $arg$ at you.")
+      (rest "$mcname$ croaks $arg$ at $hcname$.")
+    )
+  )
+)
+/* Modified by Saffra 7-22-01 */
+
+
+==================================================
+FILE: c/croon.s
+==================================================
+
+(croon
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You croon.")
+      (rest "$mcname$ croons.")
+    )
+    (arguments
+    (arguments  softly, sweetly, slow songs, love songs, a lullaby, #)
+      (self "You croon $arg$.")
+      (rest "$mcname$ croons $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You croon into $hcname$'s ear.")
+    (target "$mcname$ croons into your ear.")
+    (rest "$mcname$ croons into $hcname$'s ear.")
+  )
+  (arguments
+    (arguments  softly, sweetly, slow songs, love songs, a lullaby, #)
+    (self "You croon $arg$ at $hcname$." )
+    (target "$mcname$ croons $arg$ at you." )
+    (rest "$mcname$ croons $arg$ at $hcname$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: c/cross.s
+==================================================
+
+(cross
+  (pattern "[my] <string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments fingers, legs, eyes, arms, toes, t's, #)
+      (self "You cross your $arg$.")
+      (rest "$mcname$ crosses $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments fingers, legs, eyes, arms, toes, t's, #)
+      (self "You cross your $arg$ at $hcname$.")
+      (target "$mcname$ crosses $mposs$ $arg$ at you.")
+      (rest   "$mcname$ crosses $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: c/crowd.s
+==================================================
+
+(crowd
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [into] <string>")
+  (single
+    (arguments
+      (arguments wild,#)
+      (self "The crowd goes $arg$.")
+      (rest "The crowd goes $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  a corner,#)
+      (self   "You crowd $hcname$ into $arg$.")
+      (target "$mcname$ crowds you into $arg$.")
+      (rest  "$mcname$ crowds $hcname$ into $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cry.s
+==================================================
+
+(cry
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "Wahhhhhh.")
+      (rest "$mcname$ cries loudly.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments shoulder,chest,breast)
+      (self "You cry on $mhcname$ $arg$.")
+      (target "$mcname$ cries on your $arg$.")
+      (rest "$mcname$ cries on $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cuddle.s
+==================================================
+
+(cuddle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You cuddle $hcname$.")
+      (target "$mcname$ cuddles you.")
+      (rest   "$mcname$ cuddles $hcname$.")
+    )
+    (arguments
+      (arguments  close, affectionately, cutely, happily, sadly, 
+                  comfortingly, madly, #)
+      (self   "You cuddle $hcname$ $arg$.")
+      (target "$mcname$ cuddles you $arg$.")
+      (rest   "$mcname$ cuddles $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/cupcake.s
+==================================================
+
+(cupcake
+  (pattern "[with] <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> [with] <string>")
+  (single
+    (no-arguments
+      (self "You cupcake.")
+      (rest "$mcname$ cupcakes.")
+    )
+    (arguments
+      (arguments finesse,desire,lust,karma,intelligence,icing,flour,
+                 water,eggs,milk,sugar,baking soda,an electric beater,
+                 skill,dexterity,hands,fingers,legs,fins,chocolate,typos,
+                 explosions of light,pools of limpets,cat hair,love,
+                 shells of stuff,a mixing bowl and wooden spoons)
+      (self "You cupcake with $arg$.")
+      (rest "$mcname$ cupcakes with $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You cupcake $hcname$.")
+      (target "$mcname$ cupcakes you.")
+      (rest "$mcname$ cupcakes $hcname$.")
+    )
+    (arguments
+      (arguments finesse,desire,lust,karma,intelligence,icing,flour,
+                 water,eggs,milk,sugar,baking soda,an electric beater,
+                 skill,dexterity,hands,fingers,legs,fins,chocolate,typos,
+                 explosions of light,pools of limpets,cat hair,love,
+                 shells of stuff,a mixing bowl and wooden spoons)
+      (self "You cupcake $hcname$ with $arg$.")
+      (target "$mcname$ cupcakes you with $arg$.")
+      (rest "$mcname$ cupcakes $hcname$ with $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/curl.s
+==================================================
+
+(curl
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You curl up into a ball.")
+      (rest "$mcname$ curls up into a ball.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You curl up in $mhcname$ lap.")
+      (target "$mcname$ curls up in your lap.")
+      (rest   "$mcname$ curls up in $mhcname$ lap.")
+    )
+    (arguments
+      (arguments  arms, hands, hair, bed, bathtub, car, dreams,
+                  thoughts, heart, laundry, room, pants, #)  
+      (self   "You curl up in $mhcname$ $arg$.")
+      (target "$mcname$ curls up in your $arg$.")
+      (rest   "$mcname$ curls up in $mhcname$ $arg$.")
+    )
+  )
+)
+
+/* Koryn suggested it. Saffra, 10-6-00 */
+
+
+==================================================
+FILE: c/curse.s
+==================================================
+
+(curse
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You curse.")
+      (rest "$mcname$ curses.")
+    )
+    (arguments
+      (arguments loudly,strongly,rudely,unashamedly,#)
+      (self "You curse $arg$.")
+      (rest "$mcname$ curses $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You curse at $hcname$.")
+      (target "$mcname$ curses at you.")
+      (rest  "$mcname$ curses at $hcname$.")
+    )
+    (arguments
+      (arguments  loudly,strongly,rudely,unashamedly,#)
+      (self   "You curse $arg$ at $hcname$.")
+      (target "$mcname$ curses $arg$ at you.")
+      (rest  "$mcname$ curses $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/curtsey.s
+==================================================
+
+(curtsey
+  (pattern "[to|before] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [before|to] <string>")
+  (single
+    (no-arguments
+      (self "You curtsey.")
+      (rest "$mcname$ curtsies.")
+    )
+    (arguments
+      (arguments  gracefully, humbly, quickly, low, slightly, prettily, 	
+                  handsomely, surlishly, extravagantly, #)
+      (self "You curtsey $arg$.")
+      (rest "$mcname$ curtsies $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You curtsey to $hcname$.")
+      (target "$mcname$ curtsies before you.")
+      (rest  "$mcname$ curtsies to $hcname$.")
+    )
+    (arguments
+      (arguments  gracefully, humbly, quickly, low, slightly, prettily, 	
+                  handsomely, surlishly, extravagantly, #)
+      (self   "You curtsey $arg$ to $hcname$.")
+      (target "$mcname$ curtsies $arg$ before you.")
+      (rest  "$mcname$ curtsies $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: c/czot.s
+==================================================
+
+(czot
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You czot anxiously.")
+      (rest "$mcname$ czots anxiously.")
+    )
+    (arguments
+        (arguments with the staff of Czot, #)
+        (self "You czot $arg$.")
+        (rest "$mcname$ czots $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You czot $hcname$.")
+      (target "$mcname$ czots you.")
+      (rest  "$mcname$ czots $hcname$.")
+    )
+    (arguments
+        (arguments with the staff of Czot, #)
+        (self "You czot $hcname$ $arg$.")
+        (target "$mcname$ czots you $arg$.")
+        (rest "$mcname$ czots $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: q/quack.s
+==================================================
+
+(quack
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You quack.")
+      (rest "$mcname$ quack$s$.")
+    )
+    (arguments
+      (arguments like a duck,like a confused dog,happily,#)
+      (self "You quack $arg$.")
+      (rest "$mcname$ quack$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You quack at $hcname$.")
+      (target "$mcname$ quack$s$ at you.")
+      (rest  "$mcname$ quack$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a duck,like a confused dog,happily,#)
+      (self   "You quack $arg$ at $hcname$.")
+      (target "$mcname$ quack$s$ $arg$ at you.")
+      (rest  "$mcname$ quack$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Hobbes, 970524 */
+
+
+==================================================
+FILE: q/quirk.s
+==================================================
+
+(quirk
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You quirk one eyebrow.")
+      (rest "$mcname$ quirk$s$ one eyebrow.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You quirk one eyebrow at $hcname$.")
+      (target "$mcname$ quirk$s$ one eyebrow at you.")
+      (rest "$mcname$ quirk$s$ one eyebrow at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: q/quiver.s
+==================================================
+
+(quiver
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You quiver.")
+      (rest "$mcname$ quiver$s$.")
+    )
+    (arguments
+      (arguments tensely, in anticipation, tremblingly, #)
+      (self "You quiver $arg$.")
+      (rest "$mcname$ quiver$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You quiver at $hcname$.")
+      (target "$mcname$ quiver$s$ at you.")
+      (rest  "$mcname$ quiver$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments tensely, in anticipation, tremblingly, #)
+      (self   "You quiver $arg$ at $hcname$.")
+      (target "$mcname$ quiver$s$ $arg$ at you.")
+      (rest  "$mcname$ quiver$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Gave more uses, Saffra 04/22/03 */
+
+
+==================================================
+FILE: r/radish.s
+==================================================
+
+(radish
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (targeted
+    (no-arguments
+      (self   "You radish $hcname$.")
+      (target "$mcname$ radish$s$ you.")
+      (rest   "$mcname$ radish$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  redly, slowly, quickly, carefully, with a womble, 
+                  in a shower, in a swimming pool, on a coffee table, 
+                  expertly, awkwardly, absentmindedly, 
+                  viciously, with ropes and chains, with nutella, 
+                  using fruit tingles, with maple syrup and waffles, 
+                  under the lilacs in the spring time, #)
+      (self   "You radish $hcname$ $arg$.")
+      (target "$mcname$ radish$s$ you $arg$.")
+      (rest   "$mcname$ radish$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+
+==================================================
+FILE: r/raise.s
+==================================================
+
+(raise  
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [against] <indirect:any-living>")
+  (pattern "<indirect:any-living> [against] <string>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You raise your eyebrows.")
+      (rest "$mcname$ raise$s$ $mposs$ eyebrows.")
+    )
+    (arguments
+    (arguments  eyebrows, hand, finger, leg, foot, hat, bet, ante, #)
+      (self "You raise your $arg$.")
+      (rest "$mcname$ raise$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You raise your eyebrows at $hcname$.")
+      (target "$mcname$ raise$s$ $mposs$ eyebrows at you.")
+      (rest   "$mcname$ raise$s$ $mposs$ eyebrows at $hcname$.")
+    )
+    (arguments
+    (arguments  eyebrows, hand, finger, leg, foot, hat, bet, ante, #)
+      (self   "You raise your $arg$ at $hcname$.")
+      (target "$mcname$ raise$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ raise$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: r/ram.s
+==================================================
+
+(ram
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You ram the nearest turtle.")
+      (rest "$mcname$ ram$s$ the nearest turtle.")
+    )
+    (arguments
+      (arguments wall, door, sheep, #)
+      (self  "You ram into the $arg$.")
+      (rest "$mcname$ ram$s$ into the $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self     "You ram into $hcname$.")
+      (target "$mcname$ ram$s$ into you.")
+      (rest    "$mcname$ ram$s$ into $hcname$.")
+    )
+    (arguments
+      (arguments head, back, body, #)
+      (self     "You ram into $hposs$ $arg$.")
+      (target "$mcname$ rams into your $arg$.")
+      (rest    "$mcname$ ram$s$ into $hposs$ $arg$.")
+    )
+  )
+)
+
+==================================================
+FILE: r/rant.s
+==================================================
+
+(rant
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You rant.")
+      (rest "$mcname$ rants.")
+    )
+    (arguments
+      (arguments like Tannah,continuously,pointlessly,like a rabid dog,loudly,#)
+      (self "You rant $arg$.")
+      (rest "$mcname$ rant$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You rant at $hcname$.")
+      (target "$mcname$ rant$s$ at you.")
+      (rest  "$mcname$ rant$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like Tannah,continuously,pointlessly,like a rabid dog,loudly,#)
+      (self   "You rant $arg$ at $hcname$.")
+      (target "$mcname$ rant$s$ $arg$ at you.")
+      (rest  "$mcname$ rant$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/raspberry.s
+==================================================
+
+(raspberry
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You blow a raspberry.")
+      (rest "$mcname$ blow$s$ a raspberry.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blow a raspberry at $hcname$.")
+      (target "$mcname$ blow$s$ a raspberry at you.")
+      (rest  "$mcname$ blow$s$ a raspberry at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/ravish.s
+==================================================
+
+(ravish
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (targeted
+  (no-arguments
+    (self "You ravish $hcname$.")
+    (target "$mcname$ ravish$s$ you.")
+    (rest "$mcname$ ravish$s$ $hcname$.")
+  )
+  (arguments
+    (arguments  slowly, quickly, carefully, with a womble, in a shower, 
+                in a swimming pool, on a coffee table, expertly,
+                awkwardly, absentmindedly, 
+                viciously, with ropes and chains, with nutella, 
+                using fruit tingles, with maple syrup and waffles, 
+                under the lilacs in the spring time, #)
+    (self "You ravish $hcname$ $arg$." )
+    (target "$mcname$ ravish$s$ you $arg$." )
+    (rest "$mcname$ ravish$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: r/razz.s
+==================================================
+
+(razz
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You stick your thumb on your nose and razz $hcname$.")
+      (target "$mcname$ stick$s$ $mposs$ thumb on $mposs$ nose and razz$s$ you.")
+      (rest  "$mcname$ stick$s$ $mposs$ thumb on $mposs$ nose and razz$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/recommend.s
+==================================================
+
+(recommend
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You recommend that.")
+      (rest "$mcname$ recommend$s$ that.")
+    )
+    (arguments
+      (arguments  don't, doesn't)
+      (self "You don't recommend that.")
+      (rest "$mcname$ doesn't recommend that.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You recommend $hcname$.")
+      (target "$mcname$ recommend$s$ you.")
+      (rest   "$mcname$ recommend$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  yourself, someone else, a psychologist, a psychiatrist, 
+                  a proctologist, a good enema, #)
+      (self   "You recommend $arg$ to $mhcname$.")
+      (target "$mcname$ recommend$s$ $arg$ to you.")
+      (rest   "$mcname$ recommend$s$ $arg$ to $mhcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/remind.s
+==================================================
+
+(remind
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You remind $hcname$.")
+      (target "$mcname$ remind$s$ you.")
+      (rest  "$mcname$ remind$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You remind $hcname$ $arg$.")
+      (target "$mcname$ remind$s$ you $arg$.")
+      (rest  "$mcname$ remind$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Hobbes 961204 */
+	
+
+==================================================
+FILE: r/report.s
+==================================================
+
+(report
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self "You report $hcname$ to the Code Police.")
+      (target "$mcname$ report$s$ you to the Code Police.")
+      (rest "$mcname$ report$s$ $hcname$ to the Code Police.")
+    )
+    (arguments
+      (arguments DrGoon, PinkFish, the Watch, the Thieves Guild, Dr Cruces,
+                 Mustrum Ridcully, Granny Weatherwax, Veronica, Titania,
+                 Samuel Vimes, Wuffles, Deutha, Signe, Sadistic Git,
+                 Bravd the Hublander, the Luggage, Havelock Vetinari)
+      (self "You report $hcname$ to $arg$.")
+      (target "$mcname$ report$s$ you to $arg$.")
+      (rest "$mcname$ report$s$ $hcname$ to $arg$.")
+    )
+    (arguments
+      (arguments #)
+      (self "You report $hcname$ $arg$.")
+      (target "$mcname$ report$s$ you $arg$.")
+      (rest "$mcname$ report$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: r/riddle.s
+==================================================
+
+(riddle
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You riddle.")
+      (rest "$mcname$ riddles.")
+    )
+    (arguments
+      (arguments randomly,in haiku,like a sphinx,unsolvably,
+                 like a narsty thing in a murky underground cavern,
+                 obliquely,inscrutably, #)
+        (self "You riddle $arg$.")
+        (rest "$mcname$ riddle$s$ $arg$.")
+    )
+    (arguments
+      (arguments and twiddle my thumbs)
+        (self "You riddle and twiddle your thumbs.")
+        (rest "$mcname$ riddle$s$ and twiddle$s$ $mposs$ thumbs.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments with bullets,in haiku,like a sphinx,over a barrel,unsolvably,
+                 like a narsty thing in a murky underground cavern,
+                 obliquely,randomly,inscrutably, #)
+        (self   "You riddle $hcname$ $arg$.")
+        (target "$mcname$ riddle$s$ you $arg$.")
+        (rest   "$mcname$ riddle$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments with one hand tied behind my back)
+        (self   "You riddle $hcname$ with one hand tied behind your back.")
+        (target "$mcname$ riddle$s$ you with one hand tied behind $mposs$ back.")
+        (rest   "$mcname$ riddle$s$ $hcname$ with one hand tied behind $mposs$ back.")
+    )
+  )	
+)
+
+
+==================================================
+FILE: r/roar.s
+==================================================
+
+(roar
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You roar.")
+      (rest "$mcname$ roars.")
+    )
+    (arguments
+      (arguments loudly,happily,manically,evilly,wickedly,insanely,impishly,
+                 cheekily,idiotically,repeatedly,like a drop bear,#)
+      (self "You roar $arg$.")
+      (rest "$mcname$ roar$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You roar at $hcname$.")
+      (target "$mcname$ roar$s$ at you.")
+      (rest  "$mcname$ roar$s$ at $hcname$.")
+    )
+    (arguments
+       (arguments loudly,happily,manically,evilly,wickedly,insanely,impishly,
+                 cheekily,idiotically,repeatedly,like a drop bear,#)
+      (self   "You roar $arg$ at $hcname$.")
+      (target "$mcname$ roar$s$ $arg$ at you.")
+      (rest  "$mcname$ roar$s$ $arg$ at $hcname$.")
+    )
+  )	
+)
+
+
+==================================================
+FILE: r/rock.s
+==================================================
+
+(rock
+  (pattern "<string>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  heels, nose, feet, elbows)
+      (self "You rock on your $arg$.")
+      (rest "$mcname$ rock$s$ on $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments  around the clock, in consternation, uncertainly to and fro)
+      (self "You rock $arg$.")
+      (rest "$mcname$ rock$s$ $arg$.")
+    )
+    (arguments
+      (arguments  around the clock)
+      (self "You rock $arg$.")
+      (rest "$mcname$ rock$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  gently in their arms)
+      (self   "You rock $hcname$ gently in your arms.")
+      (target "$mcname$ rock$s$ you gently in $mposs$ arms.")
+      (rest   "$mcname$ rock$s$ $hcname$ gently in $mposs$ arms.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/rofl.s
+==================================================
+
+(rofl
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You roll around on the floor laughing.")
+      (rest "$mcname$ roll$s$ around on the floor laughing.")
+    )
+    (arguments
+      (arguments  frogs, fate, the irony, the mysteries of life, that awful
+                  punne, the antics of the creators, #)
+      (self "You roll around on the floor laughing at $arg$.")
+      (rest "$mcname$ roll$s$ around on the floor laughing at $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You roll around on the floor laughing at $hcname$.")
+      (target "$mcname$ roll$s$ around on the floor laughing at you.")
+      (rest   "$mcname$ roll$s$ around on the floor laughing at $hcname$.")
+    )
+    (arguments
+      (arguments  frogs, fate, the irony, the mysteries of life, that awful
+                  punne, the antics of the creators, #)
+      (self   "You roll around on the floor laughing about $arg$ at $hcname$.")
+      (target "$mcname$ roll$s$ around on the floor laughing about $arg$ at you.")
+      (rest   "$mcname$ roll$s$ around on the floor laughing about $arg$ at $hcname$.")
+    )
+  )
+)
+/* Saffra 4-29-01 */
+
+
+==================================================
+FILE: r/rolf.s
+==================================================
+
+(rolf
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You do a giant painting on the wall.")
+      (rest "$mcname$ do$s$ a giant painting on the wall.  Can you tell what it is, yet?")
+    )
+    (arguments
+      (arguments  My  Way, the National Anthem, a tune, something, Two Little Boys,
+       Jake The Peg, #)
+      (self "You play $arg$ on your didgeridoo.")
+      (rest "$mcname$ play$s$ $arg$ on $mposs$ didgeridoo.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You do a giant painting on a wall for $hcname$.")
+      (target "$mcname$ do$s$ a giant painting on a wall for you.  Can you tell what it is, yet?")
+      (rest   "$mcname$ do$s$ a giant painting on a wall for $hcname$.  Can you tell what it is, yet?")
+    )
+    (arguments
+      (arguments  My Way, the National Anthem, a tune, something, Two Little Boys,
+       Jake The Peg, #)
+      (self "You play $arg$ on your didgeridoo for $hcname$.")
+      (target "$mcname$ play$s$ $arg$ on $mposs$ didgeridoo for you.")
+      (rest "$mcname$ play$s$ $arg$ on $mposs$ didgeridoo.")
+      )
+  )
+)
+
+
+==================================================
+FILE: r/roll.s
+==================================================
+
+(roll
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  around on the floor laughing, 
+                  up into a paper to be delivered, 
+                  up into a ball, sideways, backwards, 
+                  professionally, like a spy through an imaginary door, 
+                  fearfully, tightly, slowly, a joint)
+      (self "You roll $arg$.")
+      (rest "$mcname$ roll$s$ $arg$.")
+    )
+    (arguments
+      (arguments  over and play dead)
+      (self "You roll over and play dead.")
+      (rest "$mcname$ roll$s$ over and play$s$ dead.")
+    )
+    (arguments
+      (arguments  eyes, own cigarette)
+      (self "You roll your $arg$.")
+      (rest "$mcname$ roll$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You roll over $hcname$.")
+      (target "$mcname$ roll$s$ over you.")
+      (rest   "$mcname$ roll$s$ over $hcname$.")
+    )
+    (arguments
+      (arguments  under, around)
+      (self   "You roll $arg$ $hcname$.")
+      (target "$mcname$ roll$s$ $arg$ you.")
+      (rest   "$mcname$ roll$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments  quickly, slowly, painfully, excitedly, lovingly, carefully, 
+                  #)
+      (self   "You roll $arg$ over $hcname$.")
+      (target "$mcname$ roll$s$ $arg$ over you.")
+      (rest   "$mcname$ roll$s$ $arg$ over $hcname$.")
+    )
+    (arguments
+      (arguments  eyes, own cigarette)
+      (self   "You roll your $arg$ at $hcname$.")
+      (target "$mcname$ roll$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ roll$s$ $mposs$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  around on the floor laughing)
+      (self    "You roll $arg$ at $hcname$.")
+      (target  "$mcname$ roll$s$ $arg$ at you.")
+      (rest    "$mcname$ roll$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/rollup.s
+==================================================
+
+(rollup
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments an enormous spliff,a cigarette,#)
+      (self "You roll up $arg$.")
+      (rest "$mcname$ roll$s$ up $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/rowr.s
+==================================================
+
+(rowr
+  (pattern "<string>" )
+  (pattern "[at] <indirect:any-living>" )
+  (pattern "<string> [at] <indirect:any-living>" )
+  (pattern "[at] <indirect:any-living> <string>" )
+  (single
+    (no-arguments
+      (self "You rowr." )
+      (rest "$mcname$ rowr$s$." )
+    )
+    (arguments
+      (arguments  like Drakkos, like a monkey, like a flying monkey,
+                  seductively, flirtatiously, angrily, fiendishly, innocently,
+                  devillishly, demonically, angelically, sensuously, playfully,
+                  happily, sarcastically, cynically, humorously, loudly,
+                  contemplatively, like a lawnmower, like a diesel engine, #)
+      (self "You rowr $arg$." )
+      (rest "$mcname$ row$rs$ $arg$." )
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You rowr at $hcname$." )
+      (target "$mcname$ rowr$s$ at you." )
+      (rest   "$mcname$ rowr$s$ at $hcname$." )
+    )
+    (arguments
+      (arguments  like Drakkos, like a monkey, like a flying monkey,
+                  seductively, flirtatiously, angrily, fiendishly, innocently,
+                  devillishly, demonically, angelically, sensuously, playfully,
+                  happily, sarcastically, cynically, humorously, loudly,
+                  contemplatively, like a lawnmower, like a diesel engine, #)
+      (self   "You rowr $arg$ at $hcname$." )
+      (target "$mcname$ rowr$s$ $arg$ at you." )
+      (rest   "$mcname$ rowr$s$ $arg$ at $hcname$." )
+    )
+    (arguments
+      (arguments  star, asterisk)
+      (self   "You *rowr* at $hcname$." )
+      (target "$mcname$ *rowrs* at you." )
+      (rest   "$mcname$ *rowrs* at $hcname$." )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/rtfm.s
+==================================================
+
+(rtfm
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments rules, quests, multiplaying, playerkilling, #)
+      (self "You grab $hcname$ by the hair and type out 'Read help $arg$' with $hp
+oss$ forehead.")
+      (target "$mcname$ grabs you by the hair and type$s$ out 'Read help $arg$' with
+ your forehead.")
+      (rest "$mcname$ grabs $hcname$ by the hair and type$s$ out 'Read help $arg$'
+ with $hposs$ forehead.")
+    )
+  )
+)
+
+/* Saffra 2-20-00 */
+
+
+
+==================================================
+FILE: r/rub.s
+==================================================
+
+(rub
+  (pattern "<indirect:any-living>")
+    (pattern "<string> [against] <indirect:any-living>")
+    (pattern "<indirect:any-living> [against] <string>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments hands together,eyes,tummy,nose,leg,arm,eyebrows,head, #)
+      (self "You rub your $arg$.")
+      (rest "$mcname$ rub$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You rub $hcname$ up the wrong way.")
+      (target "$mcname$ rub$s$ you up the wrong way.")
+      (rest  "$mcname$ rub$s$ $hcname$ up the wrong way.")
+    )
+    (arguments
+        (arguments cabbage, fruitcake, dancing hippotomaus, unshaven body, #)
+        (self "You rub your $arg$ against $hcname$.")
+        (target "$mcname$ rub$s$ $mposs$ $arg$ against you.")
+        (rest "$mcname$ rub$s$ $mposs$ $arg$ against $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: r/ruffle.s
+==================================================
+
+(ruffle
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ruffle your hair.")
+      (rest "$mcname$ ruffle$s$ $mposs$ hair.")
+    )
+    (arguments
+    (arguments fronds, ruffles, pleats, crinolines, moustache, ridges,
+               nerves, feathers, skirts, fur, wool, #)
+      (self "You ruffle your $arg$.")
+      (rest "$mcname$ ruffle$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ruffle $mhcname$ hair.")
+      (target "$mcname$ ruffle$s$ your hair.")
+      (rest   "$mcname$ ruffle$s$ $mhcname$ hair.")
+    )
+    (arguments
+      (arguments fronds, ruffles, pleats, crinolines, moustache, ridges,
+                 nerves, feathers, skirts, fur, wool, #)
+      (self   "You ruffle $mhcname$ $arg$.")
+      (target "$mcname$ ruffle$s$ your $arg$.")
+      (rest   "$mcname$ ruffle$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: y/yawn.s
+==================================================
+
+(yawn
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You yawn.")
+      (rest "$mcname$ yawn$s$.")
+    )
+    (arguments
+      (arguments tiredly, boredly, sleepily, happily, brightly, in sympathy,
+                 hugely, loudly, #)
+      (self "You yawn $arg$.")
+      (rest "$mcname$ yawn$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You yawn at $hcname$.")
+      (target "$mcname$ yawn$s$ at you.")
+      (rest   "$mcname$ yawn$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments tiredly, boredly, sleepily, happily, brightly, in sympathy,
+                 hugely, loudly, #)
+      (self   "You yawn $arg$ at $hcname$.")
+      (target "$mcname$ yawn$s$ $arg$ at you.")
+      (rest   "$mcname$ yawn$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: y/yikes.s
+==================================================
+
+(yikes
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You go \"yikes!\"")
+      (rest "$mcname$ go$s$ \"yikes!\"")
+    )
+    (arguments
+      (arguments in surprise,in fright,in fear,in terror)
+      (self "You go \"yikes!\" $arg$.")
+      (rest "$mcname$ go$s$ \"yikes!\" $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You go \"yikes!\" at $hcname$.")
+      (target "$mcname$ go$s$ \"yikes!\" at you.")
+      (rest  "$mcname$ go$s$ \"yikes!\" at $hcname$.")
+    )
+    (arguments
+      (arguments in surprise,in fright,in fear,in terror)
+      (self   "You go \"yikes!\" $arg$ at $hcname$.")
+      (target "$mcname$ go$s$ \"yikes!\" $arg$ at you.")
+      (rest  "$mcname$ go$s$ \"yikes!\" $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: y/yodel.s
+==================================================
+
+(yodel
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You yodel loudly.")
+      (rest   "$mcname$ yodel$s$ loudly.")
+    )
+    (arguments
+      (arguments  happily, sadly, annoyingly, romantically, dreamily, 
+                  incessantly, constantly, to the tune of william tell's 
+                  overture, carefully, loudly, sternly, pinkly, 
+                  like a blackboard, with the frogs, yodel-ay-hee-hoo, 
+                  like a mountain goat, like a lonely goatherd, #)
+      (self "You yodel $arg$.")
+      (rest "$mcname$ yodel$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You yodel at $hcname$.")
+      (target "$mcname$ yodel$s$ at you.")
+      (rest   "$mcname$ yodel$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly, annoyingly, romantically, dreamily, 
+                  incessantly, constantly, to the tune of william tell's 
+                  overture, carefully, loudly, sternly, pinkly, 
+                  like a blackboard, with the frogs, yodel-ay-hee-hoo, 
+                  like a mountain goat, like a lonely goatherd, #)
+      (self   "You yodel $arg$ at $hcname$.")
+      (target "$mcname$ yodel$s$ $arg$ at you.")
+      (rest  "$mcname$ yodel$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: y/yulil.s
+==================================================
+
+(yulil
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments Why you little...,I'll teach you for that!,#)
+      (self "You strangle $hcname$ violently, while screaming: $arg$")
+      (target "$mcname$ strangle$s$ you violently, while screaming: $arg$")
+      (rest "$mcname$ strangle$s$ $hcname$ violently, while screaming: $arg$")
+    )
+  )
+)
+
+/* Hobbes 960922, suggested by Dewcart */
+
+==================================================
+FILE: f/faint.s
+==================================================
+
+(faint
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You faint.")
+      (rest "$mcname$ faint$s$.")
+    )
+    (arguments
+      (arguments tiredly,out of boredom)
+      (self "You faint $arg$.")
+      (rest "$mcname$ faint$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You faint on $hcname$.")
+      (target "$mcname$ faint$s$ on you.")
+      (rest  "$mcname$ faint$s$ on $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fall.s
+==================================================
+
+(fall
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You fall over.")
+      (rest "$mcname$ fall$s$ over.")
+    )
+    (arguments
+      (arguments backwards, painfully, awkwardly, accidentally, purposefully,
+                 happily, sadly, quickly, rapidly, down, up, #)
+      (self "You fall $arg$.")
+      (rest "$mcname$ fall$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fall for $hcname$.")
+      (target "$mcname$ fall$s$ for you.")
+      (rest   "$mcname$ fall$s$ for $hcname$.")
+    )
+    (arguments
+      (arguments  heavily, slowly, happily, quickly, twice, down, #)
+      (self   "You fall $arg$ on $hcname$.")
+      (target "$mcname$ fall$s$ $arg$ on you.")
+      (rest   "$mcname$ fall$s$ $arg$ on $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: f/fart.s
+==================================================
+
+(fart
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You fart.")
+      (rest "$mcname$ fart$s$.")
+    )
+    (arguments
+      (arguments loudly, discreetly, violently, discreetly but violently, 
+                 backwards, stinkily, downwind, mischievously, devilishly, 
+                 impishly, cheekily, idiotically, nervously, wryly, quietly,
+                 skeptically, and leaves a large hole in your underwear,  
+                 with a big stink, without shame, 
+                 and lifts several inches off the ground, and it isn't funny, 
+                 like a small nuclear detonation, #)
+      (self "You fart $arg$.")
+      (rest "$mcname$ fart$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fart in $mhcname$ general direction.")
+      (target "$mcname$ fart$s$ in your general direction.")
+      (rest  "$mcname$ fart$s$ in $mhcname$ general direction.")
+    )
+    (arguments
+      (arguments loudly, discreetly, violently, discreetly but violently, 
+                 backwards, stinkily, downwind, mischievously, devilishly, 
+                 impishly, cheekily, idiotically, nervously, wryly, quietly,
+                 skeptically, and leaves a large hole in your underwear,  
+                 with a big stink, without shame, 
+                 and lifts several inches off the ground, and it isn't funny, 
+                 like a small nuclear detonation, #)
+      (self   "You fart at $hcname$ $arg$.")
+      (target "$mcname$ fart$s$ at you $arg$.")
+      (rest  "$mcname$ fart$s$ at $hcname$ $arg$.")
+
+    )
+  )
+)
+
+/* Rewritten by Hobbes, 970531 */
+
+
+==================================================
+FILE: f/feel.s
+==================================================
+
+(feel
+  (pattern "<string>" )
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You feel around.")
+      (rest "$mcname$ feel$s$ around.")
+    )
+    (arguments
+    (arguments  fine, good, bad, happy, sad, emotional, unemotional, up, down,
+                blue, guilty, thoughtful, hungry, thirsty, tired, energetic,
+                chatty, whiny, fluffy, flamey, like a million dollars, 
+                like a million royals, like a million Rhinu, 
+                fine at the end of the world, #)
+      (self "You feel $arg$.")
+      (rest "$mcname$ feel$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+    (self   "You feel $hcname$.")
+    (target "$mcname$ feel$s$ you.")
+    (rest   "$mcname$ feel$s$ $hcname$.")
+    )
+    (arguments
+    (arguments  forehead, pulse, pain, muscles, love, wrath, feelings, 
+                derision, fluff, eyes, #)
+    (self   "You feel $mhcname$ $arg$.")
+    (target "$mcname$ feel$s$ $mhcname$ $arg$.")
+    (rest   "$mcname$ feel$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra 04-18-03 for Terano */
+
+
+
+==================================================
+FILE: f/feh.s
+==================================================
+
+(feh
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You go feh!")
+      (rest "$mcname$ go$s$ feh!")
+    )
+    (arguments
+      (arguments like Dogbolter, like Taffyd on a bad code day, 
+                 like Laurana on a bad hair day, anxiously, angrily, #)
+      (self "You go feh! $arg$.")
+      (rest "$mcname$ go$s$ feh! $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You go feh! at $hcname$.")
+      (target "$mcname$ go$s$ feh! at you.")
+      (rest  "$mcname$ go$s$ feh! at $hcname$.")
+    )
+    (arguments
+      (arguments like Dogbolter, like Taffyd on a bad code day, 
+                 like Laurana on a bad hair day, anxiously, angrily, #)
+      (self   "You go feh! $arg$ at $hcname$.")
+      (target "$mcname$ go$s$ feh! $arg$ at you.")
+      (rest  "$mcname$ go$s$ feh! $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fib.s
+==================================================
+
+(fib
+  (pattern "[to] <string>")
+  (pattern "[to] <indirect:any-living>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You fib.")
+      (rest "$mcname$ fib$s$.")
+    )
+    (arguments
+      (arguments wildly, about a girl, about a guy, about two gnomes and a goblin,
+      shamelessly, like a barsteward, like a Director, like a Trustee, like a newbie multiplayer,
+       convincingly, in desparation, about code deadlines, like a clowney flyboat, #)
+      (self "You fib $arg$.")
+      (rest "$mcname$ fib$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fib to $hcname$.")
+      (target "$mcname$ fib$s$ to you.")
+      (rest  "$mcname$ fib$s$ to $hcname$.")
+    )
+    
+    (arguments
+      (arguments wildly, about a girl, about a guy, about two gnomes and a goblin,
+      shamelessly, like a barsteward, like a Director, like a Trustee, like a newbie multiplayer,
+       convincingly, in desparation, about code deadlines, like a clowney flyboat, #)
+      (self   "You fib $arg$ to $hcname$.")
+      (target "$mcname$ fib$s$ $arg$ to you.")
+      (rest   "$mcname$ fib$s$ $arg$ to $hcname$.")
+    )  
+  )
+)
+
+
+
+==================================================
+FILE: f/fiddle.s
+==================================================
+
+(fiddle
+  (single
+    (no-arguments
+      (self "You fiddle with something.")
+      (rest "$mcname$ fiddle$s$ with something.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fidget.s
+==================================================
+
+(fidget
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You fidget." )
+      (rest "$mcname$ fidget$s$." )
+    )
+    (arguments
+      (arguments violently, spasmodically, suddenly, frantically, 
+                 pointedly, from too much caffeine, from too much crack, #)
+      (self "You fidget $arg$.")
+      (rest "$mcname$ fidget$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fidget at $hcname$." )
+      (target "$mcname$ fidget$s$ at you." )
+      (rest   "$mcname$ fidget$s$ at $hcname$." )
+    )   
+    (arguments
+      (arguments violently, spasmodically, suddenly, frantically, 
+                 pointedly, from too much caffeine, from too much crack, #)
+      (self   "You fidget $arg$ at $hcname$.")
+      (target "$mcname$ fidgetv $arg$ at you.")
+      (rest  "$mcname$ fidget$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra 2-21-00 */
+
+
+
+==================================================
+FILE: f/fika.s
+==================================================
+
+(fika
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You fika.")
+      (rest "$mcname$ fika$s$.")
+    )
+    (arguments
+      (arguments  on a coffee table, like Wix, madly, passionately, wildly, 
+                  without precautions, with cream, without cream, with two sugars, 
+                  in a cafe, with milk, with non-dairy creamer, with foam, 
+                  with a bowl of cream and a plate of strawberry shortbread, #)
+      (self "You fika $arg$.")
+      (rest "$mcname$ fika$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fika $hcname$.")
+      (target "$mcname$ fika$s$ you.")
+      (rest   "$mcname$ fika$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  on a coffee table, like Wix, madly, passionately, wildly, 
+                  without precautions, with cream, without cream, with two sugars, 
+                  in a cafe, with milk, with non-dairy creamer, with foam, 
+                  with a bowl of cream and a plate of strawberry shortbread, #)
+      (self   "You fika $hcname$ $arg$." )
+      (target "$mcname$ fika$s$ you $arg$." )
+      (rest   "$mcname$ fika$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: f/flame.s
+==================================================
+
+(flame
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments like Signe, like a dragon, with napalm, with propane,
+                 fishily, with a high explosive womble, with glee, 
+                 without remorse, froggily, forcefully, to 5000 degrees, #)
+      (self "You flame $arg$.")
+      (rest "$mcname$ flame$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments like Signe, like a dragon, with napalm, with propane,
+                 fishily, with a high explosive womble, with glee, 
+                 without remorse, froggily, forcefully, to 5000 degrees, #)
+      (self   "You flame $hcname$ $arg$.")
+      (target "$mcname$ flame$s$ you $arg$.")
+      (rest  "$mcname$ flame$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flap.s
+==================================================
+
+(flap
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (arguments
+      (arguments ears, arms, wings, eyelashes, dangly bits, upper arms,
+                 wings, laundry, flag, #)
+      (self "You flap your $arg$.")
+      (rest "$mcname$ flap$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments ears, arms, wings, eyelashes, dangly bits, upper arms,
+                 wings, laundry, flag, #)
+      (self   "You flap your $arg$ at $hcname$.")
+      (target "$mcname$ flap$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ flap$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flash.s
+==================================================
+
+(flash
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You flash your naughty bits!")
+      (rest "$mcname$ flash$s$ $mposs$ naughty bits!")
+    )
+    (arguments
+      (arguments frogs,clocks,goods,stock,#)
+      (self "You flash your $arg$.")
+      (rest "$mcname$ flash$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You flash your naughty bits at $hcname$!")
+      (target "$mcname$ flash$s$ $mposs$ naughty bits at you!")
+      (rest  "$mcname$ flash$s$ $mposs$ naughty bits at $hcname$!")
+    )
+    (arguments
+      (arguments frogs,clocks,goods,stock,#)
+      (self   "You flash your $arg$ at $hcname$.")
+      (target "$mcname$ flash$s$ $mposs$ $arg$ at you.")
+      (rest  "$mcname$ flash$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Hobbes, 970520 */
+	
+
+==================================================
+FILE: f/flatter.s
+==================================================
+
+(flatter
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You flatter yourself.")
+      (rest "$mcname$ flatter$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments   #)
+      (self "You flatter $arg$.")
+      (rest "$mcname$ flatter$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You flatter $hcname$.")
+      (target "$mcname$ flatter$s$ you.")
+      (rest   "$mcname$ flatter$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  sincerely, insincerely, excessively, slickly, cleverly, lots,          
+                  like a professional, like a sycophant, wooingly, #)
+      (self   "You flatter $hcname$ $arg$." )
+      (target "$mcname$ flatter$s$ you $arg$." )
+      (rest   "$mcname$ flatter$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+/* Saffra 2-29-00, idea by Gruper. */
+
+
+==================================================
+FILE: f/flaunt.s
+==================================================
+
+(flaunt
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You flaunt about.")
+      (rest "$mcname$ flaunt$s$ about.")
+    )
+    (arguments
+      (arguments wealth, wallet, wardrobe, weapons, hair, armour, jewellery, 
+                 popularity, skills, bonus, property, pets, legs, bottom, 
+                 figure, abilities, wisdom, luck, shiny things, 
+                 magical prowess, vast hordes of treasure, #)
+      (self "You flaunt your $arg$.")
+      (rest "$mcname$ flaunt$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments wealth, wallet, wardrobe, weapons, hair, armour, jewellery, 
+                 popularity, skills, bonus, property, pets, legs, bottom, 
+                 figure, abilities, wisdom, luck, shiny things, 
+                 magical prowess, vast hordes of treasure, #)
+      (self "You flaunt your $arg$ at $hcname$.")
+      (target "$mcname$ flaunt$s$ $mposs$ $arg$ at you.")
+      (rest "$mcname$ flaunt$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001, due to multiple requests */
+
+==================================================
+FILE: f/flex.s
+==================================================
+
+(flex
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You flex your muscles.")
+      (rest "$mcname$ flex$s$ $mposs$ muscles.")
+    )
+    (arguments
+      (arguments  muscles, biceps, triceps, legs, brain, nose, ears, 
+                  fingers, tongue, influence, #)
+      (self "You flex your $arg$.")
+      (rest "$mcname$ flex$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You flex your muscles at $hcname$.")
+      (target "$mcname$ flex$s$ $mposs$ muscles at you.")
+      (rest   "$mcname$ flex$s$ $mposs$ muscles at $hcname$.")
+    )
+    (arguments
+      (arguments  muscles, biceps, triceps, legs, brain, nose, ears, 
+                  fingers, tongue, influence, #)
+      (self   "You flex your $arg$ at $hcname$.")
+      (target "$mcname$ flex$s$ $mposs$ $arg$ at you.") 
+      (rest   "$mcname$ flex$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flip.s
+==================================================
+
+(flip
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  head over heels, backwards, forwards, sideways, around, 
+                  carefully, slowly, twice, doggily, awkwardly, disturbingly, 
+                  quickly, slowly, dangerously, spectacularly, gracefully, 
+                  over the moon, like a pancake, like a playing card, 
+                  like an acrobat, 
+                  around in a really complicated double back roll flip, #)
+      (self "You flip $arg$.")
+      (rest "$mcname$ flip$s$ $arg$.")
+    )
+    (arguments
+      (arguments  half way around)
+      (self "You flip $arg$ and land on your head.")
+      (rest "$mcname$ flip$s$ $arg$ and lands on $mposs$ head.")
+    ) 
+  )
+  (targeted
+    (arguments
+      (arguments  head over heels, off, into the garbage bin, viciously, 
+                  backwards, forwards, sideways, around, carefully, twice, 
+                  doggily, awkwardly, disturbingly, quickly, slowly, gracefully,
+                  dangerously, spectacularly, over the moon, like a pancake, 
+                  like a playing card, like an acrobat, 
+                  around in a really complicated double back roll flip, #)
+      (self   "You flip $hcname$ $arg$.")
+      (target "$mcname$ flip$s$ you $arg$.")
+      (rest   "$mcname$ flip$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flirt.s
+==================================================
+
+(flirt
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You flirt with $hcname$.")
+      (target "$mcname$ flirt$s$ with you.")
+      (rest   "$mcname$ flirt$s$ with $hcname$.")
+    )
+    (arguments
+      (arguments  softly, passionately, deeply, tenderly, gently, brightly, 
+                  after a fashion, hopefully, lovingly, lengthily, fishily, 
+                  carefully, demandingly, sensuously, longingly, hungrily, 
+                  back, boringly, inattentively, absentmindedly, froggily, 
+                  in an igloo, on a coffee table, in a shower, outrageously, 
+                  slowly, suspiciously, calmly, like pinkfish, 
+                  using a coffee table, #)
+      (self   "You flirt with $hcname$ $arg$.")
+      (target "$mcname$ flirt$s$ with you $arg$.")
+      (rest   "$mcname$ flirt$s$ with $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flollop.s
+==================================================
+
+(flollop
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You flollop.")
+      (rest "$mcname$ flollop$s$.")
+    )
+    (arguments
+    (arguments  around, like Zem, in a mattress-like manner, in a swamp, 
+                on Sqornshellous Zeta, globberingly, #)
+      (self "You flollop $arg$.")
+      (rest "$mcname$ flollop$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You flollop at $hcname$.")
+    (target "$mcname$ flollop$s$ at you.")
+    (rest "$mcname$ flollop$s$ at $hcname$.")
+  )
+  (arguments
+   (arguments like Zem, in a mattress-like manner, in a swamp,
+                on Sqornshellous Zeta, globberingly, #)
+    (self "You flollop at $hcname$ $arg$.")
+    (target "$mcname$ flollop$s$ at you $arg$." )
+    (rest "$mcname$ flollop$s$ at $hcname$ $arg$." )
+    )
+  )
+)
+/* Saffra 2001 */
+
+==================================================
+FILE: f/flop.s
+==================================================
+
+(flop
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [into] <string>")
+  (pattern "<indirect:any-living> [onto] <string>")
+  (single
+    (arguments
+      (arguments helplessly, like a fish out of water, badly, like zoroaster,
+                 carefully, rudely, a bit, once, like a gherkin, wonderfully,
+                 impressively, suggestively, lazily, happily, pensively,
+                 onto a pillow, #)
+      (self "You flop about $arg$.")
+      (rest "$mcname$ flop$s$ about $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You flop on $hcname$.")
+      (target "$mcname$ flop$s$ on you.")
+      (rest  "$mcname$ flop$s$ on $hcname$.")
+    )
+    (arguments
+      (arguments arms, legs, lap, dreams)
+      (self   "You flop into $mhcname$ $arg$.")
+      (target "$mcname$ flop$s$ into your $arg$.")
+      (rest  "$mcname$ flop$s$ into $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments chest, bed, sofa, pillows, floor, carpet, laundry floor,
+                 kitchen floor, quilt, fluffy pillow, bicycle, car,
+                 dreams, inspirations, thoughts, desires,
+                 soft curvaceous pillows, #)
+      (self   "You flop onto $mhcname$ $arg$.")
+      (target "$mcname$ flop$s$ onto your $arg$.")
+      (rest  "$mcname$ flop$s$ onto $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: f/fluff.s
+==================================================
+
+(fluff
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You fluff.")
+      (rest  "$mcname$ $verb$fluffs,fluff$.")
+    )
+    (arguments
+      (arguments happily,affectionately,warmly,gently,absentmindedly,
+         carefully,warmly,absolutely,triumphantly,capriciously,
+         suspiciously,drunkenly,aesthetically,insolently,faintly,
+         delicately,hysterically,slightly,ecstatically,with a hair dryer,
+         with a frog,in the nose,is this something dirty?,
+         under a coffee table,#)
+      (self   "You fluff $arg$.")
+      (rest  "$mcname$ $verb$fluffs,fluff$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fluff $hcname$.")
+      (target "$mcname$ $verb$fluffs,fluff$ you.")
+      (rest  "$mcname$ $verb$fluffs,fluff$ $hcname$.")
+    )
+    (arguments
+      (arguments happily,affectionately,warmly,gently,absentmindedly,
+         carefully,warmly,absolutely,triumphantly,capriciously,
+         suspiciously,drunkenly,aesthetically,insolently,faintly,
+         delicately,hysterically,slightly,ecstatically,with a hair dryer,
+         with a frog,in the nose,is this something dirty?,
+         under a coffee table,#)
+      (self   "You fluff $hcname$ $arg$.")
+      (target "$mcname$ $verb$fluffs,fluff$ you $arg$.")
+      (rest  "$mcname$ $verb$fluffs,fluff$ $hcname$ $arg$.")
+    )
+  )
+)
+/* Hobbes */
+
+
+
+==================================================
+FILE: f/flustered.s
+==================================================
+
+(flustered
+  (single
+    (no-arguments
+      (self "You look flustered.")
+      (rest "$mcname$ look$s$ flustered.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/flutter.s
+==================================================
+
+(flutter
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You flutter your eyelashes.")
+      (rest "$mcname$ flutter$s$ $mposs$ eyelashes.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You flutter your eyelashes at $hcname$.")
+      (target "$mcname$ flutter$s$ $mposs$ eyelashes at you.")
+      (rest  "$mcname$ flutter$s$ $mposs$ eyelashes at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/foam.s
+==================================================
+
+(foam
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You roll your tongue around in your mouth until spit bubbles and fo
+ams on your lips.")
+      (rest "$mcname$ roll$s$ $mposs$ tongue around in $mposs$ mouth until spit bu
+bbles and foams on $mposs$ lips.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You roll your tongue around in your mouth until spit bubbles and fo
+ams on your lips while thinking of $hcname$.")
+      (target "$mcname$ roll$s$ $mposs$ tongue around in $mposs$ mouth until spit 
+bubbles and foams on $mposs$ lips while thinking of you.")
+      (rest "$mcname$ roll$s$ $mposs$ tongue around in $mposs$ mouth until spit bu
+bbles and foams on $mposs$ lips while thinking of $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fold.s
+==================================================
+
+(fold
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You fold your arms.")
+      (rest "$mcname$ fold$s$ $mposs$ arms.")
+    )
+    (arguments
+      (arguments arrogantly,decisively,carefully,slowly,menacingly,halfheartedly,quickly,snappily)
+      (self "You fold your arms $arg$.")
+      (rest "$mcname$ fold$s$ $mposs$ arms $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fondle.s
+==================================================
+
+(fondle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You fondle $hcname$.")
+      (target "$mcname$ fondle$s$ you.")
+      (rest   "$mcname$ fondle$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  hand, leg, knee, foot, finger, ear, hair,
+                  soft curvaceous pillows, tree trunk, strawberries,
+                  eyebrows, nose, cucumber, melons, coconuts, #)
+      (self   "You fondle $mhcname$ $arg$.")
+      (target "$mcname$ fondle$s$ your $arg$.")
+      (rest   "$mcname$ fondle$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  affectionately, kindly, magnanimously, out of duty, 
+                  for a dare, for a friend, as a bribe, for a job, softly, 
+                  gently, melodramatically, timidly, for the first time, 
+                  again, twice, in case of emergency, accurately, 
+                  inaccurately, with an imp-guided targeting system, 
+                  with your toes, like a goanna, on Octedays only, 
+                  for luck)
+      (self   "You fondle $hcname$ $arg$.")
+      (target "$mcname$ fondle$s$ you $arg$.")
+      (rest   "$mcname$ fondle$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fonz.s
+==================================================
+
+(fonz
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You stick both thumbs in the air and say: Ayyyyyyyy...")
+      (rest "$mcname$ stick$s$ both thumbs in the air and say$s$: Ayyyyyyyy...")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You tug on your jacket, and point at $hcname$ with both hands.")
+      (target "$mcname$ tug$s$ on $mposs$ jacket, and point$s$ at you with both hands.")
+      (rest  "$mcname$ tug$s$ on $mposs$ jacket, and point$s$ at $hcname$ with both hands.")
+    )
+  )
+)
+
+/* Implemented by Hobbes 960920. Ideas from Grampa and Presto. */
+
+
+
+==================================================
+FILE: f/foo.s
+==================================================
+
+(foo
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments
+          vaguely, carefully, slowly, dangerously, quietly, silently,
+          sarcastically, falsely, manically, evilly, wickedly, insanely,
+          mischievously, devilishly, impishly, cheekily, idiotically,
+          tentatively, wryly, skeptically, happily, backwards, sideways, #)
+      (self "You foo $arg$.")
+      (rest "$mcname$ foo$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You foo at $hcname$.")
+      (target "$mcname$ foo$s$ at you.")
+      (rest  "$mcname$ foo$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments
+          vaguely, carefully, slowly, dangerously, quietly, silently,
+          sarcastically, falsely, manically, evilly, wickedly, insanely,
+          mischievously, devilishly, impishly, cheekily, idiotically,
+          tentatively, wryly, skeptically, happily, backwards, sideways, #)
+      (self   "You foo $arg$ at $hcname$.")
+      (target "$mcname$ foo$s$ $arg$ at you.")
+      (rest  "$mcname$ foo$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/forgive.s
+==================================================
+
+(forgive
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You forgive $hcname$.")
+      (target "$mcname$ forgive$s$ you.")
+      (rest  "$mcname$ forgive$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/french.s
+==================================================
+
+(french
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ a deep and passionate kiss, it seems to last forever...")
+      (target "$mcname$ give$s$ you a deep and passionate kiss, it seems to last forever...")
+      (rest  "$mcname$ give$s$ $hcname$ a deep and passionate kiss, it seems to last forever...")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/frog.s
+==================================================
+
+(frog
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments mindlessly,silently,happily,carefully,#)
+      (self "You frog around $arg$.")
+      (rest "$mcname$ frog$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You turn $hcname$ into a frog$position$.")
+      (target "$mcname$ turn$s$ you into a frog$position$.")
+      (rest  "$mcname$ turn$s$ $hcname$ into a frog$position$.")
+      
+      (position
+        (default "crouch")
+        (silent "yes")
+      )
+    )
+    (arguments
+      (arguments  slowly,carefully,excruciatingly,happily,gleefully,magically)
+      (self   "You $arg$ turn $hcname$ into a frog$position$.")
+      (target "$mcname$ $arg$ turn$s$ you into a frog$position$.")
+      (rest  "$mcname$ $arg$ turn$s$ $hcname$ into a frog$position$.")
+      (position
+        (default "crouch")
+        (silent "yes")
+      )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/frolic.s
+==================================================
+
+(frolic
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You frolic all around.")
+      (rest "$mcname$ frolic$s$ all around.")
+    )
+    (arguments
+      (arguments happily, peacefully, brightly, sadly, greenly, backwards,
+                 orinocoly, with your frog, mischievously, loudly, gleefully, 
+                 commonly, twice, once, #)
+      (self "You frolic all around $arg$.")
+      (rest "$mcname$ frolic$s$ all around $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments happily, peacefully, brightly, sadly, greenly, backwards,
+                 orinocoly, with your frog, mischievously, loudly, gleefully, 
+                 commonly, twice, once, #)
+      (self   "You frolic all around $hcname$ $arg$.")
+      (target "$mcname$ frolic$s$ all around you $arg$.")
+      (rest   "$mcname$ frolic$s$ all around $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Implemented by Hobbes, suggested by Zaika 961204 */
+
+
+==================================================
+FILE: f/froth.s
+==================================================
+
+(froth
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You froth at the mouth.")
+      (rest "$mcname$ froth$s$ at the mouth.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You froth at the mouth at $hcname$.")
+      (target "$mcname$ froth$s$ at the mouth at you.")
+      (rest   "$mcname$ froth$s$ at the mouth at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: f/frown.s
+==================================================
+
+(frown
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "What's the problem?")
+      (rest "$mcname$ frown$s$.")
+    )
+    (arguments
+      (arguments sadly, thoughtfully, meaningfully, dangerously, cruelly,
+                 sternly, disapprovingly, sarcastically, worriedly, 
+                 in concentration, in thought, in anger, in sadness, #)
+      (self "You frown $arg$.")
+      (rest "$mcname$ frown$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You frown at $hcname$.")
+      (target "$mcname$ frown$s$ at you.")
+      (rest  "$mcname$ frown$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments sadly, thoughtfully, meaningfully, dangerously, cruelly,
+                 sternly, disapprovingly, sarcastically, worriedly, 
+                 in concentration, in thought, in anger, in sadness, #)
+      (self   "You frown $arg$ at $hcname$.")
+      (target "$mcname$ frown$s$ $arg$ at you.")
+      (rest   "$mcname$ frown$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: f/fume.s
+==================================================
+
+(fume
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments quietly,insultingly,despairingly,in frustration)
+      (self "You fume $arg$.")
+      (rest "$mcname$ fume$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/fun.s
+==================================================
+
+(fun
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You hope everyone has fun.")
+      (rest "$mcname$ hope$s$ everyone has fun.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hope $hcname$ has fun.")
+      (target "$mcname$ hope$s$ you have fun.")
+      (rest  "$mcname$ hope$s$ $hcname$ has fun.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: f/furbert.s
+==================================================
+
+(furbert
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  on the tummy, on the arm,on the foot, on the forehead, 
+                  on the hand, on the leg, all over the body)
+      (self   "You furbert $hcname$ $arg$.")
+      (target "$mcname$ furbert$s$ you $arg$.")
+      (rest   "$mcname$ furbert$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  tummy, arm, foot, forehead, hand, leg, body, #)
+      (self   "You furbert $mhcname$ $arg$.")
+      (target "$mcname$ furbert$s$ your $arg$.")
+      (rest   "$mcname$ furbert$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/lag.s
+==================================================
+
+(lag
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You lag.")
+      (rest "$mcname$ lag$s$.")
+    )
+    (arguments
+      (arguments terribly, tragically, fatally, uncontrollably, laggily, lots,       
+                 like going uphill, far behind, a lot, a little, through the
+                 night, through piles of fluff, like molasses, like treacle, 
+                 like peanut butter, with the sensation of fingernails on
+                 slate, like the slow Discworld light, like a great star
+                 turtle, like a wizard after a good meal, like a very laggy
+                 thing, like the truth putting its boots on, like the LAG
+                 itself, #)
+      (self "You lag $arg$.")
+      (rest "$mcname$ lag$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You lag at $hcname$.")
+      (target "$mcname$ lag$s$ at you.")
+      (rest   "$mcname$ lag$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments terribly, tragically, fatally, uncontrollably, laggily, lots,       
+                 like going uphill, far behind, a lot, a little, through the
+                 night, through piles of fluff, like molasses, like treacle, 
+                 like peanut butter, with the sensation of fingernails on
+                 slate, like the slow Discworld light, like a great star
+                 turtle, like a wizard after a good meal, like a very laggy
+                 thing, like the truth putting its boots on, like the LAG
+                 itself, #)
+      (self   "You lag at $hcname$ $arg$.")
+      (target "$mcname$ lag$s$ at you $arg$.")
+      (rest  "$mcname$ lag$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+/* 11-29-00 By Saffra with help from Fevvers and Presto */
+
+
+==================================================
+FILE: l/lambada.s
+==================================================
+
+(lambada
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You lambada by yourself.")
+      (rest "$mcname$ lambada$s$ by $mobj$self.")
+    )
+    (arguments  
+    (arguments  sensuously, happily, hard and heavy, fast and furious,
+                in high heels, across the dance floor, in a smoky dance 
+                club, slowly, seductively, closely, tightly, clumsily,
+                carelessly, like a Latin lover, #)
+      (self "You lambada $arg$.")
+      (rest "$mcname$ lambada$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You lambada with $hcname$.")
+    (target "$mcname$ lambada$s$ with you.")
+			 (rest "$mcname$ lambada$s$ with $hcname$.")
+  )
+  (arguments
+    (arguments  sensuously, happily, hard and heavy, fast and furious,
+                in high heels, across the dance floor, in a smoky dance 
+                club, slowly, seductively, closely, tightly, clumsily,
+                carelessly, like a Latin lover, #)
+    (self "You lambada $arg$ with $hcname$." )
+    (target "$mcname$ lambada$s$ $arg$ with you." )
+    (rest "$mcname$ lambada$s$ $arg$ with $hcname$.")
+   )
+  )
+)
+
+
+==================================================
+FILE: l/lapdance.s
+==================================================
+
+(lapdance
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You lapdance like a sultry princess from Klatch.")
+      (rest "$mcname$ lapdance$s$ like a sultry princess from Klatch.")
+    )
+    (arguments
+    (arguments across the room, loudly, in witches knickers, slowly, 
+               all about the room, madly, for a Rhinu, # )
+      (self "You lapdance for $arg$.")
+      (rest "$mcname$ lapdance$s$ for $arg$.")
+      )
+    )
+  (targeted
+  (no-arguments
+      (self   "You lapdance for $hcname$ like a sultry princess from Klatch.")
+      (target "$mcname$ lapdance$s$ for you like a sultry princess from Klatch.")
+      (rest  "$mcname$ lapdance$s$ for $hcname$ like a sultry princess from Klatch.")
+  )
+  (arguments
+    (arguments across the room, loudly, in witches knickers, slowly, 
+               all about the room, madly, for a Rhinu, # )
+      (self   "You lapdance for $hcname$ $arg$.")
+      (target "$mcname$ lapdance$s$ for you $arg$.")
+      (rest  "$mcname$ lapdance$s$ for $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: l/laugh.s
+==================================================
+
+(laugh
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "[with] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You laugh.")
+      (rest "$mcname$ laugh$s$.")
+    )
+    (arguments
+      (arguments  nastily, nicely, quietly, uncontrollably, politely, happily,
+                  magically, ecstatically, demonically, out loud, maniacally,
+                  hysterically, evilly, mischievously, #)
+      (self "You laugh $arg$.")
+      (rest "$mcname$ laugh$s$ $arg$.")
+    )
+    (arguments
+     (arguments fall)
+     (self "You fall down laughing.")
+     (rest "$mcname$ fall$s$ down laughing.")
+    )
+   )
+  (targeted
+    (no-arguments
+      (self   "You laugh at $hcname$.")
+      (target "$mcname$ laugh$s$ at you.")
+      (rest   "$mcname$ laugh$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  nastily, nicely, quietly, uncontrollably, politely, happily,
+                  magically, ecstatically, demonically, out loud, maniacally,
+                  hysterically, evilly, mischievously)
+      (self   "You laugh $arg$ at $hcname$.")
+      (target "$mcname$ laugh$s$ $arg$ at you.")
+      (rest   "$mcname$ laugh$s$ $arg$ at $hcname$.")
+    )
+      (arguments
+        (arguments  with, #)
+        (self   "You laugh $arg$ $hcname$.")
+        (target "$mcname$ laugh$s$ $arg$ you.")
+        (rest   "$mcname$ laugh$s$ $arg$ $hcname$.")
+      )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/leap.s
+==================================================
+
+(leap
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You leap into the air.")
+      (rest "$mcname$ leap$s$ into the air.")
+    )
+    (arguments
+      (arguments longingly,excitedly,quickly,slowly,awkwardly,politely,quietly,noisily)
+      (self "You leap $arg$ into the air.")
+      (rest "$mcname$ leap$s$ $arg$ into the air.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/leer.s
+==================================================
+
+(leer
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You leer at yourself.")
+      (rest "$mcname$ leer$s$ at $mobj$self... hmmm, interesting....")
+    )
+    (arguments
+    (arguments lasciviously, lewdly, wickedly, smarmily, seductively,
+               like a dirty old man, like a dirty old woman, like a
+               sailor on a lonely night, like a cross-eyed Elvis
+               impersonator, like Drakkos, #)
+      (self "You leer $arg$.")
+      (rest "$mcname$ leer$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You leer at $hcname$.")
+      (target "$mcname$ leer$s$ at you.")
+      (rest  "$mcname$ leer$s$ at $hcname$.")
+    )
+    (arguments
+    (arguments lasciviously, lewdly, wickedly, smarmily, seductively,
+               like a dirty old man, like a dirty old woman, like a
+               sailor on a lonely night, like a cross-eyed Elvis
+               impersonator, like Drakkos, #)
+       (self   "You leer at $hcname$ $arg$.")
+       (target "$mcname$ leer$s$ at you $arg$.")
+       (rest   "$mcname$ leer$s$ at $hcname$ $arg$.")
+    )
+    (arguments
+    (arguments code, bits, computer, toes, lips, fika, earlobes, monkey, 
+               great big blunt bonus, eyebrow, food, mouse, toys, underwear,             
+               fork, frog, womble, sarcasm, innuendo, pants, oranges, 
+               cucumbers, strawberries, leer)
+       (self   "You leer at $mhcname$ $arg$.")
+       (target "$mcname$ leer$s$ at your $arg$.")
+       (rest   "$mcname$ leer$s$ at $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: l/lick.s
+==================================================
+
+(lick
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You lick your lips.")
+      (rest "$mcname$ lick$s$ $mposs$ lips.")
+    )
+    (arguments
+      (arguments sensuously, seductively, expectantly, carefully, suggestively,
+                 hungrily, #)
+      (self "You lick your lips $arg$.")
+      (rest "$mcname$ lick$s$ $mposs$ lips $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You lick $hcname$.")
+      (target "$mcname$ lick$s$ you.")
+      (rest   "$mcname$ lick$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  carefully, lustily, excitedly, slowly, quickly, happily,
+                  silently, loudly, absentmindedly, hungrily, clean,
+                  quietly, fondly, passionately, suggestively, #)
+      (self   "You lick $hcname$ $arg$.")
+      (target "$mcname$ lick$s$ you $arg$.")
+      (rest  "$mcname$ lick$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  eye, eyebrow, nose, ear, lips, tongue, cheek, forehead, chin,
+                  neck, nape, throat, arm, armpit, hand, back, tummy, elbow, 
+                  wrist, palm, shoulder, finger, fingers, thigh, upper thigh, 
+                  knee, legs, foot, feet, toe, toes, paws, calf,
+                  strawberries, cucumbers, stamp, fruitbat, ice cream cone, 
+                  apples, frog)
+      (self   "You lick $mhcname$ $arg$.")
+      (target "$mcname$ lick$s$ your $arg$.")
+      (rest  "$mcname$ lick$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: l/listen.s
+==================================================
+
+(listen
+  (pattern "<string>")
+  (pattern "[to] <indirect:any-living>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single 
+    (no-arguments
+      (self "You listen carefully.")
+      (rest "$mcname$ listen$s$ carefully.")
+    )
+    (arguments
+      (arguments  intently, carefully, boredly, patiently, silently, rudely,
+                  to the birds, to the trees, to the voices in your head, #)
+      (self "You listen $arg$.")
+      (rest "$mcname$ listen$s$ $arg$.")
+    )
+  )  
+  (targeted
+    (no-arguments
+      (self   "You listen carefully to $hcname$.")
+      (target "$mcname$ listen$s$ carefully to you.")
+      (rest   "$mcname$ listen$s$ carefully to $hcname$.")
+    )
+    (arguments
+      (arguments  intently, carefully, boredly, patiently, silently, rudely,
+                impatiently, with bated breath, #)
+      (self   "You listen $arg$ to $hcname$.")
+      (target "$mcname$ listen$s$ $arg$ to you.")
+      (rest   "$mcname$ listen$s$ $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/loom.s
+==================================================
+
+(loom
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You loom.")
+      (rest   "$mcname$ loom$s$.")
+    )
+    (arguments 
+    (arguments intimidatingly, impressively, suddenly, from a great height, 
+               inexpertly, like a weaver, like a tapestry, like a standing 
+               stone, like impending doom, with intimations of doom, with 
+               explications of doom, from the shadows, like the Great Wall of 
+               Agatea, like a Trustee, #)
+      (self   "You loom $arg$.")
+      (rest   "$mcname$ loom$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You loom over $hcname$.")
+      (target "$mcname$ loom$s$ over you.")
+      (rest   "$mcname$ loom$s$ over $hcname$.")
+    )
+    (arguments 
+    (arguments intimidatingly, impressively, suddenly, from a great height, 
+               inexpertly, like a weaver, like a tapestry, like a standing 
+               stone, like impending doom, with intimations of doom, with 
+               explications of doom, from the shadows, like the Great Wall of 
+               Agatea, like a Trustee, #)
+      (self   "You loom over $hcname$ $arg$.")
+      (target "$mcname$ loom$s$ over you $arg$.")
+      (rest   "$mcname$ loom$s$ over $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Rewrote Mar 30 2003 Saffra */
+
+
+==================================================
+FILE: l/lose.s
+==================================================
+
+(lose
+  (single
+    (no-arguments
+      (self "You lose the game!  There's no point in whinging now.")
+      (rest "$mcname$ lose$s$ the game!")
+    )
+  )
+)
+
+
+==================================================
+FILE: l/love.s
+==================================================
+
+(love
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You whisper sweet nothings into $mhcname$ ear.")
+      (target "$mcname$ whisper$s$ sweet nothings in your ear.")
+      (rest   "$mcname$ whisper$s$ to $hcname$.")
+    )
+    (arguments
+    (arguments tenderly, softly, #)
+      (self   "You whisper sweet nothings into $mhcname$ ear $arg$.")
+      (target "$mcname$ whisper$s$ sweet nothings in your ear $arg$.")
+      (rest   "$mcname$ whisper$s$to $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/low5.s
+==================================================
+
+(low5
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You low five.")
+      (rest "$mcname$ low five$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You low five $hcname$.")
+      (target "$mcname$ low five$s$ you.")
+      (rest  "$mcname$ low five$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/lower.s
+==================================================
+
+(lower
+  (single
+    (no-arguments
+      (self "You lower your eyebrows.")
+      (rest "$mcname$ lower$s$ $mposs$ eyebrows.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/luck.s
+==================================================
+
+(luck
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You wish $hcname$ luck.")
+      (target "$mcname$ wish$s$ you luck.")
+      (rest  "$mcname$ wish$s$ $hcname$ luck.")
+    )
+    (arguments
+      (arguments  good,bad,lots of,no,an iota of,a frogfull of)
+      (self   "You wish $hcname$ $arg$ luck.")
+      (target "$mcname$ wish$s$ you $arg$ luck.")
+      (rest  "$mcname$ wish$s$ $hcname$ $arg$ luck.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: l/lust.s
+==================================================
+
+(lust
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You lust.")
+      (rest "$mcname$ lust$s$.")
+    )
+    (arguments
+      (arguments
+       happily, sadly, nervously, wryly, broadly, crookedly, stupidly,
+       idiotically, condescendingly, ironically, patiently, brightly,
+       slightly, nastily, excitedly, strangely, with forced patience,
+       plasticly, carefully, sadistically, lopsidedly, fishily, cattishly,
+       faintly, like a train, angrily, paranoically, innocently, froggily,
+       slyly, weakly, humbly, paradoxically, sarcastically, viciously, 
+       garishly, sweetly, innocently, lovingly, dreamily, radiantly,
+       enthusiastically, insolently, quirkily, completely, unconsciously,
+       drunkenly, insanely, cutely, maliciously, smugly, absentmindedly,
+       curtly, disturbingly, unbelievably, quietly, loudly, differently,
+       winningly, in triumph, seductively, tightly, smugly,
+       gosh there are lots of arguments, softly, lividly, demonically,
+       warmly, grimly, indolently, ingeniously, wickedly, contentedly,
+       statistically, spasmodically, incandescently, pleasantly,
+       with menace, manically, warily, sardonically, lazily, serenely,
+       disappointedly, coyly, spazmodically, sheepishly, enigmatically,
+       friperally, wryly, hopefully, knowingly, politely, kindly,
+      coffee table like, shyly, #)
+      (self "You lust $arg$.")
+      (rest "$mcname$ lust$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You lust after $hcname$.")
+      (target "$mcname$ lust$s$ after you.")
+      (rest  "$mcname$ lust$s$ after $hcname$.")
+    )
+    (arguments
+      (arguments happily, sadly, nervously, wryly, broadly, crookedly,
+                 stupidly, idiotically, condescendingly, ironically,
+                 patiently, brightly, slightly, nastily, excitedly,
+                 strangely, with forced patience, plasticly, carefully,
+                 sadistically, lopsidedly, fishily, catishly, faintly,
+                 like a train, angrily, paranoically, innocently, froggily,
+                 slyly, weakly, humbly, paradoxically, sarcastically,
+                 viciously, garishly, sweetly, innocently, lovingly,
+                 dreamily, radiantly, enthusiastically, insolently,
+                 quirkily, completely, unconsciously, drunkenly, insanely,
+                 cutely, maliciously, smugly, absentmindedly, curtly,
+                 disturbingly, unbelievably, quietly, loudly, differently,
+                 winningly, in triumph, seductively, tightly, smugly,
+                 gosh there are lots of arguments, softly, lividly,
+                 demonically, warmly, grimly, indolently, ingeniously,
+                 wickedly, contentedly, statistically, spasmodically,
+                 incandescently, pleasantly, with menace, manically,
+                 warily, sardonically, lazily, serenely, disappointedly,
+                 coyly, spazmodically, sheepishly, enigmatically,
+                 friperally, wryly, hopefully, knowingly, politely,
+                   kindly, coffee table like, shyly, #)
+      (self   "You lust $arg$ after $hcname$.")
+      (target "$mcname$ lust$s$ $arg$ after you.")
+      (rest  "$mcname$ lust$s$ $arg$ after $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/babble.s
+==================================================
+
+(babble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You babble.")
+      (rest "$mcname$ babble$s$.")
+    )
+    (arguments
+      (arguments  incoherently, uncontrollably, ceaselessly, beeble bubble,
+        drunkenly, like a brook, about frogs, indiscriminately, on and on,
+        maddeningly, insanely, like a fish, merrily, pointlessly,
+        randomly, #)
+      (self "You babble $arg$.")
+      (rest "$mcname$ babble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You babble at $hcname$.")
+      (target "$mcname$ babble$s$ at you.")
+      (rest   "$mcname$ babble$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  incoherently, uncontrollably, ceaselessly, beeble bubble,
+        drunkenly, like a brook, about frogs, indiscriminately, on and on,
+        maddeningly, insanely, like a fish, merrily, pointlessly,
+        randomly, #)
+      (self   "You babble $arg$ at $hcname$.")
+      (target "$mcname$ babble$s$ $arg$ at you.")
+      (rest   "$mcname$ babble$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bah.s
+==================================================
+
+(bah
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You pause for a moment of reflection, and then exclaim 'Bah!'.")
+      (rest "$mcname$ pause$s$ for a moment of reflection, and then exclaim$s$ 'Bah!'.")
+    )
+    (arguments
+      (arguments  hand, paw, foot, elbow, marshmallow, handkerchief, watermelon, suitcase, #)
+      (self "You exclaim 'Bah!' and wave your $arg$ dismissively.")
+      (rest "$mcname$ exclaim$s$ 'Bah!' and wave$s$ $mposs$ $arg$ dismissively.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You exclaim 'Bah!' at $hcname$.")
+      (target "$mcname$ exclaims 'Bah!' at you.")
+      (rest   "$mcname$ exclaims 'Bah!' at $hcname$.")
+    )
+    (arguments
+      (arguments  hand, paw, foot, elbow, marshmallow, handkerchief, watermelon, suitcase, #)
+      (self   "You exclaim 'Bah!' and wave your $arg$ dismissively at $hcname$.")
+      (target "$mcname$ exclaim$s$ 'Bah!' and wave$s$ $mposs$ $arg$ dismissively at you.")
+      (rest   "$mcname$ exclaim$s$ 'Bah!' and wave$s$ $mposs$ $arg$ dismissively at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bang.s
+==================================================
+
+(bang
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bang your head against a wall.")
+      (rest "$mcname$ bang$s$ $mposs$ head against a wall.")
+    )
+    (arguments
+      (arguments like Ceres)
+      (self "You bang your head against a wall $arg$.")
+      (rest "$mcname$ bang$s$ $mposs$ head against a wall $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bang $mhcname$ head against a wall.")
+      (target "$mcname$ bang$s$ your head against a wall.")
+      (rest  "$mcname$ bang$s$ $mhcname$ head against a wall.")
+    )
+    (arguments
+      (arguments like Ceres)
+      (self   "You bang $mhcname$ head against a wall $arg$.")
+      (target "$mcname$ bang$s$ your head against a wall $arg$.")
+      (rest  "$mcname$ bang$s$ $mhcname$ head against a wall $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bap.s
+==================================================
+
+(bap
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You bap to the beat.")
+      (rest "$mcname$ bap$s$ to the beat.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bap $hcname$ on the head.")
+      (target "$mcname$ bap$s$ you on the head.")
+      (rest  "$mcname$ bap$s$ $hcname$ on the head.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bark.s
+==================================================
+
+(bark
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You bark.")
+      (rest "$mcname$ bark$s$.")
+    )
+    (arguments
+      (arguments like a dog, like a cat, like a tree, like a wolf,
+                 like a bull terrier, like something else that barks,
+                 like one of those darned obnoxious little dogs, 
+                 happily, annoyingly, without a care in the world,
+                 warily, watchfully, bashfully, snidely,
+                 enthusiastically, excitedly, obnoxiously, #)
+      (self "You bark $arg$.")
+      (rest "$mcname$ bark$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bark at $hcname$.")
+      (target "$mcname$ bark$s$ at you.")
+      (rest   "$mcname$ bark$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a dog, like a cat, like a tree, like a wolf,
+                 like a bull terrier, like something else that barks,
+                 like one of those darned obnoxious little dogs, 
+                 happily, annoyingly, without a care in the world,
+                 warily, watchfully, bashfully, snidely,
+                 enthusiastically, excitedly, obnoxiously, #)                  
+      (self "You bark $arg$ at $hcname$.")
+      (target "$mcname$ bark$s$ $arg$ at you.")
+      (rest "$mcname$ bark$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* changed by Hobbes, 960911 Changed by Saffra 3/30/03 */
+
+
+==================================================
+FILE: b/bawl.s
+==================================================
+
+(bawl
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bawl your eyes out.")
+      (rest "$mcname$ bawl$s$ $mposs$ eyes out.")
+    )
+    (arguments
+      (arguments  loudly, quietly, despairingly, forlornly, happily, 
+                  uncontrollably, completely, unexpectedly, silently, 
+                  cheekily, #)
+      (self "You bawl your eyes out $arg$.")
+      (rest "$mcname$ bawl$s$ $mposs$ eyes out $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  shoulder, chest, breast)
+      (self "You bawl your eyes out on $mhcname$ $arg$.")
+      (target "$mcname$ bawl$s$ $mposs$ eyes out on your $arg$.")
+      (rest "$mcname$ bawl$s$ $mposs$ eyes out on $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  loudly, quietly, despairingly, forlornly, happily, 
+                  uncontrollably, completely, unexpectedly, silently, 
+                  cheekily, #)
+      (self "You bawl your eyes out $arg$ on $mhcname$ shoulder.")
+      (target "$mcname$ bawl$s$ $mposs$ eyes out $arg$ on your shoulder.")
+      (rest "$mcname$ bawl$s$ $mposs$ eyes out $arg$ on $mhcname$ shoulder.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/beam.s
+==================================================
+
+(beam
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+(arguments brightly, admiringly, strangely, happily, ecstatically, fishily,
+           like a train, #)
+      (self "You beam $arg$.")
+      (rest "$mcname$ beam$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You beam at $hcname$.")
+      (target "$mcname$ beam$s$ at you.")
+      (rest  "$mcname$ beam$s$ at $hcname$.")
+    )
+    (arguments
+(arguments brightly, admiringly, strangely, happily, ecstatically, fishily,
+           like a train, #)
+      (self   "You beam at $hcname$ $arg$.")
+      (target "$mcname$ beam$s$ at you $arg$.")
+      (rest  "$mcname$ beam$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/beckon.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: beckon.s,v 1.2 2003/04/24 01:54:11 presto Exp $
+#
+#
+#
+
+(beckon
+   (pattern "<string>")
+   (pattern "[at] <indirect:any-living>")
+   (pattern "[at] <indirect:any-living> <string>")
+   (pattern "for <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You beckon away.")
+      (rest "$mcname$ beckon$s$ away.")
+    )
+    (arguments
+      (arguments temptingly, imperially, mysteriously, seductively, regally,
+                 impatiently, commandingly, pleadingly, forcefully, beggingly,
+                 with one finger, with your little finger, with purple tentacles, 
+                 #)
+      (self "You beckon $arg$.")
+      (rest "$mcname$ beckon$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You beckon $hcname$.")
+      (target "$mcname$ beckon$s$ you.")
+      (rest  "$mcname$ beckon$s$ $hcname$.")
+    )
+    (arguments
+      (arguments over, temptingly, imperially, mysteriously, seductively, 
+                 regally, impatiently, commandingly, pleadingly, forcefully, 
+                 beggingly, with one finger, with your little finger, 
+                 with purple tentacles, #)
+      (self   "You beckon $hcname$ $arg$.")
+      (target "$mcname$ beckon$s$ you $arg$.")
+      (rest  "$mcname$ beckon$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001 */
+
+
+==================================================
+FILE: b/beep.s
+==================================================
+
+(beep
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+      (arguments 
+        (arguments happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,like an alarm clock,like a roadrunner,#)
+      (self "You beep $arg$.")
+      (rest "$mcname$ beep$s$ $arg$.")
+    )
+  )
+  (targeted
+      (arguments 
+        (arguments happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,like an alarm clock,like a roadrunner,#)
+      (self   "You beep $arg$ at $hcname$.")
+      (target "$mcname$ beep$s$ $arg$ at you.")
+      (rest   "$mcname$ beep$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/*Hobbes 970317*/
+
+
+==================================================
+FILE: b/beg.s
+==================================================
+
+(beg
+  (pattern "at <indirect:any-living> like a <string>")
+  (pattern "like a <string> at <indirect:any-living>")
+  (pattern "like a <string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments dog,cat,frog,chicken,frisbee,cow,large bear,poodle,
+                 chihuahua,train,beggar,noble man,Labrador,
+                 German shepherd,cannibal,chimpanzee,orang-utang,librarian,
+                 fish,dolphin,tokzic,banshee,bloodhound,St. Bernard,
+                 Virgin Mary,husky,wolf,dingo,Alsatian,newbie,#)
+      (self "You beg like $article$ $arg$.")
+      (rest "$mcname$ beg$s$ like $article$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments dog,cat,frog,chicken,frisbee,cow,large bear,poodle,
+                 chihuahua,train,beggar,noble man,Labrador,
+                 German shepherd,cannibal,chimpanzee,orang-utang,librarian,
+                 fish,dolphin,tokzic,banshee,bloodhound,St. Bernard,
+                 Virgin Mary,husky,wolf,dingo,Alsatian,newbie,#)
+      (self   "You beg like $article$ $arg$ at $hcname$.")
+      (target "$mcname$ beg$s$ like $article$ $arg$ at you.")
+      (rest  "$mcname$ beg$s$ like $article$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/belch.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: belch.s,v 1.2 2003/04/24 01:54:11 presto Exp $
+#
+#
+#
+
+(belch
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You belch.")
+      (rest "$mcname$ belch$s$.")
+    )
+    (arguments
+      (arguments disgustingly,faintly,loudly,rudely,quickly,
+      happily,annoyingly,lovingly,humbly,
+      manically,absentmindedly,drunkenly,disturbingly,demonically,pleasantly,
+              serenely, viciously, humbly, nastily, like Belcar, #)
+      (self "You belch $arg$.")
+      (rest "$mcname$ belch$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You belch at $hcname$.")
+      (target "$mcname$ belch$s$ at you.")
+      (rest  "$mcname$ belch$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments disgustingly,faintly,loudly,rudely,quickly,
+      happily,annoyingly,lovingly,humbly,manically,absentmindedly,
+      drunkenly,disturbingly,demonically,pleasantly,
+             serenely, viciously, humbly, nastily, like Belcar, #)
+      (self   "You belch $arg$ at $hcname$.")
+      (target "$mcname$ belch$s$ $arg$ at you.")
+      (rest  "$mcname$ belch$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/believe.s
+==================================================
+
+(believe
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You believe.")
+      (rest "$mcname$ believe$s$.")
+    )
+    (arguments
+    (arguments  everything, nothing, some of it, most of it, all of it, 
+                none of it, willingly, unwillingly, reluctantly, 
+                completely, #)
+      (self "You believe $arg$.")
+      (rest "$mcname$ believe$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You believe $hcname$.")
+    (target "$mcname$ believe$s$ you.")
+    (rest "$mcname$ believe$s$ $hcname$.")
+  )
+  (arguments
+    (arguments  willingly, unwillingly, reluctantly, completely, 
+                not at all, devotedly, till the ends of the earth, #)
+    (self "You believe $hcname$ $arg$." )
+    (target "$mcname$ believe$s$ you $arg$." )
+    (rest "$mcname$ believe$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+/* Saffra 2-20-00 */
+
+
+
+==================================================
+FILE: b/bellydance.s
+==================================================
+
+(bellydance
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bellydance.")
+      (rest "$mcname$ bellydance$s$.")
+    )
+    (arguments
+    (arguments sensuously, around, in circles, in ellipses, in figure 7+1s,
+               jigglingly, with lots of shoulder, with lots of hip, with 
+               lots of thigh, with lots of leg, with lots of belly, with 
+               lots of waist, with lots of bottom, with lots of arm movements, 
+               with armwaving, with handwaving, with bells, with chimes, 
+               with bangles, like a harem girl, wildly, slowly, with baba 
+               ganoush, like a Klatchian, # )
+      (self "You bellydance $arg$.")
+      (rest "$mcname$ bellydance$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bellydance at $hcname$.")
+      (target "$mcname$ bellydance$s$ at you.")
+      (rest   "$mcname$ bellydance$s$ at $hcname$.")
+    )
+    (arguments
+    (arguments around, up to, away from, near, with)
+      (self   "You bellydance $arg$ $hcname$.")
+      (target "$mcname$ bellydance$s$ $arg$ you.")
+      (rest   "$mcname$ bellydance$s$ $arg$ $hcname$.")
+    )
+    (arguments
+    (arguments sensuously, in circles, in ellipses, in figure 7+1s,
+               jigglingly, with lots of shoulder, with lots of hip, with 
+               lots of thigh, with lots of leg, with lots of belly, with 
+               lots of waist, with lots of bottom, with lots of arm movements, 
+               with armwaving, with handwaving, with bells, with chimes, 
+               with bangles, like a harem girl, wildly, slowly, with baba 
+               ganoush, like a Klatchian, # )
+      (self   "You bellydance at $hcname$ $arg$.")
+      (target "$mcname$ bellydance$s$ at you $arg$.")
+      (rest   "$mcname$ bellydance$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra Mar 30 2003 */
+
+
+==================================================
+FILE: b/bimble.s
+==================================================
+
+(bimble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bimble.")
+      (rest "$mcname$ bimble$s$.")
+    )
+    (arguments
+    (arguments excitedly, fearfully, happily, wildly, #)
+    (self "You bimble $arg$.")
+    (rest "$mcname$ bimble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You bimble around $hcname$.")
+      (target "$mcname$ bimble$s$ around you.")
+      (rest  "$mcname$ bimble$s$ around $hcname$.")
+    )
+    (arguments
+    (arguments excitedly, fearfully, happily, wildly, #)
+    (self "You bimble around $hcname$ $arg$.")
+    (rest "$mcname$ bimble$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bing.s
+==================================================
+
+(bing
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments happily, sadly, joyfully, sagely, knowingly, quickly,
+                 loudly, carefully, balefully, excitedly, nervously,
+                 brightly, uncertainly, threateningly, grumpily, fluffily,
+                 evilly, drunkenly, sleepily, #)
+      (self "You bing $arg$.")
+      (rest "$mcname$ bing$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  happily, sadly, joyfully, sagely, knowingly, quickly,
+                  excitedly, nervously, brightly, uncertainly, grumpily,
+                  loudly, carefully, balefully, threateningly, fluffily,
+                  evilly, drunkenly, sleepily, #)
+      (self   "You bing $arg$ at $hcname$.")
+      (target "$mcname$ bing$s$ $arg$ at you.")
+      (rest  "$mcname$ bing$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bingf.s
+==================================================
+
+(bingf
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments sarcastic, sad, joyful, sage, knowing, quick,  
+                 loud, careful, baleful, excited, nervous, bright, 
+                 uncertain)
+      (self "You bing in a $arg$ but formatted way.")
+      (rest "$mcname$ bing$s$ in a $arg$ but formatted way.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments sarcastic, sad, joyful, sage, knowing, quick,  
+                 loud, careful, baleful, excited, nervous, bright, 
+                 uncertain)
+      (self   "You bing in a $arg$ but formatted way at $hcname$.")
+      (target "$mcname$ bing$s$ in a $arg$ but formatted way at you.")
+      (rest  "$mcname$ bing$s$ in a $arg$ but formatted way at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bingle.s
+==================================================
+
+(bingle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments happily,sadly,joyfully,sagely,knowingly,quickly,loudly,carefully,balefully,excitedly,
+       nervously,tiredly,brightly,uncertainly,
+       threateningly,grumpily,like a crazed taxi driver on cocaine, and bangles,#)
+      (self "You bingle $arg$.")
+      (rest "$mcname$ bingle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments happily,sadly,joyfully,sagely,knowingly,quickly,excitedly,nervously,
+               brightly,tiredly,uncertainly,grumpily,loudly,carefully,balefully,
+               threateningly,like a crazed taxi driver on cocaine, and bangles,#)
+      (self   "You bingle $arg$ at $hcname$.")
+      (target "$mcname$ bingle$s$ $arg$ at you.")
+      (rest  "$mcname$ bingle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bird.s
+==================================================
+
+(bird
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You raise your middle finger and give $hcname$ the bird.")
+      (target "$mcname$ raise$s$ $mposs$ middle finger and give$s$ you the bird.")
+      (rest  "$mcname$ raise$s$ $mposs$ middle finger and give$s$ $hcname$ the bird.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bite.s
+==================================================
+
+(bite
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bite yourself.")
+      (rest "$mcname$ bite$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bite $hcname$.")
+      (target "$mcname$ bite$s$ you.")
+      (rest   "$mcname$ bite$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  hard, nastily, carefully, politely, fishily, lovingly,
+                  refreshingly, happily, like a train, pointlessly, 
+                  thoughtfully, objectively, sulkily, gently, brightly, 
+                  excitedly, uncertainly, like a dog, wolfishly, mercilessly, 
+                  ruthlessly, softly, sweetly, professionally, hungrily, 
+                  mischievously, casually, like a vampire, #)
+      (self   "You bite $hcname$ $arg$.")
+      (target "$mcname$ bite$s$ you $arg$.")
+      (rest   "$mcname$ bite$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  nose, ear, lip, arm, hand, finger, leg, foot, toe, neck, 
+                  shoulder, throat, vein, artery, face, back, hip, thigh, ankle,
+                  heel, elbow, knee, shank, belly, stomach, ribcage, rib, 
+                  collarbone, earlobe, mouth, tongue, calf, lips)
+      (self   "You bite $hcname$ on the $arg$.")
+      (target "$mcname$ bite$s$ you on the $arg$.")
+      (rest   "$mcname$ bite$s$ $hcname$ on the $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/blame.s
+==================================================
+
+(blame
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You blame everyone else.")
+      (rest "$mcname$ blame$s$ the world in general, for everything, ever.")
+    )
+    (arguments
+      (arguments  the High Lords, the creators, the players, everyone, it on the boogie, #)
+      (self "You blame $arg$.")
+      (rest "$mcname$ blame$s$ $arg$.")
+    )
+    (arguments
+      (arguments  everything)
+      (self "You blame $arg$, and feel a bit better from your ranting.")
+      (rest "$mcname$ blame$s$ $arg$ because $mpronoun$ is in the mood for a good rant, and do$s$ not feel particularly imaginative so $mpronoun$ decide$s$ to take it out on the whole world, just because!")
+    )
+    (arguments
+      (arguments  take, accept, delegate, dispense with, pass on)
+      (self "You $arg$ the blame.")
+      (rest "$mcname$ $arg$ the blame.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blame $hcname$.")
+      (target "$mcname$ blame$s$ you.")
+      (rest   "$mcname$ blame$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  take, accept)
+      (self   "You $arg$ the blame for $hcname$.")
+      (target "$mcname$ $arg$s the blame for you.")
+      (rest   "$mcname$ $arg$s the blame for $hcname$.")
+    )
+    (arguments
+      (arguments  delegate, stick)
+      (self   "You $arg$ the blame to $hcname$.")
+      (target "$mcname$ $arg$$s$ the blame to you.")
+      (rest   "$mcname$ $arg$$s$ the blame to $hcname$.")
+    )
+    (arguments
+      (arguments  for the Great Skill Cut, for crashing the driver, 
+                  for the spam on the talker, until Thursday, for breaking it, 
+                  for the runtime, for the Fire of Ankh-Morpork, #)
+      (self   "You blame $hcname$ $arg$.")
+      (target "$mcname$ blame$s$ you $arg$.")
+      (rest   "$mcname$ blame$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  Assassins, Fools, Monks, Priests, Thieves, Warriors, 
+                  Witches, Wizards)
+      (self   "You blame $hcname$ for downgraping the $arg$ Guild.")
+      (target "$mcname$ blame$s$ you for downgraping the $arg$ Guild.")
+      (rest   "$mcname$ blame$s$ $hcname$ for downgraping the $arg$ Guild.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bleat.s
+==================================================
+
+(bleat
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bleat.")
+      (rest "$mcname$ bleat$s$.")
+    )
+    (arguments
+      (arguments like a lamb,like a goat,happily,evilly,devilishly,impishly,cheekily,idiotically,like a wolf in sheep's clothing,like a sheep in wolves' clothing,#)
+      (self "You bleat $arg$.")
+      (rest "$mcname$ bleat$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bleat at $hcname$.")
+      (target "$mcname$ bleat$s$ at you.")
+      (rest  "$mcname$ bleat$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a lamb,like a goat,happily,evilly,devilishly,impishly,cheekily,idiotically,like a wolf in sheep's clothing,like a sheep in wolves' clothing,#)
+      (self   "You bleat $arg$ at $hcname$.")
+      (target "$mcname$ bleat$s$ $arg$ at you.")
+      (rest  "$mcname$ bleat$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Hobbes 960922, suggested by Eggjon */
+
+
+==================================================
+FILE: b/bleed.s
+==================================================
+
+(bleed
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You bleed.")
+      (rest "$mcname$ bleed$s$.")
+    )
+    (arguments 
+      (arguments all over, messily, lots, slowly, 
+                 in gushes, bitterly, a bit, #)
+      (self "You bleed $arg$.")
+      (rest "$mcname$ bleed$s$ $arg$.")
+    )
+    (arguments
+      (arguments heart, leg, arm, head, ear, nose, 
+                 foot, ankle, toe, hand, finger, neck,
+                 throat, stomach, back, mouth, ear, 
+                 ears, eye, eyes, wounds, veins,
+                 arteries)
+      (self "Your $arg$ bleeds.")
+      (rest "$mposs$ $arg$ bleeds.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bleed on $hcname$.")
+      (target "$mcname$ bleed$s$ on you.")
+      (rest   "$mcname$ bleed$s$ on $hcname$.")
+    )
+    (arguments
+      (arguments all over, messily, lots, slowly, 
+                 in gushes, bitterly, a bit, #)
+      (self   "You bleed $arg$ on $hcname$.")
+      (target "$mcname$ bleed$s$ $arg$ on you.")
+      (rest   "$mcname$ bleed$s$ $arg$ on $hcname$.")
+    )
+    (arguments
+      (arguments heart)
+      (self   "Your heart bleeds for $hcname$.")
+      (target "$mcname$'s heart bleed$s$ for you.")
+      (rest   "$mcname$'s heart bleed$s$ for $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bless.s
+==================================================
+
+(bless
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You bless $hcname$.")
+      (target "$mcname$ bless$s$ you.")
+      (rest  "$mcname$ bless$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  benignly,hypocritically,in the name of Pishe,in the name of Pinkfish,with your frog,#)
+      (self   "You bless $hcname$ $arg$.")
+      (target "$mcname$ bless$s$ you $arg$.")
+      (rest  "$mcname$ bless$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Implemented by Hobbes and suggested by Gruper 970419 */
+
+
+==================================================
+FILE: b/blink.s
+==================================================
+
+(blink
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You blink.")
+      (rest "$mcname$ blink$s$.")
+    )
+    (arguments
+       (arguments  owlishly,slowly,carefully,in amazement,happily,
+          what-the-heck-is-going-on-here,I-can't-believe-what-I'm-seeing-here,#)
+      (self "You blink $arg$.")
+      (rest "$mcname$ blink$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blink at $hcname$.")
+      (target "$mcname$ blink$s$ at you.")
+      (rest  "$mcname$ blink$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  owlishly,slowly,carefully,in amazement,happily,
+          what-the-heck-is-going-on-here,I-can't-believe-what-I'm-seeing-here,#)
+      (self   "You blink $arg$ at $hcname$.")
+      (target "$mcname$ blink$s$ $arg$ at you.")
+      (rest  "$mcname$ blink$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/blow.s
+==================================================
+
+(blow
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  a kiss, bubbles, a whistle, your top)
+      (self "You blow $arg$.")
+      (rest "$mcname$ blow$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blow a kiss at $hcname$.")
+      (target "$mcname$ blow$s$ a kiss at you.")
+      (rest   "$mcname$ blow$s$ a kiss at $hcname$.")
+    )
+    (arguments
+      (arguments  a kiss, bubbles, a whistle, your top)
+      (self   "You blow $arg$ at $hcname$.")
+      (target "$mcname$ blow$s$ $arg$ at you.")
+      (rest   "$mcname$ blow$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/blush.s
+==================================================
+
+(blush
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You blush.")
+      (rest "$mcname$ blush$s$.")
+    )
+    (arguments
+      (arguments  in embarrassment,redly,comfortably,slightly,worriedly,#)
+      (self "You blush $arg$.")
+      (rest "$mcname$ blush$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blush at $hcname$.")
+      (target "$mcname$ blush$s$ at you.")
+      (rest  "$mcname$ blush$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  in embarrassment,redly,comfortably,slightly,worriedly,#)  
+      (self   "You blush $arg$ at $hcname$.")
+      (target "$mcname$ blush$s$ $arg$ at you.")
+      (rest  "$mcname$ blush$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/boggle.s
+==================================================
+
+(boggle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments the concept,#)
+      (self "You boggle at $arg$.")
+      (rest "$mcname$ boggle$s$ at $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You boggle at $hcname$.")
+      (target "$mcname$ boggle$s$ at you.")
+      (rest  "$mcname$ boggle$s$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/boingy.s
+==================================================
+
+(boingy
+  (pattern "<string>")
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You boingy.")
+      (rest "$mcname$ boingy$s$.")
+    )
+    (arguments
+      (arguments insanely, happily, lovingly, with a squeak, fluffily, 
+                  sarcasticly, with bells on, with pride, #)
+      (self    "You boingy $arg$.")
+      (rest   "$mcname$ boingy$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You boingy around $hcname$.")
+      (target "$mcname$ boingy$s$ around you.")
+      (rest   "$mcname$ boingy$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments  insanely, happily, lovingly, with a squeak, fluffily, 
+                  sarcasticly, with bells on, with pride, #)
+      (self    "You boingy $arg$ at $hcname$.")
+      (target "$mcname$ boingy$s$ $arg$ at you.")
+      (rest   "$mcname$ boingy$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bombard.s
+==================================================
+
+(bombard
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> with <string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments for that pathetic joke, for making that comment, for that lousy 
+                pun, for the fun of it, just because)
+      (self "You bombard $hcname$ with rotten eggs and tomatoes $arg$.")
+      (target "$mcname$ bombard$s$ you with rotten eggs and tomatoes $arg$.")
+      (rest "$mcname$ bombard$s$ $hcname$ with rotten eggs and tomatoes $arg$.")
+    )
+   (arguments
+    (arguments rotten eggs, rotten tomatoes, noise, demands, honey, 
+               punctuation, grammar, #)
+    (self "You bombard $hcname$ with $arg$.")
+    (target "$mcname$ bombard$s$ you with $arg$.")
+    (rest "$mcname$ bombard$s$ $hcname$ with $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bonk.s
+==================================================
+
+(bonk
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "B O N K !")
+      (rest "$mcname$ go$s$ B O N K !")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bonk $hcname$ on the head.")
+      (target "$mcname$ bonk$s$ you on the head.")
+      (rest   "$mcname$ bonk$s$ $hcname$ on the head.")
+    )
+    (arguments
+       (arguments  on the head, with a coffee table, between the sheets, 
+                   like a puppet, with a lemon, onto the grass, 
+                   with a foam bat, #)
+      (self   "You bonk $hcname$ $arg$.")
+      (target "$mcname$ bonk$s$ you $arg$.")
+      (rest   "$mcname$ bonk$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/boo.s
+==================================================
+
+/* Saffra Sun July 28 2001 */
+(boo
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "Boo who?")
+      (rest "$mcname$ boo$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sneak up behind $hcname$ and shout 'Boo!'.")
+      (target "$mcname$ sneak$s$ up behind you and shout$s$ 'Boo!'.")
+      (rest   "$mcname$ sneak$s$ up behind $hcname$ and shout$s$ 'Boo!'.")
+      
+    )
+    (arguments
+      (arguments  box, coffee pot, hole, sock drawer, basket, 
+                  secret hiding place, #)
+      (self   "You jump out of a $arg$ and shout 'Boo!' at $hcname$.")
+      (target "$mcname$ jump$s$ out of a $arg$ and shout$s$ 'Boo!' at you.")
+      (rest   "$mcname$ jump$s$ out of a $arg$ and shout$s$ 'Boo!' at $hcname$.")
+  
+    )
+  )
+)
+
+
+==================================================
+FILE: b/boogie.s
+==================================================
+
+(boogie
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<string> <indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You boogie down.")
+      (rest "$mcname$ boogie$s$ down.")
+    )
+    (arguments
+    (arguments  can)
+      (self "Yes sir, you can boogie.")
+      (rest "Yes sir, $mcname$ can boogie.")
+    )
+    (arguments
+      (arguments  woogie, in the streets, down the street, 
+                  like it's the end of the century, 
+                  like it's the Century of the Fruitbat, the night away, 
+                  around the room, on the spot, badly, yes sir, 
+                  like the roof is on fire, 
+                  like you hope your parents never did, 
+                  like it's a Saturday night, #)
+      (self "You boogie $arg$.")
+      (rest "$mcname$ boogie$s$ $arg$.")
+    )
+    (arguments
+      (arguments  till you drop, drop)
+      (self "You boogie till you drop.")
+      (rest "$mcname$ boogie$s$ till $mpronoun$ drop$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You boogie at $hcname$.")
+      (target "$mcname$ boogie$s$ at you.")
+      (rest   "$mcname$ boogie$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments around, like, up to, down at, away from, with, without)
+      (self   "You boogie $arg$ $hcname$.")
+      (target "$mcname$ boogie$s$ $arg$ you.")
+      (rest   "$mcname$ boogie$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments  woogie, in the streets, down the street, 
+                  like it's the end of the century, 
+                  like it's the Century of the Fruitbat, the night away, 
+                  around the room, on the spot, badly, yes sir, 
+                  like the roof is on fire, 
+                  like you hope your parents never did, 
+                  like it's a Saturday night, #)
+      (self   "You boogie $arg$ at $hcname$.")
+      (target "$mcname$ boogie$s$ $arg$ at you.")
+      (rest   "$mcname$ boogie$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  till you drop, drop)
+      (self   "You boogie till you drop at $hcname$.")
+      (target "$mcname$ boogie$s$ till $mpronoun$ drop$s$ at you.")
+      (rest   "$mcname$ boogie$s$ till $mpronoun$ drop$s$ at $hcname$.")
+    )
+  )
+)
+/* Saffra Sun July 28 2001 */
+
+
+==================================================
+FILE: b/booty.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: booty.s,v 1.2 2003/04/24 01:54:11 presto Exp $
+#
+#
+#
+
+(booty
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<string> <indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shake your booty.")
+      (rest "$mcname$ shake$s$ $mposs$ booty.")
+    )
+    (arguments
+    (arguments  all over the place, like a martini, like a mound of jello, 
+                like a dancing queen, #)
+      (self "You shake your booty $arg$.")
+      (rest "$mcname$ shake$s$ $mposs$ booty $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You shake your booty at $hcname$.")
+      (target "$mcname$ shake$s$ $mposs$ booty at you.")
+      (rest   "$mcname$ shake$s$ $mposs$ booty at $hcname$.")
+    )
+    (arguments
+    (arguments  all over the place, like a martini, like a mound of jello, 
+                like a dancing queen, #)
+      (self   "You shake your booty at $hcname$ $arg$.")
+      (target "$mcname$ shake$s$ $mposs$ booty at you $arg$.")
+      (rest   "$mcname$ shake$s$ $mposs$ booty at $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra Sun July 28 2001 */
+
+
+==================================================
+FILE: b/bop.s
+==================================================
+
+(bop
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You bop to the beat.")
+      (rest "$mcname$ bop$s$ to the beat.")
+    )
+    (arguments
+      (arguments  yourself, myself, me)
+      (self "You bop yourself on the head.")
+      (rest "$mcname$ bop$s$ $mobj$self on the head.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bop $hcname$ on the head.")
+      (target "$mcname$ bop$s$ you on the head.")
+      (rest   "$mcname$ bop$s$ $hcname$ on the head.")
+    )
+    (arguments
+      (arguments  absentmindedly, flambuoyantly, accidentally, without reason, 
+                  with a stuffed mullet, with a salmon, with very good reason, 
+                  only on Sundays, #)
+      (self   "You bop $hcname$ on the head $arg$.")
+      (target "$mcname$ bop$s$ you on the head $arg$.")
+      (rest   "$mcname$ bop$s$ $hcname$ on the head $arg$.")
+    )
+    (arguments
+      (arguments  ear, nose, shoulder, elbow, other ear, forehead, chin)
+      (self   "You bop $hcname$ on the $arg$.")
+      (target "$mcname$ bop$s$ you on your $arg$.")
+      (rest   "$mcname$ bop$s$ $hcname$ on the $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bork.s
+==================================================
+
+(bork
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You bork.")
+      (rest "$mcname$ bork$s$.")
+    )
+    (arguments
+    (arguments  like a Swedish chef, with meatballs, #)
+      (self "You bork$s$ $arg$.")
+      (rest "$mcname$ bork$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You bork at $hcname$.")
+    (target "$mcname$ bork$s$ at you.")
+    (rest "$mcname$ bork$s$ at $hcname$.")
+  )
+  (arguments
+    (arguments  like a Swedish chef, with meatballs, #)
+    (self "You bork at $hcname$ $arg$." )
+    (target "$mcname$ bork$s$ at you $arg$." )
+    (rest "$mcname$ bork$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bounce.s
+==================================================
+
+(bounce
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "B O U N C E ! !")
+      (rest "$mcname$ bounce$s$ around.")
+    )
+    (arguments
+      (arguments excitedly, fearfully, happily, wildly)
+      (self "You bounce around $arg$.")
+      (rest "$mcname$ bounce$s$ around $arg$.")
+    )
+    (arguments
+      (arguments off walls, up and down, away, #)
+      (self "You bounce $arg$.")
+      (rest "$mcname$ bounce$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You bounce around $hcname$.")
+      (target "$mcname$ bounce$s$ around you.")
+      (rest  "$mcname$ bounce$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments up to, away from, up and down at, next to, with)
+      (self "You bounce $arg$ $hcname$.")
+      (target "$mcname$ bounce$s$ $arg$ you.")
+      (rest "$mcname$ bounce$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments ankles)
+      (self "You bounce $hcname$ up and down by the ankles.")
+      (target "$mcname$ bounce$s$ you up and down by the ankles.")
+      (rest "$mcname$ bounce$s$ $hcname$ up and down by the ankles.")
+    )
+    (arguments
+      (arguments  happily, carefully, wildly, excitedly, pinkly, joyfully, 
+                  once, slowly, suggestively, viciously, sarcastically, 
+                  happily, womblely, #)
+      (self   "You bounce around $hcname$ $arg$.")
+      (target "$mcname$ bounce$s$ around you $arg$.")
+      (rest  "$mcname$ bounce$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: b/bow.s
+==================================================
+
+(bow
+  (pattern "<indirect:any-living>")
+  (pattern "to <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> to <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "to <indirect:any-living> <string>")
+  (single
+     (no-arguments
+        (self  "You bow.")
+        (rest  "$mcname$ bow$s$.")
+     )
+     (arguments
+        (arguments solemnly,deeply,formally,hastily,slightly,
+                   disgustedly,floridly,flamboyantly,
+                   insolently,clumsily,dextrously,wildly,
+                  colourfully,with a flourish,graciously,#)
+        (self  "You bow $arg$.")
+        (rest  "$mcname$ bow$s$ $arg$.")
+      )
+  )
+  (targeted
+     (no-arguments
+        (self "You bow to $hcname$.")
+        (rest "$mcname$ bow$s$ to $hcname$.")
+        (target "$mcname$ bow$s$ to you.")
+     )
+     (arguments
+        (arguments solemnly,deeply,formally,hastily,slightly,
+                   disgustedly,floridly,flamboyantly,
+                   insolently,clumsily,dextrously,wildly,
+                   colourfully,with a flourish,graciously,#)
+        (self "You bow $arg$ to $hcname$.")
+        (rest "$mcname$ bow$s$ $arg$ to $hcname$.")
+        (target "$mcname$ bow$s$ $arg$ to you.")
+     )
+  )
+)
+
+
+
+==================================================
+FILE: b/breakdance.s
+==================================================
+
+(breakdance
+  (single
+    (no-arguments
+      (self "You do a really complicated break-dance manoeuvre.")
+      (rest "$mcname$ do$s$ a really complicated break-dance manoeuvre.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/breathe.s
+==================================================
+
+(breathe
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments quickly,seductively,painfully,nastily,slowly,once,heavily,carefully,heatedly, deeply, #)
+      (self "You breathe $arg$.")
+      (rest "$mcname$ breathe$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/bribe.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: bribe.s,v 1.2 2003/04/24 01:54:11 presto Exp $
+#
+#
+#
+
+(bribe
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [with] <string>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You attempt to bribe yourself.  How odd.")
+      (rest "$mcname$ attempt$s$ to bribe $mobj$self.  How odd.")
+    )
+    (arguments
+      (arguments money, fame, fortune, riches, power, untold power, 
+                 lots of good lovin', nutella, chocolate, favours, 
+                 political favours, special favours, jewels, untold treasures, 
+                 #)
+      (self "You attempt to bribe yourself with $arg$.")
+      (rest "$mcname$ attempt$s$ to bribe $mobj$self with $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You bribe $hcname$.")
+      (target "$mcname$ bribe$s$ you.")
+      (rest "$mcname$ bribe$s$ $hcname$.")
+    )
+    (arguments
+      (arguments money, fame, fortune, riches, power, untold power, 
+                 lots of good lovin', nutella, chocolate, favours, 
+                 political favours, special favours, jewels, untold treasures, 
+                 #)
+      (self   "You bribe $hcname$ with $arg$.")
+      (target "$mcname$ bribe$s$ you with $arg$.")
+      (rest  "$mcname$ bribe$s$ $hcname$ with $arg$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001 */
+
+
+==================================================
+FILE: b/bubble.s
+==================================================
+
+(bubble
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "I'm forever blowing bubbles!")
+      (rest "$mcname$ blow$s$ a bubble.")
+    )
+    (arguments
+    (arguments  wetly, damply, sarcastically, happily, like a dolphin,  
+                like a fish, like a frog, like a horde of small children, 
+                like a monkey, #) 
+      (self   "You blow bubbles $arg$.")
+      (target "$mcname$ blow$s$ bubbles $arg$.")
+      (rest   "$mcname$ blow$s$ bubbles $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You blow bubbles at $hcname$.")
+      (target "$mcname$ blow$s$ bubbles at you.")
+      (rest  "$mcname$ blow$s$ bubbles at $hcname$.")
+    )
+    (arguments
+    (arguments  wetly, damply, sarcastically, happily, like a dolphin,  
+                like a fish, like a frog, like a horde of small children, 
+                like a monkey, #) 
+      (self   "You blow bubbles at $hcname$ $arg$.")
+      (target "$mcname$ blow$s$ bubbles at you $arg$.")
+      (rest   "$mcname$ blow$s$ bubbles at $hcname$ $arg$.")
+   )
+  )
+)
+
+
+==================================================
+FILE: b/burp.s
+==================================================
+
+(burp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You burp.")
+      (rest "$mcname$ burp$s$.")
+    )
+    (arguments
+      (arguments disgustingly,faintly,loudly,rudely,quickly,
+      happily,annoyingly,lovingly,humbly,
+      manically,absentmindedly,drunkenly,disturbingly,demonically,pleasantly,
+      serenely,viciously,humbly,nastily,#)
+      (self "You burp $arg$.")
+      (rest "$mcname$ burp$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You burp at $hcname$.")
+      (target "$mcname$ burp$s$ at you.")
+      (rest  "$mcname$ burp$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments disgustingly,faintly,loudly,rudely,quickly,
+      happily,annoyingly,lovingly,humbly,manically,absentmindedly,
+      drunkenly,disturbingly,demonically,pleasantly,
+      serenely,viciously,humbly,nastily,#)
+      (self   "You burp $arg$ at $hcname$.")
+      (target "$mcname$ burp$s$ $arg$ at you.")
+      (rest  "$mcname$ burp$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: b/buzz.s
+==================================================
+
+(buzz
+  (pattern "<indirect:any-living> [ear]")
+  (single
+    (no-arguments
+      (self "You buzz gently.")
+      (rest "$mcname$ buzz$s$ gently.")
+    )
+    (arguments
+      (arguments #)
+      (self "You buzz $arg$.")
+      (rest "$mcname$ buzz$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You buzz in $mhcname$ ear.")
+      (target "$mcname$ buzz$s$ in your ear.")
+      (rest   "$mcname$ buzz$s$ in $mhcname$ ear.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nag.s
+==================================================
+
+(nag
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[about] <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> [about] <string>")
+
+  (targeted
+    (no-arguments
+      (self   "You nag at $hcname$.")
+      (target "$mcname$ nag$s$ at you.")
+      (rest   "$mcname$ nag$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  creators, add_command, everything, nothing, unfinished code, players, #)
+      (self   "You nag at $hcname$ about $arg$.")
+      (target "$mcname$ nag$s$ at you about $arg$.")
+      (rest   "$mcname$ nag$s$ at $hcname$ about $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nap.s
+==================================================
+
+(nap
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "Zzz...")
+      (rest "$mcname$ take$s$ a quick nap.")
+      )
+    )
+  (targeted
+    (no-arguments
+      (self   "You take a quick nap in $mhcname$ arms.")
+      (target "$mcname$ take$s$ a quick nap in your arms.")
+      (rest  "$mcname$ take$s$ a quick nap in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments  lap,bed,#) 
+      (self   "You take a quick nap in $mhcname$ $arg$.")
+      (target "$mcname$ take$s$ a quick nap in your $arg$.")
+      (rest  "$mcname$ take$s$ a quick nap in $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/neigh.s
+==================================================
+
+(neigh
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You neigh.")
+      (rest "$mcname$ neighs.")
+    )
+    (arguments
+      (arguments horse, horsie, my little Binky, dog, cat, tree, wolf,
+                 labrador, german shepherd, bull terrier)
+      (self "You neigh like a $arg$.")
+      (rest "$mcname$ neigh$s$ like a $arg$.")
+    )
+    (arguments
+      (arguments something else that neighs,
+                 one of those darned obnoxious little horse, horsie, my little Binky, dogs)
+      (self "You neigh like $arg$.")
+      (rest "$mcname$ neigh$s$ like $arg$.")
+    )
+    (arguments
+      (arguments happily, annoyingly, without a care in the world,
+                 warily, watchfully, bashfully, snidely,
+                 enthusiastically, excitedly, obnoxiously, #)
+      (self "You neigh $arg$.")
+      (rest "$mcname$ neigh$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You neigh at $hcname$.")
+      (target "$mcname$ neigh$s$ at you.")
+      (rest  "$mcname$ neigh$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments horse, horsie, my little Binky, dog, cat, tree, wolf,
+                 labrador, german shepherd, bull terrier)
+      (self "You neigh like a $arg$ at $hcname$.")
+      (rest "$mcname$ neigh$s$ like a $arg$ at you.")
+      (rest "$mcname$ neigh$s$ like a $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments something else that neighs,
+                 one of those darned obnoxious little horse, horsie, my little Binky, dogs)
+      (self "You neigh like $arg$ at $hcname$.")
+      (rest "$mcname$ neigh$s$ like $arg$ at you.")
+      (rest "$mcname$ neigh$s$ like $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily, annoyingly, without a care in the world,
+                 warily, watchfully, bashfully, snidely,
+                 enthusiastically, excitedly, obnoxiously, #)
+      (self "You neigh $arg$ at $hcname$.")
+      (rest "$mcname$ neigh$s$ $arg$ at you.")
+      (rest "$mcname$ neigh$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* changed by Hobbes, 960911 */
+
+
+==================================================
+FILE: n/nestle.s
+==================================================
+
+(nestle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  affectionately,warmly,gently,absentmindedly,carefully,warmly,
+                  absolutely,triumphantly,capriciously,suspiciously,
+                 drunkenly, esthetically, insolently, faintly, delicately,
+                 lovingly, #)
+      (self   "You nestle up to $hcname$ $arg$.")
+      (target "$mcname$ nestle$s$ up to you $arg$.")
+      (rest  "$mcname$ nestle$s$ up to $hcname$ $arg$.")
+    )
+  )
+)
+/* Hobbes, 970528 */
+
+
+==================================================
+FILE: n/newb.s
+==================================================
+
+(newb
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments clueless,lost,without a clue,lost,mindless,annoying,froglike)
+      (self "You wander around like a newbie, completely and utterly $arg$.")
+      (rest "$mcname$ wander$s$ around like a newbie, completely and utterly $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments clueless,mindless,froglike,lost,stupid)
+      (self   "You turn $hcname$ into a newbie, $hpronoun$ look$s$ utterly and completely $arg$.")
+      (target "$mcname$ turn$s$ you into a newbie, you look completely and utterly $arg$.")
+      (rest   "$mcname$ turn$s$ $hcname$ into a newbie, $hpronoun$ look$s$ completely and utterly $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nibble.s
+==================================================
+
+(nibble
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments ear, finger, lip, arm, leg, toe, nose, tongue, neck,
+                 hand, wrist, leg, thigh, eyebrow, cabbage, dinner,
+                 thoughts, fluffy animals, strawberries, elbow, knee,
+                 thigh, calf, foot, hair, clothes, jewellery, food,
+               glasses, cupcakes, strawberries, oranges, fika, #)
+      (self   "You nibble on $mhcname$ $arg$.")
+      (target "$mcname$ nibble$s$ on your $arg$.")
+      (rest   "$mcname$ nibble$s$ on $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nicker.s
+==================================================
+
+(nicker
+  (single
+    (no-arguments
+      (self "You nicker.")
+      (rest "$mcname$ nicker$s$.")
+    )
+    (arguments
+      (arguments like a horse, gently, happily, slowly, stupidly,
+                 like a ball of string, like Flicka,
+                 back in black, like a stallion, with gusto, excitedly,
+                 unhappily, sadly, skitishly, #)
+      (self "You nicker $arg$.")
+      (rest "$mcname$ nicker$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/niggle.s
+==================================================
+
+(niggle
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (arguments
+      (arguments affectionately, softly, slowly, carefully, with a shaver,
+                 like a cabbage, greenly, pinkly, fishily, dreamily,
+                 sleepily, happily, sadly, quickly, with your hair,
+                 backwards, briefly, professionaly, excitingly,
+                 spiffily, #)
+      (self   "You niggle $hcname$ $arg$.")
+      (target "$mcname$ niggle$s$ you $arg$.")
+      (rest   "$mcname$ niggle$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments shoulder, arm, ear, nose, chicken, frog,
+                 leg, hand, finger, eyebrow, foot, ankle, armpit,
+                 hair, chest, tummy, bottom, belly, thigh, forearm,
+                 palm, back, calf, wrist, knee, oranges)
+      (self   "You niggle $mhcname$ $arg$.")
+      (target "$mcname$ niggle$s$ your $arg$.")
+      (rest   "$mcname$ niggle$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nirg.s
+==================================================
+
+(nirg
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You nirg.")
+      (rest "$mcname$ nirg.")
+    )
+    (arguments
+      (arguments manically,evilly,wickedly,insanely,mischievously,
+                 devilishly,impishly,cheekily,idiotically,tentatively,
+                 wryly,sceptically)
+      (self "You nirg $arg$.")
+      (rest "$mcname$ snirg $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You nirg at $hcname$.")
+      (target "$mcname$ snirg at you.")
+      (rest   "$mcname$ snirg at $hcname$.")
+    )
+    (arguments
+      (arguments manically,evilly,wickedly,insanely,mischievously,
+                 devilishly,impishly,cheekily,idiotically,wryly,
+                 sceptically)
+      (self   "You nirg $arg$ at $hcname$.")
+      (target "$mcname$ snirg $arg$ at you.")
+      (rest   "$mcname$ snirg $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nod.s
+==================================================
+
+(nod
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+        (self "You nod.")
+        (rest "$mcname$ nod$s$.")
+        )
+      (arguments 
+        (arguments solemnly,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,annoyingly,approvingly, #)
+      (self "You nod $arg$.")
+      (rest "$mcname$ nod$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You nod at $hcname$.")
+      (target "$mcname$ nod$s$ at you.")
+      (rest  "$mcname$ nod$s$ at $hcname$.")
+       )
+      (arguments 
+        (arguments solemnly,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,annoyingly,approvingly, #)
+      (self   "You nod $arg$ at $hcname$.")
+      (target "$mcname$ nod$s$ $arg$ at you.")
+      (rest   "$mcname$ nod$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nodnod.s
+==================================================
+
+(nodnod
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+        (self "You nodnod.")
+        (rest "$mcname$ nodnod$s$.")
+        )
+      (arguments 
+        (arguments solemnly,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,annoyingly,like only Allana can,noddingly,with 
+                 prosthetic legs, #)
+      (self "You nodnod $arg$.")
+      (rest "$mcname$ nodnod$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You nodnod at $hcname$.")
+      (target "$mcname$ nodnod$s$ at you.")
+      (rest  "$mcname$ nodnod$s$ at $hcname$.")
+       )
+      (arguments 
+        (arguments solemnly,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,annoyingly,like only Allana can,noddingly,with 
+                 prosthetic legs, #)
+      (self   "You nodnod $arg$ at $hcname$.")
+      (target "$mcname$ nodnod$s$ $arg$ at you.")
+      (rest   "$mcname$ nodnod$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/noise.s
+==================================================
+
+(noise
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You make a funny noise.")
+      (rest "$mcname$ make$s$ a funny noise.")
+    )
+    (arguments
+      (arguments bungle,flurgle,zongle-wop,wop,whirr,burble,frog,
+                 moo,train,hairy,twisted,wap,pop,schwing,gong,koala,
+                 rat,mouse,chicken,womble,guppy,cow,rabbit,kangaroo,gumby,#)
+      (self "You make a $arg$ noise.")
+      (rest "$mcname$ make$s$ a $arg$ noise.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/noogie.s
+==================================================
+
+(noogie
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self "You give $hcname$ a noogie.")
+      (target "$mcname$ give$s$ you a noogie.")
+      (rest "$mcname$ give$s$ $hcname$ a noogie.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nudge.s
+==================================================
+
+(nudge
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You nudge $hcname$.")
+      (target "$mcname$ nudge$s$ you.")
+      (rest   "$mcname$ nudge$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: n/nuzzle.s
+==================================================
+
+(nuzzle
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (arguments
+      (arguments affectionately, softly, slowly, carefully, with a shaver,
+                 like a cabbage, greenly, pinkly, fishily, dreamily,
+                 sleepily, happily, sadly, quickly, with your hair,
+                 backwards, briefly, professionaly, excitingly,
+                 spiffily, #)
+      (self   "You nuzzle $hcname$ $arg$.")
+      (target "$mcname$ nuzzle$s$ you $arg$.")
+      (rest   "$mcname$ nuzzle$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments shoulder, arm, ear, nose, chicken, frog,
+                 leg, hand, finger, eyebrow, foot, ankle, armpit,
+                 hair, chest, tummy, bottom, belly, thigh, forearm,
+                 palm, back, calf, wrist, knee, oranges, neck, throat, lips)
+      (self   "You nuzzle $mhcname$ $arg$.")
+      (target "$mcname$ nuzzle$s$ your $arg$.")
+      (rest   "$mcname$ nuzzle$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/absolve.s
+==================================================
+
+(absolve
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments from all blame, from all responsibility, from your sins, 
+                from everything, #)
+      (self "You absolve $hcname$ $arg$.")
+      (target "$mcname$ absolve$s$ you $arg$.")
+      (rest "$mcname$ absolve$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra 2-20-00 */
+
+
+
+==================================================
+FILE: a/abuse.s
+==================================================
+
+(abuse
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You abuse $hcname$.")
+      (target "$mcname$ abuse$s$ you.")
+      (rest  "$mcname$ abuse$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  teasingly, happily, incessantly, like a yobbo at a
+        cricket match, for being a silly person, for being smelly,
+        for not being wombly, for not being a frog, with naughty words,
+        for not hugging enough, #)
+      (self   "You abuse $hcname$ $arg$.")
+      (target "$mcname$ abuse$s$ you $arg$.")
+      (rest  "$mcname$ abuse$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: a/accuse.s
+==================================================
+
+(accuse
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [of] <string>")
+  (single
+    (no-arguments
+      (self "The butler did it!")
+      (rest "$mcname$ accuse$s$ the butler.")
+    )
+    (arguments
+      (arguments #)
+      (self "You accuse $arg$.")
+      (rest "$mcname$ accuse$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You accuse $hcname$.")
+      (target "$mcname$ accuse$s$ you.")
+      (rest  "$mcname$ accuse$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You accuse $hcname$ of $arg$.")
+      (target "$mcname$ accuse$s$ you of $arg$.")
+      (rest  "$mcname$ accuse$s$ $hcname$ of $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/ack.s
+==================================================
+
+(ack
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You ack.")
+      (rest "$mcname$ ack$s$.")
+    )
+    (arguments
+      (arguments seductively,happily,carefully)
+      (self "You ack $arg$.")
+      (rest "$mcname$ ack$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ack at $hcname$.")
+      (target "$mcname$ ack$s$ at you.")
+      (rest  "$mcname$ ack$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  seductively,happily,carefully)
+      (self   "You ack $arg$ at $hcname$.")
+      (target "$mcname$ ack$s$ $arg$ at you.")
+      (rest  "$mcname$ ack$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/admire.s
+==================================================
+
+(admire
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You admire $hcname$.")
+      (target "$mcname$ admire$s$ you.")
+      (rest  "$mcname$ admire$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  from afar)
+      (self   "You admire $hcname$ $arg$.")
+      (target "$mcname$ admire$s$ you $arg$.")
+      (rest  "$mcname$ admire$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  eyes, legs, bottom, body, ears, nose, fingers, toes,
+                  dress, trousers, shirt, tenacity, #)
+      (self   "You admire $mhcname$ $arg$.")
+      (target "$mcname$ admire$s$ your $arg$.")
+      (rest  "$mcname$ admire$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/adore.s
+==================================================
+
+(adore
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments lovingly,intensely,unreasonably,carefully,slightly,hysterically, in a professional manner, #)
+      (self "You adore $hcname$ $arg$.")
+      (target "$mcname$ adore$s$ you $arg$.")
+      (rest "$mcname$ adore$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: a/agree.s
+==================================================
+
+(agree
+  (pattern "[with] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [with] <indirect:any-living>")
+  (pattern "[with] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  wholeheartedly, partially, wearily, sadly, belatedly, 
+                  happily, under duress, about everything, 
+                  about the state of the world, #)
+      (self "You agree $arg$.")
+      (rest "$mcname$ agree$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  wholeheartedly, partially, wearily, sadly, belatedly, 
+                  happily, under duress, #)
+      (self   "You agree with $hcname$ $arg$.")
+      (target "$mcname$ agree$s$ with you $arg$.")
+      (rest   "$mcname$ agree$s$ with $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/amazon.s
+==================================================
+
+(amazon
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ a deep and passionate knee to the groin, it seems to last forever...")
+      (target "$mcname$ give$s$ you a deep and passionate knee to the groin, it seems to last forever...")
+      (rest  "$mcname$ give$s$ $hcname$ a deep and passionate knee to the groin, it seems to last forever...")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/apologise.s
+==================================================
+
+(apologise
+  (pattern "[to] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You apologise.")
+      (rest "$mcname$ apologise$s$.")
+    )
+    (arguments
+      (arguments  profusely, happily, sadly, reservedly, carefully, slowly, 
+                  perfunctorily, curtly, viciously, sulkily, drunkenly, 
+                  unhappily, professionally, pompously, wholeheartedly, 
+                  partially, wearily, fishily, facetiously, unnecessarily, 
+                  spontaneously, twice, thoroughly, humbly, #)
+      (self "You apologise $arg$.")
+      (rest "$mcname$ apologise$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You apologise to $hcname$.")
+      (target "$mcname$ apologise$s$ to you.")
+      (rest   "$mcname$ apologise$s$ to $hcname$.")
+    )
+    (arguments
+      (arguments  profusely, happily, sadly, reservedly, carefully, slowly, 
+                  perfunctorily, curtly, viciously, sulkily, drunkenly, 
+                  unhappily, professionally, pompously, wholeheartedly, 
+                  partially, wearily, fishily, facetiously, unnecessarily, 
+                  spontaneously, twice, thoroughly, humbly, #)
+      (self   "You apologise $arg$ to $hcname$.")
+      (target "$mcname$ apologise$s$ $arg$ to you.")
+      (rest   "$mcname$ apologise$s$ $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/applaud.s
+==================================================
+
+(applaud
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments wholeheartedly,loudly,softly,vaguely,briefly)
+      (self "You applaud $arg$.")
+      (rest "$mcname$ applaud$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  wholeheartedly,loudly,softly,vaguely,briefly)
+      (self   "You applaud $hcname$ $arg$.")
+      (target "$mcname$ applaud$s$ you $arg$.")
+      (rest  "$mcname$ applaud$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/arf.s
+==================================================
+
+(arf
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You arf.")
+      (rest "$mcname$ $verb$arfs,arf$.")
+    )
+    (arguments
+      (arguments happily,sadly,nervously,wryly,broadly,crookedly,stupidly,idiotically,condescendingly,ironically,patiently,brightly,slightly,nastily,excitedly,strangely,with forced patience,plasticly,carefully,sadistically,lopsidedly,fishily,cattishly,faintly,like a train,angrily,paranoically,innocently,froggily,slyly,weakly,humbly,paradoxically,sarcastically,viciously,garishly,sweetly,innocently,lovingly,dreamily,radiantly,enthusiastically,insolently,quirkily,completely,unconsciously,drunkenly,insanely,cutely,maliciously,smugly,absentmindedly,curtly,disturbingly,unbelievably,quietly,loudly,differently,winningly,in triumph,seductively,tightly,gosh there are lots of arguments,softly,lividly,demonically,warmly,grimly,indolently,ingeniously,wickedly,contentedly,statistically,spasmodically,incandescently,pleasantly,with menace,like Ooeeoo,like ooeeoo,ingenuously,manically,warily,sardonically,lazily,serenely,disappointedly,#)
+      (self "You arf $arg$.")
+      (rest "$mcname$ $verb$arfs,arf$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You arf at $hcname$.")
+      (target "$mcname$ $verb$arfs,arf$ at you.")
+      (rest  "$mcname$ $verb$arfs,arf$ at $hcname$.")
+    )
+    (arguments
+      (arguments  happily,sadly,nervously,wryly,broadly,crookedly,stupidly,idiotically,condescendingly,ironically,patiently,brightly,slightly,nastily,excitedly,strangely,with forced patience,plasticly,manically,carefully,sadistically,lopsidedly,fishily,cattishly,faintly,weakly,humbly,paradoxically,sarcastically,viciously,garishly,insolently,quirkily,completely,unconsciously,drunkenly,absentmindedly,curtly,disturbingly,unbelievably,quietly,loudly,differently,winningly,in triumph,seductively,sweetly,innocently,lovingly,dreamily,radiantly,enthusiastically,like a train,angrily,paranoically,innocently,froggily,slyly,macabrely,ruefully,tentatively,like a dog,tightly,gosh there are lots of arguments,softly,insanely,cutely,maliciously,smugly,grimly,lividly,demoniacally,indolently,ingeniously,wickedly,contentedly,statistically,spasmodically,incandescently,pleasantly,with menace,like Jim Douglas,arfishly,outlandishly,up the wall and round the corner,weirdly,erratically,smoke rings,like Ooeeoo,like ooeeoo,ingenuously,sardonically,warily,lazily,serenely,disappointedly,#)
+      (self   "You arf $arg$ at $hcname$.")
+      (target "$mcname$ $verb$arfs,arf$ $arg$ at you.")
+      (rest  "$mcname$ $verb$arfs,arf$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/argle.s
+==================================================
+
+(argle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You argle.")
+      (rest "$mcname$ argle$s$.")
+    )
+    (arguments
+      (arguments in despair,happily,sadly,annoyingly,loudly,constantly,
+      knowingly,grumpily,angrily,#)
+      (self "You argle $arg$.")
+      (rest "$mcname$ arlges $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You argle at $hcname$.")
+      (target "$mcname$ argle$s$ at you.")
+      (rest  "$mcname$ argle$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments in despair,happily,sadly,annoyingly,loudly,constantly,
+            knowingly,grumpily,angrily,#)
+      (self   "You argle $arg$ at $hcname$.")
+      (target "$mcname$ argle$s$ $arg$ at you.")
+      (rest  "$mcname$ argle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/*Hobbes*/
+
+
+
+==================================================
+FILE: a/argue.s
+==================================================
+
+(argue
+  (pattern "<string>")
+  (pattern "[with] <indirect:any-living>")
+  (pattern "<string> [with] <indirect:any-living>")
+  (pattern "[with] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You argue the point.")
+      (rest "$mcname$ argue$s$ the point.")
+    )
+    (arguments
+      (arguments  happily, using big words, teasingly, flirtatiously,
+                  nonchalantly, cunningly, illogically, mercilessly,
+                  that the world's about to end, #)
+      (self "You argue $arg$.")
+      (rest "$mcname$ argue$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You argue with $hcname$.")
+      (target "$mcname$ argue$s$ with you.")
+      (rest   "$mcname$ argue$s$ with $hcname$.")
+    )
+    (arguments
+      (arguments  the point, happily, using big words, teasingly, flirtatiously,
+                  nonchalantly, cunningly, illogically, mercilessly,
+                  that the world's about to end)
+      (self   "You argue $arg$ with $hcname$.")
+      (target "$mcname$ argue$s$ $arg$ with you.")
+      (rest   "$mcname$ argue$s$ $arg$ with $hcname$.")
+    )
+    (arguments
+      (arguments  the unfairness of it all, what happened,
+                  whose fault it is,  trivial things,
+                  whose turn it is to do the washing up, 
+                  what colour the psychedelic frogs were, #)
+      (self   "You argue with $hcname$ about $arg$.")
+      (target "$mcname$ argue$s$ with you about $arg$.")
+      (rest   "$mcname$ argue$s$ with $hcname$ about $arg$.")
+    )
+    (arguments
+      (arguments  frog, womble)
+      (self   "You argue that $hcname$ isn't a $arg$.")
+      (target "$mcname$ argue$s$ that you aren't a $arg$.")
+      (rest   "$mcname$ argue$s$ that $hcname$ isn't a $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/arp.s
+==================================================
+
+(arp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You arp.")
+      (rest "$mcname$ arp$s$.")
+    )
+    (arguments
+      (arguments happily,sadly,nervously,wryly,broadly,crookedly,
+                 stupidly,idiotically,condescendingly,ironically,
+                 patiently,brightly,slightly,nastily,excitedly,
+                 strangely,with forced patience,plasticly,carefully,
+                 sadistically,lopsidedly,fishily,cattishly,faintly,
+                 like a train,angrily,paranoically,innocently,froggily,
+                 slyly,weakly,humbly,paradoxically,sarcastically,
+                 viciously,garishly,sweetly,innocently,lovingly,
+                 dreamily,radiantly,enthusiastically,insolently,
+                 quirkily,completely,unconsciously,drunkenly,insanely,
+                 cutely,maliciously,smugly,absentmindedly,curtly,
+                 disturbingly,unbelievably,quietly,loudly,differently,
+                 winningly,in triumph,seductively,tightly,
+                 gosh there are lots of arguments,softly,lividly,
+                 demonically,warmly,grimly,indolently,ingeniously,
+                 wickedly,contentedly,statistically,spasmodically,
+                 incandescently,pleasantly,with menace,manically,
+                 warily,sardonically,lazily,serenely,disappointedly)
+      (self "You arp $arg$.")
+      (rest "$mcname$ arp$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You arp at $hcname$.")
+      (target "$mcname$ arp$s$ at you.")
+      (rest  "$mcname$ arp$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily,sadly,nervously,wryly,broadly,crookedly,
+                 stupidly,idiotically,condescendingly,ironically,
+                 patiently,brightly,slightly,nastily,excitedly,
+                 strangely,with forced patience,plasticly,manically,
+                 carefully,sadistically,lopsidedly,fishily,cattishly,
+                 faintly,weakly,humbly,paradoxically,sarcastically,
+                 viciously,garishly,insolently,quirkily,completely,
+                 unconsciously,drunkenly,absentmindedly,curtly,
+                 disturbingly,unbelievably,quietly,loudly,differently,
+                 winningly,in triumph,seductively,sweetly,innocently,
+                 lovingly,dreamily,radiantly,enthusiastically,like a train,
+                 angrily,paranoically,innocently,froggily,slyly,
+                 macabrely,ruefully,tentatively,like a dog,tightly,
+                 gosh there are lots of arguments,softly,insanely,
+                 cutely,maliciously,smugly,grimly,lividly,demonically,
+                 indolently,ingeniously,wickedly,contentedly,statistically,
+                 spasmodically,incandescently,pleasantly,with menace,
+                 arpishly,outlandishly,sulamoreishly,like a VW Beetle,
+                 erratically,sardonically,warily,lazily,serenely,
+                 disappointedly)
+      (self   "You arp $arg$ at $hcname$.")
+      (target "$mcname$ arp$s$ $arg$ at you.")
+      (rest  "$mcname$ arp$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: a/astound.s
+==================================================
+
+(astound
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You are astounded!")
+      (rest "$mcname$ $V$0=is,are$V$ astounded!")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You astound $hcname$!")
+      (target "$mcname$ astound$s$ you!")
+      (rest  "$mcname$ astound$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  stupidity, cleverness, thoughtfulness, dumbness, idiocy, clever use of soul commands, deviousness, VW Beetle, annoyingness, paranoia, wideness of your grin, coffee table, womble, grinning frog, stupid pet tricks, #)
+      (self   "You astound $hcname$ with your $arg$!")
+      (target "$mcname$ astound$s$ you with $mposs$ $arg$!")
+      (rest  "$mcname$ astound$s$ $hcname$ with $mposs$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: a/award.s
+==================================================
+
+(award
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  Discworld's Wibbley Bing,World's Slowest Typer,Pinkfish,
+          Best Creator,Most Whiny Player of the Year,Newbie of the Year,
+          Most Irritating Player of the Year,Tricky of the Year,
+          Jeslek of the Year,Newbie Creator of the Year,#)
+      (self   "You present $hcname$ with the $arg$ award.")
+      (target "$mcname$ present$s$ you with the $arg$ award.")
+      (rest  "$mcname$ present$s$ $hcname$ with the $arg$ award.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/damn.s
+==================================================
+
+(damn
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments lag, bug fixing, shopping, TV dinners, 
+                the Laughing Gnome, elevator music, helping newbies,
+                packet switching, celibacy, whining, LPC coding, whining,
+                haggis,cat food between your toes in the morning, BBC2, spam, 
+                newbie-ness, having to think up new soul command arguments,
+                runtime errors, interesting times, writing room descriptions, 
+                blue wombly bingle frogs, #)
+      (self "You damn $hcname$ to an eternity of $arg$.")
+      (target "$mcname$ damn$s$ you to an eternity of $arg$.")
+      (rest "$mcname$ damn$s$ $hcname$ to an eternity of $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/dance.s
+==================================================
+
+(dance
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You dance the disco duck. Feels silly, doesn't it?")
+      (rest "$mcname$ dance$s$ the disco duck.")
+    )
+    (arguments
+    (arguments wildly, gracefully, smoothly, energetically, bouncily, upbeatly, 
+               jivily, swingingly, waltzingly, romantically, skillfully, 
+               sweepingly, clumsily, professionally, #)
+      (self "You dance $arg$.")
+      (rest "$mcname$ dance$s$ $arg$.")
+    )    
+  )
+  (targeted
+    (no-arguments
+      (self   "You sweep $hcname$ across the dance floor.")
+      (target "$mcname$ sweep$s$ you across the dance floor.")
+      (rest  "$mcname$ sweep$s$ $hcname$ across the dance floor.")
+    )
+    (arguments
+    (arguments wildly, gracefully, smoothly, energetically, bouncily, upbeatly, 
+               jivily, swingingly, waltzingly, romantically, skillfully, 
+               sweepingly, clumsily, professionally, #)
+    (self   "You dance $hcname$ $arg$ around the dance floor.")
+      (target "$mcname$ dance$s$ you $arg$ across the dance floor.")
+       (rest   "$mcname$ dance$s$ $hcname$ $arg$ around the dance floor.")
+    )    
+     (arguments
+       (arguments the hemp fandango, hemp, fandango)
+       (self   "You dance the hemp fandango with $hcname$.")
+       (target "$mcname$ dance$s$ the hemp fandango with you.")
+       (rest   "$mcname$ dance$s$ the hemp fandango with $hcname$.")
+     )
+  )
+)
+
+
+
+==================================================
+FILE: d/dare.s
+==================================================
+
+(dare
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You dare $hcname$.")
+      (target "$mcname$ dare$s$ you.")
+      (rest  "$mcname$ dare$s$ $hcname$.")
+    )
+    (arguments
+      (arguments to go creator,to read Godot's code,#)
+      (self   "You dare $hcname$ $arg$.")
+      (target "$mcname$ dare$s$ you $arg$.")
+      (rest  "$mcname$ dare$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/daydream.s
+==================================================
+
+(daydream
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You daydream.")
+      (rest "$mcname$ daydream$s$.")
+    )
+    (arguments
+      (arguments happily, longingly, sleepily, #)
+      (self "You daydream $arg$.")
+      (rest "$mcname$ daydream$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You daydream about $hcname$.")
+      (target "$mcname$ daydream$s$ about you.")
+      (rest   "$mcname$ daydream$s$ about $hcname$.")
+    )
+    (arguments
+      (arguments happily, longingly, sleepily, #)
+      (self   "You daydream of $hcname$ $arg$.")
+      (target "$mcname$ daydream$s$ of you $arg$.")
+      (rest   "$mcname$ daydream$s$ of $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/deny.s
+==================================================
+
+(deny
+  (pattern " <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string>  <indirect:any-living>")
+  (pattern " <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You deny it all.")
+      (rest  "$mcname$ deny$s$ it all.")
+    )
+    (arguments
+      (arguments   being a witch, #)
+      (self  "You deny $arg$.")
+      (rest  "$mcname$ deny$s$ $arg$.")
+    )
+    (arguments
+      (arguments   nothing)
+      (self  "You deny $arg$!")
+      (rest  "$mcname$ deny$s$ $arg$!")
+    )
+    (arguments
+      (arguments   don't, doesn't)
+      (self  "You do$s$n't deny it.")
+      (rest  "$mcname$ do$s$n't deny it.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You deny $hcname$.")
+      (target "$mcname$ deny$s$ you.")
+      (rest   "$mcname$ deny$s$ $hcname$.")
+    )
+    (arguments
+      (arguments   everything)
+      (self   "You deny $arg$ and pin the blame on $hcname$.")
+      (target "$mcname$ deny$s$ $arg$ and pin$s$ the blame on you.")
+      (rest   "$mcname$ deny$s$ $arg$ and pin$s$ the blame on $hcname$.")
+    )
+    (arguments
+      (arguments   it all, it ever happened, being a witch, 
+                   spreading malicious rumours, telling humourous stories, 
+                   any aspirations to overthrow the Disc, 
+                   all knowledge of how that happened)
+      (self   "You deny $arg$ to $hcname$.")
+      (target "$mcname$ deny$s$ $arg$ to you.")
+      (rest   "$mcname$ deny$s$ $arg$ to $hcname$.")
+    )
+    (arguments
+      (arguments   accusations, baseless accusations, groundless accusations,
+                   assertions, technically true assertions, libelous claims, 
+                   existence, #)
+      (self   "You deny $mhcname$ $arg$.")
+      (target "$mcname$ deny$s$ your $arg$.")
+      (rest   "$mcname$ deny$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments   a second biscuit)
+      (self   "You deny $hcname$ $arg$.")
+      (target "$mcname$ deny$s$ you $arg$.")
+      (rest   "$mcname$ deny$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments   knowing)
+      (self   "You deny $arg$ $hcname$.")
+      (target "$mcname$ deny$s$ $arg$ you.")
+      (rest   "$mcname$ deny$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments   a fair trial, silence, freedom of speech, womble overground, 
+                   womble underground, womble free, remain silent, a lawyer, 
+                   rights)
+      (self   "You deny $hcname$ the right to $arg$.")
+      (target "$mcname$ deny$s$ you the right to $arg$.")
+      (rest   "$mcname$ deny$s$ $hcname$ the right to $arg$.")
+    )
+    (arguments
+      (arguments   don't, doesn't)
+      (self   "You $V$0=doesn't,don't$V$ deny it to $hcname$.")
+      (target "$mcname$ do$s$n't deny it to you.")
+      (rest   "$mcname$ do$s$n't deny it to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/die.s
+==================================================
+
+(die
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  suddenly, dramatically, of boredom, of hunger, 
+                  of anticipation, pathetically, gracefully, senselessly, 
+                  stupidly, tragically, slowly, painfully, quickly
+                  an excruciating death, in no specific direction, #)
+      (self "You die $arg$.")
+      (rest "$mcname$ $verb$dies,die$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You die in $mhcname$ general direction.")
+      (target "$mcname$ $verb$dies,die$ in your general direction.")
+      (rest   "$mcname$ $verb$dies,die$ in $mhcname$ general direction.")
+    )
+    (arguments
+      (arguments  arms)
+      (self   "You die in $mhcname$ arms.")
+      (target "$mcname$ $verb$dies,die$ in your arms.")
+      (rest   "$mcname$ $verb$dies,die$ in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments  suddenly, dramatically, of boredom, of hunger, 
+                  of anticipation, pathetically, gracefully, senselessly, 
+                  stupidly, tragically, slowly, painfully, quickly
+                  an excruciating death, #)
+      (self   "You die $arg$ in $mhcname$ general direction.")
+      (target "$mcname$ $verb$dies,die$ $arg$ in your general direction.")
+      (rest   "$mcname$ $verb$dies,die$ $arg$ in $mhcname$ general direction.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/die2.s
+==================================================
+
+(die2
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  suddenly, dramatically, of boredom, of hunger, 
+                  of anticipation, pathetically, gracefully, senselessly, 
+                  stupidly, tragically, slowly, painfully, quickly
+                  an excruciating death, in no specific direction, #)
+      (self "You die $arg$.")
+      (rest "$mcname$ $verb$dies,die $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You die in $mhcname$ general direction.")
+      (target "$mcname$ $verb$dies,die in your general direction.")
+      (rest   "$mcname$ $verb$dies,die in $mhcname$ general direction.")
+    )
+    (arguments
+      (arguments  arms)
+      (self   "You die in $mhcname$ arms.")
+      (target "$mcname$ $verb$dies,die in your arms.")
+      (rest   "$mcname$ $verb$dies,die in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments  suddenly, dramatically, of boredom, of hunger, 
+                  of anticipation, pathetically, gracefully, senselessly, 
+                  stupidly, tragically, slowly, painfully, quickly
+                  an excruciating death, #)
+      (self   "You die $arg$ in $mhcname$ general direction.")
+      (target "$mcname$ $verb$dies,die $arg$ in your general direction.")
+      (rest   "$mcname$ $verb$dies,die $arg$ in $mhcname$ general direction.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/disagree.s
+==================================================
+
+(disagree
+  (pattern "[with] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [with] <indirect:any-living>")
+  (pattern "[with] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  wholeheartedly, partially, wearily, sadly, belatedly, 
+                  happily, under duress, about everything, 
+                  out of stubbornness, #)
+      (self "You disagree $arg$.")
+      (rest "$mcname$ disagree$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You disagree with $hcname$.")
+      (target "$mcname$ disagree$s$ with you.")
+      (rest  "$mcname$ disagree$s$ with $hcname$.")
+    )
+    (arguments
+      (arguments  wholeheartedly, partially, wearily, sadly, belatedly, 
+                  happily, under duress, #)
+      (self   "You disagree with $hcname$ $arg$.")
+      (target "$mcname$ disagree$s$ with you $arg$.")
+      (rest   "$mcname$ disagree$s$ with $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/distract.s
+==================================================
+
+(distract
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You distract yourself.")
+      (rest "$mcname$ distract$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You distract $hcname$.")
+      (target "$mcname$ distract$s$ you.")
+      (rest  "$mcname$ distract$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  carefully, shamelessly, excitedly, with a pitchfork,
+                   after the dream has died, flirtatiously, graciously,
+                   completely, selfishly, pointlessly, for dinner,
+                   from something else more fun, to play catch,
+                   with a wonderful lack of panties, with oranges,
+                   with strawberries, slowly, keenly, with a shower,
+                   with a bath, under a table,
+                   with a cucumber, with a perky wobbler, #)
+      (self   "You distract $hcname$ $arg$.")
+      (target "$mcname$ distract$s$ you $arg$.")
+      (rest  "$mcname$ distract$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/dloh.s
+==================================================
+
+(dloh
+  (pattern "[onto] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments nose,#)
+      (self "You hold your $arg$.")
+      (rest "$mcname$ hold$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hold $hcname$.")
+      (target "$mcname$ hold$s$ you.")
+      (rest  "$mcname$ hold$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  close, tightly, warmly, gently, lovingly, back, up, #)
+      (self   "You hold $hcname$ $arg$.")
+      (target "$mcname$ hold$s$ you $arg$.")
+      (rest  "$mcname$ hold$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/doh.s
+==================================================
+
+(doh
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You slap your forehead and exclaim: D'oh!")
+      (rest "$mcname$ slap$s$ $mposs$ forehead and exclaims: D'oh!")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You slap your forehead and exclaim: D'oh! at $hcname$.")
+      (target "$mcname$ slap$s$ $mposs$ forehead and exclaims: D'oh! at you.")
+      (rest   "$mcname$ slap$s$ $mposs$ forehead and exclaims: D'oh! at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/downgrape.s
+==================================================
+
+(downgrape
+  (pattern " <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string>  <indirect:any-living>")
+  (pattern " <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You downgrape yourself.")
+      (rest  "$mcname$ downgrape$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments  everything, skills, guilds, commands, your guild, #)
+      (self  "You downgrape $arg$.")
+      (rest  "$mcname$ downgrape$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You downgrape $hcname$.")
+      (target "$mcname$ downgrape$s$ you.")
+      (rest   "$mcname$ downgrape$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  ability to use souls, commands, guild, weapons, armour, 
+                  mail service, internet connection, womble, wossname, #)
+      (self   "You downgrape $mhcname$ $arg$.")
+      (target "$mcname$ downgrape$s$ your $arg$.")
+      (rest   "$mcname$ downgrape$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  wardrobe)
+      (self   "You downgrape $mhcname$ $arg$.  They feel naked.")
+      (target "$mcname$ downgrape$s$ your $arg$.  You feel naked.")
+      (rest   "$mcname$ downgrape$s$ $mhcname$ $arg$.  They feel naked.")
+      
+    )
+    (arguments
+      (arguments  code)
+      (self   "You downgrape $mhcname$ ability to $arg$.  They crash the mud.")
+      (target "$mcname$ downgrape$s$ your ability to $arg$.  You crash the mud.")
+      (rest   "$mcname$ downgrape$s$ $mhcname$ ability to $arg$.  They crash the mud.")
+    )
+    (arguments
+      (arguments  with excessive force, with subtlety and finesse, 
+                  with finesse only, with loving kindness, 
+                  with the best intentions)
+      (self   "You downgrape $hcname$ $arg$.")
+      (target "$mcname$ downgrape$s$ you $arg$.")
+      (rest   "$mcname$ downgrape$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  for good reasons)
+      (self   "You downgrape $hcname$ $arg$ (if only $hpronoun$ knew).")
+      (target "$mcname$ downgrape$s$ you $arg$ (if only you knew).")
+      (rest   "$mcname$ downgrape$s$ $hcname$ $arg$ (if only $hpronoun$ knew).")
+    )
+    (arguments
+      (arguments  frogs, voices, creators, wombles, lords)
+      (self   "You downgrape $hcname$ because the $arg$ told you to.")
+      (target "$mcname$ downgrape$s$ you because the $arg$ told $mobj$ to.")
+      (rest   "$mcname$ downgrape$s$ $hcname$ because the $arg$ told $mobj$ to.")
+    )
+    (arguments
+      (arguments  Ray, Uncle Sam)
+      (self   "You downgrape $hcname$ because $arg$ told you to.")
+      (target "$mcname$ downgrape$s$ you because $arg$ told $mobj$ to.")
+      (rest   "$mcname$ downgrape$s$ $hcname$ because $arg$ told $mobj$ to.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/dribble.s
+==================================================
+
+(dribble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You start to dribble all over the front of your shirt.")
+      (rest "$mcname$ start$s$ to dribble all over the front of $mposs$ shirt.")
+    )
+    (arguments
+      (arguments milk, beer, wine, water, scumble, tea, juice, baby food, #)
+      (self "You start to dribble $arg$ all over the front of your shirt.")
+      (rest "$mcname$ start$s$ to dribble $arg$ all over the front of $mposs$ shirt.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You start dribbling on $hcname$.")
+      (target "$mcname$ start$s$ dribbling all over your best shirt.")
+      (rest  "$mcname$ start$s$ dribbling all over $hcname$.")
+    )
+    (arguments
+      (arguments milk, beer, wine, water, scumble, tea, juice, baby food, #)
+      (self "You start to dribble $arg$ all over $hcname$.")
+      (target "$mcname$ start$s$ to dribble $arg$ all over $hcname$.")
+      (rest "$mcname$ start$s$ to dribble $arg$ all over $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/drool.s
+==================================================
+
+(drool
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You start to drool.")
+      (rest "$mcname$ start$s$ to drool.")
+    )
+    (arguments
+      (arguments manically, hungrily, slobberingly, messily, #)
+      (self "You drool $arg$.")
+      (rest "$mcname$ drool$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You drool all over $hcname$.")
+      (target "$mcname$ drool$s$ all over you.")
+      (rest   "$mcname$ drool$s$ all over $hcname$.")
+    )
+    (arguments
+      (arguments meal, dinner, lunch, breakfast, tea, brunch, snack, sandwich, 
+                 pork chops, potatoes, candy, chocolate, cabbage, 
+                 banana daiquiri, scumble, #)
+      (self   "You drool all over $mhcname$ $arg$.")
+      (target "$mcname$ drool$s$ all over your $arg$.")
+      (rest   "$mcname$ drool$s$ all over $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/drumroll.s
+==================================================
+
+(drumroll
+  (pattern "[for] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You do a drumroll.  K'tisssh!")
+      (rest "$mcname$ do$s$ a drumroll.  K'tisssh!")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You do a drumroll for $hcname$.  K'tisssh!")
+      (target "$mcname$ do$s$ a drumroll for you.  K'tisssh!")
+      (rest  "$mcname$ do$s$ a drumroll for $hcname$.  K'tisssh!")
+    )
+  )
+)
+
+
+==================================================
+FILE: d/duck.s
+==================================================
+
+(duck
+  (pattern "[from] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [from] <indirect:any-living>")
+  (pattern "[from] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You duck.")
+      (rest "$mcname$ duck$s$.")
+    )
+    (arguments
+     (arguments for cover, the snowball, quickly, slowly, badly,
+                     inappropriately, pointlessly, sadly, carefully, #)
+      (self "You duck $arg$.")
+      (rest "$mcname$ duck$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You duck away from $hcname$.")
+      (target "$mcname$ duck$s$ away from you.")
+      (rest  "$mcname$ duck$s$ away from $hcname$.")
+    )
+    (arguments
+     (arguments quickly, slowly, badly, inappropriately, pointlessly, sadly, carefully, #)
+      (self   "You duck away from $hcname$ $arg$.")
+      (target "$mcname$ duck$s$ away from $hcname$ $arg$.")
+      (rest  "$mcname$ duck$s$ away from $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: d/duh.s
+==================================================
+
+(duh
+  (single
+    (no-arguments
+      (self "You scream \"Duh!\".")
+      (rest "$mcname$ scream$s$ \"Duh!\".")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: u/umm.s
+==================================================
+
+(umm
+  (single
+    (no-arguments
+      (self "You scratch your chin and say: 'Ummmm'.")
+      (rest "$mcname$ scratch$s$ $mposs$ chin and say$s$: 'Ummmm'.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: u/upgrape.s
+==================================================
+
+(upgrape
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string>  <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You upgrape yourself.")
+      (rest  "$mcname$ upgrape$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments  everything, skills, guilds, commands, your guild, #)
+      (self  "You upgrape $arg$.")
+      (rest  "$mcname$ upgrape$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You upgrape $hcname$.")
+      (target "$mcname$ upgrape$s$ you.")
+      (rest   "$mcname$ upgrape$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  ability to use souls, commands, guild, weapons, armour, 
+                  mail service, internet connection, womble, wossname, #)
+      (self   "You upgrape $mhcname$ $arg$.")
+      (target "$mcname$ upgrape$s$ your $arg$.")
+      (rest   "$mcname$ upgrape$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  wardrobe)
+      (self   "You upgrape $mhcname$ $arg$.")
+      (target "$mcname$ upgrape$s$ your $arg$.")
+      (rest   "$mcname$ upgrape$s$ $mhcname$ $arg$.")
+     
+    )
+    (arguments
+      (arguments  with excessive force, with sublety and finesse, 
+                  with finesse only, with loving kindness, 
+                  with the best intentions)
+      (self   "You upgrape $hcname$ $arg$.")
+      (target "$mcname$ upgrape$s$ you $arg$.")
+      (rest   "$mcname$ upgrape$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  for poor reasons)
+      (self   "You upgrape $hcname$ $arg$ (if only $hpronoun$ knew).")
+      (target "$mcname$ upgrape$s$ you $arg$ (if only you knew).")
+      (rest   "$mcname$ upgrape$s$ $hcname$ $arg$ (if only $hpronoun$ knew).")
+    )
+    (arguments
+      (arguments  players, voices)
+      (self   "You upgrape $hcname$ because the $arg$ told you to.")
+      (target "$mcname$ upgrape$s$ you because the $arg$ told $mobj$ to.")
+      (rest   "$mcname$ upgrape$s$ $hcname$ because the $arg$ told $mobj$ to.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pace.s
+==================================================
+
+(pace
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You pace back and forth.")
+      (rest "$mcname$ pace$s$ back and forth.")
+    )
+    (arguments
+      (arguments quickly, loudly, carefully, excitedly, nervously, tiredly,
+                 fervently, slowly, worriedly, thoughtfully, distractedly,
+                 diligently, impatiently, patiently, smugly, heavily,
+                 lightly, #)
+      (self "You pace back and forth $arg$.")
+      (rest "$mcname$ pace$s$ back and forth $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments quickly, loudly, carefully, excitedly, nervously, tiredly,
+                 fervently, slowly, worriedly, thoughtfully, distractedly,
+                 diligently, impatiently, patiently, smugly, heavily,
+                 lightly, #)
+      (self   "You pace back and forth $arg$ at $hcname$.")
+      (target "$mcname$ pace$s$ back and forth $arg$ at you.")
+      (rest  "$mcname$ pace$s$ back and forth $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001 */
+
+==================================================
+FILE: p/panic.s
+==================================================
+
+(panic
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You panic.")
+      (rest "$mcname$ panic$s$.")
+    )
+    (arguments
+      (arguments happily, sadly, madly, insanely, #)
+      (self "You panic $arg$.")
+      (rest "$mcname$ panic$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You panic at $hcname$.")
+      (target "$mcname$ panic$s$ at you.")
+      (rest "$mcname$ panic$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily, sadly, madly, insanely, #)
+      (self "You panic $arg$ at $hcname$.")
+      (target "$mcname$ panic$s$ $arg$ at you.")
+      (rest "$mcname$ panic$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pant.s
+==================================================
+
+(pant
+  (pattern "<string>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You pant.")
+      (rest "$mcname$ pant$s$.")
+    )
+    (arguments
+      (arguments deeply, silently, desperately, tiredly, sadly, dreamily,
+                 happily, melodramatically, wistfully, heavily, suggestively,
+                 sarcastically, unconvincingly)
+      (self "You pant $arg$.")
+      (rest "$mcname$ pant$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+       (self "You pant at $hcname$.")
+       (target "$mcname$ pant$s$ at you.")
+       (rest "$mcname$ pant$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments deeply, silently, desperately, tiredly, sadly, dreamily,
+                 happily, melodramatically, wistfully, heavily, suggestively,
+                 sarcastically, unconvincingly)
+      (self   "You pant $arg$ at $hcname$.")
+      (target "$mcname$ pant$s$ $arg$ at you.")
+      (rest   "$mcname$ pant$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/parp.s
+==================================================
+
+(parp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You parp.")
+      (rest "$mcname$ parp$s$.")
+    )
+    (arguments
+      (arguments happily,sadly,nervously,wryly,broadly,crookedly,
+                 stupidly,idiotically,condescendingly,ironically,
+                 patiently,brightly,slightly,nastily,excitedly,
+                 strangely,with forced patience,plasticly,carefully,
+                 sadistically,lopsidedly,fishily,cattishly,faintly,
+                 like a train,angrily,paranoically,innocently,froggily,
+                 slyly,weakly,humbly,paradoxically,sarcastically,
+                 viciously,garishly,sweetly,innocently,lovingly,
+                 dreamily,radiantly,enthusiastically,insolently,
+                 quirkily,completely,unconsciously,drunkenly,insanely,
+                 cutely,maliciously,smugly,absentmindedly,curtly,
+                 disturbingly,unbelievably,quietly,loudly,differently,
+                 winningly,in triumph,seductively,tightly,
+                 gosh there are lots of arguments,softly,lividly,
+                 demonically,warmly,grimly,indolently,ingeniously,
+                 wickedly,contentedly,statistically,spasmodically,
+                 incandescently,pleasantly,with menace,manically,
+                 warily,sardonically,lazily,serenely,disappointedly, sleepily, #)
+      (self "You parp $arg$.")
+      (rest "$mcname$ parp$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You parp at $hcname$.")
+      (target "$mcname$ parp$s$ at you.")
+      (rest  "$mcname$ parp$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily,sadly,nervously,wryly,broadly,crookedly,
+                 stupidly,idiotically,condescendingly,ironically,
+                 patiently,brightly,slightly,nastily,excitedly,
+                 strangely,with forced patience,plasticly,manically,
+                 carefully,sadistically,lopsidedly,fishily,cattishly,
+                 faintly,weakly,humbly,paradoxically,sarcastically,
+                 viciously,garishly,insolently,quirkily,completely,
+                 unconsciously,drunkenly,absentmindedly,curtly,
+                 disturbingly,unbelievably,quietly,loudly,differently,
+                 winningly,in triumph,seductively,sweetly,innocently,
+                 lovingly,dreamily,radiantly,enthusiastically,like a train,
+                 angrily,paranoically,innocently,froggily,slyly,
+                 macabrely,ruefully,tentatively,like a dog,tightly,
+                 gosh there are lots of arguments,softly,insanely,
+                 cutely,maliciously,smugly,grimly,lividly,demonically,
+                 indolently,ingeniously,wickedly,contentedly,statistically,
+                 spasmodically,incandescently,pleasantly,with menace,
+                 parpishly,outlandishly,not like Ooeeoo,like a VW Beetle,
+                 erratically,sardonically,warily,lazily,serenely,
+                 disappointedly, sleepily, #)
+      (self   "You parp $arg$ at $hcname$.")
+      (target "$mcname$ parp$s$ $arg$ at you.")
+      (rest  "$mcname$ parp$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pat.s
+==================================================
+
+(pat
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You pat yourself on the back.")
+      (rest  "$mcname$ pat$s$ $mobj$self on the back.")
+    )
+    (arguments
+      (arguments  head, back, leg, arm, nose, bottom, tummy, belly, #)
+      (self  "You pat yourself on the $arg$.")
+      (rest  "$mcname$ pat$s$ $mobj$self on the $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  head, back, leg, arm, nose, bottom, tummy, belly, #)
+      (self   "You pat $hcname$ on the $arg$.")
+      (target "$mcname$ pat$s$ you on the $arg$.")
+      (rest  "$mcname$ pat$s$ $hcname$ on the $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: p/patronise.s
+==================================================
+
+(patronise
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You patronise $hcname$.")
+      (target "$mcname$ patronise$s$ you.")
+      (rest  "$mcname$ patronise$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/peel.s
+==================================================
+
+(peel
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  orange, apple, banana, potato)
+      (self "You peel your $arg$.")
+      (rest "$mcname$ peel$s$ $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments  lips, eyebrows, eyelashes, moustache, ears, mask, clothes, 
+                  skin, #)
+      (self "You peel off your $arg$.")
+      (rest "$mcname$ peel$s$ off $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  orange, apple, banana, potato)
+      (self   "You peel $mhcname$ $arg$.")
+      (target "$mcname$ peel$s$ your $arg$.")
+      (rest   "$mcname$ peel$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  lips, eyebrows, eyelashes, moustache, ears, mask, clothes, 
+                  skin, #)
+      (self   "You peel off $mhcname$ $arg$.")
+      (target "$mcname$ peel$s$ off your $arg$.")
+      (rest   "$mcname$ peel$s$ off $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/peep.s
+==================================================
+
+(peep
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern " <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string> ")
+  (single
+    (no-arguments
+      (self "You peep like a cute fluffy chick.")
+      (rest "$mcname$ peep$s$ like a cute fluffy chick.")
+    )
+    (arguments
+      (arguments cutely, adorably, fluffily, brightly, quietly,
+                 like a wet hen, like a ruffled chicken, like a 
+                 marshmallow peep,  # )
+      (self "You peep $arg$.")
+      (rest "$mcname$ peep$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You peep at $hcname$ like a cute fluffy chick.")
+      (target "$mcname$ peep$s$ at you like a cute fluffy chick.")
+      (rest "$mcname$ peep$s$ at $hcname$ like a cute fluffy chick.")
+    )
+    (arguments
+      (arguments cutely, adorably, fluffily, brightly, quietly,
+                 like a wet hen, like a ruffled chicken, like a 
+                 marshmallow peep,  # )
+      (self   "You peep $arg$ at $hcname$.")
+      (target "$mcname$ peep$s$ $arg$ at you.")
+      (rest  "$mcname$ peep$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: p/peer.s
+==================================================
+
+(peer
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You peer around the room.")
+      (rest "$mcname$ peer$s$.")
+    )
+    (arguments
+      (arguments  suspiciously, quizzically, anxiously, stupidly, warningly, 
+                  expectantly, happily, sadly, desperately, worriedly, 
+                  strangely, uncertainly, lopsidedly, lazily, rudely, 
+                  disappointedly, fishily, fearfully, like a train, curiously, 
+                  tentatively, tiredly, warily, nervously, carefully, owlishly, 
+                  dazedly, intently, sceptically, happily, cutely, #)
+      (self "You peer $arg$ around the room.")
+      (rest "$mcname$ peer$s$ $arg$ around the room.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You peer at $hcname$.")
+      (target "$mcname$ peer$s$ at you.")
+      (rest   "$mcname$ peer$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  suspiciously, quizzically, anxiously, stupidly, warningly, 
+                  expectantly, happily, sadly, desperately, worriedly, 
+                  strangely, uncertainly, lopsidedly, lazily, rudely, 
+                  disappointedly, fishily, fearfully, like a train, curiously, 
+                  tentatively, tiredly, warily, nervously, carefully, owlishly, 
+                  dazedly, intently, sceptically, happily, cutely, #)
+      (self   "You peer $arg$ at $hcname$.")
+      (target "$mcname$ peer$s$ $arg$ at you.")
+      (rest   "$mcname$ peer$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pet.s
+==================================================
+
+(pet
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You pet Goldie.")
+      (rest "$mcname$ pet$s$ Goldie.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You pet $hcname$.")
+      (target "$mcname$ pet$s$ you.")
+      (rest   "$mcname$ pet$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  affectionately, soothingly, seductively, carefully, nicely,
+                  like a cute kitten, like a moose stuck in a tree, #)
+      (self   "You pet $hcname$ $arg$.")
+      (target "$mcname$ pet$s$ you $arg$.")
+      (rest   "$mcname$ pet$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/phbt.s
+==================================================
+
+(phbt
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You go: \"Phbttptblptt!\"")
+      (rest "$mcname$ go$s$: \"Phbttptblptt!\"")
+       )
+  )
+  (targeted
+    (no-arguments
+      (self   "You go: \"Phbttptblptt!\" at $hcname$.")
+      (target "$mcname$ go$s$: \"Phbttptblptt!\" at you.")
+      (rest  "$mcname$ go$s$: \"Phbttptblptt!\" at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/phew.s
+==================================================
+
+(phew
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wipe your brow and go: PHEW!")
+      (rest "$mcname$ wipe$s$ $mposs$ brow and go$s$: PHEW!")
+    )
+    (arguments
+      (arguments with relief,happily,#)
+      (self "You wipe your brow $arg$ and go: PHEW! $arg$.")
+      (rest "$mcname$ wipe$s$ $mposs$ brow $arg$ and go$s$: PHEW!")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wipe your brow and go: PHEW! at $hcname$.")
+      (target "$mcname$ wipe$s$ $mposs$ brow and go$s$: PHEW! at you.")
+      (rest  "$mcname$ wipe$s$ $mposs$ brow and go$s$: PHEW! at $hcname$.")
+    )
+    (arguments
+      (arguments  with relief,happily,#)
+      (self   "You wipe your brow $arg$ and go: PHEW! at $hcname$.")
+      (target "$mcname$ wipe$s$ $mposs$ brow $arg$ and go$s$: PHEW! at you.")
+      (rest  "$mcname$ wipe$s$ $mposs$ brow $arg$ and go$s$: PHEW! at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pick.s
+==================================================
+
+(pick
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments nose,ear,#)
+      (self "You pick your $arg$.")
+      (rest "$mcname$ pick$s$ $mposs$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pinch.s
+==================================================
+
+(pinch
+  (pattern "<indirect:any-living> on the <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [on] <string>")
+  (single
+    (no-arguments
+      (self "You pinch yourself.")
+      (rest "$mcname$ pinch$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You pinch $hcname$.")
+      (target "$mcname$ pinch$s$ you.")
+      (rest   "$mcname$ pinch$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  bottom, leg, arm, frog, cheek, #)
+      (self   "You pinch $hcname$ on the $arg$.")
+      (target "$mcname$ pinch$s$ you on the $arg$.")
+      (rest   "$mcname$ pinch$s$ $hcname$ on the $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pine.s
+==================================================
+
+(pine
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You pine away.")
+      (rest "$mcname$ pine$s$ away.")
+    )
+    (arguments
+      (arguments dramatically, melodramatically, romantically, swooningly, 
+                 sarcastically, longingly, lovingly, not at all, #)
+      (self "You pine $arg$.")
+      (rest "$mcname$ pine$s$ $arg$.")
+    )
+   )
+  (targeted
+    (no-arguments
+      (self   "You pine at $hcname$.")
+      (target "$mcname$ pine$s$ at you.")
+      (rest  "$mcname$ pine$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments dramatically, melodramatically, romantically, swooningly, 
+                 sarcastically, longingly, lovingly, not at all, #)
+      (self   "You pine $arg$ at $hcname$.")
+      (target "$mcname$ pine$s$ $arg$ at you.")
+      (rest  "$mcname$ pine$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments for)
+      (self   "You pine for $hcname$.")
+      (target "$mcname$ pine$s$ for you.")
+      (rest  "$mcname$ pine$s$ for $hcname$.")
+    )  
+  )
+)
+
+
+==================================================
+FILE: p/ping.s
+==================================================
+
+(ping
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You ping $hcname$.")
+      (target "$mcname$ ping$s$ you.")
+      (rest  "$mcname$ ping$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pity.s
+==================================================
+
+(pity
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You pity $hcname$.")
+      (target "$mcname$ pity$s$ you.")
+      (rest  "$mcname$ pity$s$ $hcname$.")
+    )
+    (arguments
+      (arguments #)
+      (self   "You pity $hcname$ $arg$.")
+      (target "$mcname$ pity$s$ you $arg$.")
+      (rest  "$mcname$ pity$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/plead.s
+==================================================
+
+(plead
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (arguments
+      (arguments  mercy, frogs, lots of money, a Decstation 5000, 
+                  this stupid soul to go away, an X windows terminal, 
+                  creators, bil, pinkfish's sanity)
+      (self "You plead for $arg$.")
+      (rest "$mcname$ plead$s$ for $arg$.")
+    )
+    (arguments
+      (arguments  miserably)
+      (self "You plead miserably - you're a miserable pleader.")
+      (rest "$mcname$ plead$s$ miserably - $mpronoun$'s a miserable pleader.")
+    )
+    (arguments
+      (arguments  insanity, a momentary lapse of reason, the fifth, 
+                  irrationally, helpfully, strategically, #)
+      (self "You plead $arg$.")
+      (rest "$mcname$ plead$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+       (self   "You plead at $hcname$.")
+       (target "$mcname$ plead$s$ at you.")
+       (rest   "$mcname$ plead$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  insanity, a momentary lapse of reason, the fifth, 
+                  irrantionally, helpfully, strategically, #)
+      (self   "You plead $arg$ at $hcname$.")
+      (target "$mcname$ plead$s$ $arg$ at you.")
+      (rest   "$mcname$ plead$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  mercy, oranges, apples, beetroots, a lollipop)
+      (self   "You plead with $hcname$ for $arg$.")
+      (target "$mcname$ plead$s$ with you for $arg$.")
+      (rest   "$mcname$ plead$s$ with $hcname$ for $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/plot.s
+==================================================
+
+(plot
+  (pattern "<string>")
+  (pattern "[against] <indirect:any-living>")
+  (pattern "<string> [with] <indirect:any-living>")
+  (pattern "[with] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You plot.")
+      (rest "$mcname$ plot$s$.")
+    )
+    (arguments
+      (arguments  to overthrow the Disc, to downgrape spells, 
+                  another skills cut, a mutiny, a strategic alliance, 
+                  a rebellion, a cunning plan, more cunning plans, 
+                  vicious things, horrible tortures, like a deranged frog, 
+                  to make someone's day, cunningly, madly, and scheme, 
+                  thoughtfully, a diversion, like a mad scientist, 
+                  like the Scarlet Pimpernel, like Robespierre, 
+                  like a Guild Master, like a Magistrate, like a High Lord, like Pinky and the Brain, #)
+      (self "You plot $arg$.")
+      (rest "$mcname$ plot$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  against)
+      (self   "You plot $arg$ $hcname$.")
+      (target "$mcname$ plot$s$ $arg$ you.")
+      (rest   "$mcname$ plot$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments  with)
+      (self   "You plot with $hcname$.")
+      (target "$mcname$ plot$s$ with you.")
+      (rest   "$mcname$ plot$s$ with $hcname$.")
+    )
+    (arguments
+      (arguments  to overthrow the Disc, to downgrape spells, 
+                  another skills cut, a mutiny, a strategic alliance, 
+                  a rebellion, a cunning plan, more cunning plans, 
+                  vicious things, horrible tortures, like a deranged frog, 
+                  to make someone's day, cunningly, madly, and scheme, 
+                  thoughtfully, a diversion, like a mad scientist, 
+                  like the Scarlet Pimpernel, like Robespierre, 
+                  like a Guild Master, like a Magistrate, like a High Lord, like Pinky and the Brain, #)
+      (self   "You plot $arg$ with $hcname$.")
+      (target "$mcname$ plot$s$ $arg$ with you.")
+      (rest   "$mcname$ plot$s$ $arg$ with $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/point.s
+==================================================
+
+(point
+  (pattern "[at] <string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You point.")
+      (rest "$mcname$ points.")
+    )
+    (arguments
+      (arguments north, south, east, west, up, down, around, nowhere in 
+                 particular, in two directions at once, #)
+      (self "You point $arg$.")
+      (rest "$mcname$ point$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You point at $hcname$.")
+      (target "$mcname$ point$s$ at you.")
+      (rest  "$mcname$ point$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments baton, pencil, wand, broom, sword, finger, thumb, quill,     
+                 pointy hat, argument, breadstick, Irish setter, #)
+      (self   "You point your $arg$ at $hcname$.")
+      (target "$mcname$ point$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ point$s$ $mposs$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments accusingly, straight, right, pointingly)
+      (self   "You point $arg$ at $hcname$.")
+      (target "$mcname$ point$s$ $arg$ at you.")
+      (rest   "$mcname$ point$s$ $arg$ at $hcname$.")
+    )  
+  )
+)
+
+
+
+==================================================
+FILE: p/poke.s
+==================================================
+
+(poke
+  (pattern "<indirect:any-living> in the <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [in] <string>")
+  (targeted
+    (no-arguments
+      (self   "You poke $hcname$.")
+      (target "$mcname$ poke$s$ you.")
+      (rest  "$mcname$ poke$s$ $hcname$.")
+    )
+    (arguments
+      (arguments eyes,ribs,legs,nose,ear,stomach,
+                 chest like a miffed Deutha,#)
+      (self   "You poke $hcname$ in the $arg$.")
+      (target "$mcname$ poke$s$ you in the $arg$.")
+      (rest  "$mcname$ poke$s$ $hcname$ in the $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/polka.s
+==================================================
+
+(polka
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+  (arguments
+  (arguments with reckless abandon,with dots,gracefully,clumsily,slowly,
+               to the Pennsylvania Polka,seductively,with a glittering smile,
+               with an obscure argument,#)
+      (self   "You polka $hcname$ $arg$.")
+      (target "$mcname$ polka$s$ you $arg$.")
+      (rest  "$mcname$ polka$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/* Idea by Shalla */
+
+
+
+==================================================
+FILE: p/ponder.s
+==================================================
+
+(ponder
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ponder.")
+      (rest "$mcname$ ponder$s$.")
+    )
+    (arguments
+      (arguments  the meaning of it all, the situation, wombles, cars, fruit, 
+                  pigeons, frogs, toy trains, environmental concerns, 
+                  nuclear disasters, love, #)
+      (self "You ponder $arg$.")
+      (rest "$mcname$ ponder$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ponder at $hcname$.")
+      (target "$mcname$ ponder$s$ at you.")
+      (rest   "$mcname$ ponder$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  sanity, situation, wombles, cars, fruit, pigeons, frogs, 
+                  toy trains, hobbies, passions, loves, hates, hairstyle)
+      (self   "You ponder $mhcname$ $arg$.")
+      (target "$mcname$ ponder$s$ your $arg$.")
+      (rest   "$mcname$ ponder$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  thoughtfully, sarcastically, hard, knowingly, interestingly, 
+                  worriedly, happily, sadly, cutely, #)
+      (self   "You ponder at $hcname$ $arg$.")
+      (target "$mcname$ ponder$s$ at you $arg$.")
+      (rest   "$mcname$ ponder$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/poofie.s
+==================================================
+
+(poofie
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You poofie.")
+      (rest "$mcname$ poofie$s$.")
+    )
+    (arguments
+      (arguments playfully, with a large puff, with reckless abandon, vaguely, suddenly, affectionately, randomly, #)
+      (self "You poofie $arg$.")
+      (rest "$mcname$ poofie$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You poofie at $hcname$.")
+      (target "$mcname$ poofie$s$ at you.")
+      (rest  "$mcname$ poofie$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments playfully, with a large puff, with reckless abandon, vaguely, suddenly, affectionately, randomly, #)
+      (self   "You poofie $arg$ at $hcname$.")
+      (target "$mcname$ poofie$s$ $arg$ at you.")
+      (rest  "$mcname$ poofie$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pose.s
+==================================================
+
+(pose
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You strike a pose.")
+      (rest "$mcname$ strike$s$ a pose.")
+    )
+    (arguments
+      (arguments  keenly, hoopily, froggily, slimily, brilliantly, wetly,
+                  tiredly, drunkenly, smarmily, smartly, quietly, awkwardly, 
+                  loudly, evenly, sarcastically, like a creator, hollowly, 
+                  mechanically, in victory, weakly, icily, soggily,
+                  overworkedly, like a pretzel, greenly, discreetly, in self 
+                  defense, woundedly, like a cat, fuzzily, sharply, like a 
+                  parcel, like a desk lamp, electrically, absentmindedly, 
+                  hurriedly, #)
+      (self "You pose $arg$.")
+      (rest "$mcname$ pose$s$ $arg$.")
+    )
+    (arguments 
+      (arguments heroic, modest, superhero, runway, memorable, cute, fussy)
+      (self "You strike a $arg$ pose.")
+      (rest "$mcname$ strike$s$ a $arg$ pose.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You strike a pose at $hcname$.")
+      (target "$mcname$ strike$s$ a pose at you.")
+      (rest  "$mcname$ strike$s$ a pose at $hcname$.")
+    )
+    (arguments
+      (arguments  keenly, hoopily, froggily, slimily, brilliantly, wetly,
+                  tiredly, drunkenly, smarmily, smartly, quietly, awkwardly, 
+                  loudly, evenly, sarcastically, like a creator, hollowly, 
+                  mechanically, in victory, weakly, icily, soggily,
+                  overworkedly, like a pretzel, greenly, discreetly, in self 
+                  defense, woundedly, like a cat, fuzzily, sharply, like a 
+                  parcel, like a desk lamp, electrically, absentmindedly, 
+                  hurriedly, #)
+      (self   "You pose $arg$ at $hcname$.")
+      (target "$mcname$ pose$s$s $arg$ at you.")
+      (rest  "$mcname$ pose$s$ $arg$ at $hcname$.")
+    )
+    (arguments 
+      (arguments heroic, modest, superhero, runway, memorable, cute, fussy)
+      (self "You strike a $arg$ pose at $hcname$.")
+      (target "$mcname$ pose$s$ $arg$ at you.")
+      (rest "$mcname$ strike$s$ a $arg$ pose at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pottymouth.s
+==================================================
+
+(pottymouth
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments soap, bleach, rat poison, last night's vindaloo, toilet cleaner, #)
+      (self "You grab $hcname$ by the scruff of the neck and scrub $hposs$ mouth out with $arg$ and water.") 
+      (target "$mcname$ grab$s$ you by the scruff of the neck and scrub$s$ your mouth out with $arg$ and water.")
+      (rest "$mcname$ grab$s$ $hcname$ by the scruff of the neck and scrub$s$ $hposs$ mouth out with $arg$ and water.")
+    )
+  )
+)
+
+
+==================================================
+FILE: p/pounce.s
+==================================================
+
+(pounce
+  (pattern "[on] <indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You pounce on $hcname$.")
+      (target "$mcname$ pounce$s$ on you.")
+      (rest  "$mcname$ pounce$s$ on $hcname$.")
+    )
+    (arguments
+      (arguments  excitedly, seductively, madly, carefully, appreciatively,
+                  selectively, with a wooden spoon, at near light speed,
+                  while showing some cleavage, # )
+      (self   "You pounce on $hcname$ $arg$.")
+      (target "$mcname$ pounce$s$ on you $arg$.")
+      (rest  "$mcname$ pounce$s$ on $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pout.s
+==================================================
+
+(pout
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You pout.")
+      (rest "$mcname$ pout$s$.")
+    )
+    (arguments
+      (arguments childishly,silently,resignedly, #)
+      (self "You pout $arg$.")
+      (rest "$mcname$ pout$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You pout at $hcname$.")
+      (target "$mcname$ pout$s$ at you.")
+      (rest  "$mcname$ pout$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments childishly,silently,resignedly, #)
+      (self   "You pout $arg$ at $hcname$.")
+      (target "$mcname$ pout$s$ $arg$ at you.")
+      (rest  "$mcname$ pout$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: p/praise.s
+==================================================
+
+(praise
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You praise $hcname$.")
+      (target "$mcname$ praise$s$ you.")
+      (rest  "$mcname$ praise$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  to the skies,obsequiously,loudly,and asks for more money,#)
+      (self   "You praise $hcname$ $arg$.")
+      (target "$mcname$ praise$s$ you $arg$.")
+      (rest  "$mcname$ praise$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/* Hobbes */
+
+
+==================================================
+FILE: p/prance.s
+==================================================
+
+(prance
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You prance around.")
+      (rest "$mcname$ prance$s$ around.")
+    )
+    (arguments
+      (arguments happily, madly, brightly, sadly, backwards, mischievously, 
+                 gleefully, like a pictsie, like a sprite, like a mountain 
+                 goat, like a court jester, like a tumbler, like a gymnast, 
+                 like a troll, like a ballerina, like a hippopotamus, like an 
+                 assassin, #)
+      (self "You prance around $arg$.")
+      (rest "$mcname$ prance$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You prance around $hcname$.")
+      (target "$mcname$ prance$s$ around you.")
+      (rest   "$mcname$ prance$s$ around $hcname$.")
+    )    
+    (arguments
+      (arguments happily, madly, brightly, sadly, backwards, mischievously, 
+                 gleefully, like a pictsie, like a sprite, like a mountain 
+                 goat, like a court jester, like a tumbler, like a gymnast, 
+                 like a troll, like a ballerina, like a hippopotamus, like an 
+                 assassin, #)
+      (self   "You prance around $hcname$ $arg$.")
+      (target "$mcname$ prance$s$ around you $arg$.")
+      (rest   "$mcname$ prance$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Implemented by Saffra, suggested by Puk and Beale Apr 02 2003 */
+
+
+==================================================
+FILE: p/preen.s
+==================================================
+
+(preen
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You preen yourself.")
+      (rest "$mcname$ preen$s$ $mobj$self.")
+    )
+    (arguments
+    (arguments  proudly, happily, graciously, flirtatiously, 
+                successfully, limply, wonderfully, amazingly, brightly, #)
+      (self "You preen yourself $arg$.")
+      (rest "$mcname$ preen$s$ $mobj$self $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You preen yourself at $hcname$.")
+      (target "$mcname$ preen$s$ $mobj$self at you.")
+      (rest   "$mcname$ preen$s$ $mobj$self at $hcname$.")
+    )
+    (arguments
+    (arguments  proudly, happily, graciously, flirtatiously, 
+                successfully, limply, wonderfully, amazingly, brightly, #)
+      (self   "You preen yourself at $hcname$.")
+      (target "$mcname$ preen$s$ $mobj$self at you.")
+      (rest   "$mcname$ preen$s$ $mobj$self at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: p/prescribe.s
+==================================================
+
+(prescribe
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments dried frog pills, narcotics, bedrest, sanity, chill,#)
+      (self "You prescribe a dose of $arg$ for $hcname$.")
+      (target "$mcname$ prescribe$s$ a dose of $arg$ for $hcname$.")
+      (rest "$mcname$ prescribe$s$ a dose of $arg$ for $hcname$".)
+    )
+  )
+)
+
+
+==================================================
+FILE: p/prod.s
+==================================================
+
+(prod
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (targeted
+      (no-arguments
+          (self "You prod $hcname$.")
+          (target "$mcname$ prod$s$ you.")
+          (rest "$mcname$ prod$s$ $hcname$.")
+      )
+      (arguments
+          (arguments with a stick, cautiously, happily, mischievously,
+                     cheekily, idiotically, wryly, sceptically,
+                     derisively, annoyingly, absentmindedly,
+                     whilst you work, distractedly, pointlessly,
+                     silently, loudly, rudely, in the buttock, with laughter,
+                     vaguely, obviously, #)
+          (self   "You prod $hcname$ $arg$.")
+          (target "$mcname$ prod$s$ you $arg$.")
+          (rest  "$mcname$ prod$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/promise.s
+==================================================
+
+(promise
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+    (single
+      (no-arguments 
+      (self "You promise.")
+      (rest "$mcname$ promise$s$.")
+      )
+      (arguments
+        (arguments  the world, on your honour, you really mean it this time, #)
+        (self   "You promise $arg$.")
+        (rest  "$mcname$ promise$s$ $arg$.")
+      )
+    )
+    (targeted
+      (arguments
+      (arguments  the world, on your honour, #)
+        (self   "You promise $hcname$ $arg$.")
+        (target "$mcname$ promise$s$ you $arg$.")
+        (rest  "$mcname$ promise$s$ $hcname$ $arg$.")
+      )
+      (arguments you really mean it this time)
+        (self   "You promise $hcname$ you really mean it this time.")
+        (target "$mcname$ promise$s$ you $mpronoun$ really means it this time.")
+        (rest  "$mcname$ promise$s$ $hcname$ $mpronoun$ really means it this 
+                time.")
+      )
+   )
+)
+
+
+==================================================
+FILE: p/propose.s
+==================================================
+
+(propose
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You propose to $hcname$.")
+      (target "$mcname$ propose$s$ to you.")
+      (rest   "$mcname$ propose$s$ to $hcname$.")
+    )
+    (arguments
+      (arguments  close, affectionately, cutely, happily, sadly, 
+                  comfortingly, madly, #)
+      (self   "You propose to $hcname$ $arg$.")
+      (target "$mcname$ propose$s$ to you $arg$.")
+      (rest   "$mcname$ propose$s$ to $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/protest.s
+==================================================
+
+(protest
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You protest.")
+      (rest "$mcname$ protest$s$.")
+    )
+    (arguments
+      (arguments vehemently,loudly,strongly,weakly,noisily,
+                 pointlessly,annoyingly,#)
+      (self "You protest $arg$.")
+      (rest "$mcname$ protest$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/puke.s
+==================================================
+
+(puke
+  (pattern "[on|at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You brighten up the place.")
+      (rest "$mcname$ do$s$ a technicolour yawn.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You puke on $hcname$.")
+      (target "$mcname$ puke$s$ on you.")
+      (rest  "$mcname$ puke$s$ on $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/pull.s
+==================================================
+
+(pull
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You pull yourself together.")
+      (rest "$mcname$ pull$s$ $mobj$self together.")
+    )
+    (arguments
+     (arguments  leg, hair, finger, sleeve, naughty bits, lever, blue lever,  
+                 hamstring, leash, beard, jock strap, file, act together, #)
+      (self "You pull your $arg$.")
+      (rest "$mcname$ pull$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You pull $hcname$ together.")
+      (target "$mcname$ pull$s$ you together.")
+      (rest   "$mcname$ pull$s$ $hcname$ together.")
+    )
+    (arguments
+     (arguments leg, hair, finger, sleeve, naughty bits, lever, blue lever,  
+                hamstring, leash, beard, jock strap, file, act together, #)
+      (self "You pull $mhcname$ $arg$.")
+      (target "$mcname$ pull$s$ your $arg$.")
+      (rest "$mcname$ pull$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+/* Saffra 4-26-00 */
+
+
+
+==================================================
+FILE: p/purr.s
+==================================================
+
+(purr
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+   (arguments 
+     (arguments  contentedly,demonically,loudly,happily,sensuously,
+      like a cute kitten, #)
+      (self "You purr $arg$.")
+      (rest "$mcname$ purr$s$ $arg$.")
+    )
+  )
+  (targeted     
+    (arguments
+      (arguments contentedly,demonically,loudly,happily,sensuously,
+       like a cute kitten, #)
+      (self   "You purr $arg$ at $hcname$.")
+      (target "$mcname$ purr$s$ $arg$ at you.")
+      (rest  "$mcname$ purr$s$ $arg$ at $hcname$.")
+     )
+   )
+ )
+
+
+
+==================================================
+FILE: p/push.s
+==================================================
+
+(push
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You push $hcname$ over$position$.")
+      (target "$mcname$ push$s$ you over$position$.")
+      (rest  "$mcname$ push$s$ $hcname$ over$position$.")
+      (position
+        (standing "sit")
+        (lying "ignore")
+        (default "lie")
+        (silent "yes")
+      )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: p/puzzle.s
+==================================================
+
+(puzzle
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You look puzzled.")
+      (rest "$mcname$ look$s$ puzzled.")
+    )
+    (arguments
+      (arguments #)
+      (self "You puzzle over $arg$.")
+      (rest "$mcname$ puzzle$s$ over $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/massage.s
+==================================================
+
+(massage
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ a massage.")
+      (target "$mcname$ give$s$ you a massage.")
+      (rest   "$mcname$ give$s$ $hcname$ a massage.")
+    )
+    (arguments
+      (arguments good,bad,ugly,long,refreshing,pink,full body,
+                 seductive,sensuous,strange,painful,deep,meaningful,
+                 ergonomic,economic,painless,memorable,different,
+                 unwanted,unwarranted,unprovoked,unknown,sneaky,
+                 unnoticed,unwieldy,back,professional,unprofessional,
+                 happy,sad,trained,untrained,train,virgin mary,
+                 compact,quick,foot,leg,head,teeth,neck,
+                 shoulder,nose, sensual, oiled, #)
+      (self   "You give $hcname$ $article$ $arg$ massage.")
+      (target "$mcname$ give$s$ you $article$ $arg$ massage.")
+      (rest   "$mcname$ give$s$ $hcname$ $article$ $arg$ massage.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/meep.s
+==================================================
+
+(meep
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You meep.")
+      (rest "$mcname$ meep$s$.")
+    )
+    (arguments 
+      (arguments happily, sadly, brightly, curtly, patiently, slowly, eagerly,
+                 expectantly, firmly, sagely, emphatically, knowingly, 
+                 vigorously, in disagreement, tentatively, angrily, kindly, 
+                 like an alarm clock, like a roadrunner, meekly, quietly, 
+                 shyly, tiredly, in fear, in slight surprise, coweringly, 
+                 weakly, mild-mannereredly, #)
+      (self "You meep $arg$.")
+      (rest "$mcname$ meep$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You meep at $hcname$.")
+      (target "$mcname$ meep$s$ at you.")
+      (rest   "$mcname$ meep$s$ at $hcname$.")
+    )
+    (arguments 
+    (arguments happily, sadly, brightly, curtly, patiently, slowly, eagerly,
+               expectantly, firmly, sagely, emphatically, knowingly, 
+               vigorously, in disagreement, tentatively, angrily, kindly, 
+               like an alarm clock, like a roadrunner, meekly, quietly, 
+               shyly, tiredly, in fear, in slight surprise, coweringly, 
+               weakly, mild-mannereredly, #)
+    (self   "You meep $arg$ at $hcname$.")
+    (target "$mcname$ meep$s$ $arg$ at you.")
+    (rest   "$mcname$ meep$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Saffra 20 Apr 2001 */
+
+
+==================================================
+FILE: m/melt.s
+==================================================
+
+(melt
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You melt.")
+      (rest "$mcname$ melt$s$.")
+    )
+    (arguments
+      (arguments quickly,slowly,into a nice puddle,carefully,
+           in anticipation,in ecstasy,seductively,submissively,a little,
+           messily, #)
+      (self "You melt $arg$.")
+      (rest "$mcname$ melt$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments arms,mouth,hands,room,house,candle,moth,coffee,tea,
+                 cupcake,pocket,pants,bed,bath,microwave,computer,
+                 brainwaves,heart,mind,soul)
+      (self   "You melt in $mhcname$ $arg$.")
+      (target "$mcname$ melt$s$ in your $arg$.")
+      (rest   "$mcname$ melt$s$ in $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments with flames,coldly,excitedly,happily,brightly,
+                 using a coffee table,in anticipation,seductively,quickly,
+                 carefully,slowly,submissively,warmly,messily,goopily)
+      (self   "You melt $arg$ in $mhcname$ arms.")
+      (target "$mcname$ melt$s$ $arg$ in your arms.")
+      (rest   "$mcname$ melt$s$ $arg$ in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments cover yourself in chocolate sauce)
+      (self   "You cover yourself in chocolate sauce and melt in $mhcname$ arms.")
+      (target "$mcname$ cover$s$ $mobj$self in chocolate sauce and melts in your arms.")
+      (rest   "$mcname$ cover$s$ $mobj$self in chocolate sauce and melts in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments scream,faint,explode,overheat)
+      (self   "You $arg$ and melt in $mhcname$ arms.")
+      (target "$mcname$ $arg$s and melt$s$ in your arms.")
+      (rest   "$mcname$ $arg$s and melt$s$ in $mhcname$ arms.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/meow.s
+==================================================
+
+(meow
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You meow.")
+      (rest "$mcname$ meow$s$.")
+    )
+    (arguments
+      (arguments like a cat,like a cute kitten,like a cabbage,happily,insanely,mischievously,affectionately,faintly,like Hobbes,#)
+      (self "You meow $arg$.")
+      (rest "$mcname$ meow$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You meow at $hcname$.")
+      (target "$mcname$ meow$s$ at you.")
+      (rest  "$mcname$ meow$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a cat,like a cute kitten,like a cabbage,happily,insanely,mischievously,affectionately,faintly,like Hobbes,#)
+      (self   "You meow $arg$ at $hcname$.")
+      (target "$mcname$ meow$s$ $arg$ at you.")
+      (rest  "$mcname$ meow$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mime.s
+==================================================
+
+(mime
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (arguments
+      (arguments being stuck inside a fishtank, climbing some stairs,
+       blowing up a balloon which bursts, 
+       carrying a large sheet of glass, drinking a bottle of scumble, 
+       being hung by the Patrician, pushing a large box,
+       being hung over a scorpion pit, #)
+      (self "You mime $arg$.")
+      (rest "$mcname$ mime$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments being stuck inside a fishtank, climbing some stairs,
+       blowing up a balloon which bursts, 
+       carrying a large sheet of glass, drinking a bottle of scumble, 
+       being hung by the Patrician, pushing a large box,
+       being hung over a scorpion pit, #)
+      (self "You mime $arg$ for $mhcname$ amusement.")
+      (target "$mcname$ mime$s$ $arg$ for your amusement.")
+      (rest  "$mcname$ mime$s$ $arg$ for $mhcname$ amusement.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/moan.s
+==================================================
+
+(moan
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You moan.")
+      (rest "$mcname$ moan$s$.")
+    )
+    (arguments
+      (arguments gently, deeply, sensually, agonisingly, in terror, loudly, 
+                 excitedly, painfully, #)
+      (self "You moan $arg$.")
+      (rest "$mcname$ moan$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You moan at $hcname$.")
+      (target "$mcname$ moan$s$ at you.")
+      (rest "$mcname$ moan$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments gently, deeply, sensually, agonisingly, in terror, loudly, 
+                 excitedly, painfully, #)
+      (self "You moan $arg$ at $hcname$.")
+      (target "$mcname$ moan$s$ $arg$ at you.")
+      (rest "$mcname$ moan$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: m/moo.s
+==================================================
+
+(moo
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You moo.")
+      (rest "$mcname$ moo$s$.")
+    )
+    (arguments
+      (arguments like a cow,like a bottle of milk,like a tree,happily,
+                 annoyingly,like Hobbes,from halfway up a tree,#)
+      (self "You moo $arg$.")
+      (rest "$mcname$ moo$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You moo at $hcname$.")
+      (target "$mcname$ moo$s$ at you.")
+      (rest  "$mcname$ moo$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a cow,like a bottle of milk,like a tree,
+                 happily,annoyingly,like Hobbes,from halfway up a tree,#)
+      (self   "You moo $arg$ at $hcname$.")
+      (target "$mcname$ moo$s$ $arg$ at you.")
+      (rest  "$mcname$ moo$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Hobbes, 961204 */
+
+
+==================================================
+FILE: m/moon.s
+==================================================
+
+(moon
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You drop your pants and moon $hcname$.")
+      (target "$mcname$ drop$s$ $mposs$ pants and moons you.")
+      (rest   "$mcname$ drop$s$ $mposs$ pants and moons $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/moonwalk.s
+==================================================
+
+(moonwalk
+  (pattern "[over] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [over] <indirect:any-living>")
+  (pattern "[over] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You moonwalk like Michael Jackson, but without the monkey.")
+      (rest "$mcname$ moonwalks like Michael Jackson, but without the monkey. ")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You moonwalk all over $hcname$.")
+      (target "$mcname$ moonwalks all over you.")
+      (rest  "$mcname$ moonwalks all over $hcname$.")
+    )
+    (arguments
+      (arguments like Michael Jackson, but without the monkey,#)
+      (self   "You moonwalk $arg$ over $hcname$.")
+      (target "$mcname$ moonwalks $arg$ over you.")
+      (rest  "$mcname$ moonwalks $arg$ over $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mope.s
+==================================================
+
+(mope
+  (pattern "<indirect:any-living> around <string>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "about <string>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You mope about.")
+      (rest "$mcname$ mope$s$ about.")
+    )
+    (arguments
+      (arguments  quickly, slowly, into a nice puddle, carefully, 
+                  in anticipation, in ecstasy, seductively, submissively, 
+                  a little, cutely, carefully, scarily, 
+                  towards the end of a pole, without a care in the world, 
+                  scurrilously, #)
+      (self "You mope about $arg$.")
+      (rest "$mcname$ mope$s$ about $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You mope around $hcname$.")
+      (target "$mcname$ mope$s$ around you.")
+      (rest   "$mcname$ mope$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments  quickly, slowly, into a nice puddle, carefully, 
+                  in anticipation, in ecstasy, seductively, submissively, 
+                  a little, cutely, carefully, scarily, 
+                  towards the end of a pole, without a care in the world, 
+                  scurrilously, #)
+      (self   "You mope around $hcname$ $arg$.")
+      (target "$mcname$ mope$s$ around you.")
+      (rest   "$mcname$ mope$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mosh.s
+==================================================
+
+(mosh
+  (pattern "<string>" )
+  (pattern "<indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> [at] <indirect:any-living>") 
+  (single
+    (arguments
+      (arguments violently, angrily, carefully, thoughtfully, wonderingly,
+                 vigorously, insanely, loudly, like Trent, clumsily, 
+                 drunkenly,  in combat boots, #)
+      (self "You mosh $arg$ around the room.")
+      (rest "$mcname$ mosh$s$ $arg$ around the room.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments violently, angrily, carefully, thoughtfully, wonderingly,
+                 vigorously, insanely, loudly, like Trent, clumsily,  
+                 drunkenly, in combat boots, #)
+      (self   "You mosh up against $hcname$ $arg$.")
+      (target "$mcname$ mosh$s$ up against you $arg$.")
+      (rest   "$mcname$ mosh$s$ up against $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: m/mother.s
+==================================================
+
+(mother
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>") 
+  (targeted
+    (no-arguments
+      (self   "You mother $hcname$.")
+      (target "$mcname$ mother$s$ you.")
+      (rest   "$mcname$ mother$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  fussily, happily, lovingly, caringly, 
+                  carefully, worriedly, dotingly, 
+                  like your mother would, like your father would, #)
+      (self   "You mother $hcname$ $arg$.")
+      (target "$mcname$ mother$s$ you $arg$.")
+      (rest   "$mcname$ mother$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  with a wooden spoon)
+      (self   "You mother $hcname$ $arg$.")
+      (target "$mcname$ mother$s$ you $arg$.  Whap!  Whap!  Whap!")
+      (rest   "$mcname$ mother$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mourn.s
+==================================================
+
+(mourn
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You mourn.")
+      (rest   "$mcname$ mourn$s$.")
+    )
+    (arguments
+      (arguments the slow death of frogs,#)
+      (self "You mourn $arg$.")
+      (rest "$mcname$ mourn$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You mourn $hcname$.")
+      (target "$mcname$ mourn$s$ you.")
+      (rest   "$mcname$ mourn$s$ $hcname$.")
+    )
+    (arguments
+    (arguments mournfully, sadly, sincerely, apologetically, ghoulishly, 
+               macabrely, gleefully, smugly, again, not at all, #)
+      (self   "You mourn $hcname$ $arg$.")
+      (target "$mcname$ mourn$s$ you $arg$.")
+      (rest   "$mcname$ mourn$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: m/mowr.s
+==================================================
+
+(mowr
+  (pattern "<string>" )
+  (pattern "<indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> [at] <indirect:any-living>") 
+  (single
+    (no-arguments
+      (self "You mowr.")
+      (rest "$mcname$ mowr$s$.")
+    )
+    (arguments
+      (arguments  like a cat, like a cute kitten, like a lion, 
+                happily, mischievously, affectionately, seductively, 
+                flirtatiously, angrily, hungrily, sadly, #)
+      (self "You mowr $arg$.")
+      (rest "$mcname$ mowr$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You mowr at $hcname$.")
+      (target "$mcname$ mowrs$s$ at you.")
+      (rest "$mcname$ mowr$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  like a cat, like a cute kitten, like a lion, 
+                  happily, mischievously, affectionately, seductively, 
+                  flirtatiously, angrily, hungrily, sadly, #)
+      (self "You mowr $arg$ at $hcname$.")
+      (target "$mcname$ mowr$s$ $arg$ at you.")
+      (rest "$mcname$ mowr$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mumble.s
+==================================================
+
+(mumble
+   (pattern "<indirect:any-living>")
+   (pattern "<string>")
+   (pattern "<string> [at] <indirect:any-living>")
+   (pattern "[at] <indirect:any-living> <string>")
+   (single
+      (no-arguments
+      (self "You mumble under your breath.")
+      (rest "$mcname$ mumble$s$ under $mposs$ breath.")
+      )
+    (arguments
+      (arguments lag,creators,TM's,#)
+         (self "You mumble something about $arg$ under your breath.")
+         (rest "$mcname$ mumble$s$ something about $arg$ under $mposs$ breath.")
+      )
+   )
+   (targeted
+      (no-arguments
+      (self   "You mumble under your breath at $hcname$.")
+      (target "$mcname$ mumble$s$ under $mposs$ breath at you.")
+      (rest   "$mcname$ mumble$s$ under $mposs$ breath at $hcname$.")
+    )
+      (arguments
+      (arguments lag,creators,TM's,#)
+      (self   "You mumble under your breath about $arg$ at $hcname$.")
+      (target "$mcname$ mumble$s$ under $mposs$ breath about $arg$ at you.")
+      (rest   "$mcname$ mumble$s$ under $mposs$ breath about $arg$ at $hcname$.")
+      )
+   )
+)
+
+
+==================================================
+FILE: m/muss.s
+==================================================
+
+(muss
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You muss $mhcname$ hair.")
+      (target "$mcname$ muss$s$ your hair.")
+      (rest   "$mcname$ muss$s$ $mhcname$ hair.")
+    )
+    (arguments
+      (arguments slowly,lovingly,with a brick,patronisingly,
+                 suggestively,just like Kylie would)
+      (self   "You muss $mhcname$ hair $arg$.")
+      (target "$mcname$ muss$s$ your hair $arg$.")
+      (rest   "$mcname$ muss$s$ $mhcname$ hair $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: m/mutter.s
+==================================================
+
+(mutter
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You mutter under your breath.")
+      (rest "$mcname$ mutter$s$ under $mposs$ breath.")
+    )
+    (arguments
+      (arguments  lag, creators, TM's, #)
+         (self "You mutter something about $arg$ under your breath.")
+         (rest "$mcname$ mutter$s$ something about $arg$ under $mposs$ breath.")
+      )
+    )
+    (targeted
+      (no-arguments
+      (self   "You mutter under your breath at $hcname$.")
+      (target "$mcname$ mutter$s$ under $mposs$ breath at you.")
+      (rest   "$mcname$ mutter$s$ under $mposs$ breath at $hcname$.")
+    )
+    (arguments
+      (arguments  lag, creators, TM's, #)
+      (self   "You mutter under your breath about $arg$ at $hcname$.")
+      (target "$mcname$ mutter$s$ under $mposs$ breath about $arg$ at you.")
+      (rest   "$mcname$ mutter$s$ under $mposs$ breath about $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  darkly, quietly, loudly, verbosely, briefly, idly)
+      (self   "You mutter $arg$ at $hcname$.")
+      (target "$mcname$ mutter$s$ $arg$ at you.")
+      (rest   "$mcname$ mutter$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/*Hobbes 970311*/
+
+==================================================
+FILE: v/vader.s
+==================================================
+
+(vader
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string>")  
+  (single
+    (no-arguments
+      (self   "You squeeze your fingers together and say: \"I find your lack of faith disturbing.\"")    
+      (rest   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$: \"I find your lack of faith disturbing.\"")
+    )
+    (arguments
+      (arguments I find your lack of faith disturbing., You have failed me for the last time Admiral, #)
+      (self   "You squeeze your fingers together and say: \"$arg$\"")    
+      (rest   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$: \"$arg$\"")
+    )    
+  )
+  (targeted
+    (no-arguments
+      (self   "You squeeze your fingers together and say to $hcname$: \"I find your lack of faith disturbing.\"")    
+      (rest   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$ to $hcname$: \"I find your lack of faith disturbing.\"")    
+      (target   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$ to $hcname$: \"I find your lack of faith disturbing.\"")          
+    )
+    (arguments
+      (arguments I find your lack of faith disturbing., You have failed me for the last time Admiral, #)
+      (self   "You squeeze your fingers together and say to $hcname$: \"$arg$\"")    
+      (rest   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$ to $hcname$: \"$arg$\"")    
+      (target   "$mcname$ squeeze$s$ $mposs$ fingers together and say$s$ to $hcname$: \"$arg$\"")          
+    )
+  )
+)
+
+
+==================================================
+FILE: v/vomit.s
+==================================================
+
+(vomit
+  (pattern "[on|at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You brighten up the place.")
+      (rest "$mcname$ do$s$ a technicolour yawn.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You vomit on $hcname$.")
+      (target "$mcname$ vomit$s$ on you.")
+      (rest  "$mcname$ vomit$s$ on $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: i/ick.s
+==================================================
+
+(ick
+  (pattern "[at] <string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ick.")
+      (rest "$mcname$ ick$s$.")
+    )
+    (arguments
+      (arguments disgustedly, frightenedly, happily, carefully, ickily, 
+                 prissily, #)
+      (self "You ick $arg$.")
+      (rest "$mcname$ ick$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ick at $hcname$.")
+      (target "$mcname$ ick$s$ at you.")
+      (rest  "$mcname$ ick$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments disgustedly, frightenedly, happily, carefully, ickily, 
+                 prissily, #)
+      (self   "You ick $arg$ at $hcname$.")
+      (target "$mcname$ ick$s$ $arg$ at you.")
+      (rest  "$mcname$ ick$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: i/idle.s
+==================================================
+
+(idle
+  (pattern "at <indirect:any-living>")
+  (pattern "[like] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments like Pinkfish, like Zoroaster, like Biggles, like sloths do, 
+                 like a gherkin, like everyone else is, nonchalantly, quickly, 
+                 unbelievably well, without using your hands, upside-down,   
+                 hyperactively, standing still, artfully, around, intensely,
+                  like only Bastian can, like a Lord, #)
+      (self "You idle $arg$.")
+      (rest "$mcname$ idle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You idle at $hcname$.")
+      (target "$mcname$ idle$s$ at you.")
+      (rest  "$mcname$ idle$s$ at $hcname$.")
+    )
+    (no-arguments
+      (self   "You idle like $hcname$.")
+      (target "$mcname$ idle$s$ like you.")
+      (rest  "$mcname$ idle$s$ like $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: i/indian.s
+==================================================
+
+(indian
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ an indian burn.")
+      (target "$mcname$ give$s$ you an indian burn.")
+      (rest   "$mcname$ give$s$ $hcname$ an indian burn.")
+      
+      )   
+   )
+)
+/* HOBBES 970807 */
+
+
+==================================================
+FILE: o/obey.s
+==================================================
+
+(obey
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self   "You hear and obey.")
+      (rest   "$mcname$ hear$s$ and obey$s$.")
+    )
+    (arguments
+      (arguments  submissively, reluctantly, like Igor, #)
+      (self  "You obey $arg$.")
+      (rest  "$mcname$ obey$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hear and obey $hcname$.")
+      (target "$mcname$ hear$s$ and obey$s$ you.")
+      (rest  "$mcname$ hear$s$ and obey$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  submissively, reluctantly, like Igor, #)
+      (self   "You obey $hcname$ $arg$.")
+      (target "$mcname$ obey$s$ you $arg$.")
+      (rest  "$mcname$ obey$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: o/ogle.s
+==================================================
+
+(ogle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ogle at yourself.")
+      (rest "$mcname$ ogle$s$ at $mobj$self.  How odd.")
+    )
+    (arguments
+      (arguments  openly, surreptitiously, all over, lasciviously, lewdly, 
+                  wickedly, smarmily, seductively, like a dirty old man, 
+                  like a dirty old woman, like a one-eyed man, 
+                  with bugged-out eyes, like a cross-eyed Elvis impersonator, 
+                  fondly, sideways, with sheep's eyes, oogily, googily-oogly, #)
+      (self "You ogle $arg$ around the room.")
+      (rest "$mcname$ ogle$s$ $arg$ around the room.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ogle at $hcname$.")
+      (target "$mcname$ ogle$s$ at you.")
+      (rest   "$mcname$ ogle$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  openly, surreptitiously, all over, lasciviously, lewdly, 
+                  wickedly, smarmily, seductively, like a dirty old man, 
+                  like a dirty old woman, like a one-eyed man, 
+                  with bugged-out eyes, like a cross-eyed Elvis impersonator, 
+                  fondly, sideways, with sheep's eyes, oogily, googily-oogly, #)
+      (self   "You ogle $arg$ at $hcname$.")
+      (target "$mcname$ ogle$s$ $arg$ at you.")
+      (rest   "$mcname$ ogle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Saffra 2-01-02, idea rep */
+
+
+
+==================================================
+FILE: o/oink.s
+==================================================
+
+(oink
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You oink.")
+      (rest "$mcname$ oink$s$.")
+    )
+    (arguments
+      (arguments happily,like a pig,manically, evilly, wickedly, insanely, 
+                 mischievously, devilishly, impishly, cheekily, idiotically, 
+                 tentatively, wryly, sceptically,#)
+      (self "You oink $arg$.")
+      (rest "$mcname$ oink$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You oink at $hcname$.")
+      (target "$mcname$ oink$s$ at you.")
+      (rest  "$mcname$ oink$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily,like a pig,manically, evilly, wickedly, insanely, 
+                 mischievously, devilishly, impishly, cheekily, idiotically, 
+                 tentatively, wryly, sceptically,#)
+      (self   "You oink $arg$ at $hcname$.")
+      (target "$mcname$ oink$s$ $arg$ at you.")
+      (rest  "$mcname$ oink$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Hobbes, 961216 */
+
+
+==================================================
+FILE: o/oldbie.s
+==================================================
+
+(oldbie
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  better, faster, cheaper to advance, more full of NPCs, #)
+      (self "You begin to ramble about the ol' days and how it was much $arg$.")
+      (rest "$mcname$ begin$s$ to rant about the ol' days and how it was much $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  bitter, old, ancient, ancestor like, wrinkled, #)
+      (self   "You turn $hcname$ into an oldbie, $hpronoun$ looks utterly and completely $arg$.")
+      (target "$mcname$ turn$s$ you into an oldbie, you look completely and utterly $arg$.")
+      (rest   "$mcname$ turn$s$ $hcname$ into an oldbie, $hpronoun$ looks completely and utterly $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: o/ook.s
+==================================================
+
+(ook
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ook.")
+      (rest "$mcname$ ook$s$.")
+    )
+    (arguments
+      (arguments happily, like the librarian, manically, evilly, wickedly,
+                 insanely, mischievously, devilishly, impishly, cheekily, 
+                 idiotically, tentatively, wryly, skeptically, #)
+      (self "You ook $arg$.")
+      (rest "$mcname$ ook$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ook at $hcname$.")
+      (target "$mcname$ ook$s$ at you.")
+      (rest  "$mcname$ ook$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily, like the librarian, manically, evilly, wickedly,
+                 insanely, mischievously, devilishly, impishly, cheekily, 
+                 idiotically, tentatively, wryly, skeptically, #)
+      (self   "You ook $arg$ at $hcname$.")
+      (target "$mcname$ ook$s$ $arg$ at you.")
+      (rest  "$mcname$ ook$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Hobbes, 961216 */
+
+
+==================================================
+FILE: o/ooze.s
+==================================================
+
+(ooze
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You ooze.")
+      (rest "$mcname$ ooze$s$.")
+    )
+    (arguments
+      (arguments all over, coffee, capuccino, soda, tea, sweat, 
+                 testosterone, estrogen, blood, saliva, guts, slime,
+                 bodily fluids, charm, alcohol, code, #)
+      (self "You ooze $arg$.")
+      (rest "$mcname$ ooze$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ooze all over $hcname$.")
+      (target "$mcname$ ooze$s$ all over you.")
+      (rest   "$mcname$ ooze$s$ all over $hcname$.")
+    )
+    (arguments
+      (arguments coffee, capuccino, soda, tea, sweat, testosterone, 
+                 estrogen, blood, saliva, guts, slime, bodily fluids, 
+                 charm, alcohol, code, #)
+      (self   "You ooze $arg$ all over $hcname$.")
+      (target "$mcname$ ooze$s$ $arg$ all over you.")
+      (rest   "$mcname$ ooze$s$ $arg$ all over $hcname$.")
+    )
+  )
+)
+/* Saffra wrote this in early 2000 sometime. */
+
+==================================================
+FILE: o/ouch.s
+==================================================
+
+(ouch
+  (single
+    (no-arguments
+      (self "Oooouuuuuchhhh!")
+      (rest "$mcname$ scream$s$ 'ouch!' in pain.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: to_approve/tapdance.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker: wyvyrn $
+# $Id: tapdance.s,v 1.1 2002/05/09 03:58:27 saffra Exp wyvyrn $
+#
+#
+#
+
+(tapdance
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You tapdance around.")
+      (rest "$mcname$ tapdances around.")
+    )
+    (arguments
+      (arguments  like a centipede on acid, across the room, 
+                  to the Rim and back, to CWC and back, over a dead body, 
+                  over Dogbolter's dead body, with new shiny shoes, 
+                  manically, madly, stylishly, like a duck, 
+                  like Fred and Ginger, without falling in the sink, # )
+      (self "You tapdance around $arg$.")
+      (rest "$mcname$ tapdances around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You tapdance around $hcname$.")
+      (target "$mcname$ tapdances around you.")
+      (rest  "$mcname$ tapdances around $hcname$.")
+    )
+    (arguments
+      (arguments  like a centipede on acid, across the room, 
+                  to the Rim and back, to CWC and back, over a dead body, 
+                  over Dogbolter's dead body, with new shiny shoes, manically, 
+                  madly, stylishly, like a duck, like Fred and Ginger, 
+                  without falling in the sink, # )
+      (self   "You tapdance around $hcname$ $arg$.")
+      (target "$mcname$ tapdances around you $arg$.")
+      (rest  "$mcname$ tapdances around $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  grave)
+      (self   "You tapdance on $mhcname$ grave.")
+      (target "$mcname$ tapdances on your grave.")
+      (rest   "$mcname$ tapdances on $mhcname$ grave.")
+    )
+  )
+)
+
+
+==================================================
+FILE: z/zip.s
+==================================================
+
+(zip
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You zip around the room.")
+      (rest "$mcname$ zip$s$ around the room.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You zip around $hcname$.")
+      (target "$mcname$ zip$s$ around you.")
+      (rest  "$mcname$ zip$s$ around $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: z/zipzip.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: zipzip.s,v 1.2 2003/04/16 04:20:14 saffra Exp $
+#
+#
+#
+
+(zipzip
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You zip zip zippity zip around the room.")
+      (rest "$mcname$ zip zip zippity zip$s$ around the room.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You zip zip zippity zip around $hcname$.")
+      (target "$mcname$ zip zip zippity zip$s$ around you.")
+      (rest  "$mcname$ zip zip zippity zip$s$ around $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: z/zonk.s
+==================================================
+
+(zonk
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You go 'Zonke zonke zonke'.")
+      (rest "$mcname$ go$s$ 'Zonke zonke zonke'.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You zonk $hcname$ on the nose.")
+      (target "$mcname$ zonk$s$ you on the nose.")
+      (rest "$mcname$ zonk$s$ $hcname$ on the nose.")
+    )
+  )
+)
+
+
+==================================================
+FILE: z/zork.s
+==================================================
+
+(zork
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You zork.")
+      (rest "$mcname$ zork$s$.")
+    )
+    (arguments
+    (arguments  like a Swedish chef, with meatballs, #)
+      (self "You zorks $arg$.")
+      (rest "$mcname$ zork$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You zork at $hcname$.")
+    (target "$mcname$ zork$s$ at you.")
+    (rest "$mcname$ zork$s$ at $hcname$.")
+  )
+  (arguments
+    (arguments  like a Swedish chef, with meatballs, #)
+    (self "You zork at $hcname$ $arg$." )
+    (target "$mcname$ zork$s$ at you $arg$." )
+    (rest "$mcname$ zork$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: z/zot.s
+==================================================
+
+(zot
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You zot anxiously.")
+      (rest "$mcname$ zot$s$ anxiously.")
+    )
+    (arguments
+        (arguments with the staff of Zot, #)
+        (self "You zot $arg$.")
+        (rest "$mcname$ zot$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You zot $hcname$.")
+      (target "$mcname$ zot$s$ you.")
+      (rest  "$mcname$ zot$s$ $hcname$.")
+    )
+    (arguments
+        (arguments with the staff of Zot, #)
+        (self "You zot $hcname$ $arg$.")
+        (target "$mcname$ zot$s$ you $arg$.")
+        (rest "$mcname$ zot$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/handcuff.s
+==================================================
+
+(handcuff
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> [to] <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You handcuff yourself to a coffee table.")
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $mobj$self to a coffee table.")
+    )
+    (arguments  
+      (arguments  a coffee table, a refrigerator, a bicycle, a motorcycle,
+              a bedpost, a desk, a chair, a sofa, a mailbox, a drainpipe,
+              a cop, a cabbage, a womble, a computer, a shower, a frog, a spoon,
+              a door handle, a green door, a thought bubble,
+              a stick of dynamite, an ideal, a dentist, a cute girl,
+              a cute guy,
+              a High Lord, #)
+      (self "You handcuff yourself to $arg$.")
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $mobj$self to $arg$.")
+    )
+    (arguments  
+      (arguments  #)
+      (self "You handcuff yourself to $arg$.")
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $mobj$self to $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You handcuff yourself to $hcname$.")
+      (target "$mcname$ $verb$handcuffs,handcuff$ $mobj$self to you.")
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $mobj$self to $hcname$.")
+    )
+    (arguments
+      (arguments  a coffee table, a refrigerator, a bicycle, a motorcycle, 
+              a bedpost, a desk, a chair, a sofa, a mailbox, a drainpipe, 
+              a cop, a cabbage, a womble, a computer, a frog, a spoon,
+              a door handle, a green door, a thought bubble,
+              a stick of dynamite, an ideal, a dentist, a cute girl,
+              a cute guy,
+              a High Lord, #)
+      (self "You handcuff $hcname$ to $arg$." )
+      (target "$mcname$ $verb$handcuffs,handcuff$ you to $arg$." )
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $hcname$ to $arg$.")
+    )
+    (arguments
+      (arguments  #)
+      (self "You handcuff $hcname$ to $arg$." )
+      (target "$mcname$ $verb$handcuffs,handcuff$ you to $arg$." )
+      (rest "$mcname$ $verb$handcuffs,handcuff$ $hcname$ to $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: h/hang.s
+==================================================
+
+(hang
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments shame,sorrow,despair,happiness)
+      (self "You hang your head in $arg$.")
+      (rest "$mcname$ hang$s$ $mposs$ head in $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hang onto $hcname$.")
+      (target "$mcname$ hang$s$ onto you.")
+      (rest  "$mcname$ hang$s$ onto $hcname$.")
+    )
+    (arguments
+      (arguments  tightly,passionately,fearfully,possessively,paranoically)
+      (self   "You hang onto $hcname$ $arg$.")
+      (target "$mcname$ hang$s$ onto you $arg$.")
+      (rest  "$mcname$ hang$s$ onto $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hassle.s
+==================================================
+
+(hassle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [about] <string>")
+  (targeted
+    (no-arguments
+      (self   "You hassle $hcname$.")
+      (target "$mcname$ hassle$s$ you.")
+      (rest  "$mcname$ hassle$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  frogs,chickens,wombles,#)
+      (self   "You hassle $hcname$ about $arg$.")
+      (target "$mcname$ hassle$s$ you about $arg$.")
+      (rest  "$mcname$ hassle$s$ $hcname$ about $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hate.s
+==================================================
+
+(hate
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You hate the world.")
+      (rest "$mcname$ hate$s$ the world.")
+    )
+    (arguments
+      (arguments #)
+      (self "You hate $arg$.")
+      (rest "$mcname$ hate$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hate $hcname$.")
+      (target "$mcname$ hate$s$ you.")
+      (rest  "$mcname$ hate$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You hate $hcname$ $arg$.")
+      (target "$mcname$ hate$s$ you $arg$.")
+      (rest  "$mcname$ hate$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/*Hobbes 970415, suggested by Gruper. */
+
+
+==================================================
+FILE: h/headbang.s
+==================================================
+
+(headbang
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  to Music With Rocks In, wildly, with blatant disregard for
+                  safety, till dawn, like it was just invented, 
+                  like it was going out of style, violently, like a lady, 
+                  like Ralph Womblefluff, primally, gently, #)
+      (self "You headbang $arg$.")
+      (rest "$mcname$ headbang$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  to Music With Rocks In, wildly, with blatant disregard for
+                  safety, till dawn, like it was just invented, 
+                  like it was going out of style, violently, like a lady, 
+                  like Ralph Womblefluff, primally, gently, #)
+      (self   "You headbang $arg$ at $hcname$.")
+      (target "$mcname$ headbang$s$ $arg$ at you.")
+      (rest  "$mcname$ headbang$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Saffra, for Fevvling, Feb 8 2002 */
+
+
+
+==================================================
+FILE: h/headbutt.s
+==================================================
+
+(headbutt
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You headbutt $hcname$.")
+      (target "$mcname$ headbutt$s$ you.")
+      (rest  "$mcname$ headbutt$s$ $hcname$.")
+    )
+    (arguments
+      (arguments hard, in the nose, on the ear, slowly, unexpectedly,
+                 quickly, explosively, pointedly, #)
+      (self   "You headbutt $hcname$ $arg$.")
+      (target "$mcname$ headbutt$s$ you $arg$.")
+      (rest  "$mcname$ headbutt$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/headstand.s
+==================================================
+
+(headstand
+  (pattern "[on] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You stand on your head.")
+      (rest "$mcname$ stand$s$ on $mposs$ head.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You stand on $mhcname$ head.")
+      (target "$mcname$ stand$s$ on your head.")
+      (rest  "$mcname$ stand$s$ on $mhcname$ head.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hiccup.s
+==================================================
+
+(hiccup
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You hiccup.")
+      (rest "$mcname$ hiccup$s$.")
+    )
+    (arguments 
+    (arguments loudly, quietly, amusingly, frequently, contagiously, 
+               violently, meditatively, thoughtfully, disgustingly, 
+               rhythmically, thoroughly, uncontrollably, #)
+      (self "You hiccup $arg$.")
+      (rest "$mcname$ hiccup$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You hiccup at $hcname$.")
+      (target "$mcname$ hiccup$s$ at you.")
+      (rest "$mcname$ hiccup$s$ at $hcname$.")
+    )
+    (arguments 
+    (arguments loudly, quietly, amusingly, frequently, contagiously, 
+               violently, meditatively, thoughtfully, disgustingly, 
+               rhythmically, thoroughly, uncontrollably, #)
+      (self "You hiccup $arg$ at $hcname$.")
+      (target "$mcname$ hiccup$s$ $arg$ at you.")
+      (rest "$mcname$ hiccup$s$ $arg$ at $mcname$.")
+    )
+  )
+)
+
+/* Made targettable Dec 27 2001 Saffra */
+
+==================================================
+FILE: h/high5.s
+==================================================
+
+(high5
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You high five.")
+      (rest "$mcname$ high five$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You high five $hcname$.")
+      (target "$mcname$ high five$s$ you.")
+      (rest  "$mcname$ high five$s$ $hcname$.")
+    )
+  (arguments
+    (arguments happily,annoyingly,courteously,hysterically,absentmindedly)
+      (self "You high five $hcname$.")
+      (target "$mcname$ high five$s$ you $arg$.")
+      (rest "$mcname$ high five$s$ $hcname$ $arg$.")	
+	       )
+    )
+ )
+
+/* Changed by Hobbes, 961201 */
+
+==================================================
+FILE: h/hiss.s
+==================================================
+
+(hiss
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You hiss.")
+      (rest "$mcname$ hiss$s$.")
+    )
+    (arguments
+      (arguments angrily,cynically,sarcastically,happily,nastily,like a snake,
+                 like a cat,like a woman scorned,menacingly,#)
+      (self "You hiss $arg$.")
+      (rest "$mcname$ hiss$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hiss at $hcname$.")
+      (target "$mcname$ hiss$s$ at you.")
+      (rest  "$mcname$ hiss$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  angrily,cynically,sarcastically,happily,nastily,like a snake,
+                  like a cat,like a woman scorned,menacingly,#)
+      (self   "You hiss $arg$ at $hcname$.")
+      (target "$mcname$ hiss$s$ $arg$ at you.")
+      (rest  "$mcname$ hiss$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hit.s
+==================================================
+
+(hit
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You hit yourself.")
+      (rest "$mcname$ hit$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hit $hcname$.")
+      (target "$mcname$ hit$s$ you.")
+      (rest  "$mcname$ hit$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hls5.s
+==================================================
+
+(hls5   
+  (pattern "<indirect:any-living>")   
+  (pattern "<string> <indirect:any-living>")   
+  (pattern "<indirect:any-living> <string>")   
+  (single     
+    (no-arguments       
+      (self "You high, low, and side five yourself all at once.  You feel confused.")                
+      (rest "$mcname$ high, low, and side five$s$ $mobj$self all at once.")     
+    )
+  )
+  (targeted
+    (no-arguments       
+      (self   "You high, low, and side five $hcname$ all at once.")       
+      (target "$mcname$ high, low, and side five$s$ you all at once.  You feel confused.")       
+      (rest  "$mcname$ high, low, and side five$s$ $hcname$ all at once.")     
+    )     
+  (arguments     
+  (arguments happily, annoyingly, courteously, hysterically,
+             absentmindedly, confusingly, rapidly, deliberately, 
+             slowly, forcefully, violently, #)     
+    (self "You high, low, and side five $hcname$ $arg$.")      
+    (target "$mcname$ high, low, and side five$s$ you $arg$.  You feel confused.")    
+    (rest "$mcname$ high, low, and side five$s$ $hcname$ $arg$.")    
+   ) 
+  )
+)
+
+/* Saffra for Dek Aug 12 2001 */
+
+==================================================
+FILE: h/honk.s
+==================================================
+
+(honk
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You honk.")
+      (rest "$mcname$ honk$s$.")
+    )
+    (arguments
+      (arguments like a goose,like a confused frog, happily, sadly, joyfully, 
+                 sagely, knowingly, quickly, loudly, carefully, balefully, 
+                 excitedly, nervously, brightly, uncertainly, threateningly, 
+                 grumpily, fluffily, sarcastically,#)
+      (self "You honk $arg$.")
+      (rest "$mcname$ honk$s$ $arg$.")
+    )
+    (arguments
+      (arguments horn)
+       (self "You honk your $arg$.")
+       (rest "$mcname$ honk$s$ $mposs$ $arg$.")
+	  )
+          )
+  (targeted
+    (no-arguments
+      (self   "You honk at $hcname$.")
+      (target "$mcname$ honk$s$ at you.")
+      (rest  "$mcname$ honk$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a goose,like a confused frog, happily, sadly, joyfully, 
+                 sagely, knowingly, quickly, loudly, carefully, balefully, 
+                 excitedly, nervously, brightly, uncertainly, threateningly, 
+                 grumpily, fluffily, sarcastically,#)
+      (self   "You honk $arg$ at $hcname$.")
+      (target "$mcname$ honk$s$ $arg$ at you.")
+      (rest  "$mcname$ honk$s$ $arg$ at $hcname$.")
+    )
+     (arguments
+     (arguments horn)
+      (self   "You honk your $arg$ at $hcname$.")
+      (target "$mcname$ honk$s$ $mposs$ $arg$ at you.")
+      (rest  "$mcname$ honk$s$ $mposs$ $arg$ at $hcname$.")
+      )
+    )
+  )
+	
+/* Hobbes, 970524 */
+
+
+
+
+==================================================
+FILE: h/hoot.s
+==================================================
+
+(hoot
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+    (single
+      (no-arguments
+       (self "You hoot like an owl.")
+       (rest "$mcname$ hoot$s$ like an owl.")
+     )
+   )
+   (targeted
+    (arguments
+       (arguments  like an owl,evilly,wickedly,insanely,mischievously,devilishly,impishly,
+         cheekily,idiotically,wryly,sceptically,derisively,annoyingly,absentmindedly,
+         whilst you work,distractedly,pointlessly,silently,loudly,rudely,with laughter,vaguely,
+         obviously,tunelessly,#)
+	      (self   "You hoot $arg$ at $hcname$.")
+	      (target "$mcname$ hoot$s$ $arg$ at you.")
+	      (rest  "$mcname$ hoot$s$ $arg$ at $hcname$.")
+	    )
+	  )
+	)
+/*Hobbes 970805*/
+
+
+==================================================
+FILE: h/hop.s
+==================================================
+
+(hop
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You hop around a bit.")
+      (rest "$mcname$ hop$s$ around a bit.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  arms,pool,house,car,bed,frog,television,pocket,#)
+      (self   "You hop into $mhcname$ $arg$.")
+      (target "$mcname$ hop$s$ into your $arg$.")
+      (rest  "$mcname$ hop$s$ into $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/howl.s
+==================================================
+
+(howl
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "HOOOOOWWWWWWWWWLLLLLL!!")
+      (rest "$mcname$ howl$s$.")
+    )
+    (arguments
+    (arguments like a lunatic, insolently, lustily, eerily, softly, with glee, 
+               hungrily, up and down the scale, for peanut butter, unabashedly, like  
+               Angua, #)
+    (self "You HOOOOOWWWWWWWWWLLLLLL $arg$.")
+    (rest "$mcname$ howl$s$ $arg$.")
+    )
+  )
+ (targeted
+    (no-arguments
+      (self "You HOOOOOWWWWWWWWWLLLLLL at $hcname$.")
+      (target "$mcname$ howl$s$ at you.")
+      (rest "$mcname$ howl$s$ at $hcname$.")
+    )
+    (arguments
+    (arguments like a lunatic, insolently, lustily, eerily, softly, with glee, 
+	              hungrily, up and down the scale, for peanut butter, unabashedly,
+	              like Angua, #)
+    (self "You HOOOOOWWWWWWWWWLLLLLL $arg$ at $hcname$.")
+    (target "$mcname$ howl$s$ $arg$ at you.")
+    (rest "$mcname$ howl$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Modified by Saffra Oct 09 2001 */
+
+==================================================
+FILE: h/hrmph.s
+==================================================
+
+(hrmph
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You hrmph.")
+      (rest "$mcname$ hrmph$s$.")
+    )
+    (arguments
+      (arguments  carefully, silently, lengthily, fishily, boringly, snobbishly, 
+                  happily, courageously, with wild abandon, snortingly, cutely, 
+                  absentmindedly, in disgust, in contempt, in perturbation, 
+                  with an evil glint in your eye, #)
+      (self "You hrmph $arg$.")
+      (rest "$mcname$ hrmph$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hrmph in $mhcname$ general direction.")
+      (target "$mcname$ hrmph$s$ in your general direction.")
+      (rest   "$mcname$ hrmph$s$ in $mhcname$ general direction.")
+    )
+    (arguments
+      (arguments  carefully, silently, lengthily, fishily, boringly, snobbishly, 
+                  happily, courageously, with wild abandon, snortingly, cutely, 
+                  absentmindedly, in disgust, in contempt, in perturbation, 
+                  with an evil glint in your eye, #)
+      (self   "You hrmph $arg$ at $hcname$.")
+      (target "$mcname$ hrmph$s$ $arg$ at you.")
+      (rest   "$mcname$ hrmph$s$ $arg at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hug.s
+==================================================
+
+(hug
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You hug $hcname$.")
+      (target "$mcname$ hug$s$ you.")
+      (rest  "$mcname$ hug$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  tightly,warmly,gently,close,#,like a huge bear)
+      (self   "You hug $hcname$ $arg$.")
+      (target "$mcname$ hug$s$ you $arg$.")
+      (rest  "$mcname$ hug$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/huggle.s
+==================================================
+
+
+(huggle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You huggle yourself.  Aww!")
+      (rest   "$mcname huggle$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You huggle $hcname$.")
+      (target "$mcname$ huggle$s$ you.")
+      (rest   "$mcname$ huggle$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  tightly, warmly, gently, close, under your jumper, #)
+      (self   "You huggle $hcname$ $arg$.")
+      (target "$mcname$ huggle$s$ you $arg$.")
+      (rest   "$mcname$ huggle$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: h/hula.s
+==================================================
+
+(hula
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You dance the hula.")
+      (rest   "$mcname$ dance$s$ the hula.")
+    )
+    (arguments
+    (arguments with reckless abandon, gracefully, clumsily, slowly,
+               seductively, tropically, in a grass skirt, for a good lei, 
+               under the stars, with little paper umbrellas, in a coconut bra,
+               with a hoop, with a lovely bunch of coconuts, #)
+      (self   "You hula $arg$.")
+      (rest   "$mcname$ hula$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You dance the hula for $hcname$.")
+      (target "$mcname$ dance$s$ the hula for you.")
+      (rest   "$mcname$ dance$s$ the hula for $hcname$.")
+    )
+    (arguments
+    (arguments with reckless abandon, gracefully, clumsily, slowly,
+               seductively, tropically, in a grass skirt, for a good lei, 
+               under the stars, with little paper umbrellas, in a coconut bra,
+               with a hoop, with a lovely bunch of coconuts, #)
+      (self   "You hula at $hcname$ $arg$.")
+      (target "$mcname$ hula$s$ at you $arg$.")
+      (rest   "$mcname$ hula$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Idea by Shalla */
+/* Updated by Saffra 11 Jun 2002 */
+
+
+==================================================
+FILE: h/hum.s
+==================================================
+
+(hum
+  (pattern "<string>")
+    (pattern "[to] <indirect:any-living>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You hum.")
+      (rest "$mcname$ hum$s$.")
+    )
+    (arguments
+      (arguments  a merry tune, tunelessly, annoyingly, vaguely, cutely, 
+                  absentmindedly, whilst you work, distractedly, pointlessly, 
+                  silently, loudly, rudely, #)
+      (self "You hum $arg$.")
+      (rest "$mcname$ hum$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You hum to $hcname$.")
+      (target "$mcname$ hum$s$ to you.")
+      (rest   "$mcname$ hum$s$ to $hcname$.")    
+    )
+    (arguments
+      (arguments  a merry tune, tunelessly, annoyingly, vaguely, cutely, 
+                  absentmindedly, whilst you work, distractedly, pointlessly, 
+                  silently, loudly, rudely, #)
+      (self   "You hum $arg$ to $hcname$.")
+      (target "$mcname$ hum$s$ $arg$ to you.")
+      (rest   "$mcname$ hum$s$ $arg$ to $hcname$.")    
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hunt.s
+==================================================
+
+(hunt
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You hunt $hcname$.")
+      (target "$mcname$ hunt$s$ you.")
+      (rest   "$mcname$ hunt$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  up and down the streets)
+      (self   "You hunt $arg$ for $hcname$.")
+      (target "$mcname$ hunt$s$ $arg$ for you.")
+      (rest   "$mcname$ hunt$s$ $arg$ for $hcname$.")
+    )
+    (arguments
+      (arguments  affectionately, nicely, kindly, 
+                  with the gleam of revenge in both eyes, relentlessly, #)
+      (self   "You hunt $hcname$ $arg$.")
+      (target "$mcname$ hunt$s$ you $arg$.")
+      (rest   "$mcname$ hunt$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: h/hush.s
+==================================================
+
+(hush
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You hush $hcname$.")
+      (target "$mcname$ hush$s$ you.")
+      (rest  "$mcname$ hush$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  quickly,carefully,threateningly,nervously,
+      for using such language,#)
+      (self   "You hush $hcname$ $arg$.")
+      (target "$mcname$ hush$s$ you $arg$.")
+      (rest  "$mcname$ hush$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gasp.s
+==================================================
+
+(gasp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> [in] <string>")
+  (single
+    (arguments
+      (arguments in astonishment, in excitement, in terror, in fear, in fright, 
+                 in pain, for air, excitedly, #) 
+      (self "You gasp $arg$.")
+      (rest "$mcname$ gasp$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments in astonishment, in excitement, in terror, in fear, in fright, 
+                 in pain, for air, excitedly, #) 
+      (self   "You gasp $arg$ at $hcname$.")
+      (target "$mcname$ gasp$s$ $arg$ at you.")
+      (rest   "$mcname$ gasp$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/gaze.s
+==================================================
+
+(gaze
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "<string> at <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You gaze into the wild blue yonder.")
+      (rest "$mcname$ gaze$s$ into the wild blue yonder.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments lovingly, evilly, forlornly, intently, frogilly,#)
+      (self "You gaze $arg$ at $hcname$.")
+      (target "$mcname$ gaze$s$ $arg$ at you.")
+      (rest "$mcname$ gaze$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/gesticulate.s
+==================================================
+
+(gesticulate
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments wildly, pompously, mystically, oddly, strangely, 
+                 carefully, deliberately, off into the distance, 
+                 rapidly, without moving, slowly, ponderously, 
+                 mindlessly, insanely, nastily, suggestively, lovingly, #)
+      (self "You gesticulate $arg$.")
+      (rest "$mcname$ gesticulate$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments wildly, pompously, mystically, oddly, strangely, 
+                 carefully, deliberately, off into the distance, 
+                 rapidly, without moving, slowly, ponderously, 
+                 mindlessly, insanely, nastily, suggestively, lovingly, #)
+      (self   "You gesticulate $arg$ at $hcname$.")
+      (target "$mcname$ gesticulate$s$ $arg$ at you.")
+      (rest  "$mcname$ gesticulate$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gesture.s
+==================================================
+
+(gesture
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments wildly, pompously, mystically, oddly, strangely, 
+                 carefully, deliberately, off into the distance, 
+                 rapidly, without moving, slowly, ponderously, 
+                 mindlessly, insanely, nastily, suggestively, lovingly, #)
+      (self "You gesture $arg$.")
+      (rest "$mcname$ gesture$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments wildly, pompously, mystically, oddly, strangely, 
+                 carefully, deliberately, off into the distance, 
+                 rapidly, without moving, slowly, ponderously, 
+                 mindlessly, insanely, nastily, suggestively, lovingly, #)
+      (self   "You gesture $arg$ at $hcname$.")
+      (target "$mcname$ gesture$s$ $arg$ at you.")
+      (rest  "$mcname$ gesture$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gibber.s
+==================================================
+
+(gibber
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You gibber madly.")
+      (rest "$mcname$ gibber$s$ madly.")
+    )
+    (arguments
+       (arguments anxiously, madly, wildly, crazily, psychotically, unhappily,
+                  dangerously, #)
+      (self "You gibber $arg$.")
+      (rest "$mcname$ gibber$s$ $arg$.")
+    )
+  )
+  (targeted
+     (no-arguments
+       (self "You gibber madly at $hcname$.")
+       (target "$mcname$ gibber$s$ maddly at you.")
+       (rest "$mcname$ gibber$s$ madly at $hcname$.")
+     )
+     (arguments
+       (arguments anxiously, madly, wildly, crazily, psychotically, unhappily,
+                  dangerously, #)
+       (self "You gibber $arg$ at $hcname$")
+       (target "$mcname$ gibber$s$ $arg$ at you.")
+       (rest "$mcname$ gibber$s$ $arg$ at $mcname$.")
+     )
+  )         
+)
+
+
+==================================================
+FILE: g/giggle.s
+==================================================
+
+(giggle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You giggle.")
+      (rest "$mcname$ giggle$s$.")
+    )
+   (arguments
+     (arguments  inanely, stupidly, snort, quietly, idiotically, 
+                 fiendishly, insanely, slightly, carefully, cutely, 
+                 sarcastically, happily, #)
+      (self "You giggle $arg$.")
+      (rest "$mcname$ giggle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You giggle at $hcname$.")
+      (target "$mcname$ giggle$s$ at you.")
+      (rest  "$mcname$ giggle$s$ at $hcname$.")
+    )
+    (arguments
+     (arguments  inanely, stupidly, snort, quietly, idiotically, 
+                 fiendishly, insanely, slightly, carefully, cutely, 
+                 sarcastically, happily, #)
+      (self   "You giggle $arg$ at $hcname$.")
+      (target "$mcname$ giggle$s$ $arg$ at you.")
+      (rest  "$mcname$ giggle$s$ $arg$ at $hcname$.")
+     )
+   )
+ )
+
+
+
+
+
+
+==================================================
+FILE: g/glare.s
+==================================================
+
+(glare
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments stonily, sternly, hotly, intently, solemnly, idiotically,
+                 evenly, evilly, furiously, angrily, #)
+      (self "You glare $arg$ at the world in general.")
+      (rest "$mcname$ glare$s$ $arg$ around $mobj$self.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments stonily, sternly, hotly, intently, solemnly, idiotically,
+                 evenly, evilly, furiously, angrily, #)
+      (self   "You glare $arg$ at $hcname$.")
+      (target "$mcname$ glare$s$ $arg$ at you.")
+      (rest  "$mcname$ glare$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gloat.s
+==================================================
+
+(gloat
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You gloat.")
+      (rest "$mcname$ gloat$s$.")
+    )
+    (arguments
+      (arguments manically, evilly, wickedly, insanely, mischievously, 
+                 devilishly, impishly, cheekily, idiotically, tentatively, 
+                 wryly, skeptically, sickeningly, stupidly, slightly, 
+                 strangely,#)
+      (self "You gloat $arg$.")
+      (rest "$mcname$ gloat$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You gloat at $hcname$.")
+      (target "$mcname$ gloat$s$ at you.")
+      (rest  "$mcname$ gloat$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments manically, evilly, wickedly, insanely, mischievously, 
+                 devilishly, impishly, cheekily, idiotically, tentatively, 
+                 wryly, skeptically, sickeningly, stupidly, slightly, 
+                 strangely,#)
+      (self   "You gloat $arg$ at $hcname$.")
+      (target "$mcname$ gloat$s$ $arg$ at you.")
+      (rest  "$mcname$ gloat$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/glow.s
+==================================================
+
+(glow
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+    (arguments in the dark, incandescently, fluorescently, brightly, dimly, 
+               like a blacklight, flourescent orange, like the stars on a 
+               moonless night, like a beckoning star, like an ingenue, like an 
+               escaped spell, like a firefly, from within, like a glowworm, 
+               like a candle in the darkness, like a cheap special effect, like 
+               a glow-in-the-dark Sonkie, #)
+      (self "You glow $arg$.")
+      (rest "$mcname$ glow$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You glow at $hcname$.")
+      (target "$mcname$ glow$s$ at you.")
+      (rest   "$mcname$ glow$s$ at $hcname$.")
+    )
+    (arguments
+    (arguments in the dark, incandescently, fluorescently, brightly, dimly, 
+               like a blacklight, flourescent orange, like the stars on a 
+               moonless night, like a beckoning star, like an ingenue, like an 
+               escaped spell, like a firefly, from within, like a glowworm, 
+               like a candle in the darkness, like a cheap special effect, like 
+               a glow-in-the-dark Sonkie, #)
+      (self   "You glow at $hcname$ $arg$.")
+      (target  "$mcname$ glow$s$ at you $arg$.")
+      (rest  "$mcname$ glow$s$ at $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra 2-01-02 For idea rep */
+
+
+==================================================
+FILE: g/gnash.s
+==================================================
+
+(gnash
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You gnash your teeth.")
+      (rest "$mcname$ gnash$s$ $mposs$ teeth.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You gnash your teeth at $hcname$.")
+      (target "$mcname$ gnash$s$ $mposs$ teeth at you.")
+      (rest  "$mcname$ gnash$s$ $mposs$ teeth at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gnaw.s
+==================================================
+
+(gnaw
+  (pattern "[on] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (arguments
+	(arguments on a bone happily,#)
+      (self "You gnaw $arg$.")
+      (rest "$mcname$ gnaw$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+	(arguments
+           leg,arm,bones,dinner,cat,keyboard,code,nose,frog,toe,ankles,finger,neck,crayons,#) 
+      (self  "You gnaw on $mhcname$ $arg$.")
+      (target "$mcname$ gnaw$s$ on your $arg$.")
+      (rest  "$mcname$ gnaw$s$ on $mhcname$ $arg$.") 
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/goose.s
+==================================================
+
+(goose
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments playfully, gleefully, like bob the dinosaur, hysterically)
+        (self "You goose $hcname$ $arg$.  Ouch, that has got to hurt.")
+        (target "$mcname$ $verb$gooses,goose$ you $arg$.")
+        (rest "$mcname$ $verb$gooses,goose$ $hcname$ $arg$.  Ouch, that has got to hurt.")
+    )
+  )
+)
+
+/* Dogbolter */
+
+
+==================================================
+FILE: g/grab.s
+==================================================
+
+(grab
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You grab $hcname$.")
+      (target "$mcname$ grab$s$ you.")
+      (rest   "$mcname$ grab$s$ $hcname$.")
+    )
+    (arguments 
+      (arguments arm, hand, foot, attention, fika, essentials, #)
+      (self   "You grab $mhcname$ $arg$.")
+      (target "$mcname$ grab$s$ your $arg$.")
+      (rest   "$mcname$ grab$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments suddenly, unexpectedly, forcefully, roughly, by the collar)
+      (self   "You grab $hcname$ $arg$.")
+      (target "$mcname$ grab$s$ you $arg$.")
+      (rest   "$mcname$ grab$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra 2-11-01.  Tannah made me. */
+
+
+==================================================
+FILE: g/grade.s
+==================================================
+
+(grade
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> [in] <string>")
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ an 'F'.")
+      (target "$mcname$ give$s$ you an 'F'.")
+      (rest  "$mcname$ give$s$ $hcname$ an 'F'.")    
+    )
+    (arguments
+      (arguments Geography, History, Mathematics, English, Chemistry, Physics, #)
+      (self   "You give $hcname$ an 'F' in $arg$.")
+      (target "$mcname$ give$s$ you an 'F' in $arg$.")
+      (rest  "$mcname$ give$s$ $hcname$ an 'F' in $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/grate.s
+==================================================
+
+(grate
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments in annoyance, noisily, seductively, in terror, 
+                 together, annoyingly, suggestively, painfully, angrily)
+      (self "You grate your teeth $arg$.")
+      (rest "$mcname$ grate$s$ $mposs$ teeth $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/greet.s
+==================================================
+
+(greet
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You greet $hcname$.")
+      (target "$mcname$ greet$s$ you.")
+      (rest  "$mcname$ greet$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly,with open arms, annoyingly, impatiently, 
+                  ecstatically, carefully, courteously, hysterically, 
+                  reservedly, warmly, coldly, insolently, curtly, 
+                  absentmindedly, slightly, serenely, from the moon, 
+                  #)
+      (self   "You greet $hcname$ $arg$.")
+      (target "$mcname$ greet$s$ you $arg$.")
+      (rest  "$mcname$ greet$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/grimace.s
+==================================================
+
+(grimace
+  (pattern "<indirect:any-living>")
+  (pattern "[in] <string>")
+  (pattern "<string> [in] <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+        (self "You grimace.")
+        (rest "$mcname$ grimace$s$.")
+        )
+      (arguments 
+        (arguments disgust, anger, thought, power, despair)
+      (self "You grimace in $arg$.")
+      (rest "$mcname$ grimace$s$ in $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You grimace at $hcname$.")
+      (target "$mcname$ grimace$s$ at you.")
+      (rest  "$mcname$ grimace$s$ at $hcname$.")
+       )
+      (arguments 
+        (arguments disgust, anger, thought, power, despair, #)
+      (self   "You grimace in $arg$ at $hcname$.")
+      (target "$mcname$ grimace$s$ in $arg$ at you.")
+      (rest   "$mcname$ grimace$s$ in $arg$ at $hcname$.")
+    )
+  )
+)
+/*Hobbes 970317*/
+
+
+==================================================
+FILE: g/grin.s
+==================================================
+
+(grin
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You grin.")
+      (rest "$mcname$ grin$s$.")
+    )
+    (arguments
+      (arguments manically, evilly, wickedly, insanely, mischievously, 
+                 devilishly, impishly, cheekily, idiotically, tentatively, wryly, 
+                 skeptically, #)
+      (self "You grin $arg$.")
+      (rest "$mcname$ grin$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You grin at $hcname$.")
+      (target "$mcname$ grin$s$ at you.")
+      (rest  "$mcname$ grin$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments manically, evilly, wickedly, insanely, mischievously, 
+                 devilishly, impishly, cheekily, idiotically, tentatively, wryly, 
+                 skeptically, #)
+      (self   "You grin $arg$ at $hcname$.")
+      (target "$mcname$ grin$s$ $arg$ at you.")
+      (rest  "$mcname$ grin$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/groan.s
+==================================================
+
+(groan
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You groan.")
+      (rest "$mcname$ groan$s$.")
+    )
+    (arguments
+      (arguments loudly, resignedly, tiredly, in disappointment, #)
+      (self "You groan $arg$.")
+      (rest "$mcname$ groan$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You groan at $hcname$.")
+      (target "$mcname$ groan$s$ at you.")
+      (rest  "$mcname$ groan$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  loudly, resignedly, tiredly, in disappointment, #)
+      (self   "You groan $arg$ at $hcname$.")
+      (target "$mcname$ groan$s$ $arg$ at you.")
+      (rest  "$mcname$ groan$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/grope.s
+==================================================
+
+(grope
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You grope $hcname$.")
+      (target "$mcname$ grope$s$ you.")
+      (rest   "$mcname$ grope$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  hand, leg, knee, foot, finger, ear, hair,
+                  soft curvaceous pillows, tree trunk, strawberries,
+                  eyebrows, nose, cucumber, melons, coconuts, #)
+      (self   "You grope $mhcname$ $arg$.")
+      (target "$mcname$ grope$s$ your $arg$.")
+      (rest   "$mcname$ grope$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  carefully, politely, surreptitiously, without looking, 
+                  just the once, twice, when you're least expecting it, 
+                  randomly, jealously, fondly, neatly, gently, surprisingly, 
+                  in accordance with Rule 4: subsection vi)
+      (self   "You grope $hcname$ $arg$.")
+      (target "$mcname$ grope$s$ you $arg$.")
+      (rest   "$mcname$ grope$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/grovel.s
+==================================================
+
+(grovel
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You grovel.")
+      (rest "$mcname$ grovel$s$.")
+    )
+    (arguments
+      (arguments shamelessly,violently,unashamedly)
+      (self "You grovel $arg$.")
+      (rest "$mcname$ grovel$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You grovel at $mhcname$ feet.")
+      (target "$mcname$ grovel$s$ at your feet.")
+      (rest  "$mcname$ grovel$s$ at $mhcname$ feet.")
+    )
+    (arguments
+      (arguments  shamelessly,violently,unashamedly)
+      (self   "You grovel $arg$ at $mhcname$ feet.")
+      (target "$mcname$ grovel$s$ $arg$ at your feet.")
+      (rest  "$mcname$ grovel$s$ $arg$ at $mhcname$ feet.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/growl.s
+==================================================
+
+(growl
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  menacingly, nastily, loudly, playfully, happily, 
+                  affectionately, #)
+      (self "You growl $arg$.")
+      (rest "$mcname$ growl$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  menacingly, nastily, loudly, playfully, happily, 
+                  affectionately, #)
+      (self   "You growl $arg$ at $hcname$.")
+      (target "$mcname$ growl$s$ $arg$ at you.")
+      (rest   "$mcname$ growl$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/grumble.s
+==================================================
+
+(grumble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You grumble.")
+      (rest "$mcname$ grumble$s$.")
+    )
+    (arguments
+      (arguments
+         quietly,bitterly,menacingly,halfheartedly,seductively,suggestively,loudly,
+         annoyingly,devastatingly,carefully,wildly,more or less,         
+         silently,sarcastically,falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,#)
+      (self "You grumble $arg$.")
+      (rest "$mcname$ grumble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You grumble at $hcname$.")
+      (target "$mcname$ grumble$s$ at you.")
+      (rest  "$mcname$ grumble$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments
+         quietly,bitterly,menacingly,halfheartedly,seductively,suggestively,loudly,
+         annoyingly,devastatingly,carefully,wildly,more or less,
+         silently,sarcastically,falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,#)
+      (self   "You grumble $arg$ at $hcname$.")
+      (target "$mcname$ grumble$s$ $arg$ at you.")
+      (rest  "$mcname$ grumble$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/grump.s
+==================================================
+
+(grump
+  (pattern "<indirect:any-living>" )
+  (targeted
+    (no-arguments
+      (self   "You bite off $mhcname$ kneecap and chew on it noisily, persuading $hobj$ to go bother someone else...")
+      (target "$mcname$ bites off your kneecap and chew$s$ on it noisily, persuading you to go bother someone else...")
+      (rest   "$mcname$ bites off $mhcname$ kneecap and chew$s$ on it noisily, persuading $hobj$ to go bother someone else...")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/grunt.s
+==================================================
+
+(grunt
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You grunt.")
+      (rest "$mcname$ grunt$s$.")
+    )
+    (arguments
+      (arguments loudly,evilly,wickedly,insanely,mischievously,
+        devilishly,impishly,cheekily,idiotically,tentatively,wryly,
+        sceptically,softly,#)
+      (self "You grunt $arg$.")
+      (rest "$mcname$ grunt$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You grunt at $hcname$.")
+      (target "$mcname$ grunt$s$ at you.")
+      (rest  "$mcname$ grunt$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  loudly,evilly,wickedly,insanely,mischievously,
+        devilishly,impishly,cheekily,idiotically,wryly,
+        sceptically,softly,#)
+      (self   "You grunt $arg$ at $hcname$.")
+      (target "$mcname$ grunt$s$ $arg$ at you.")
+      (rest  "$mcname$ grunt$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: g/gulp.s
+==================================================
+
+(gulp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You gulp.")
+      (rest "$mcname$ gulp$s$.")
+    )
+    (arguments
+      (arguments horrified,nervously,happily,sadly,in astonishment,excetedly,
+                 in fright,in terror,astonishment,loudly,in shock,
+                 in amazement,carefully,#) 
+      (self "You gulp $arg$.")
+      (rest "$mcname$ gulp$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You gulp at $hcname$.")
+      (target "$mcname$ gulp$s$ at you.")
+      (rest  "$mcname$ gulp$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments horrified,nervously,happily,sadly,in astonishment,excetedly,
+                 in fright,in terror,astonishment,loudly,in shock,
+                 in amazement,carefully,#)  
+      (self   "You gulp $arg$ at $hcname$.")
+      (target "$mcname$ gulp$s$ $arg$ at you.")
+      (rest  "$mcname$ gulp$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: g/gurgle.s
+==================================================
+
+(gurgle
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments noisily, rudely, loudly, mischievously, happily, carefully, 
+                 disgustingly, in surprise, like a train, quickly, slowly)
+      (self "You gurgle $arg$.")
+      (rest "$mcname$ gurgle$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: k/kiss.s
+==================================================
+
+(kiss
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You pucker up.")
+      (rest   "$mcname$ pucker$s$ up.")
+    )
+    (arguments
+      (arguments cute, adorable, sensuous, prissy, icky, #)
+      (self   "You make $article$ $arg$ kissy face.")
+      (rest   "$mcname$ make$s$ $article$ $arg$ kissy face.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You kiss $hcname$.")
+      (target "$mcname$ kiss$s$ you.")
+      (rest  "$mcname$ kiss$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  softly, passionately, deeply, tenderly, gently,
+                  lovingly, lengthily, fishily, carefully, demandingly,
+                  sensuously, longingly, hungrily, back, boringly,
+                  inattentively, absentmindedly, froggily,
+                  in an igloo, on a coffee table, in a shower,
+                  slowly, suspiciously, calmly, #)
+      (self   "You kiss $hcname$ $arg$.")
+      (target "$mcname$ kiss$s$ you $arg$.")
+      (rest  "$mcname$ kiss$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  ear, nose, cheek, hand, forehead, eyebrow, eyebrows,
+                  finger, foot, feet, toe, fingernail, arm, thigh, thighs,
+                  upper thigh, calf, elbow, elbows, knee, knees, fingers, neck, 
+                  eyelashes, shoulder, palm, toes, lips, mouth, tongue, leg, 
+                  teeth, bottom, throat, nape, back)
+      (self   "You kiss $mhcname$ $arg$.")
+      (target "$mcname$ kiss$s$ your $arg$.")
+      (rest  "$mcname$ kiss$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  girly air, rabbity, scruffy, cabbagey, prissy, pure, polite)
+      (self   "You give $hcname$ a $arg$ kiss on the cheek.")
+      (target "$mcname$ give$s$ you a $arg$ kiss on the cheek.")
+      (rest  "$mcname$ give$s$ $hcname$ a $arg$ kiss on the cheek.")
+    )
+  )
+)
+
+
+==================================================
+FILE: k/knee.s
+==================================================
+
+(knee
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You knee $hcname$.")
+      (target "$mcname$ knee$s$ you.")
+      (rest  "$mcname$ knee$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You knee $hcname$ $arg$.")
+      (target "$mcname$ knee$s$ you $arg$.")
+      (rest  "$mcname$ knee$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: k/kowtow.s
+==================================================
+
+(kowtow
+  (pattern "[to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You kowtow.")
+      (rest "$mcname$ kowtow$s$.")
+    )
+    (arguments
+      (arguments awkwardly, grudgingly, slavishly, like someone with something to hide)
+      (self "You kowtow $arg$.")
+      (rest "$mcname$ kowtow$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You kowtow to $hcname$.")
+      (target "$mcname$ kowtow$s$ to you.")
+      (rest  "$mcname$ kowtow$s$ to $hcname$.")
+    )
+    (arguments
+      (arguments awkwardly, grudgingly, slavishly, like someone with something to hide)    
+      (self   "You kowtow $arg$ to $hcname$.")
+      (target "$mcname$ kowtow$s$ $arg$ to you.")
+      (rest  "$mcname$ kowtow$s$ $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/tackle.s
+==================================================
+
+(tackle
+  (pattern "<indirect:any-living>")
+  (targeted
+    (arguments
+      (arguments  chest, leg, arm, nose, knee, head, foot, toe, finger, #)
+      (self   "You tackle $hcname$ in the $arg$.")
+      (target "$mcname$ tackles you in the $arg$.")
+      (rest  "$mcname$ tackles $hcname$ in the $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tango.s
+==================================================
+
+(tango
+   (pattern "<indirect:any-living>")
+   (pattern "<string> <indirect:any-living>")
+   (pattern "<indirect:any-living> <string>")
+   (targeted
+      (arguments
+	(arguments a rose,a frog,a cat,a fish,Terry Pratchett,a missing item receipt,a cabbage,#)
+         (self   "You put $arg$ in your mouth and do the forbidden dance with $hcname$.")
+         (target "$mcname$ puts $arg$ in $mposs$ mouth and does the forbidden dance with you.")
+         (rest   "$mcname$ puts $arg$ in $mposs$ mouth and does the forbidden dance with $hcname$.")
+      )
+   )
+)
+
+ /*  Originaly suggested by Landis, changed and implemented by Hobbes */
+
+
+
+
+==================================================
+FILE: t/tantrum.s
+==================================================
+
+(tantrum
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You throw a tantrum.")
+      (rest "$mcname$ throws a tantrum.")
+    )
+    (arguments
+      (arguments like a two year old, enthusiastically, in anger,
+                 down the back of the couch, about dying, about lag,
+                 like a whiny player, slowly, quickly, briefly,
+                 quietly, loudly, emotionaly, expressionlessly,
+                 like someone who needs to be sent to their room, #)
+      (self "You throw a tantrum $arg$.")
+      (rest "$mcname$ throws a tantrum $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You throw a tantrum at $hcname$.")
+      (target "$mcname$ throws a tantrum at you.")
+      (rest "$mcname$ throws a tantrum at $hcname$.")
+    )
+    (arguments
+      (arguments like a two year old, enthusiastically, in anger,
+                 down the back of the couch, about dying, about lag,
+                 like a whiny player, slowly, quickly, briefly,
+                 quietly, loudly, emotionaly, expressionlessly,
+                 like someone who needs to be sent to their room, #)
+      (self "You throw a tantrum at $hcname$ $arg$.")
+      (target "$mcname$ throws a tantrum at you $arg$.")
+      (rest "$mcname$ throws a tantrum at $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tap.s
+==================================================
+
+(tap
+  (pattern "<indirect:any-living> on the <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [on] <string>")
+  (single
+    (arguments
+      (arguments foot,head,left leg,right leg,fingers,nose,shoulder,teeth,arm)
+      (self "You tap your $arg$ impatiently.")
+      (rest "$mcname$ taps $mposs$ $arg$ impatiently.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  shoulder,head,arm,nose,leg,teeth,foot,ear,frog,other thing)
+      (self   "You tap $hcname$ on the $arg$.")
+      (target "$mcname$ taps you on the $arg$.")
+      (rest  "$mcname$ taps $hcname$ on the $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tapdance.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: tapdance.s,v 1.1 2002/05/09 03:58:27 saffra Exp $
+#
+#
+#
+
+(tapdance
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You tapdance around like a centipede on acid.")
+      (rest "$mcname$ tapdances around like a centipede on acid.")
+    )
+    (arguments
+    (arguments across the room, to the Rim and back, to CWC and back, over a
+               dead body, over Dogbolter's dead body, with new shiny shoes,         
+               manically, madly, stylishly, like a duck, like Fred  
+               and Ginger, without falling in the sink,  # )
+      (self "You tapdance around $arg$.")
+      (rest "$mcname$ tapdances around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You tapdance around $hcname$ like a centipede on acid.")
+      (target "$mcname$ tapdances around you like a centipede on acid.")
+      (rest  "$mcname$ tapdances around $hcname$ like a centipede on acid.")
+    )
+    (arguments
+    (arguments across the room, to the Rim and back, to CWC and back, over a
+               dead body, over Dogbolter's dead body, with new shiny shoes,         
+               manically, madly, stylishly, like a duck, like Fred  
+               and Ginger, without falling in the sink,  # )
+      (self   "You tapdance around $hcname$ $arg$.")
+      (target "$mcname$ tapdances around you $arg$.")
+      (rest  "$mcname$ tapdances around $hcname$ $arg$.")
+    )
+    (arguments
+    (arguments grave)
+      (self   "You tapdance on $mhcname$ grave.")
+      (target "$mcname$ tapdances on your grave.")
+      (rest   "$mcname$ tapdances on $mhcname$ grave.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/tattle.s
+==================================================
+
+(tattle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments Mommy,Daddy)
+      (self "You go home to tell your $arg$ on $hcname$.")
+      (target "$mcname$ goes home to tell $mposs$ $arg$ on you.")
+      (rest "$mcname$ goes home to tell $mposs$ $arg$ on $hcname$.")
+    )
+  )
+)
+
+/* Hobbes 960922 */
+
+==================================================
+FILE: t/taunt.s
+==================================================
+
+(taunt
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You taunt yourself.")
+      (rest "$mcname$ taunts $mobj$self... how odd.")
+    )
+    (arguments
+    (arguments slyly, expertly, from behind a tree, with higher numbers, 
+               with a bad Quirmian accent, nastily, very nastily, 
+               very nastily indeed, childlishly, rudely, ceaselessly, #) 
+      (self "You taunt yourself $arg$.")
+      (rest "$mcname$ taunts $mobj$self $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You taunt $hcname$.")
+      (target "$mcname$ taunts you.")
+      (rest   "$mcname$ taunts $hcname$.")
+    )
+    (arguments
+    (arguments slyly, expertly, from behind a tree, with higher numbers, 
+               with a bad Quirmian accent, nastily, very nastily, 
+               very nastily indeed, childlishly, rudely, ceaselessly, #)
+      (self   "You taunt $hcname$ $arg$.")
+      (target "$mcname$ taunts you $arg$.")
+      (rest   "$mcname$ taunts $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tease.s
+==================================================
+
+(tease
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You tease yourself.")
+      (rest "$mcname$ teases $mobj$self, $mpronoun$ appears to enjoy it.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You tease $hcname$.")
+      (target "$mcname$ teases you.")
+      (rest  "$mcname$ teases $hcname$.")
+    )
+    (arguments
+      (arguments  mercilessly, insistently, annoyingly, lovingly,
+                  mischievously, rudely, carefully, quickly, slowly,
+                  halfheartedly, idly, obnoxiously, #)
+      (self   "You tease $hcname$ $arg$.")
+      (target "$mcname$ teases you $arg$.")
+      (rest  "$mcname$ teases $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tempt.s
+==================================================
+
+(tempt
+  (pattern "<indirect:any-living>")
+  (pattern "[to] <string> <indirect:any-living>")
+  (pattern "<indirect:any-living> [to] <string>")
+  (single
+    (no-arguments
+      (self "You tempt fate.")
+      (rest "$mcname$ tempts fate.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You tempt $hcname$.")
+      (target "$mcname$ tempts you.")
+      (rest   "$mcname$ tempts $hcname$.")
+    )
+    (arguments
+      (arguments  love, promises, timtams, dreams, loot, booty, money, treasure, 
+                  rabbit ears, lies, stories of fantastic adventures, 
+                  the past, a present, the future, empty promises, 
+                  promises which are either half empty or half full)
+      (self   "You tempt $hcname$ with $arg$.")
+      (target "$mcname$ tempts you with $arg$.")
+      (rest   "$mcname$ tempts $hcname$ with $arg$.")
+    )
+    (arguments
+      (arguments  hurriedly, happily, deviously, sinisterly, dextrously, slyly, 
+                  lovingly, cutely, cunningly, #)
+      (self   "You tempt $hcname$ $arg$.")
+      (target "$mcname$ tempts you $arg$.")
+      (rest   "$mcname$ tempts $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  the Dark Side, mow the lawn, do the dishes, quack like a duck, 
+                  share the last timtam)
+      (self   "You tempt $hcname$ to $arg$.")
+      (target "$mcname$ tempts you to $arg$.")
+      (rest   "$mcname$ tempts $hcname$ to $arg$.")
+    )
+    (arguments
+      (arguments  death, undoing, marriage)
+      (self   "You tempt $hcname$ to $hposs$ $arg$.")
+      (target "$mcname$ tempts you to your $arg$.")
+      (rest   "$mcname$ tempts $hcname$ to $hposs$ $arg$.")
+    )
+    (arguments
+      (arguments  heart, spleen, marbles, cutlery, cabbages)
+      (self   "You tempt $hcname$ with all your $arg$.")
+      (target "$mcname$ tempts you with all $mposs$ $arg$.")
+      (rest   "$mcname$ tempts $hcname$ with all $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments  fate)
+      (self   "You tempt $arg$ with $hcname$.")
+      (target "$mcname$ tempts fate with you.")
+      (rest   "$mcname$ tempts fate with $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/thank.s
+==================================================
+
+(thank
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You thank $hcname$.")
+      (target "$mcname$ thanks you.")
+      (rest   "$mcname$ thanks $hcname$.")
+    )
+    (arguments
+      (arguments  profusely, very much, gratuitously, lots, slightly, 
+                  reservedly, muchly, verily, verily muchly, again, 
+                  for all the help, for all the fish, sarcastically, 
+                  a million times, with fruits and sprinkles, lot and lots, for being so wonderful, 
+                  for nothing, for being there, for the last time, heaps, #)
+      (self   "You thank $hcname$ $arg$.")
+      (target "$mcname$ thanks you $arg$.")
+      (rest   "$mcname$ thanks $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  time, for your time, for their time, for his time, 
+                  for her time)
+      (self   "You thank $hcname$ for $hposs$ time.")
+      (target "$mcname$ thanks you for your time.")
+      (rest   "$mcname$ thanks $hcname$ for $hposs$ time.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/think.s
+==================================================
+
+(think
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You think carefully.")
+      (rest "$mcname$ thinks carefully.")
+    )
+    (arguments
+      (arguments about what a good duck Ranma is, #)
+      (self "You think $arg$.")
+      (rest "$mcname$ thinks $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/threaten.s
+==================================================
+
+(threaten
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> with <string>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You threaten yourself.")
+      (rest "$mcname$ threatens $mposs$self... how odd.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You threaten $hcname$.")
+      (target "$mcname$ threatens you.")
+      (rest  "$mcname$ threatens $hcname$.")
+    )
+    (arguments
+      (arguments a big sharp pointy stick, a tax return, a threatening face,
+                 a broomstick, smiting, a warrant for your arrest,
+                 handcuffs, coffee tables, a cabbage, a frog,
+                 a bad connection, marriage, divorce, a family reunion,
+                 being gagged, being meteored, being fired, being fined,
+                 deletion, interesting times,
+                 being suspended, being grounded, no allowance, extra chores,
+                 a cream pie, purple things, a tight tshirt, extra anchovies,
+                 delight, fear, sadism, happiness, cupcakes,
+                 total perspective vortex, running away, standing your ground,
+                 eating quiche, #)
+      (self   "You threaten $hcname$ with $arg$.")
+      (target "$mcname$ threatens you with $arg$.")
+      (rest  "$mcname$ threatens $hcname$ with $arg$.")
+    )
+    (arguments
+      (arguments back, slowly, quickly, dispassionately, passionately,
+                around the clock, gracefully, admirably, disgustingly,
+                excitedly, in waves)
+      (self   "You threaten $hcname$ $arg$.")
+      (target "$mcname$ threatens you $arg$.")
+      (rest  "$mcname$ threatens $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/throw.s
+==================================================
+
+(throw
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "Hiyyyyaaa.")
+      (target "$mcname$ throws you to the floor.")
+      (rest  "$mcname$ throws $hcname$ to the floor in a happy embrace.")
+      
+      (position
+        (default "lie")
+        (silent  "yes")
+      )
+    )
+    (arguments
+      (arguments  arms, your arms, your arms around, arms around)
+      (self   "You throw your arms around $hcname$.")
+      (target "$mcname$ throws $mposs$ arms around you.")
+     (rest "$mcname$ throws $mposs$ arms around $hcname$.") 
+    )
+    (arguments
+      (arguments  your arms around and shout)
+      (self   "You throw your arms around $hcname$ and shout $hposs$ name to the blue summer sky.")
+      (target "$mcname$ throws $mposs$ arms around you and shouts your name to the blue summer sky.")
+      (rest  "$mcname$ throws $mposs$ arms around $hcname$ and shouts $hposs$ name to the blue summer sky.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/thwok.s
+==================================================
+
+(thwok
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "T H W O K K ! !")
+      (rest "$mcname$ 'T H W O K K ! !'s.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You thwok $hcname$.")
+      (target "You are summarily thwokked by $mcname$.")
+      (rest  "$mcname$ thwoks $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tickle.s
+==================================================
+
+(tickle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You tickle $hcname$.")
+      (target "$mcname$ tickles you.")
+      (rest   "$mcname$ tickles $hcname$.")
+      
+    )
+    (arguments
+      (arguments  mercilessly, ruthlessly, fearlessly, quickly, sneakily,
+                  weakly, carefully, gently, harshly, inconceivably slowly,
+                  incessantly, playfully, passionately, delicately, cutely, 
+                  quietly, incandescently, excitingly, with a frog,
+                  on a coffee table, in a shower, professionally,
+                  passionately, seductively, sensuously, #)
+      (self   "You tickle $hcname$ $arg$.")
+      (target "$mcname$ tickles you $arg$.")
+      (rest   "$mcname$ tickles $hcname$ $arg$.")
+     
+    )
+    (arguments
+      (arguments  to death)
+      (self   "You tickle $hcname$ $arg$.")
+      (target "$mcname$ tickles you $arg$.")
+      (rest   "$mcname$ tickles $hcname$ $arg$.")
+      
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/timewarp.s
+==================================================
+
+(timewarp
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You do the Time Warp.")
+      (rest "$mcname$ does the Time Warp.")
+    )
+    (arguments
+      (arguments again, with a jump to the left, with a step to the right, 
+                 with your hands on your hips, with your knees in tight, with a    
+                 pelvic thrust, in tap shoes, with a red feather boa, with an 
+                 axe, in a freezer, in an elevator, on the table, in the
+                 floorshow in a strange house, in the middle of the night, in a 
+                 late-night double feature picture show, in the velvet darkness 
+                 of the blackest night, in another dimension, with voyeuristic 
+                 intention, by the light of the night, #)
+      (self "You do the Time Warp $arg$.")
+      (rest "$mcname$ does the Time Warp $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self   "You do the Time Warp with $hcname$.")
+    (target "$mcname$ does the Time Warp with you.")
+    (rest   "$mcname$ does the Time Warp with $hcname$.")
+  )
+    (arguments
+      (arguments again, with a jump to the left, with a step to the right, 
+                 with your hands on your hips, with your knees in tight, with a    
+                 pelvic thrust, in tap shoes, with a red feather boa, with an 
+                 axe, in a freezer, in an elevator, on the table, in the
+                 floorshow in a strange house, in the middle of the night, in a 
+                 late-night double feature picture show, in the velvet darkness 
+                 of the blackest night, in another dimension, with voyeuristic 
+                 intention, by the light of the night, #)
+      (self   "You do the Time Warp with $hcname$ $arg$.")
+      (target "$mcname$ does the Time Warp with you $arg$.")
+      (rest   "$mcname$ does the Time Warp with $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra 5-14-00 */
+
+
+==================================================
+FILE: t/tip.s
+==================================================
+
+(tip
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments hat, nose, frog, pointy black hat, pointy hat, top hat, 
+                 beret, wig, fedora, bottle, thinking cap, dunce cap, 
+                 crown, tiara, laurel wreath, #)
+      (self "You tip your $arg$ stylishly.")
+      (rest "$mcname$ tip$s$ $mposs$ $arg$ stylishly.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments hat, nose, frog, pointy black hat, pointy hat, top hat, 
+                 beret, wig, fedora, bottle, thinking cap, dunce cap, 
+                 crown, tiara, laurel wreath, #)
+      (self   "You tip your $arg$ at $hcname$ stylishly.")
+      (target "$mcname$ tip$s$ $mposs$ $arg$ at you stylishly.")
+      (rest  "$mcname$ tip$s$ $mposs$ $arg$ at $hcname$ stylishly.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/titter.s
+==================================================
+
+(titter
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You titter.")
+      (rest "$mcname$ titter$s$.")
+    )
+    (arguments
+      (arguments
+         quietly,silently,sarcastically,falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,#)
+      (self "You titter $arg$.")
+      (rest "$mcname$ titter$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You titter at $hcname$.")
+      (target "$mcname$ titter$s$ at you.")
+      (rest  "$mcname$ titter$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments
+         quietly,silently,sarcastically,falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,#)
+      (self   "You titter $arg$ at $hcname$.")
+      (target "$mcname$ titter$s$ $arg$ at you.")
+      (rest  "$mcname$ titter$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tm.s
+==================================================
+
+(tm
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You masquerade as a giant TM and run around the room.")
+      (rest "$mcname$ masquerade$s$ as a giant TM and runs around the room.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  fighting, covert, magic, faith, other, crafts, #)
+      (self   "You turn $hcname$ into a giant $arg$ TM, and watch as everyone chases $hobj$.")
+      (target "$mcname$ turn$s$ you into a giant $arg$ TM.  Everyone chases you.")
+      (rest  "$mcname$ turn$s$ $hcname$ into a giant $arg$ TM.  Everyone chases $hobj$.")
+    )
+  )
+)
+
+/* Saffra rewrote this to be more useful 02 Apr 2003 */
+
+
+==================================================
+FILE: t/toast.s
+==================================================
+
+(toast
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  happiness,two wombles,the future,#)
+      (self "You propose a toast to $arg$.")
+      (rest "$mcname$ propose$s$ a toast to $arg$")
+	)
+	)
+  (targeted
+    (no-arguments 
+      (self   "You raise your glass and toast $hcname$.")
+      (target "$mcname$ raise$s$ $mposs$ glass and toast$s$ you.")
+      (rest  "$mcname$ raise$s$ $mposs$ glass and toast$s$ $hcname$.")
+    )
+  )
+)
+/* HOBBES, Suggested by Gototh 970823 */
+
+
+==================================================
+FILE: t/tongue.s
+==================================================
+
+(tongue
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You poke your tongue out.")
+      (rest  "$mcname$ poke$s$ $mposs$ tongue out.")
+    )
+    (arguments
+      (arguments at the world, at everyone, at no one in particular, stupidly, 
+                 lazily, quickly, like a snake, like a lizard, 
+                 like a salamander, like a frog, like a toad, like a newt,
+                 like a hummingbird, #)
+      (self  "You poke your tongue out.")
+      (rest  "$mcname$ poke$s$ $mposs$ tongue out.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You poke your tongue out at $hcname$.")
+      (target "$mcname$ poke$s$ $mposs$ tongue out at you.")
+      (rest   "$mcname$ poke$s$ $mposs$ tongue out at $hcname$.")
+    )
+    (arguments
+      (arguments stupidly, lazily, quickly, like a snake, like a lizard, 
+                 like a salamander, like a frog, like a toad, like a newt,
+                 like a hummingbird, #)
+      (self   "You poke your tongue out at $hcname$ $arg$.")
+      (target "$mcname$ poke$s$ $mposs$ tongue out at you $arg$.")
+      (rest   "$mcname$ poke$s$ $mposs$ tongue out at $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments pierced, tatooed, frozen, hairy, fluffy, messy,
+                 baked bean covered, green, hard)
+      (self   "You poke your $arg$ tongue out at $hcname$ and wiggle it.")
+      (target "$mcname$ poke$s$ $mposs$ $arg$ tongue out at $hcname$ and wiggles i
+t.")
+      (rest   "$mcname$ poke$s$ $mposs$ $arg$ tongue out at $hcname$ and wiggles i
+t.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/touch.s
+==================================================
+
+(touch
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You feel touched.")
+      (rest "$mcname$ feel$s$ touched.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You touch $hcname$.")
+      (target "$mcname$ touch$s$ you.")
+      (rest  "$mcname$ touch$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  softly, passionately, deeply, tenderly, gently,
+                  lovingly, lengthily, fishily, carefully, demandingly,
+                  sensuously, longingly, hungrily, back, boringly,
+                  inattentively, absentmindedly, froggily,
+                  in an igloo, on a coffee table, in a shower,
+                  slowly, suspiciously, calmly,#)
+      (self   "You touch $hcname$ $arg$.")
+      (target "$mcname$ touch$s$ you $arg$.")
+      (rest  "$mcname$ touch$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  ear, nose, cheek, hand, forehead, eyebrow,
+                  finger, foot, toe, fingernail, arm, thigh,
+                  upper thigh, calf, elbow, knee, fingers, neck,
+                  shoulder, palm, toes)
+      (self   "You touch $mhcname$ $arg$.")
+      (target "$mcname$ touch$s$ your $arg$.")
+      (rest  "$mcname$ touch$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  girly air, rabbity, scruffy, cabbagey)
+      (self   "You give $hcname$ a $arg$ touch on the cheek.")
+      (target "$mcname$ give$s$ you a $arg$ touch on the cheek.")
+      (rest  "$mcname$ give$s$ $hcname$ a $arg$ touch on the cheek.")
+    )
+    (arguments
+      (arguments  exciting)
+      (self   "You give $hcname$ an $arg$ touch on the cheek.")
+      (target "$mcname$ give$s$ you an $arg$ touch on the cheek.")
+      (rest  "$mcname$ give$s$ $hcname$ an $arg$ touch on the cheek.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tousle.s
+==================================================
+
+(tousle
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You tousle $mhcname$ hair.")
+      (target "$mcname$ tousle$s$ your hair.")
+      (rest  "$mcname$ tousle$s$ $mhcname$ hair.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tower.s
+==================================================
+
+(tower
+  (pattern "[over] <indirect:any-living>")
+  (pattern "[over] <indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You tower over $hcname$.")
+      (target "$mcname$ tower$s$ over you.")
+      (rest  "$mcname$ tower$s$ over $hcname$.")
+    )
+    (arguments
+      (arguments  ominously,threateningly)
+      (self   "You tower over $hcname$ $arg$.")
+      (target "$mcname$ tower$s$ over you $arg$.")
+      (rest  "$mcname$ tower$s$ over $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tremble.s
+==================================================
+
+(tremble
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You tremble.")
+      (rest "$mcname$ tremble$s$.")
+    )
+    (arguments
+      (arguments in fear, nervously, in pain, slightly, violently,
+                 insistently, carefully, in a pink fit, passionately,
+                 sensuously, slowly, quickly, jerkily, uncontrollably,
+                 in excitement, in pleasure,
+                 in anticip.......pation, #)
+      (self "You tremble $arg$.")
+      (rest "$mcname$ tremble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You tremble at $hcname$.")
+      (target "$mcname$ tremble$s$ at you.")
+      (rest "$mcname$ tremble$s$ at $hcname$.")
+    )
+  (arguments
+    (arguments in fear, nervously, in pain, slightly, violently,
+               insistently, carefully, in a pink fit, passionately,
+               sensuously, slowly, quickly, jerkily, uncontrollably,  
+               in excitement, in pleasure,
+               in anticip.......pation, #)    
+      (self "You tremble at $hcname$ $arg$." )
+      (target "$mcname$ tremble$s$ at you $arg$." )
+      (rest "$mcname$ tremble$s$ at $hcname$ $arg$." )
+     )
+  )
+)
+
+
+==================================================
+FILE: t/trip.s
+==================================================
+
+(trip
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You trip up.")
+      (rest "$mcname$ trip$s$ up.")
+      (position
+        (standing "sit")
+      )
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You trip $hcname$.")
+      (target "$mcname$ trip$s$ you.")
+      (rest  "$mcname$ trip$s$ $hcname$.")
+      (position
+        (standing "sit")
+      )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tuck.s
+==================================================
+
+(tuck
+  (pattern "<indirect:any-living>")
+  (targeted
+   (no-arguments
+      (self "You tuck $hcname$ in and kiss $hobj$ goodnight.")
+      (target "$mcname$ tuck$s$ you in and kisses you goodnight.")
+      (rest "$mcname$ tuck$s$ $hcname$ in and kisses $hobj$ goodnight.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/tug.s
+==================================================
+
+(tug
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments sleeve, leg, arm, nose, ear, hair, naughty bits, pants, boat, #)
+      (self "You tug on $mhcname$ $arg$ in a desperate attempt to get some attention.")
+      (target "$mcname$ tug$s$ on your $arg$ in a desperate attempt to get some attention.")
+      (rest "$mcname$ tug$s$ on $mhcname$ $arg$ in a desperate attempt to get some attention.")
+    )
+  )
+)
+
+/* Hobbes, 961030 */
+
+
+==================================================
+FILE: t/tumble.s
+==================================================
+
+(tumble
+  (single
+    (no-arguments
+      (self "You tumble head over heels.")
+      (rest "$mcname$ tumble$s$ head over heels.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/twang.s
+==================================================
+
+(twang
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments calmly, with the wolves, a nice little tune, up, down, 
+                 manically, rhythmically, undyingly, backwards, beautifully, 
+                 upside down)
+      (self "You twang $arg$.")
+      (rest "$mcname$ twang$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments calmly, with the wolves, a nice little tune, up, down, 
+                 manically, rhythmically, undyingly, backwards, beautifully, 
+                 upside down)
+      (self   "You twang $arg$ at $hcname$.")
+      (target "$mcname$ twang$s$ $arg$ at you.")
+      (rest  "$mcname$ twang$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/tweak.s
+==================================================
+
+(tweak
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  bottom, ear, arm, leg, nose, bits, eyebrow, arm,
+                  leg, thigh, elbow, cheeks, nose, ear, knee, #)
+      (self   "You tweak $mhcname$ $arg$.")
+      (target "$mcname$ tweak$s$ your $arg$.")
+      (rest  "$mcname$ tweak$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/twiddle.s
+==================================================
+
+(twiddle
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments thumbs, fingers, hair, nose, bits, #)
+      (self "You twiddle your $arg$.")
+      (rest "$mcname$ twiddle$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted 
+    (arguments
+      (arguments thumbs, fingers, hair, nose, bits, #)
+        (self   "You twiddle $mhcname$ $arg$.")
+        (target "$mcname$ twiddle$s$ your $arg$.")
+        (rest   "$mcname$ twiddle$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: t/twinkle.s
+==================================================
+
+(twinkle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You twinkle like a star.")
+      (rest "$mcname$ twinkles like a star.")
+    )
+    (arguments
+      (arguments brightly,lovely,happily,mischievously,
+                 cheekily,idiotically,wryly,sceptically,
+                 derisively,annoyingly,absentmindedly,whilst you work,
+                 distractedly,pointlessly,like Josie,
+                 silently,loudly,rudely,with laughter,vaguely,obviously,#)
+      (self "You twinkle $arg$.")
+      (rest "$mcname$ twinkle$s$ $arg$.")
+    )
+  )
+  (targeted
+      (arguments
+      (arguments like a star,brightly,lovely,happily,mischievously,
+                 cheekily,idiotically,wryly,sceptically,
+                 derisively,annoyingly,absentmindedly,whilst you work,
+                 distractedly,pointlessly,like Josie,
+                 silently,loudly,rudely,with laughter,vaguely,obviously,#)
+      (self   "You twinkle $arg$ at $hcname$.")
+      (target "$mcname$ twinkle$s$ $arg$ at you.")
+      (rest  "$mcname$ twinkle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: t/twirl.s
+==================================================
+
+(twirl
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You twirl around.")
+      (rest "$mcname$ twirls around.")
+    )
+    (arguments
+    (arguments in circles, stylishly, like a dervish, like a Morris Dancer, 
+               a baton, a lock of hair, #)
+      (self "You twirl $arg$.")
+      (rest "$mcname$ twirl$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You twirl $hcname$ round in circles.")
+      (target "$mcname$ twirl$s$ you round in circles.")
+      (rest   "$mcname$ twirl$s$ $hcname$ round in circles.")
+    )
+    (arguments
+    (arguments  stylishly, like a dervish, like a Morris Dancer, 
+               a baton, a lock of hair, #)
+      (self   "You twirl $hcname$ round $arg$.")
+      (target "$mcname$ twirl$s$ you round $arg$.")
+      (rest   "$mcname$ twirl$s$ $hcname$ round $arg$.")
+    )
+  )
+)
+/* Modified by Saffra Oct 09 2001 */
+
+==================================================
+FILE: t/twitch.s
+==================================================
+
+(twitch
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You twitch." )
+      (rest "$mcname$ twitches." )
+    )
+    (arguments
+      (arguments violently, spasmodically, suddenly, frantically, 
+                 pointedly, from too much caffeine, from too much crack, #)
+      (self "You twitch $arg$.")
+      (rest "$mcname$ twitch$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You twitch at $hcname$." )
+      (target "$mcname$ twitch$s$ at you." )
+      (rest   "$mcname$ twitch$s$ at $hcname$." )
+    )   
+    (arguments
+      (arguments violently, spasmodically, suddenly, frantically, 
+                 pointedly, from too much caffeine, from too much crack, #)
+      (self   "You twitch $arg$ at $hcname$.")
+      (target "$mcname$ twitch$s$ $arg$ at you.")
+      (rest  "$mcname$ twitch$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra 2-21-00 */
+
+==================================================
+FILE: e/ear.s
+==================================================
+
+(ear
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You pull a quarter from your ear.")
+      (rest "$mcname$ pull$s$ a quarter from $mposs$ ear.")
+    )
+    (arguments
+      (arguments  a pence, a dollar, a royal, a womble, a string of sausages, 
+                  a brain cell, #)
+      (self "You pull $arg$ from your ear.")
+      (rest "$mcname$ pull$s$ $arg$ from $mposs$ ear.")
+
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You pull a quarter from $mhcname$ ear.")
+      (target "$mcname$ pull$s$ a quarter from your ear.")
+      (rest "$mcname$ pull$s$ a quarter from $mhcname$ ear.")
+    )
+    (arguments
+      (arguments  a pence, a dollar, a royal, a womble, a string of sausages,  
+                  a brain cell, #)
+      (self   "You pull $arg$ from $mhcname$ ear.")
+      (target "$mcname$ pull$s$ $arg$ from your ear.")
+      (rest   "$mcname$ pull$s$ $arg$ from $mhcname$ ear.")
+    )
+  )
+)
+/* by Saffra 4-26-00 */
+
+
+==================================================
+FILE: e/educate.s
+==================================================
+
+(educate
+  (pattern "<indirect:any-living> [about] <string>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (arguments
+      (arguments #)
+      (self   "You educate $hcname$ about $arg$.")
+      (target "$mcname$ educate$s$ you about $arg$.")
+      (rest  "$mcname$ educate$s$ $hcname$ about $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/eek.s
+==================================================
+
+(eek
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You eek.")
+      (rest "$mcname$ eek$s$.")
+    )
+    (arguments
+      (arguments loudly,in shock,in amazement,in the basement,happily,
+               sadly,carefully,brightly,manically,evilly,wickedly,insanely,
+               mischievously,devilishly,impishly,cheekily,idiotically,
+               tentatively,wryly,sceptically,#)
+      (self "You eek $arg$.")
+      (rest "$mcname$ eek$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You eek at $hcname$.")
+      (target "$mcname$ eek$s$ at you.")
+      (rest  "$mcname$ eek$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments loudly,in shock,in amazement,in the basement,happily,
+               sadly,carefully,brightly,manically,evilly,wickedly,insanely,
+               mischievously,devilishly,impishly,cheekily,idiotically,
+               tentatively,wryly,sceptically,#)
+      (self   "You eek $arg$ at $hcname$.")
+      (target "$mcname$ eek$s$ $arg$ at you.")
+      (rest  "$mcname$ eek$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/ellaron.s
+==================================================
+
+(ellaron
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You ellaron around.")
+      (rest "$mcname$ ellaron$s$ around.")
+    )
+    (arguments
+      (arguments #)
+      (self "You ellaron around $arg$.")
+      (rest "$mcname$ ellaron$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments expertly, without really knowing how, drunkenly,
+                 happily, backwards, like Ellaron, wearing a fez,
+                 and down to the pub, professionally, with your frog)
+      (self   "You ellaron around $hcname$ $arg$.")
+      (target "$mcname$ ellaron$s$ around you $arg$.")
+      (rest   "$mcname$ ellaron$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/embarrass.s
+==================================================
+
+(embarrass
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You embarrass $hcname$.")
+      (target "$mcname$ embarrass$s$ you.")
+      (rest  "$mcname$ embarrass$s$ $hcname$.")        
+    )
+    (arguments
+      (arguments about sex, with a stick, under a water tower,
+                 about your personal problems, in a fluffy way, 
+                 using inappropriate soul commands, 
+                 enthusiastically, slowly, excitedly, seductively, quickly,
+                 backwards, under a bridge, in a manger, quietly, loudly,
+                 while talking to someone else, heaps, completely, totally,
+                 about real life, you in front of your friends,
+                 you in front of your parents, in front of Shalla's grandmother,
+                 you about mischatting, about netsexing a cre, you about dying,
+                 you about typos, #)
+      (self   "You embarrass $hcname$ $arg$.")
+      (target "$mcname$ embarrass$s$ you $arg$.")
+      (rest  "$mcname$ embarrass$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/embrace.s
+==================================================
+
+(embrace
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You embrace $hcname$.")
+      (target "$mcname$ embrace$s$ you.")
+      (rest  "$mcname$ embrace$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  tightly, warmly, gently, close, lustfully, 
+                  touchy-feelingly, lovingly, affectionately, sweetly, 
+                  mushily, schmoopily, carnally, adoringly, suddenly, 
+                  like a huge bear, in a public display of affection, 
+                  with pillows, with fluffy pillows, #)
+      (self   "You embrace $hcname$ $arg$.")
+      (target "$mcname$ embrace$s$ you $arg$.")
+      (rest  "$mcname$ embrace$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/encourage.s
+==================================================
+
+(encourage
+   (pattern "<string>")
+   (pattern "[at] <indirect:any-living>")
+   (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You encourage yourself.")
+      (rest "$mcname$ encourage$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments because no one else will, #)
+      (self "You encourage yourself $arg$.")
+      (rest "$mcname$ encourage$s$ $mobj$self $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You encourage $hcname$.")
+      (target "$mcname$ encourage$s$ you.")
+      (rest  "$mcname$ encourage$s$ $hcname$.")
+    )
+    (arguments
+      (arguments because no one else will, to nibble your toes, 
+                 to be quiet now, to make you dinner, to do mighty deeds, #)
+      (self   "You encourage $hcname$ $arg$.")
+      (target "$mcname$ encourage$s$ you $arg$.")
+      (rest  "$mcname$ encourage$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra 9-10-00.  Because Archana asked me to. */
+
+==================================================
+FILE: e/envy.s
+==================================================
+
+(envy
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You envy $hcname$.")
+      (target "$mcname$ envy$s$ you.")
+      (rest  "$mcname$ envy$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  frog,#)
+      (self   "You envy $mhcname$ $arg$.")
+      (target "$mcname$ envy$s$ your $arg$.")
+      (rest  "$mcname$ envy$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/eskimo.s
+==================================================
+
+(eskimo
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  nose, frog, cabbage, bug, toes, fingertips, #)
+      (self   "You rub your $arg$ gently against $mhcname$.")
+      (target "$mcname$ rub$s$ $mposs$ $arg$ gently against yours.")
+      (rest  "$mcname$ rub$s$ $mposs$ $arg$ gently against $mhcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/exp.s
+==================================================
+
+(exp
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You raise yourself to a random power.")
+      (rest "$mcname$ raise$s$ $mobj$self to a random power.")
+    )
+    (arguments
+      (arguments #)
+      (self "You raise yourself to the power of $arg$.")
+      (rest "$mcname$ raise$s$ $mobj$self to the power of $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You raise $hcname$ to a random power.")
+      (target "$mcname$ raise$s$ you to a random power.")
+      (rest  "$mcname$ raise$s$ $hcname$ to a random power.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You raise $hcname$ to the power of $arg$.")
+      (target "$mcname$ raise$s$ you to the power of $arg$.")
+      (rest  "$mcname$ raise$s$ $hcname$ to the power of $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/expect.s
+==================================================
+
+(expect
+  (pattern "[at] <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You look expectantly at $hcname$.")
+      (target "$mcname$ look$s$ expectantly at you.")
+      (rest  "$mcname$ look$s$ expectantly at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: e/explode.s
+==================================================
+
+(explode
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [over] <indirect:any-living>")
+  (pattern "[over] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+        (self "You explode into thousands of tiny pieces.") 
+        (rest "$mcname$ explode$s$ into thousands of tiny pieces.")
+        )
+      (arguments 
+        (arguments messily,into thousands of tiny thetans,over your frog,#)
+      (self "You explode $arg$.")
+      (rest "$mcname$ explode$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You explode into thousands of tiny pieces over $hcname$.")
+      (target "$mcname$ explode$s$ into thousands of tiny pieces over you.")
+      (rest  "$mcname$ explode$s$ into thousands of tiny pieces over $hcname$.")
+       )
+      (arguments 
+        (arguments messily,into thousands of tiny thetans,your frog,#)
+      (self   "You explode $arg$ over $hcname$.")
+      (target "$mcname$ explode$s$ $arg$ over you.")
+      (rest   "$mcname$ explode$s$ $arg$ over $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: e/eye.s
+==================================================
+
+(eye
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You eye $hcname$ over.")
+      (target "$mcname$ eye$s$ you over.")
+      (rest  "$mcname$ eye$s$ $hcname$ over.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/waddle.s
+==================================================
+
+(waddle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You waddle.")
+      (rest "$mcname$ waddle$s$.")
+    )
+    (arguments
+      (arguments around, slowly, heavily, roundly, rollingly, like a duck, 
+                 like a penguin, like a wizard, #)
+      (self "You waddle $arg$.")
+      (rest "$mcname$ waddle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You waddle at $hcname$.")
+      (target "$mcname$ waddle$s$ at you.")
+      (rest  "$mcname$ waddle$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments slowly, heavily, roundly, rollingly, like a duck, 
+                 like a penguin, like a wizard, #)
+      (self   "You waddle $arg$ at $hcname$.")
+      (target "$mcname$ waddle$s$ $arg$ at you.")
+      (rest  "$mcname$ waddle$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments around, away from, up to, over, under)
+      (self   "You waddle $arg$ $hcname$.")
+      (target "$mcname$ waddle$s$ $arg$ you.")
+      (rest  "$mcname$ waddle$s$ $arg$ $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/wag.s
+==================================================
+
+(wag
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You wag your tail.")
+      (rest "$mcname$ wag$s$ $mposs$ tail.")
+    )
+    (arguments
+      (arguments eyebrows, nose, ear, toe, foot, arm, leg, coffee table,
+                  shower hose, green shoes)
+      (self "You wag your $arg$.")
+      (rest "$mcname$ wag$s$ $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments happily,enticingly,suggestively,vigorously,arrogantly,
+                 nonchalantly,quickly,tunelessly)
+      (self "You wag your tail $arg$.")
+      (rest "$mcname$ wag$s$ $mposs$ tail $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wag your tail at $hcname$.")
+      (target "$mcname$ wag$s$ $mposs$ tail at you.")
+      (rest   "$mcname$ wag$s$ $mposs$ tail at $hcname$.")
+    )
+    (arguments
+      (arguments eyebrows, nose, ear, toe, foot, arm, leg, coffee table,
+                  shower hose, green shoes)
+      (self "You wag your $arg$ at $hcname$.")
+      (target "$mcname$ wag$s$ $mposs$ $arg$ at you.")
+      (rest "$mcname$ wag$s$ $mposs$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily,enticingly,suggestively,vigorously,arrogantly,
+                 tunelessly,nonchalantly,quickly)
+      (self   "You wag your tail $arg$ at $hcname$.")
+      (target "$mcname$ wag$s$ $mposs$ tail $arg$ at you.")
+      (rest   "$mcname$ wag$s$ $mposs$ tail $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/waggle.s
+==================================================
+
+(waggle
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You waggle your finger.")
+      (rest "$mcname$ waggle$s$ $mposs$ finger.")
+    )
+    (arguments
+      (arguments arm, leg, head, nose, ear, frog, pinky, eyebrows, toe, #)
+      (self "You waggle your $arg$.")
+      (rest "$mcname$ waggle$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "What did $hcname$ do wrong?")
+      (target "$mcname$ waggle$s$ $mposs$ finger at you.")
+      (rest   "$mcname$ waggle$s$ $mposs$ finger at $hcname$.")
+    )
+    (arguments
+      (arguments arm, leg, head, nose, ear, frog, pinky, eyebrows, toe, #)
+      (self   "You waggle your $arg$ at $hcname$.")
+      (target "$mcname$ waggle$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ waggle$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wail.s
+==================================================
+
+(wail
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "at <indirect:any-living> <string>")
+ (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You wail.")
+      (rest "$mcname$ wail$s$.")
+    )
+    (arguments
+      (arguments like a banshee, like a toothless banshee, manically, evilly,
+                 wickedly, insanely,
+                 impishly, cheekily, idiotically, repeatedly, in horror, 
+                 in fright, in fear, in pain, in surprise, in frustration, 
+                 in despair, in anger,#)
+      (self "You wail $arg$.")
+      (rest "$mcname$ wail$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments like a banshee, like a toothless banshee,
+       manically, evilly, wickedly, insanely,
+                 impishly, cheekily, idiotically, repeatedly, in horror, 
+                 in fright, in fear, in pain, in surprise, in frustration, 
+                 in despair, in anger,#)
+      (self   "You wail $arg$ at $hcname$.")
+      (target "$mcname$ wail$s$ $arg$ at you.")
+      (rest   "$mcname$ wail$s$ $arg$ at $hcname$.")
+    )
+      (arguments
+       (arguments ear,face)
+         (self   "You wail in $mhcname$ $arg$.")
+         (target "$mcname$ wail$s$ in your $arg$.")
+         (rest   "$mcname$ wail$s$ in $mhcname$ $arg$.")
+      )
+   )
+)
+/*Db  */
+
+
+
+==================================================
+FILE: w/wait.s
+==================================================
+
+(wait
+  (pattern "[for] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [for] <indirect:any-living>")
+  (pattern "[for] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "Time passes.")
+      (rest "$mcname$ wait$s$.")
+    )
+    (arguments
+      (arguments impatiently,for ever,angrily,happily,idiotically,
+      for something to happen,#)
+      (self "You wait $arg$.")
+      (rest "$mcname$ wait$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wait for $hcname$.")
+      (target "$mcname$ wait$s$ for you.")
+      (rest  "$mcname$ wait$s$ for $hcname$.")
+    )
+    (arguments
+      (arguments impatiently,for ever,angrily,happily,idiotically,
+       for something to happen,#)
+      (self   "You wait $arg$ for $hcname$.")
+      (target "$mcname$ wait$s$ $arg$ for you.")
+      (rest  "$mcname$ wait$s$ $arg$ for $hcname$.")
+    )
+  )
+)
+
+
+
+
+
+==================================================
+FILE: w/wake.s
+==================================================
+
+(wake
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments up,up and smell the cat food,the dead,
+                 the wombles of the world up)
+      (self "You wake $arg$.")
+      (rest "$mcname$ wake$s$ up.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wake up $hcname$.")
+      (target "$mcname$ wake$s$ you up.")
+      (rest   "$mcname$ wake$s$ up $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/waltz.s
+==================================================
+
+(waltz
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You waltz around the room with $hcname$.")
+      (target "$mcname$ waltz$s$ around the room with you.")
+      (rest   "$mcname$ waltz$s$ around the room with $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/warn.s
+==================================================
+
+(warn
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You warn $hcname$.")
+      (target "$mcname$ warn$s$ you.")
+      (rest  "$mcname$ warn$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  angrily,evilly,wickedly,carefully,slightly,hysterically,patienly,sagely,vigorously,dangerously,knowingly,faintly,#)
+      (self   "You warn $hcname$ $arg$.")
+      (target "$mcname$ warn$s$ you $arg$.")
+      (rest  "$mcname$ warn$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wave.s
+==================================================
+
+(wave
+  (pattern "[at|to|at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to|at] <indirect:any-living>")
+  (pattern "[at|to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wave.")
+      (rest "$mcname$ waves.")
+    )
+    (arguments
+      (arguments tiredly,sleepily,lazily,sadly,happily,redundantly,
+                 forlornly,excitedly,longingly,pointlessly,madly,
+                insanely,with complete devotion,cheerfully,merrily)
+      (self "You wave $arg$.")
+      (rest "$mcname$ wave$s$ $arg$.")
+    )
+    (arguments
+      (arguments hand,tentacles,leg,frog,handkerchief)
+      (self "You wave your $arg$.")
+      (rest "$mcname$ wave$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wave to $hcname$.")
+      (target "$mcname$ wave$s$ to you.")
+      (rest  "$mcname$ wave$s$ to $hcname$.")
+    )
+    (arguments
+      (arguments sleepily,tiredly,perfunctorily,lazily,sadly,happily,
+                 forlornly,excitedly,longingly,redundantly,pointlessly,
+                 passionately,greenly,your tentacles,madly,insanely,
+                 with complete devotion,cheerfully,merrily,#)
+      (self   "You wave $arg$ to $hcname$.")
+      (target "$mcname$ wave$s$ $arg$ to you.")
+      (rest   "$mcname$ wave$s$ $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wax.s
+==================================================
+
+(wax
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments head, face, legs, armpits, goatee, poodle, womble, 
+                 eyebrows, sideburns, moustache, beard, cat, crayons,
+                 apples, runners, skis, carriage, #)
+      (self "You wax your $arg$.")
+      (rest "$mcname$ wax$s$ $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments poetic, philosophical, wry, sarcastic, on, off, and wanes)
+      (self "You wax $arg$.")
+      (rest "$mcname$ wax$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments head, face, legs, armpits, goatee, poodle, womble, 
+                 eyebrows, sideburns, moustache, beard, cat, crayons,
+                 apples, #)
+      (self   "You wax $hcname$'s $arg$.") 
+      (target "$mcname$ wax$s$ your $arg$.")
+      (rest  "$mcname$ wax$s$ $hcname$'s $arg$.")
+    )
+    (arguments
+      (arguments poetic, philosophical, wry, sarcastic, on, off, and wanes)
+      (self "You wax $arg$ at $hcname$.")
+      (target "$mcname$ wax$s$ $arg$ at you.")
+      (rest "$mcname$ wax$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* by Saffra 2-12-02 for Lewwwwwda */
+
+
+
+
+==================================================
+FILE: w/wedgie.s
+==================================================
+
+(wedgie
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments playfully, gleefully, like bob the dinosaur, hysterically)
+        (self "You wedgie $hcname$ $arg$.  Ouch, that has got to hurt.")
+        (target "$mcname$ wedgie$s$ you $arg$.")
+        (rest "$mcname$ wedgie$s$ $hcname$ $arg$.  Ouch, that has got to hurt.")
+    )
+  )
+)
+
+/* Hobbes, 961030 */
+
+
+==================================================
+FILE: w/weep.s
+==================================================
+
+(weep
+  (pattern "[for] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments unashamedly,sadly,uncontrollably)
+      (self "You weep $arg$.")
+      (rest "$mcname$ weep$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You weep with $hcname$.")
+      (target "$mcname$ weep$s$ with you.")
+      (rest   "$mcname$ weep$s$ with $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/welcome.s
+==================================================
+
+(welcome
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  warmly,sadly,with open arms,to Discworld,ecstatically,carefully,courteously,hysterically,reservedly,happily,coldly,insolently,curtly,absentmindedly,slightly,to Disco-world 2000!,#)
+      (self   "You welcome $hcname$ $arg$.")
+      (target "$mcname$ welcome$s$ you $arg$.")
+      (rest  "$mcname$ welcome$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/whap.s
+==================================================
+
+(whap
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You whap yourself repeatedly.")
+      (rest "$mcname$ whaps $mobj$self repeatedly.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You whap $hcname$ over the head.")
+      (target "$mcname$ whap$s$ you over the head.")
+      (rest  "$mcname$ whap$s$ $hcname$ over the head.")
+    )
+    (arguments
+      (arguments  hard,harder,really hard,incredibly hard,
+                  with a fish,with a wet towel,with Descartes' LPC manual,
+                  with a frog,with a big stick,twice,viciously,carefully,
+     violently,lovingly,repeatedly,like a knight with a fish in shining armour,# )
+      (self   "You whap $hcname$ over the head $arg$.")
+      (target "$mcname$ whap$s$ you over the head $arg$.")
+      (rest  "$mcname$ whap$s$ $hcname$ over the head $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/whicker.s
+==================================================
+
+(whicker
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You whicker.")
+      (rest "$mcname$ whickers.")
+    )
+    (arguments
+      (arguments  like a horse, gently, happily, slowly, stupidly, 
+                  like a ball of string, back in black, like a stallion, 
+                  with gusto, excitedly, unhappily, sadly, skitishly, #)
+      (self "You whicker $arg$.")
+      (rest "$mcname$ whicker$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You whicker at $hcname$.")
+      (target "$mcname$ whicker$s$ at you.")
+      (rest   "$mcname$ whicker$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  like a horse, gently, happily, slowly, stupidly, 
+                  like a ball of string, back in black, like a stallion, 
+                  with gusto, excitedly, unhappily, sadly, skitishly, #)
+      (self   "You whicker $arg$ at $hcname$.")
+      (target "$mcname$ whicker$s$ $arg$ at you.")
+      (rest   "$mcname$ whicker$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/whimper.s
+==================================================
+
+(whimper
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "at <indirect:any-living> <string>")
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You whimper.")
+      (rest "$mcname$ whimper$s$.")
+    )
+    (arguments
+      (arguments painfully, fearfully, carefully, diminutively, happily,
+                 winningly, in triumph, with the wombles, #)
+      (self "You whimper $arg$.")
+      (rest "$mcname$ whimper$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You whimper at $hcname$.")
+      (target "$mcname$ whimper$s$ at you.")
+      (rest "$mcname$ whimper$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments painfully, fearfully, carefully, diminutively, happily,
+                 winningly, in triumph, with the wombles, #)
+      (self "You whimper $arg$ at $hcname$.")
+      (target "$mcname$ whimper$s$ $arg$ at you.")
+      (rest "$mcname$ whimper$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/whine.s
+==================================================
+
+(whine
+  (pattern "[at|to] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at|to] <indirect:any-living>")
+  (pattern "[at|to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You whine.")
+      (rest "$mcname$ whines.")
+    )
+    (arguments
+      (arguments pathetically,unconvincingly,like Klahn,like a lost puppy, #)
+      (self "You whine $arg$.")
+      (rest "$mcname$ whine$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You whine at $hcname$.")
+      (target "$mcname$ whine$s$ at you.")
+      (rest   "$mcname$ whine$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments pathetically,unconvincingly,like Klahn,like a lost puppy,#)
+      (self   "You whine $arg$ at $hcname$.")
+      (target "$mcname$ whine$s$ $arg$ at you.")
+      (rest  "$mcname$ whine$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/whinge.s
+==================================================
+
+(whinge
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You whinge.")
+      (rest "$mcname$ whinges.")
+    )
+    (arguments
+    (arguments  incessantly, endlessly, annoyingly, loudly,
+                repeatedly, whingingly, whiningly, like an 
+                assassin, like a witch, like a player, on the boards,
+                in real life, meekly, quietly, modestly, in a 
+                passive aggressive manner, #)
+      (self "You whinge $arg$.")
+      (rest "$mcname$ whinge$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You whinge at $hcname$.")
+    (target "$mcname$ whinge$s$ at you.")
+    (rest "$mcname$ whinge$s$ at $hcname$.")
+  )
+  (arguments
+  (arguments  incessantly, endlessly, annoyingly, loudly,
+              repeatedly, whingingly, whiningly, like an 
+              assassin, like a witch, like a player, on the boards,
+              in real life, meekly, quietly, modestly, in a 
+              passive aggressive manner, #)
+    (self "You whinge at $hcname$ $arg$." )
+    (target "$mcname$ whinge$s$ at you $arg$." )
+    (rest "$mcname$ whinge$s$ at $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: w/whinny.s
+==================================================
+
+(whinny
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You whinny.")
+      (rest "$mcname$ whinnies.")
+    )
+    (arguments
+      (arguments like a horse, gently, happily, slowly, stupidly,
+                 like a ball of string, in growing pains,
+                 back in black, like a stallion, with gusto, excitedly,
+                 unhappily, sadly, skittishly, #)
+      (self "You whinny $arg$.")
+      (rest "$mcname$ whinny$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You whinny at $hcname$.")
+      (target "$mcname$ whinny$s$ at you.")
+      (rest "$mcname$ whinny$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a horse, gently, happily, slowly, stupidly,
+                 like a ball of string, in growing pains,
+                 back in black, like a stallion, with gusto, excitedly,
+                 unhappily, sadly, skittishly, #)
+      (self "You whinny $arg$ at $hcname$.")
+      (target "$mcname$ whinny$s$ $arg$ at you.")
+      (rest "$mcname$ whinny$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/whirl.s
+==================================================
+
+#  -*- LPC -*- #
+#
+# $Locker:  $
+# $Id: whirl.s,v 1.2 2003/04/22 01:38:10 saffra Exp $
+#
+#
+#
+
+(whirl
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You whirl around.")
+      (rest "$mcname$ whirl$s$ around.")
+    )
+    (arguments
+      (arguments suddenly, quickly, slowly, dizzily, nauseatingly, in a panic,
+                 like a whirlwind, like a tornado, like a blender, like a dust
+                 devil, like a dervish, like a Tasmanian Devil, in a spiral, 
+                 in a holding pattern, #)
+      (self "You whirl around $arg$.")
+      (rest "$mcname$ whirl$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You whirl around $hcname$.")
+      (target "$mcname$ whirl$s$ around you.")
+      (rest   "$mcname$ whirl$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments suddenly, quickly, slowly, dizzily, nauseatingly, in a panic,
+                 like a whirlwind, like a tornado, like a blender, like a dust
+                 devil, like a dervish, like a Tasmanian Devil, in a spiral, 
+                 in a holding pattern, #)
+      (self   "You whirl around $hcname$ $arg$.")
+      (target "$mcname$ whirl$s$ around you $arg$.")
+      (rest   "$mcname$ whirl$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra 5-11-01 */
+
+
+==================================================
+FILE: w/whistle.s
+==================================================
+
+(whistle
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments innocently,appreciatively,loudly,musically,mischievously,
+                 pleasantly,discordantly,tunelessly,covertly,#)
+      (self "You whistle $arg$.")
+      (rest "$mcname$ whistle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments appreciatively,innocently,loudly,musically,mischievously,
+                 pleasantly,discordantly,tunelessly,covertly,#)
+      (self   "You whistle $arg$ at $hcname$.")
+      (target "$mcname$ whistle$s$ $arg$ at you.")
+      (rest   "$mcname$ whistle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wibble.s
+==================================================
+
+(wibble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wibble.")
+      (rest "$mcname$ wibbles.")
+    )
+    (arguments
+      (arguments  like bil, loudly, constantly, annoyingly, around, up, down,
+                  sideways, willfully, #)
+      (self "You wibble $arg$.")
+      (rest "$mcname$ wibble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You wibble at $hcname$.")
+      (target "$mcname$ wibble$s$ at you.")
+      (rest "$mcname$ wibble$s$ at $hcname$.")
+    )
+    (arguments 
+      (arguments  like bil, loudly, constantly, annoyingly, around, up, down,
+                  sideways, willfully, #)
+      (self   "You wibble $arg$ at $hcname$.")
+      (target "$mcname$ wibble$s$ $arg$ at you.")
+      (rest   "$mcname$ wibble$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/wiggle.s
+==================================================
+
+(wiggle
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You wiggle your bottom.")
+      (rest "$mcname$ wiggle$s$ $mposs$ bottom.")
+    )
+    (arguments
+      (arguments eyebrows, nose, ear, toe, foot, arm, leg, coffee table,
+                  shower hose, green shoes,#)
+      (self "You wiggle your $arg$.")
+      (rest "$mcname$ wiggle$s$ $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments happily,enticingly,suggestively,vigorously,arrogantly,
+                 nonchalantly,quickly,tunelessly)
+      (self "You wiggle your bottom $arg$.")
+      (rest "$mcname$ wiggle$s$ $mposs$ bottom $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments bottom, eyebrows, nose, ear, toe, foot, arm, leg, coffee table,
+                  shower hose, green shoes, three-legged table,
+                  tush, behind, cute backside, butt, oranges,
+                  fingers, thumbs, chest, foot, tongue, face,
+                  gloves,#)
+      (self "You wiggle your $arg$ at $hcname$.")
+      (target "$mcname$ wiggle$s$ $mposs$ $arg$ at you.")
+      (rest "$mcname$ wiggle$s$ $mposs$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily, enticingly, suggestively, vigorously, arrogantly,
+                 tunelessly, nonchalantly, quickly, bizarrely, with some celery,
+                 expressively, enthusiastically, creamily)
+      (self   "You wiggle your bottom $arg$ at $hcname$.")
+      (target "$mcname$ wiggle$s$ $mposs$ bottom $arg$ at you.")
+      (rest   "$mcname$ wiggle$s$ $mposs$ bottom $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/willie.s
+==================================================
+
+(willie
+  (pattern "<indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You lick your finger and stick it in $mhcname$ ear.")
+      (target "$mcname$ lick$s$ $mposs$ finger and sticks it in your ear. ")
+      (rest  "$mcname$ lick$s$ $mposs$ finger and sticks it in $mhcname$ ear.")
+    )
+  )
+)
+
+/* Implemented by Hobbes, suggested by Volen 970419 */
+
+==================================================
+FILE: w/win.s
+==================================================
+
+(win
+  (single
+    (no-arguments
+      (self "You win the game!  You don't need to hassle creators now.")
+      (rest "$mcname$ win$s$ the game!")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/wince.s
+==================================================
+
+(wince
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wince.")
+      (rest "$mcname$ winces.")
+    )
+    (arguments
+      (arguments  in shock, unhappily, angrily, at the thought of coding, 
+                  slightly, #)
+      (self "You wince $arg$.")
+      (rest "$mcname$ wince$s$ $arg$.")
+      (target "$mcname$ wince$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You wince at $hcname$.")
+      (rest "$mcname$ wince$s$ at $hcname$.")
+      (target "$mcname$ wince$s$ at you.")
+    )
+    (arguments
+      (arguments  in shock, unhappily, angrily, at the thought of coding, 
+                  slightly, #)
+      (self "You wince $arg$ at $hcname$.")
+      (rest "$mcname$ wince$s$ $arg$ at $hcname$.")
+      (target "$mcname$ wince$s$ $arg$ at you.")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/wink.s
+==================================================
+
+(wink
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wink.")
+      (rest "$mcname$ wink$s$.")
+    )
+    (arguments
+      (arguments suggestively,broadly,slowly,loudly,grumpily,
+                 despairingly,coyly,desperately,insolently,curtly,
+                 lovingly,coquettishly,knowingly,conspiratorially,
+                 patiently,sadistically,warily,seductively,lazily, #)
+      (self "You wink $arg$.")
+      (rest "$mcname$ wink$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wink at $hcname$.")
+      (target "$mcname$ wink$s$ at you.")
+      (rest   "$mcname$ wink$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments suggestively,broadly,slowly,loudly,grumpily,
+                 despairingly,coyly,desperately,insolently,curtly,
+                 lovingly,coquettishly,knowingly,conspiratorially,
+                 patiently,sadistically,warily,seductively,lazily, #)
+      (self   "You wink $arg$ at $hcname$.")
+      (target "$mcname$ wink$s$ $arg$ at you.")
+      (rest   "$mcname$ wink$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wipe.s
+==================================================
+
+(wipe
+  (pattern "[on] <indirect:any-living>")
+  (pattern "[the] <string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (single
+    (arguments
+      (arguments sweat from your brow,smile off your face)
+      (self "You wipe the $arg$.")
+      (rest "$mcname$ wipe$s$ the $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments hands,leg,arm,nose)
+      (self   "You wipe your $arg$ on $hcname$.")
+      (target "$mcname$ wipe$s$ $mposs$ $arg$ on you.")
+      (rest   "$mcname$ wipe$s$ $mposs$ $arg$ on $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wish.s
+==================================================
+
+(wish
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wish.")
+      (rest "$mcname$ wishes.")
+    )
+    (arguments
+      (arguments upon a star, it were true, it wasn't so, #)
+      (self "You wish $arg$.")
+      (rest "$mcname$ wish$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  birthday, Hogswatch Day, Soul Cake Tuesday, 
+                  Sektobers Fool's Day, Small Gods Day)
+      (self   "You wish $hcname$ a happy $arg$.")
+      (target "$mcname$ wish$s$ you a happy $arg$.")
+      (rest   "$mcname$ wish$s$ $hcname$ a happy $arg$.")
+    )
+    (arguments
+      (arguments  good luck, good night, good-bye, #)
+      (self "You wish $hcname$ $arg$.")
+      (target "$mcname$ wish$s$ you $arg$.")
+      (rest "$mcname$ wish$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/*Implemeted by Hobbes, suggested by Deutha 961014 */
+
+
+==================================================
+FILE: w/wobble.s
+==================================================
+
+(wobble
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wobble.")
+      (rest "$mcname$ wobble$s$.")
+    )
+    (arguments
+      (arguments  manically,around a bit,like jelly,constantly,annoyingly,
+         around,up,down,sideways, evilly,wickedly,insanely,mischievously,
+       devilishly,impishly,cheekily,idiotically,tentatively,wryly,sceptically,#)
+      (self "You wobble $arg$.")
+      (rest "$mcname$ wobble$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wobble at $hcname$.")
+      (target "$mcname$ wobble$s$ at you.")
+      (rest  "$mcname$ wobble$s$ at $hcname$.")
+    )
+     (arguments
+      (arguments  manically,around a bit,like jelly,constantly,annoyingly,
+        around,up,down,sideways,evilly,wickedly,insanely,mischievously,
+        devilishly,impishly,cheekily,idiotically,tentatively,wryly,sceptically,#)
+      (self   "You wobble $arg$ at $hcname$.")
+      (target "$mcname$ wobble$s$ $arg$ at you.")
+      (rest  "$mcname$ wobble$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/womble.s
+==================================================
+
+(womble
+  (pattern "<string>")
+  (pattern "[around] <indirect:any-living>")
+  (pattern "<string> [around] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You womble around.")
+      (rest "$mcname$ womble$s$ around.")
+    )
+    (arguments
+      (arguments happily, peacefully, brightly, sadly, greenly, backwards,
+                 orinocoly, wellingtonly, bungoly, tomskly, with your frog,
+                 commonly, twice, once, with a hey nonny nonny,
+                 doing a dance to the great frog in the sky, in a cloud of 
+                 chicken tikka, #)
+      (self "You womble around $arg$.")
+      (rest "$mcname$ womble$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments happily, peacefully, brightly, sadly, greenly, backwards,
+                 orinocoly, wellingtonly, bungoly, tomskly, with your frog,
+                 commonly, twice, once, with a hey nonny nonny,
+                 doing a dance to the great frog in the sky, in a cloud of 
+                 chicken tikka, #)
+      (self   "You womble around $hcname$ $arg$.")
+      (target "$mcname$ womble$s$ around you $arg$.")
+      (rest   "$mcname$ womble$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: w/wonder.s
+==================================================
+
+(wonder
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You wonder about reality and how boring it can be.")
+     (rest "$mcname$ wonders about reality and how boring it can be.")
+    )
+    (arguments
+      (arguments #)
+      (self "You wonder $arg$.")
+      (rest "$mcname$ wonder$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/woo.s
+==================================================
+
+t(woo
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+   (no-arguments
+    (self   "You woo.")
+    (rest  "$mcname$ woo$s$.")
+      )
+    (arguments
+      (arguments
+          vaguely,carefully,slowly,dangerously,quietly,silently,sarcastically,
+          falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,happily,backwards,sideways,#)
+      (self "You woo $arg$.")
+      (rest "$mcname$ woo$s$ $arg$.")
+    )
+   (arguments
+       (arguments pleasure,amazement,#)
+       (self "You woo in $arg$.")
+       (rest "$mcname$ woo$s$ in $arg$.")
+  )
+   )
+  (targeted
+    (no-arguments
+      (self   "You woo at $hcname$.")
+      (target "$mcname$ woo$s$ at you.")
+      (rest  "$mcname$ woo$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments
+          vaguely,carefully,slowly,dangerously,quietly,silently,sarcastically,
+          falsely,manically,evilly,wickedly,insanely,
+         mischievously,devilishly,impishly,cheekily,idiotically,
+         tentatively,wryly,sceptically,happily,backwards,sideways,#)
+      (self   "You woo $arg$ at $hcname$.")
+      (target "$mcname$ woo$s$ $arg$ at you.")
+      (rest  "$mcname$ woo$s$ $arg$ at $hcname$.")
+    )
+     (arguments
+       (arguments pleasure,amazement,#)    
+       (self "You woo in $arg$ at $hcname$.")   
+       (target "$mcname$ woo$s$ in $arg$ at you.")  
+       (rest "$mcname$ woo$s$ in $arg$ at $hcname$.")
+ )
+  )
+)
+
+
+
+==================================================
+FILE: w/woohoo.s
+==================================================
+
+(woohoo
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You go WOOOOO-HOOOOO!")
+      (rest "$mcname$ go$s$ WOOOOO-HOOOOO!")
+    )
+    (arguments
+    (arguments  #)
+      (self "You go WOOOOO-HOOOOO! $arg$.")
+      (rest "$mcname$ go$s$ WOOOOO-HOOOOO! $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You go WOOOOO-HOOOOO! at $hcname$.")
+    (target "$mcname$ go$s$ WOOOOO-HOOOOO! at you.")
+    (rest "$mcname$ go$s$ WOOOOO-HOOOOO! at $hcname$.")
+  )
+  (arguments
+  (arguments  #)
+    (self "You go WOOOOO-HOOOOO! at $hcname$ $arg$." )
+    (target "$mcname$ go$s$ WOOOOO-HOOOOO! at you $arg$." )
+    (rest "$mcname$ go$s$ WOOOOO-HOOOOO! at $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: w/worry.s
+==================================================
+
+(worry
+  (pattern "[about] <string>")
+  (pattern "[about] <indirect:any-living>")
+  (pattern "<string> [about] <indirect:any-living>")
+  (pattern "[about] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You worry about yourself.")
+      (rest "$mcname$ worry$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You worry about $hcname$.")
+      (target "$mcname$ worry$s$ about you.")
+      (rest   "$mcname$ worry$s$ about $hcname$.")
+    )
+    (arguments
+      (arguments  attitude, response, feelings, sleep patterns, #)
+      (self   "You worry about $mhcname$ $arg$.")
+      (target "$mcname$ worry$s$ about your $arg$.")
+      (rest   "$mcname$ worry$s$ about $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/worship.s
+==================================================
+
+(worship
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You worship Pinkfish.")
+      (rest "$mcname$ worship$s$ Pinkfish.")
+    )
+    (arguments
+    (arguments Pishe, Fish, Sek, Gufnork, Sessifet, Hat, Gapp, #)
+      (self "You worship $arg$.")
+      (rest "$mcname$ worship$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You worship $hcname$.")
+      (target "$mcname$ worship$s$ you.")
+      (rest   "$mcname$ worship$s$ $hcname$.")
+    )
+    (arguments
+      (arguments slightly, sarcastically, uncertainly, fawningly, sickeningly,     
+                 embarrassingly, #)
+      (self "You worship $hcname$ $arg$.")
+      (target "$mcname$ worship$s$ you $arg$.")
+      (rest   "$mcname$ worship$s$ $hcname$ $arg$.")
+    ) 
+  )
+)
+
+
+==================================================
+FILE: w/wreath.s
+==================================================
+
+(wreath
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments flowers,frogs,cabbages,#)
+      (self "You send a wreath of $arg$ to $mhcname$ close friends and family.")
+      (target "$mcname$ send$s$ a wreath of $arg$ to your close friends and family.")
+      (rest "$mcname$ send$s$ a wreath of $arg$ to $mhcname$ close friends and family.")
+    )
+  )
+)
+
+/* Hobbes, 961030 Suggested by Choppa. */
+
+
+
+==================================================
+FILE: w/wrinkle.s
+==================================================
+
+(wrinkle
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wrinkle your forehead.")
+      (rest "$mcname$ wrinkles $mposs$ forehead.")
+    )
+    (arguments
+      (arguments  nose, eyes, face, brow, leg, cat, prunes, time, 
+                  cheese grater, #)
+      (self "You wrinkle your $arg$.")
+      (rest "$mcname$ wrinkle$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wrinkle your forehead at $hcname$.")
+      (target "$mcname$ wrinkle$s$ $mposs$ forehead at you.")
+      (rest   "$mcname$ wrinkle$s$ $mposs$ forehead at $hcname$.")
+    )
+    (arguments
+      (arguments  nose, eyes, face, brow, leg, cat, prunes, time, 
+                  cheese grater, #)
+      (self   "You wrinkle your $arg$ at $hcname$.")
+      (target "$mcname$ wrinkle$s$ $mposs$ $arg$ at you.")
+      (rest   "$mcname$ wrinkle$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wuffle.s
+==================================================
+
+(wuffle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self  "You wuffle about.")
+      (rest  "$mcname$ wuffles about.")
+    )   
+    (arguments
+      (arguments affectionately, warmly, gently, absentmindedly, carefully, 
+                  warmly, absolutely, triumphantly, capriciously, suspiciously,
+                  drunkenly, astheticaly, insolently, faintly, delicately, #)
+      (self  "You wuffle $arg$.")
+      (rest  "$mcname$ wuffle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  affectionately, warmly, gently, absentmindedly, carefully, 
+                  warmly, absolutely, triumphantly, capriciously, suspiciously,
+                  drunkenly, astheticaly, insolently, faintly, delicately, #)
+      (self   "You wuffle $hcname$ $arg$.")
+      (target "$mcname$ wuffle$s$ you $arg$.")
+      (rest   "$mcname$ wuffle$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: w/wuzzle.s
+==================================================
+
+(wuzzle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You wuzzle woozle.")
+      (rest "$mcname$ wuzzle woozle$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You wuzzle woozle at $hcname$.")
+      (target "$mcname$ wuzzle woozle$s$ at you.")
+      (rest  "$mcname$ wuzzle woozle$s$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/salaam.s
+==================================================
+
+(salaam
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You salaam.")
+      (rest "$mcname$ salaams.")
+    )
+    (arguments
+      (arguments  happily, sadly, with open arms, annoyingly, impatiently, 
+                  ecstatically, carefully, courteously, hysterically,
+                  reservedly, warmly, coldly, insolently, curtly,             
+                  absentmindedly, slightly, stylishly, smartly, #)
+      (self   "You salaam $arg$.")
+      (target "$mcname$ salaams $arg$.")
+      (rest   "$mcname$ salaams $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You salaam $hcname$.")
+      (target "$mcname$ salaams you.")
+      (rest   "$mcname$ salaams $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly, with open arms, annoyingly, impatiently, 
+                  ecstatically, carefully, courteously, hysterically,
+                  reservedly, warmly, coldly, insolently, curtly,             
+                  absentmindedly, slightly, stylishly, smartly, #)
+      (self   "You salaam $hcname$ $arg$.")
+      (target "$mcname$ salaams you $arg$.")
+      (rest  "$mcname$ salaams $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra, made single no-args possible, 10-11-00. */
+
+==================================================
+FILE: s/salsa.s
+==================================================
+
+(salsa
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self   "You dance a salsa with $hcname$.")
+      (target "$mcname$ dances a salsa with you.")
+      (rest   "$mcname$ dances a salsa with $hcname$.")
+    )
+    (arguments
+      (arguments  quick, fast, stylish, sexy, wonderful, spontaneous)
+      (self   "You dance a $arg$ salsa with $hcname$.")
+      (target "$mcname$ dances a $arg$ salsa with you.")
+      (rest   "$mcname$ dances a $arg$ salsa with $hcname$.")
+    )
+    (arguments
+      (arguments  attractive, amazing, energetic, intriguing)
+      (self   "You dance an $arg$ salsa with $hcname$.")
+      (target "$mcname$ dances an $arg$ salsa with you.")
+      (rest   "$mcname$ dances an $arg$ salsa with $hcname$.")
+    )
+    (arguments
+      (arguments  sensually, stylishly, provocatively, teasingly, 
+                  the night away)
+      (self   "You salsa $arg$ with $hcname$.")
+      (target "$mcname$ salsas $arg$ with you.")
+      (rest   "$mcname$ salsa $arg$ with $hcname$.")
+    )
+    (arguments
+      (arguments  with a rose between your teeth, with tequila, 
+                  with more tequila, and a cactus, #)
+      (self   "You dance a salsa with $hcname$ $arg$.")
+      (target "$mcname$ dances a salsa with you $arg$.")
+      (rest   "$mcname$ dances a salsa with $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/salute.s
+==================================================
+
+(salute
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You salute smartly.")
+      (rest "$mcname$ salutes smartly.")
+    )
+    (arguments
+      (arguments  slowly, quickly, respectfully, insolently, mockingly, #)
+      (self "You salute $arg$.")
+      (rest "$mcname$ salutes $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You salute $hcname$.")
+      (target "$mcname$ salutes you.")
+      (rest   "$mcname$ salutes $hcname$.")
+    )
+    (arguments
+      (arguments  slowly, quickly, respectfully, insolently, mockingly, #)
+      (self   "You salute $hcname$ $arg$.")
+      (target "$mcname$ salutes you $arg$.")
+      (rest   "$mcname$ salutes $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sass.s
+==================================================
+
+(sass
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (targeted
+    (no-arguments
+      (self "You sass $hcname$.")
+      (target "$mcname$ sasses you.")
+      (rest "$mcname$ sass $hcname$.")
+    )
+    (arguments
+      (arguments the hoopy frood, brightly, exuberantly,
+                 without a towel, over the moon, mangoly,
+                 bananaly, applely, pineapplely, avacadoly)
+      (self "You sass $arg$ at $hcname$.")
+      (target "$mcname$ sasses $arg$ at you.")
+      (rest "$mcname$ sasses $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/satisfy.s
+==================================================
+
+(satisfy
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You satisfy yourself.")
+      (rest   "$mcname$ satisfies $mobj$self.")
+    )
+    (arguments
+      (arguments carrot, parsnip, fish, womble, duck, chicken, cup of coffee,
+                 cup of tea, bendy straw, wombat, hedgehog, creator, liaison,
+                 Lord, High Lord, badger )
+      (self  "You satisfy yourself with a $arg$.")
+      (rest  "$mcname$ satisfies $mobj$self with a $arg$.")
+    )
+    (arguments
+      (arguments  to pass the time, on a coffee table, like a womble,
+                  like a duck, like an opera singer, like a goose,
+                  because noone else will, like noone else can,
+                  like a penguin, #)
+      (self  "You satisfy yourself $arg$.")
+      (rest  "$mcname$ satisfies $mobj$self $arg$.")
+    )
+    (arguments
+      (arguments  lovingly, absentmindedly, impatiently, noisily, sneakily,
+                  repeatedly )
+      (self  "You $arg$ satisfy yourself.")
+      (rest  "$mcname$ $arg$ satisfies $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You satisfy $hcname$.")
+      (target "$mcname$ satisfies you.")
+      (rest  "$mcname$ satisfies $hcname$.")
+    )
+    (arguments
+      (arguments carrot, parsnip, fish, womble, duck, chicken, cup of coffee,
+                 cup of tea, bendy straw, wombat, hedgehog, creator, liaison,
+                 Lord, High Lord, badger)
+      (self  "You satisfy $hcname$ with a $arg$.")
+      (target "$mcname$ satisfies you with a $arg$.")
+      (rest  "$mcname$ satisfies $hcname$ with a $arg$.")
+    )
+    (arguments
+      (arguments  to pass the time, on a coffee table, like a womble,
+                  like a duck, like an opera singer, like a goose,
+                  because noone else will, like noone else can,
+                  like a penguin, like a wombat, #)
+      (self   "You satisfy $hcname$ $arg$.")
+      (target "$mcname$ satisfies you $arg$.")
+      (rest  "$mcname$ satisfies $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments lovingly, absentmindedly, impatiently, noisily, sneakily,
+                 repeatedly )
+      (self   "You $arg$ satisfy $hcname$.")
+      (target "$mcname$ $arg$ satisfies you.")
+      (rest  "$mcname$ $arg$ satisfies $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/sb.s
+==================================================
+
+(sb
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+        (self "You score-brief.")
+        (rest "$mcname$ score-briefs.")
+     )
+    )
+    (targeted
+      (no-arguments
+    (self "You score-brief $hcname$.")
+    (target "$mcname$ score-briefs you.")
+   (rest "$mcname$ score-briefs $hcname$.")
+   )
+  )
+)
+
+
+==================================================
+FILE: s/sburn.s
+==================================================
+
+(sburn
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You set fire to yourself.")
+      (rest "$mcname$ sets fire to $mobj$self.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  hair, leg, arm, nose, teeth, frog, carpet, net lag,
+                  fish, invis, bed, ego, eyes, house, furniture, tongue,
+                  keyboard, brain, soul, code, ideas, hopes, dreams, cat,
+                  personality, desires, beliefs, laundry, coffee table,
+                  butter, handcuffs, ear, trousers, broomstick, #)
+      (self   "You set fire to $mhcname$ $arg$.")
+      (target "$mcname$ sets fire to your $arg$.")
+      (rest  "$mcname$ sets fire to $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scalm.s
+==================================================
+
+(scalm
+  (pattern "<indirect:any-living> [down]")
+  (single
+    (no-arguments
+      (self "You calm down.")
+      (rest "$mcname$ calms down.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You calm $hcname$ down.")
+      (target "$mcname$ calms you down.")
+      (rest  "$mcname$ calms down $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scamper.s
+==================================================
+
+(scamper
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You scamper around.")
+      (rest "$mcname$ scamper$s$ around.")
+    )
+    (arguments
+      (arguments cutely, madly, happily, enticingly, 
+                 suggestively, vigorously, nonchalantly, quickly, 
+                 like a playful puppy, playfully, happily, energetically,
+                 in a hyper manner, from too much caffeine, from too much
+                 crack, #)
+      (self "You scamper around $arg$.")
+      (rest "$mcname$ scamper$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You scamper around $hcname$.")
+      (target "$mcname$ scamper$s$ around you.")
+      (rest  "$mcname$ scamper$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments cutely, all, madly, happily, enticingly, 
+                 suggestively, vigorously, nonchalantly, quickly, 
+                 playfully, happily, energetically, in a hyper manner, 
+                 from too much caffeine, from too much crack, #)
+      (self   "You scamper $arg$ around $hcname$.")
+      (target "$mcname$ scamper$s$ $arg$ around you.")
+      (rest  "$mcname$ scamper$s$ $arg$ around $hcname$.")
+    )
+    (arguments
+      (arguments feet, legs)
+      (self   "You scamper around $mhcname$ $arg$.")
+      (target "$mcname$ scamper$s$ around your $arg$.")
+      (rest  "$mcname$ scamper$s$ around $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments like a playful puppy)
+      (self   "You scamper up to $hcname$ $arg$.")
+      (target "$mcname$ scamper$s$ up to you $arg$.")
+      (rest  "$mcname$ scamper$s$ up to $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/scare.s
+==================================================
+
+(scare
+   (pattern "<indirect:any-living>")
+   (pattern "<string>")
+   (pattern "<string> <indirect:any-living>")
+   (pattern "<indirect:any-living> <string>")
+   (single
+     (no-arguments
+       (self "You scare easily.")
+       (rest "$mcname$ scare$s$ easily.")
+     )
+     (arguments
+     (arguments wombles, bunnies, newbies, liaisons, #)
+       (self "You scare $arg$.")
+       (rest "$mcname$ scare$s$ $arg$.")
+     )
+   )
+   (targeted
+     (no-arguments
+       (self "You scare $hcname$.")
+       (target "$mcname$ scare$s$ you.")
+       (rest "$mcname$ scare$s$ $hcname$.")
+       
+     )
+     (arguments
+     (arguments suddenly, frighteningly, fatefully, stupidly, slightly,
+                unexpectedly, like a scary Sasquatch, like a horror click,
+                in the dark, like a ghostie, like a ghoulie, like a long-
+                legged beastie, like an annoyed librarian, like a creature
+                from the Dungeon Dimensions, like an upset High Lord, with     
+                snakes, with spiders, with a coffee table, with MacChirton 
+                code, like a basilisk in the face, with bad spelling, #)
+       (self "You scare $hcname$ $arg$.")
+       (target "$mcname$ scare$s$ you $arg$.")
+       (rest "$mcname$ scare$s$ $hcname$ $arg$.")
+       
+     )
+   ) 
+ )
+/* Saffra 02-07-01 on bequest of Sasquatch */
+
+
+==================================================
+FILE: s/scode.s
+==================================================
+
+(scode
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments like Pinkfish,like Deutha,something to annoy all the players,a bug,#)
+      (self "You code $arg$.")
+      (rest "$mcname$ code$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+       (arguments like Pinkfish,like Deutha,something to annoy all the players,a bug,#)
+      (self   "You code $arg$ at $hcname$.")
+      (target "$mcname$ code$s$ $arg$ at you.")
+      (rest  "$mcname$ code$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scoff.s
+==================================================
+
+(scoff
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You scoff.")
+      (rest "$mcname$ scoff$s$.")
+    )
+    (arguments
+      (arguments loudly,sarcastically,sweetly,sardonically)
+      (self "You scoff $arg$.")
+      (rest "$mcname$ scoff$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scold.s
+==================================================
+
+(scold
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You scold $hcname$.")
+      (target "$mcname$ scold$s$ you.")
+      (rest  "$mcname$ scold$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  playfully, mercilessly, emphatically, 
+                  whilst stifling a giggle, lovingly, sneakily, pointlessly,     
+                  uselessly, loudly, endlessly,  irritably, conveniently, #)
+      (self   "You scold $hcname$ $arg$.")
+      (target "$mcname$ scold$s$ you $arg$.")
+      (rest  "$mcname$ scold$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/scowl.s
+==================================================
+
+(scowl
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You scowl.")
+      (rest "$mcname$ scowl$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You scowl at $hcname$.")
+      (target "$mcname$ scowl$s$ at you.")
+      (rest  "$mcname$ scowl$s$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scratch.s
+==================================================
+
+(scratch
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  head, back, leg, arm, nose, ear, finger, bum, 
+                  cat behind the ears, eyes, #)
+      (self "You scratch your $arg$.")
+      (rest "$mcname$ scratch$s$ $mposs$ $arg$.")
+    )
+    (arguments
+      (arguments  chin)
+      (self "You scratch your $arg$ and go 'Hmmmm...'.")
+      (rest "$mcname$ scratch$s$ $mposs$ $arg$ and goes 'Hmmmm...'.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You scratch $hcname$.")
+      (target "$mcname$ scratch$s$ you.")
+      (rest   "$mcname$ scratch$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  head, back, leg, arm, nose, ear, finger, bum, #)
+      (self   "You scratch $mhcname$ $arg$.")
+      (target "$mcname$ scratch$s$ your $arg$.")
+      (rest   "$mcname$ scratch$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  chin)
+      (self   "You scratch your $arg$ and go 'Hmmmm...' at $hcname$.")
+      (target "$mcname$ scratch$s$ $mposs$ $arg$ and goes 'Hmmmm...' at you.")
+      (rest   "$mcname$ scratch$s$ $mposs$ $arg$ and goes 'Hmmmm...' at $hcname$.")
+    )
+    (arguments
+      (arguments  behind the ears)
+      (self   "You scratch behind $mhcname$ ears.")
+      (target "$mcname$ scratch$s$ behind your ears.")
+      (rest   "$mcname$ scratch$s$ behind $mhcname$ ears.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/scream.s
+==================================================
+
+(scream
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> at <indirect:any-living>")
+  (pattern "at <indirect:any-living> <string>")
+(pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You scream.")
+      (rest "$mcname$ scream$s$.")
+    )
+    (arguments
+      (arguments loudly, happily, manically, evilly, wickedly, insanely,
+                 impishly, cheekily, idiotically, repeatedly, in horror, 
+                 in fright, in fear, in pain, in surprise, in frustration, 
+                 in despair, in anger,#)
+      (self "You scream $arg$.")
+      (rest "$mcname$ scream$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments loudly, happily, manically, evilly, wickedly, insanely,
+                 impishly, cheekily, idiotically, repeatedly, in horror, 
+                 in fright, in fear, in pain, in surprise, in frustration, 
+                 in despair, in anger,#)
+      (self   "You scream $arg$ at $hcname$.")
+      (target "$mcname$ scream$s$ $arg$ at you.")
+      (rest   "$mcname$ scream$s$ $arg$ at $hcname$.")
+    )
+      (arguments
+       (arguments ear,face)
+         (self   "You scream in $mhcname$ $arg$.")
+         (target "$mcname$ scream$s$ in your $arg$.")
+         (rest   "$mcname$ scream$s$ in $mhcname$ $arg$.")
+      )
+   )
+)
+/*Hobbes 970730 */
+
+
+
+==================================================
+FILE: s/seduce.s
+==================================================
+
+(seduce
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You seduce $hcname$.")
+      (target "$mcname$ seduce$s$ you.")
+      (rest  "$mcname$ seduce$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  absentmindedly,with enthusiasm,casually,
+         on a coffee table,with promises of chocolate,with love,
+         lustfully,in a hurry,with a shovel,with your frog,#)
+      (self   "You seduce $hcname$ $arg$.")
+      (target "$mcname$ seduce$s$ you $arg$.")
+      (rest  "$mcname$ seduce$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sentence.s
+==================================================
+
+(sentence
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  to eternal damnation,to prison,to three years beyond the rim,to being buried up to your neck in an anthill,to chat with clams,to a year in the sun,to have chunky peanut butter between the toes,to interesting times,to debugging,#)
+      (self   "You sentence $hcname$ $arg$.")
+      (target "$mcname$ sentence$s$ you $arg$.")
+      (rest  "$mcname$ sentence$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/*Hobbes & Gruper 970425 */
+
+
+==================================================
+FILE: s/serenade.s
+==================================================
+
+(serenade
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You serenade everyone.")
+      (rest "$mcname$ serenade$s$ everyone.")
+    )
+    (arguments
+      (arguments  softly, musically, melodically, harmoniously,
+                  romantically, seductively, lovingly, insistently, 
+                  with a guitar, with love songs, under the moon, 
+                  under the stars, in the rain, on a balcony,
+                  in the warm still night, on a warm spring day,
+                  like Casanunda, #)
+      (self "You serenade everyone $arg$.")
+      (rest "$mcname$ serenade$s$ everyone $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You serenade $hcname$.")
+    (target "$mcname$ serenade$s$ you.")
+    (rest "$mcname$ serenade$s$ $hcname$.")
+  )
+  (arguments
+    (arguments  softly, musically, melodically, harmoniously,
+                romantically, seductively, lovingly, insistently, 
+                with a guitar, with love songs, under the moon, 
+                under the stars, in the rain, on a balcony,
+                in the warm still night, on a warm spring day,
+                like Casanunda, #)
+    (self "You serenade $hcname$ $arg$." )
+    (target "$mcname$ serenade$s$ you $arg$." )
+    (rest "$mcname$ serenade$s$ $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: s/sfish.s
+==================================================
+
+(sfish
+  (pattern "[in] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[for|for] <string> [in|in|in] <indirect:any-living> [pockets]")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You fish around in your pockets.")
+      (rest "$mcname$ fish$s$ around in $mposs$ pockets.")
+    )
+    (arguments
+      (arguments  spare change, a lighter, #)
+      (self "You fish around in your pockets for $arg$.")
+      (rest "$mcname$ fish$s$ around in $mposs$ pockets for $arg$.")
+    )
+    (arguments
+      (arguments  backpack, purse, wallet, trunk, cleavage, mind, bank account,  
+                  pants, boxer shorts, fishnet stockings, cookie jar, underwear)
+      (self "You fish around in your $arg$.")
+      (rest "$mcname$ fish$s$ around in $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You fish around in $mhcname$ pockets.")
+      (target "$mcname$ fish$s$ around in your pockets.")
+      (rest  "$mcname$ fish$s$ around in $mhcname$ pockets.")
+    )
+    (arguments
+      (arguments  backpack, purse, wallet, trunk, cleavage, mind, bank account,  
+                  pants, boxer shorts, fishnet stockings, cookie jar, underwear)
+      (self "You fish around in $mhcname$ $arg$.")
+      (target "$mcname$ fish$s$ around in your $arg$.")
+      (rest "$mcname$ fish$s$ around in $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  spare change, a lighter, #)
+      (self   "You fish around in $mhcname$ pockets for $arg$.")
+      (target "$mcname$ fish$s$ around in your pockets for $arg$.")
+      (rest  "$mcname$ fish$s$ around in $mhcname$ pockets for $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/sgo.s
+==================================================
+
+(sgo
+  (pattern "<string>" )
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+    (arguments  #)
+      (self "You go $arg$.")
+      (rest "$mcname$ go$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+    (arguments  #)
+    (self   "You go $arg$ at $hcname$.")
+    (target "$mcname$ go$s$ $arg$ at you.")
+    (rest   "$mcname$ go$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/shake.s
+==================================================
+
+(shake
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "[my] <string>")
+  (pattern "<string> [with|at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You shake your head.")
+      (rest "$mcname$ shake$s$ $mposs$ head.")
+    )
+    (arguments
+      (arguments sorrowfully, carefully, slowly, once, quickly, curtly, pinkly,        
+                 vigorously, completely, fishily, sadly, tentatively, in  
+                 agreement, in disbelief)
+      (self "You shake your head $arg$.")
+      (rest "$mcname$ shake$s$ $mposs$ head $arg$.")
+    )
+    (arguments
+    (arguments booty, entire body, martini, head, hips, bottom, fingers)
+      (self "You shake your $arg$.")
+      (rest "$mcname$ shake$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You shake $hcname$.")
+      (target "$mcname$ shake$s$ you.")
+      (rest  "$mcname$ shake$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  roughly, shakily, hard, gently, #)
+      (self   "You shake $hcname$ $arg$.")
+      (target "$mcname$ shake$s$ you $arg$.")
+      (rest   "$mcname$ shake$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  hands with, fins with, fingers with, legs with, pinkies with, 
+                  tentacles with, your fist at, claws with, your head at, 
+                  your booty at)
+      (self   "You shake $arg$ $hcname$.")
+      (target "$mcname$ shake$s$ $arg$ you.")
+      (rest   "$mcname$ shake$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments head)
+      (self   "You shake your head at $hcname$.")
+      (target "$mcname$ shake$s$ $mposs$ head at you.")
+      (rest   "$mcname$ shake$s$ $mposs$ head at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/shave.s
+==================================================
+
+(shave
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments head, face, legs, armpits, goatee, poodle, womble, 
+                 eyebrows, sideburns, moustache, beard, cat, #)
+      (self "You shave your $arg$.")
+      (rest "$mcname$ shave$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments head, face, legs, armpits, goatee, poodle, womble, 
+                 eyebrows, sideburns, moustache, beard, cat, #)
+      (self   "You shave $hcname$'s $arg$.") 
+      (target "$mcname$ shave$s$ your $arg$.")
+      (rest  "$mcname$ shave$s$ $hcname$'s $arg$.")
+    )
+  )
+)
+/* by Saffra 4-26-00 */
+
+
+==================================================
+FILE: s/shine.s
+==================================================
+
+(shine
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shine brightly.")
+      (rest "$mcname$ shine$s$ brightly.")
+    )
+  )
+  (targeted
+      (arguments
+      (arguments brightly,lovely,happily,mischievously,cheekily,idiotically,wryly,sceptically,
+                 derisively,annoyingly,absentmindedly,whilst you work,distractedly,pointlessly,
+                 silently,loudly,rudely,with laughter,vaguely,obviously,like a sun,like Magpie,
+                 blindingly,innocently,proudly,charmingly,seductively,#)
+      (self   "You shine $arg$ at $hcname$.")
+      (target "$mcname$ shine$s$ $arg$ at you.")
+      (rest  "$mcname$ shine$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shiver.s
+==================================================
+
+(shiver
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shiver.")
+      (rest "$mcname$ shiver$s$.")
+    )
+    (arguments
+       (arguments horror, fear, revulsion, disappointment, ecstasy,
+                 pleasure, orgasmic release,#)
+      (self "You shiver in $arg$.")
+      (rest "$mcname$ shiver$s$ in $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You shiver at $hcname$.")
+      (target "$mcname$ shiver$s$ at you.")
+      (rest  "$mcname$ shiver$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments horror, fear, revulsion, disappointment, ecstasy,
+                 pleasure, orgasmic release,#)
+      (self   "You shiver in $arg$ at $hcname$.")
+      (target "$mcname$ shiver$s$ in $arg$ at you.")
+      (rest  "$mcname$ shiver$s$ in $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shold.s
+==================================================
+
+(shold
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You hold $hcname$.")
+      (target "$mcname$ hold$s$ you.")
+      (rest   "$mcname$ hold$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  hand, finger, toe, ear)
+      (self   "You hold $mhcname$ $arg$.")
+      (target "$mcname$ hold$s$ your $arg$.")
+      (rest   "$mcname$ hold$s$ $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  tightly, close, tenderly, lovingly, carefully, friendlily, 
+                  happily, sadly, needfully, to your chest, 
+                  and doesn't let go, #)
+      (self   "You hold $hcname$ $arg$.")
+      (target "$mcname$ hold$s$ you $arg$.")
+      (rest   "$mcname$ hold$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shoot.s
+==================================================
+
+(shoot
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shoot yourself.")
+      (rest "$mcname$ shoot$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You shoot $hcname$ with a gonne.")
+      (target "$mcname$ shoot$s$ you with a gonne.")
+      (rest  "$mcname$ shoot$s$ $hcname$ with a gonne.")
+    )
+    (arguments
+      (arguments  butt,head,eye,ear,leg,arm,toe,foot,hand,mouth,neck,#)
+      (self   "You shoot $hcname$ in the $arg$ with a gonne.")
+      (target "$mcname$ shoot$s$ you in the $arg$ with a gonne.")
+      (rest  "$mcname$ shoot$s$ $hcname$ in the $arg$ with a gonne.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shove.s
+==================================================
+
+(shove
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You shove $hcname$.")
+      (target "$mcname$ shove$s$ you.")
+      (rest  "$mcname$ shove$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  off the couch, into the pool, into a bowl of jelly,
+                  off a cliff, out of the way, onto the bed, under the bed,
+                  into the cupboard, over, onto the coffee table, #)
+      (self   "You shove $hcname$ $arg$.")
+      (target "$mcname$ shove$s$ you $arg$.")
+      (rest  "$mcname$ shove$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/shriek.s
+==================================================
+
+(shriek
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shriek.")
+      (rest "$mcname$ shriek$s$.")
+    )
+    (arguments
+      (arguments loudly, excitedly, nervously, piercingly, shrilly, horribly, 
+                 in fear, in excitement, in delight, like a schoolgirl, 
+                 like a nazgul, #)
+      (self "You shriek $arg$.")
+      (rest "$mcname$ shriek$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments loudly, excitedly, nervously, piercingly, shrilly, horribly,
+                 in fear, in excitement, in delight, like a schoolgirl, 
+                 like a nazgul, #)
+      (self   "You shriek $arg$ at $hcname$.")
+      (target "$mcname$ shriek$s$ $arg$ at you.")
+      (rest  "$mcname$ shriek$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra Dec 27 2001 */
+
+==================================================
+FILE: s/shrug.s
+==================================================
+
+(shrug
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You shrug.")
+      (rest "$mcname$ shrug$s$.")
+    )
+    (arguments
+      (arguments resignedly,tiredly,happily,confusedly,uncaringly,
+                 uncertainly,like Ember,#)
+      (self "You shrug $arg$.")
+      (rest "$mcname$ shrug$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You shrug at $hcname$.")
+      (target "$mcname$ shrug$s$ at you.")
+      (rest "$mcname$ shrug$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments resignedly,tiredly,happily,confusedly,uncaringly,
+                 uncertainly,back,like Ember,#)
+      (self "You shrug $arg$ at $hcname$.")
+      (target "$mcname$ shrug$s$ $arg$ at you.")
+      (rest "$mcname$ shrug$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shudder.s
+==================================================
+
+(shudder
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shudder.")
+      (rest "$mcname$ shudder$s$.")
+    )
+    (arguments
+      (arguments horror, fear, revulsion, disappointment, ecstasy,
+                 pleasure, orgasmic release)
+      (self "You shudder in $arg$.")
+      (rest "$mcname$ shudder$s$ in $arg$.")
+    )
+    (arguments
+      (arguments like they were having a shower,#) 
+      (self   "You shudder $arg$.")
+      (rest  "$mcname$ shudder$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You shudder at $hcname$.")
+      (target "$mcname$ shudder$s$ at you.")
+      (rest   "$mcname$ shudder$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments horror, fear, revulsion, disappointment, ecstasy,
+                 pleasure, orgasmic release)
+      (self   "You shudder in $arg$ at $hcname$.")
+      (target "$mcname$ shudder$s$ in $arg$ at you.")
+      (rest  "$mcname$ shudder$s$ in $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments like they were having a shower,#) 
+      (self   "You shudder $arg$ at $hcname$.")
+      (target "$mcname$ shudder$s$ $arg$ at you.")
+      (rest  "$mcname$ shudder$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/shuffle.s
+==================================================
+
+(shuffle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+   (no-arguments 
+      (self "You shuffle your feet in embarrassment.")
+      (rest "$mcname$ shuffle$s$ $mposs$ feet in embarrassment.")
+    )
+  )
+  (targeted     
+    (arguments
+      (arguments  away from, up to, towards, #)
+      (self   "You shuffle $arg$ $hcname$.")
+      (target "$mcname$ shuffle$s$ $arg$ you.")
+      (rest   "$mcname$ shuffle$s$ $arg$ $hcname$.")
+     )
+     (arguments
+      (arguments  feet, deck, cards)
+      (self   "You shuffle your $arg$ in embarrassment at $hcname$.")
+      (target "$mcname$ shuffle$s$ $mposs$ $arg$ in embarrassment at you.")
+      (rest   "$mcname$ shuffle$s$ $mposs$ $arg$ in embarrassment at $hcname$.")
+     )
+   )
+ )
+
+
+==================================================
+FILE: s/shush.s
+==================================================
+
+(shush
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You shush.")
+      (rest "$mcname$ shush$s$.")
+    )
+    (arguments 
+    (arguments  quietly, quickly, carefully, threateningly, nervously, 
+                for using such language, #)
+      (self   "You make a shushing sound $arg$.")
+      (rest  "$mcname$ make$s$ a shushing sound $arg$.")
+    )  
+  )
+  (targeted
+    (no-arguments
+      (self   "You shush $hcname$.")
+      (target "$mcname$ shush$s$ you.")
+      (rest  "$mcname$ shush$s$ $hcname$.")
+    )
+    (arguments
+    (arguments  quietly, quickly, carefully, threateningly, nervously, 
+                for using such language, #)
+      (self   "You shush $hcname$ $arg$.")
+      (target "$mcname$ shush$s$ you $arg$.")
+      (rest  "$mcname$ shush$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/side5.s
+==================================================
+
+(side5
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You side five.")
+      (rest "$mcname$ side five$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You side five $hcname$.")
+      (target "$mcname$ side five$s$ you.")
+      (rest  "$mcname$ side five$s$ $hcname$.")
+    )
+  (arguments
+    (arguments happily,annoyingly,courteously,hysterically,absentmindedly)
+      (self "You side five $hcname$.")
+      (target "$mcname$ side five$s$you $arg$.")
+      (rest "$mcname$ side five$s$ $hcname$ $arg$.")	
+	
+	
+       )
+    )
+ )
+/* Saffra for Dek Aug 12 2001 */
+
+
+
+==================================================
+FILE: s/sidle.s
+==================================================
+
+(sidle
+  (pattern "at <indirect:any-living>")
+  (pattern "[like] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments like Pinkfish, like Zoroaster, like Biggles, like sloths do, 
+                 like a gherkin, like everyone else is, nonchalantly, quickly, 
+                 unbelievably well, without using your hands, upside-down,   
+                 hyperactively, standing still, artfully, around, intensely,
+                  like only Bastian can, like a Lord, #)
+      (self "You idle $arg$.")
+      (rest "$mcname$ idle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You idle at $hcname$.")
+      (target "$mcname$ idle$s$ at you.")
+      (rest  "$mcname$ idle$s$ at $hcname$.")
+    )
+    (no-arguments
+      (self   "You idle like $hcname$.")
+      (target "$mcname$ idle$s$ like you.")
+      (rest  "$mcname$ idle$s$ like $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/sigh.s
+==================================================
+
+(sigh
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sigh.")
+      (rest "$mcname$ sigh$s$.")
+    )
+   (arguments 
+     (arguments deeply, silently, desperately, tiredly, sadly, slowly, dreamily,
+                happily, melodramatically, wistfully, dramatically, heavily,
+                suggestively, sarcastically, in relief, with relief,
+                contentedly, seductively, softly, resignedly, #)
+      (self "You sigh $arg$.")
+      (rest "$mcname$ sigh$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sigh at $hcname$.")
+      (target "$mcname$ sigh$s$ at you.")
+      (rest  "$mcname$ sigh$s$ at $hcname$.")      
+    )
+    (arguments
+     (arguments deeply, silently, desperately, tiredly, sadly, slowly, dreamily,
+                happily, melodramatically, wistfully, dramatically, heavily,
+                suggestively, sarcastically, in relief, with relief,
+                contentedly, seductively, softly, resignedly, #)
+      (self   "You sigh $arg$ at $hcname$.")
+      (target "$mcname$ sigh$s$ $arg$ at you.")
+      (rest  "$mcname$ sigh$s$ $arg$ at $hcname$.")
+     )
+   )
+ )
+
+
+==================================================
+FILE: s/signal.s
+==================================================
+
+(signal
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You signal wildly.")
+      (rest "$mcname$ signal$s$ wildly.")
+    )
+    (arguments
+      (arguments happily,madly,like someone desperate of attention,manically,
+       evilly,wickedly,insanely,mischievously,with your ears,with your nose,
+       with your arms,with every free limb available,with your toes,
+       devilishly,impishly,cheekily,idiotically,tentatively,wryly,sceptically,#)
+      (self "You signal $arg$.")
+      (rest "$mcname$ signal$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You signal wildly at $hcname$.")
+      (target "$mcname$ signal$s$ wildly at you.")
+      (rest  "$mcname$ signal$s$ wildly at $hcname$.")
+    )
+    (arguments
+      (arguments  happily,madly,like someone desperate of attention,manically,
+         evilly,wickedly,insanely,mischievously,with your ears,with your nose,
+         with your arms,with every free limb available,with your toes,
+         devilishly,impishly,cheekily,idiotically,tentatively,wryly,sceptically,#)
+      (self   "You signal $arg$ at $hcname$.")
+      (target "$mcname$ signal$s$ $arg$ at you.")
+      (rest  "$mcname$ signal$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/signore.s
+==================================================
+
+(signore
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+    (arguments  the world, the universe, tea, turtles, frogs, elephants, 
+                the weather, assassins, witches, wizards, thieves, warriors, 
+                priests, adventurers, ghosts, creators, Directors, Trustees, #)
+      (self "You ignore $arg$.")
+      (rest "$mcname$ ignore$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You ignore $hcname$.")
+      (target "$mcname$ ignore$s$ you.")
+      (rest   "$mcname$ ignore$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  forever, for all time, twice, with justification, with zeal, 
+                  #)
+      (self   "You ignore $hcname$ $arg$.")
+      (target "$mcname$ ignore$s$ you $arg$.")
+      (rest   "$mcname$ ignore$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sing.s
+==================================================
+
+(sing
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments in appreciation of life,#)
+      (self "You sing $arg$.")
+      (rest "$mcname$ sing$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sing to $hcname$.")
+      (target "$mcname$ sing$s$ to you.")
+      (rest  "$mcname$ sing$s$ to $hcname$.")
+    )
+   (arguments 
+      (arguments in appreciation of life,#)
+      (self   "You sing $arg$ to $hcname$.")
+      (target "$mcname$ sing$s$ $arg$ to you.")
+      (rest   "$mcname$ sing$s$ $arg$ to $hcname$.")
+    )
+   )
+  )
+
+==================================================
+FILE: s/sit.s
+==================================================
+
+(sit
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "on <string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sit down.")
+      (rest "$mcname$ sit$s$ down.")
+    )
+    (arguments
+      (arguments quickly,slowly,clumsily,carefully,thoughtfully,
+                 with one hand tied behind your back,in shock,gracefully,
+                 gratefully,inconsiderately,#)
+      (self "You sit down $arg$.")
+      (rest "$mcname$ sit$s$ down $arg$.")
+      (position
+        (default
+           (cmd "sit")
+        )
+        (sitting "ignore")
+        (silent "yes")
+      )
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sit on $mhcname$ lap.")
+      (target "$mcname$ sit$s$ on your lap.")
+      (rest  "$mcname$ sit$s$ on $mhcname$ lap.")
+      (position
+        (actor
+          (default
+            (cmd "sit")
+          )
+          (sitting "ignore")
+          (silent "yes")
+        )
+      )
+    )
+    (arguments
+      (arguments  lap,face,leg,chest,arm,cat,sofa,computer,keyboard,dinner,#)
+      (self   "You sit on $mhcname$ $arg$.")
+      (target "$mcname$ sit$s$ on your $arg$.")
+      (rest  "$mcname$ sit$s$ on $mhcname$ $arg$.")
+      (position
+        (actor
+          (default
+            (cmd "sit")
+          )
+          (sitting "ignore")
+          (silent "yes")
+        )
+      )
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/skick.s
+==================================================
+
+(skick
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You kick yourself.")
+      (rest "$mcname$ kick$s$ $mobj$self.")
+    )
+    (arguments
+      (arguments #)
+      (self "You kick yourself $arg$.")
+      (rest "$mcname$ kick$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You kick $hcname$.")
+      (target "$mcname$ kick$s$ you.")
+      (rest  "$mcname$ kick$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  #)
+      (self   "You kick $hcname$ $arg$.")
+      (target "$mcname$ kick$s$ you $arg$.")
+      (rest  "$mcname$ kick$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/skip.s
+==================================================
+
+(skip
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You skip around happily.")
+      (rest "$mcname$ skip$s$ around happily.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You skip around $hcname$.")
+      (target "$mcname$ skip$s$ around you.")
+      (rest  "$mcname$ skip$s$ around $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/slack.s
+==================================================
+
+(slack
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+      (no-arguments
+           (self "You slack off.")
+           (rest "$mcname$ slack$s$ off.")
+      )
+      (arguments
+        (arguments like a High Lord, like a student, ferociously,
+                 slackingly, half-heartedly, loosely, madly,
+                 competitively, tiredly, professionally, #)
+           (self   "You slack $arg$.")
+      					(target "$mcname$ slack$s$ $arg$.")
+           (rest   "$mcname$ slack$s$ $arg$.")
+      )
+  )
+  (targeted
+      (no-arguments
+           (self   "You slack at $hcname$.")
+           (target "$mcname$ slack$s$ at you.")
+	          (rest   "$mcname$ slack$s$ at $hcname$.")
+      ) 
+      (arguments
+        (arguments more than, less than, like)
+           (self   "You slack $arg$ $hcname$.")
+      					(target "$mcname$ slack$s$ $arg$ you.")
+           (rest  "$mcname$ slack$s$ $arg$ $hcname$.")
+      )
+      (arguments
+        (arguments like a High Lord, like a student, ferociously,
+                   slackingly, half-heartedly, loosely, madly,
+                   competitively, tiredly, professionally, #)
+           (self   "You slack at $hcname$ $arg$.")
+           (target "$mcname$ slack$s$ at you $arg$.")
+           (rest   "$mcname$ slack$s$ at $hcname$ $arg$.")
+      )
+  )
+)
+
+==================================================
+FILE: s/slap.s
+==================================================
+
+(slap
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You slap your forehead.")
+      (rest "$mcname$ slap$s$ $mposs$ forehead.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You slap $hcname$.")
+      (target "$mcname$ slap$s$ you.")
+      (rest  "$mcname$ slap$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  hard,harder,really hard,incredibly hard,
+                  across the belly with a wet trout,with a large haddock,
+                  with a frog,with a gauntlet,twice,viciously,carefully,
+                  with a scantily clad shark,lovingly)
+      (self   "You slap $hcname$ $arg$.")
+      (target "$mcname$ slap$s$ you $arg$.")
+      (rest  "$mcname$ slap$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/slaver.s
+==================================================
+
+(slaver
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You slaver all over the place.")
+      (rest "$mcname$ slaver$s$ all over the place.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You slaver all over $hcname$.")
+      (target "$mcname$ slaver$s$ all over you.")
+      (rest  "$mcname$ slaver$s$ all over $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sleep.s
+==================================================
+
+(sleep
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You go to sleep.")
+      (rest "$mcname$ go$s$ to sleep.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You go to sleep in $mhcname$ arms.")
+      (target "$mcname$ go$s$ to sleep in your arms.")
+      (rest   "$mcname$ go$s$ to sleep in $mhcname$ arms.")
+    )
+    (arguments
+      (arguments  bed, bathtub, car, refrigerator, dreams,
+                  thoughts, heart, shower, house, lap, 
+                  room, pants, #)  
+      (self   "You go to sleep in $mhcname$ $arg$.")
+      (target "$mcname$ go$s$ to sleep in your $arg$.")
+      (rest   "$mcname$ go$s$ to sleep in $mhcname$ $arg$.")
+    )
+  )
+)
+
+/* Made it take args. Saffra, 10-6-00 */
+
+==================================================
+FILE: s/slobber.s
+==================================================
+
+(slobber
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You slobber all over the place.")
+      (rest "$mcname$ slobber$s$ all over the place.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You slobber all over $hcname$.")
+      (target "$mcname$ slobber$s$ all over you.")
+      (rest  "$mcname$ slobber$s$ all over $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/slook.s
+==================================================
+
+(slook
+  (pattern "<string>" )
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You look around.")
+      (rest "$mcname$ look$s$ around.")
+    )
+    (arguments
+    (arguments  away, elsewhere, guilty, innocent, thoughtful, #)
+      (self "You look $arg$.")
+      (rest "$mcname$ look$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+    (arguments  over, guiltily, innocently, thoughtfully, #)
+    (self   "You look $arg$ at $hcname$.")
+    (target "$mcname$ look$s$ $arg$ at you.")
+    (rest   "$mcname$ look$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Saffra 3-30-00    */
+/* Modified 10-11-00 */
+
+
+
+==================================================
+FILE: s/slug.s
+==================================================
+
+(slug
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You slug yourself.")
+      (rest "$mcname$ slug$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You slug $hcname$.")
+      (target "$mcname$ slug$s$ you.")
+      (rest  "$mcname$ slug$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/smack.s
+==================================================
+
+(smack
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You smack your lips.")
+      (rest "$mcname$ smack$s$ $mposs$ lips.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You smack $hcname$.")
+      (target "$mcname$ smack$s$ you.")
+      (rest  "$mcname$ smack$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  furiously, with gusto, without a care, twice, 
+                  lots of times, happily, nastily, excitedly, 
+                  upside the head, with a coffee table, 
+                  with a tabby cat, unbelieveably hard, 
+                  with a smallish potted plant, with a keyboard, #)
+      (self   "You smack $hcname$ $arg$.")
+      (target "$mcname$ smack$s$ you $arg$.")
+      (rest  "$mcname$ smack$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/smear.s
+==================================================
+
+(smear
+  (pattern "<indirect:any-living> in <string>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments frogs, cream, butter, maple syrup, chocolate sauce,
+                 compliments, a sheet, cheese, crabs, socks,
+                 carrots, sharpened carrots, red paint,
+                 spam, parakeets, pocket watches,
+                 false moustaches, lilies, roses, carnations, honey,
+                 ducks, fruit, lemons, green glass balls, spider web,
+                 cupcakes, fluffy animals, coffee tables, peanut butter,#)
+      (self "You smear yourself in $arg$.")
+      (rest "$mcname$ smear$s$ $mobj$self in $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments frogs, cream, butter, maple syrup, chocolate sauce,
+                 compliments, a sheet, cheese, crabs, socks, honey,
+                 ducks, fruit, lemons, green glass balls, spider web,
+                 false moustaches, lilies, roses, carnations,
+                 carrots, sharpened carrots, socks, red paint,
+                 spam, parakeets, pocket watches,
+                 cupcakes, fluffy animals, coffee tables, peanut butter, #)
+      (self "You smear $hcname$ in $arg$.")
+      (target "$mcname$ smear$s$ you in $arg$.")
+      (rest "$mcname$ smear$s$ $hcname$ in $arg$.")
+    )
+    (arguments
+      (arguments up)
+      (self "You smear $hcname$ $arg$.")
+      (target "$mcname$ smear$s$ you $arg$.")
+      (rest "$mcname$ smear$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/smile.s
+==================================================
+
+(smile
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You smile.")
+      (rest "$mcname$ smile$s$.")
+    )
+    (arguments
+      (arguments
+       happily, sadly, nervously, wryly, broadly, crookedly, stupidly,
+       idiotically, condescendingly, ironically, patiently, brightly,
+       slightly, nastily, excitedly, strangely, with forced patience,
+       plasticly, carefully, sadistically, lopsidedly, fishily, cattishly,
+       faintly, like a train, angrily, paranoically, innocently, froggily,
+       slyly, weakly, humbly, paradoxically, sarcastically, viciously, 
+       garishly, sweetly, innocently, lovingly, dreamily, radiantly,
+       enthusiastically, insolently, quirkily, completely, unconsciously,
+       drunkenly, insanely, cutely, maliciously, smugly, absentmindedly,
+       curtly, disturbingly, unbelievably, quietly, loudly, differently,
+       winningly, in triumph, seductively, tightly, smugly,
+       gosh there are lots of arguments, softly, lividly, demonically,
+       warmly, grimly, indolently, ingeniously, wickedly, contentedly,
+       statistically, spasmodically, incandescently, pleasantly,
+       with menace, manically, warily, sardonically, lazily, serenely,
+       disappointedly, coyly, spazmodically, sheepishly, enigmatically,
+       friperally, wryly, hopefully, knowingly, politely, kindly,
+      coffee table like, shyly, #)
+      (self "You smile $arg$.")
+      (rest "$mcname$ smile$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You smile at $hcname$.")
+      (target "$mcname$ smile$s$ at you.")
+      (rest  "$mcname$ smile$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments happily, sadly, nervously, wryly, broadly, crookedly,
+                 stupidly, idiotically, condescendingly, ironically,
+                 patiently, brightly, slightly, nastily, excitedly,
+                 strangely, with forced patience, plasticly, carefully,
+                 sadistically, lopsidedly, fishily, catishly, faintly,
+                 like a train, angrily, paranoically, innocently, froggily,
+                 slyly, weakly, humbly, paradoxically, sarcastically,
+                 viciously, garishly, sweetly, innocently, lovingly,
+                 dreamily, radiantly, enthusiastically, insolently,
+                 quirkily, completely, unconsciously, drunkenly, insanely,
+                 cutely, maliciously, smugly, absentmindedly, curtly,
+                 disturbingly, unbelievably, quietly, loudly, differently,
+                 winningly, in triumph, seductively, tightly, smugly,
+                 gosh there are lots of arguments, softly, lividly,
+                 demonically, warmly, grimly, indolently, ingeniously,
+                 wickedly, contentedly, statistically, spasmodically,
+                 incandescently, pleasantly, with menace, manically,
+                 warily, sardonically, lazily, serenely, disappointedly,
+                 coyly, spazmodically, sheepishly, enigmatically,
+                 friperally, wryly, hopefully, knowingly, politely,
+                   kindly, coffee table like, shyly, #)
+      (self   "You smile $arg$ at $hcname$.")
+      (target "$mcname$ smile$s$ $arg$ at you.")
+      (rest  "$mcname$ smile$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/smirk.s
+==================================================
+
+(smirk
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You smirk.")
+      (rest "$mcname$ smirk$s$.")
+    )
+    (arguments
+      (arguments  smugly, smartly, cruelly, #)
+      (self "You smirk $arg$.")
+      (rest "$mcname$ smirk$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You smirk at $hcname$.")
+      (target "$mcname$ smirk$s$ at you.")
+      (rest  "$mcname$ smirk$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  smugly, smartly, cruelly, #)
+      (self   "You smirk $arg$ at $hcname$.")
+      (target "$mcname$ smirk$s$ $arg$ at you.")
+      (rest  "$mcname$ smirk$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/smirkle.s
+==================================================
+
+(smirkle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You smirkle.")
+      (rest "$mcname$ smirkle$s$.")
+    )
+    (arguments
+      (arguments  happily, sadly, like Truilkan, sardonically, strangely, #)
+      (self "You smirkle $arg$.")
+      (rest "$mcname$ smirkle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You smirkle at $hcname$.")
+      (target "$mcname$ smirkle$s$ at you.")
+      (rest   "$mcname$ smirkle$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly, like Truilkan, sardonically, strangely, #)
+      (self   "You smirkle $arg$ at $hcname$.")
+      (target "$mcname$ smirkle$s$ $arg$ at you.")
+      (rest   "$mcname$ smirkle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/smooch.s
+==================================================
+
+(smooch
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You make a smoochy face.")
+      (rest "$mcname$ make$s$ a smoochy face.")
+    )
+    (arguments
+      (arguments wet, nice, passionate, soft, careful, fishy, friendly,
+                 froggy, luscious, delicious, soppy, sappy, romantic, 
+                 passionate, dispassionate, lovey-dovey, icky, yucky,
+                 messy, mooshy, lush, precious, perfect, prissy, icy, #)
+      (self   "You make a $arg$ smoochy face.")
+      (rest   "$mcname$ make$s$ a $arg$ smoochy face.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You give $hcname$ a big wet smooch on the lips.")
+      (target "$mcname$ give$s$ you a big wet smooch on the lips.")
+      (rest   "$mcname$ give$s$ $hcname$ a big wet smooch on the lips.")
+    )
+    (arguments
+      (arguments wet, nice, passionate, soft, careful, fishy, friendly,
+                 froggy, luscious, delicious, soppy, sappy, romantic, 
+                 passionate, dispassionate, lovey-dovey, icky, yucky,
+                 messy, mooshy, lush, precious, perfect, prissy, icy, #)
+      (self   "You give $hcname$ a $arg$ smooch on the lips.")
+      (target "$mcname$ give$s$ you a $arg$ smooch on the lips.")
+      (rest   "$mcname$ give$s$ $hcname$ a $arg$ smooch on the lips.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/smug.s
+==================================================
+
+(smug
+  (single
+    (no-arguments
+      (self "You look smug.")
+      (rest "$mcname$ look$s$ smug.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snap.s
+==================================================
+
+(snap
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[my] <string> [at|at] <indirect:any-living>")
+  (single
+    (arguments
+      (arguments fingers,leg,arm in a quick salute)
+      (self "You snap your $arg$.")
+      (rest "$mcname$ snap$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  fingers,leg,arm in a quick salute)
+      (self   "You snap your $arg$ at $hcname$.")
+      (target "$mcname$ snap$s$ $mposs$ $arg$ at you.")
+      (rest  "$mcname$ snap$s$ $mposs$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snarf.s
+==================================================
+
+(snarf
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You snarf embarrassingly.")
+      (rest "$mcname$ $verb$snarfs,snarf$ embarrassingly.")
+    )
+    (arguments
+    (arguments  chocolate cake like Terano, milkshake, brain fluid, 
+                orange juice, apple juice, milk, Coca-Cola, Tim Tams,
+                Tim Tam explosions, ice water, hot chocolate,
+                Smirnoff Ice like a Highlord at a mudmeet, 
+                rum and coke, coffee, hot tea, vodka, lemonade, 
+                tequila, toothpaste, chips like Revol, #)
+      (self "You snarf $arg$ out your nose.")
+      (rest "$mcname$ $verb$snarfs,snarf$ $arg$ out $mposs$ nose.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self   "You snarf at $hcname$ embarrassingly.")
+    (target "$mcname$ $verb$snarfs,snarf$ at you embarrassingly.")
+    (rest   "$mcname$ $verb$snarfs,snarf$ at $hcname$ embarrassingly.")
+  )
+  (arguments
+  (arguments  chocolate cake like Terano, milkshake, brain fluid, 
+              orange juice, apple juice, milk, Coca-Cola, Tim Tams,
+              Tim Tam explosions, ice water, hot chocolate, 
+              Smirnoff Ice like a Highlord at a mudmeet, 
+              rum and coke, coffee, hot tea, vodka, lemonade, 
+              tequila, toothpaste, chips like Revol, #)
+    (self   "You snarf $arg$ out your nose at $hcname$." )
+    (target "$mcname$ $verb$snarfs,snarf$ $arg$ out $mposs$ nose at you." )
+    (rest   "$mcname$ $verb$snarfs,snarf$ $arg$ out $mposs$ nose at $hcname$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: s/snarl.s
+==================================================
+
+(snarl
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  viciously, nastily, demonically, happily, sadly,
+                  unexpectedly, suddenly)
+      (self   "You snarl $arg$.")
+      (target "$mcname$ snarl$s$ $arg$.")
+      (rest  "$mcname$ snarl$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  viciously, nastily, demonically, happily, sadly,
+                  unexpectedly, suddenly)
+      (self   "You snarl $arg$ at $hcname$.")
+      (target "$mcname$ snarl$s$ $arg$ at you.")
+      (rest  "$mcname$ snarl$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sneer.s
+==================================================
+
+(sneer
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self   "You sneer.")
+      (rest   "$mcname$ sneer$s$.")
+    )
+    (arguments
+      (arguments  with malice, maliciously, with attitude, superciliously, 
+                  exaggeratedly, like an adolescent, #)
+      (self   "You sneer $arg$.")
+      (rest   "$mcname$ sneer$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sneer at $hcname$.")
+      (target "$mcname$ sneer$s$ at you.")
+      (rest   "$mcname$ sneer$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  with malice, maliciously, with attitude, superciliously, 
+                  exaggeratedly, like an adolescent, #)
+      (self   "You sneer $arg$ at $hcname$.")
+      (target "$mcname$ sneer$s$ $arg$ at you.")
+      (rest   "$mcname$ sneer$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sneeze.s
+==================================================
+
+(sneeze
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<indirect:any-living> [at] <string>")
+  (single
+    (arguments
+      (arguments violently,loudly,silently,quietly,suddenly,unexpectedly, #)
+      (self "You sneeze $arg$.")
+      (rest "$mcname$ sneeze$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  violently,loudly,silently,quietly,suddenly,unexpectedly, #)
+      (self   "You sneeze $arg$ at $hcname$.")
+      (target "$mcname$ sneeze$s$ $arg$ at you.")
+      (rest  "$mcname$ sneeze$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snewbie.s
+==================================================
+
+(snewbie
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments clueless, lost, without a clue, mindless, annoying, froglike)
+      (self "You wander around like a newbie, looking completely and utterly $arg$.")
+      (rest "$mcname$ wander$s$ around like a newbie, looking completely and utterly $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments clueless, lost, without a clue, mindless, annoying, froglike)
+      (self   "You turn $hcname$ into a newbie, who looks utterly and completely $arg$.")
+      (target "$mcname$ turn$s$ you into a newbie.  You look completely and utterly $arg$.")
+      (rest   "$mcname$ turn$s$ $hcname$ into a newbie, who looks completely and utterly $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snicker.s
+==================================================
+
+(snicker
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You snicker.")
+      (rest "$mcname$ snicker$s$.")
+    )
+    (arguments
+      (arguments  mischievously, nastily, a bit, annoyingly, belatedly, 
+                  sympathetically, happily, quietly, quietly from the corner, 
+                  a private joke, #)
+      (self "You snicker $arg$.")
+      (rest "$mcname$ snicker$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You snicker at $hcname$.")
+      (target "$mcname$ snicker$s$ at you.")
+      (rest   "$mcname$ snicker$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  mischievously, nastily, a bit, annoyingly) 
+      (self   "You snicker $arg$ at $hcname$.")
+      (target "$mcname$ snicker$s$ $arg$ at you.")
+      (rest   "$mcname$ snicker$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  mischievously, nastily, a bit, annoyingly, belatedly, 
+                  sympathetically, happily, quietly, quietly from the corner, 
+                  #) 
+      (self   "You snicker $arg$ at $hcname$.")
+      (target "$mcname$ snicker$s$ $arg$ at you.")
+      (rest   "$mcname$ snicker$s$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  at a private joke) 
+      (self   "You snicker $arg$ with $hcname$.")
+      (target "$mcname$ snicker$s$ $arg$ with you.")
+      (rest   "$mcname$ snicker$s$ $arg$ with $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sniff.s
+==================================================
+
+(sniff
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You sniff.")
+      (rest "$mcname$ $verb$sniffs,sniff$.")
+    )
+    (arguments
+      (arguments  dejectedly, noisily, silently, loudly, in disdain, 
+                  lustily, with a bad cold, expressively, suddenly, 
+                  haughtily, #)
+      (self "You sniff $arg$.")
+      (rest "$mcname$ $verb$sniffs,sniff$ $arg$.")
+    )
+    (arguments
+      (arguments  hair, nose, ear, eyebrow, leg, foot, arm, back, 
+                  chest, thigh, clothes, cheek, fingers, toe, 
+                  celery, carrot, pants, spicy brain)
+      (self "You sniff your $arg$.")
+      (rest "$mcname$ $verb$sniffs,sniff$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You sniff at $hcname$.")
+      (target "$mcname$ $verb$sniffs,sniff$ at you.")
+      (rest "$mcname$ $verb$sniffs,sniff$ at $hcname$.")
+    )
+    (arguments
+      (arguments  dejectedly, noisily, silently, loudly, in disdain, 
+                  lustily, with a bad cold, expressively, suddenly, 
+                  haughtily, #)
+      (self   "You sniff $arg$ at $hcname$.")
+      (target "$mcname$ $verb$sniffs,sniff$ $arg$ at you.")
+      (rest   "$mcname$ $verb$sniffs,sniff$ $arg$ at $hcname$.")
+    )
+    (arguments
+      (arguments  hair, nose, ear, eyebrow, leg, foot, arm, back,
+                  chest, thigh, clothes, cheek, fingers, toe, 
+                  celery, carrot, pants, spicy brain)
+      (self   "You sniff $mhcname$ $arg$.")
+      (target "$mcname$ $verb$sniffs,sniff$ your $arg$.")
+      (rest   "$mcname$ $verb$sniffs,sniff$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/sniffle.s
+==================================================
+
+(sniffle
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sniffle.")
+      (rest "$mcname$ sniffle$s$.")
+    )
+    (arguments
+      (arguments dejectedly, noisily, silently, loudly, in disdain,
+                 in a rousing chorus of 'A wizards staff has a knob on the end', 
+                 happily, sadly, dramatically, #)
+      (self "You sniffle $arg$.")
+      (rest "$mcname$ sniffle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sniffle at $hcname$.")
+      (target "$mcname$ sniffle$s$ at you.")
+      (rest   "$mcname$ sniffle$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments dejectedly, noisily, silently, loudly, in disdain,
+                 in a rousing chorus of 'A wizards staff has a knob on the end', 
+                 happily, sadly, dramatically, #)
+      (self   "You sniffle $arg$ at $hcname$.")
+      (target "$mcname$ sniffle$s$ $arg$ at you.")
+      (rest   "$mcname$ sniffle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snigger.s
+==================================================
+
+(snigger
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You snigger.")
+      (rest "$mcname$ snigger$s$.")
+    )
+    (arguments
+      (arguments mischievously,nastily,a bit,annoyingly,belatedly,#)
+      (self "You snigger $arg$.")
+      (rest "$mcname$ snigger$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You snigger at $hcname$.")
+      (target "$mcname$ snigger$s$ at you.")
+      (rest  "$mcname$ snigger$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments mischievously,nastily,a bit,annoyingly,belatedly,#) 
+      (self   "You snigger $arg$ at $hcname$.")
+      (target "$mcname$ snigger$s$ $arg$ at you.")
+      (rest  "$mcname$ snigger$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snog.s
+==================================================
+
+(snog
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You snog $hcname$.")
+      (target "$mcname$ snog$s$ you.")
+      (rest  "$mcname$ snog$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  wetly, sweetly, hungrily, forcefully, fiercely,
+                  with lots of slobber, sloppily, with a cotton mouth,
+                  with honey, like a dying slug, with whiskers, tenderly,
+                  softly, deeply, with a mouthful of fur, #)
+      (self   "You snog $hcname$ $arg$.")
+      (target "$mcname$ snog$s$ you $arg$.")
+      (rest  "$mcname$ snog$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/snore.s
+==================================================
+
+(snore
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You snore.")
+      (rest "$mcname$ snore$s$.")
+    )
+    (arguments
+     (arguments loudly, sadly, joyfully, sagely, knowingly, quickly, happily, carefully,
+     balefully, excitedly, nervously, brightly, uncertainly, threateningly, grumpily,
+     fluffily, absentmindedly, quickly,#)
+      (self "You snore $arg$.")
+      (rest "$mcname$ snore$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You snore at $hcname$.")
+      (target "$mcname$ snore$s$ at you.")
+      (rest  "$mcname$ snore$s$ at $hcname$.")
+    )
+    (arguments
+     (arguments loudly, sadly, joyfully, sagely, knowingly, quickly, happily, carefully,
+     balefully, excitedly, nervously, brightly, uncertainly, threateningly, grumpily,
+     fluffily, absentmindedly, quickly,#)
+      (self   "You snore $arg$ at $hcname$.")
+      (target "$mcname$ snore$s$ $arg$ at you.")
+      (rest  "$mcname$ snore$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snort.s
+==================================================
+
+(snort
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+  (no-arguments
+      (self "You snort.")
+      (rest "$mcname$ snort$s$.")
+    )
+    (arguments
+      (arguments in contempt,in disgust,happily,backwards,sideways,cheekily,#)
+      (self "You snort $arg$.")
+      (rest "$mcname$ snort$s$ $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+      (self   "You snort at $hcname$.")
+      (target "$mcname$ snort$s$ at you.")
+      (rest  "$mcname$ snort$s$ at $hcname$.")      
+    )
+    (arguments
+      (arguments in contempt,in disgust,happily,backwards,sideways,cheekily,#)
+      (self   "You snort $arg$ at $hcname$.")
+      (target "$mcname$ snort$s$ $arg$ at you.")
+      (rest  "$mcname$ snort$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* HOBBES */
+
+
+==================================================
+FILE: s/snuffle.s
+==================================================
+
+(snuffle
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You snuffle.")
+      (rest "$mcname$ snuffle$s$.")
+    )
+    (arguments
+      (arguments  sadly, tiredly, #)
+      (self "You snuffle $arg$.")
+      (rest "$mcname$ snuffle$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You snuffle $hcname$.")
+      (target "$mcname$ snuffle$s$ you.")
+      (rest   "$mcname$ snuffle$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  fondly, happily, sadly, hungrily, lovingly, angrily, 
+                  like a dog, like a puppy, wetly, warmly, tiredly, 
+                  hung over and dead tired, belatedly, 
+                  with a twinkle in your eye, #)
+        (self   "You snuffle $hcname$ $arg$.")
+        (target "$mcname$ snuffle$s$ you $arg$.")
+        (rest   "$mcname$ snuffle$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  arm, leg, chest, foot, head, cheek, left knee, neck, nose, 
+                  armpit, backpack, womble)
+        (self   "You snuffle $mhcname$ $arg$.")
+        (target "$mcname$ snuffle$s$ your $arg$.")
+        (rest   "$mcname$ snuffle$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snuggle.s
+==================================================
+
+(snuggle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  affectionately,warmly,gently,absentmindedly,carefully,warmly,
+                  absolutely,triumphantly,capriciously,suspiciously,
+                  drunkenly,aesthetically,insolently,faintly,delicately,
+                  with blue jeans on, with jammies on,
+                  with a flowery cotton dress on, #)
+      (self   "You snuggle up to $hcname$ $arg$.")
+      (target "$mcname$ snuggle$s$ up to you $arg$.")
+      (rest  "$mcname$ snuggle$s$ up to $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/snuzzle.s
+==================================================
+
+(snuzzle
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You snuzzle $hcname$.")
+      (target "$mcname$ snuzzle$s$ you.")
+      (rest   "$mcname$ snuzzle$s$ $hcname$.")
+    )
+    (arguments
+      (arguments affectionately, warmly, gently, absentmindedly, 
+                 seductively, dreamily, adorably, lustily, tenderly, 
+                 lovingly, sensuously, longingly, softly, passionately,
+                 excitedly, snuzzily, snuzzably, on a coffee table, #)
+        (self   "You snuzzle $hcname$ $arg$.")
+        (target "$mcname$ snuzzle$s$ you $arg$.")
+        (rest   "$mcname$ snuzzle$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+/* Saffra, 10-17-00, on the bequest of Laurana. */
+
+
+==================================================
+FILE: s/sob.s
+==================================================
+
+(sob
+  (pattern "[on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments  quietly, loudly, despairingly, forlornly, happily, 
+                  uncontrollably, completely, unexpectedly, silently, 
+                  cheekily, messily, hysterically, woefully, sadly, #)
+      (self "You sob $arg$.")
+      (rest "$mcname$ sob$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sob on $mhcname$ shoulder.")
+      (target "$mcname$ sob$s$ on your shoulder.")
+      (rest   "$mcname$ sob$s$ on $mhcname$ shoulder.")
+    )
+    (arguments
+      (arguments  quietly, loudly, despairingly, forlornly, happily, 
+                  uncontrollably, completely, unexpectedly, silently, 
+                  cheekily, messily, hysterically, woefully, sadly, #)
+      (self   "You sob $arg$ on $mhcname$ shoulder.")
+      (target "$mcname$ sob$s$ $arg$ on your shoulder.")
+      (rest   "$mcname$ sob$s$ $arg$ on $mhcname$ shoulder.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/somersault.s
+==================================================
+
+(somersault
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  forward, backward, double, double backward)
+      (self "You do a $arg$ somersault.")
+      (rest "$mcname$ do$s$ a $arg$ somersault.")
+    )
+    (arguments
+      (arguments  like a frog, like a hamster, off the bed, 
+                  from a standing start, happily, sadly, ineptly, carefully, 
+                  but doesn't quite make the landing, head over heels, 
+                  off into the distance, into the garbage bin, viciously, 
+                  dangerously, spectacularly, #)
+      (self "You somersault $arg$.")
+      (rest "$mcname$ somersault$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  forward, backward, double, double backward)
+      (self   "You do a $arg$ somersault over $hcname$.")
+      (target "$mcname$ do$s$ a $arg$ somersault over you.")
+      (rest   "$mcname$ do$s$ a $arg$ somersault over $hcname$.")
+    )
+    (arguments)
+      (arguments  like a frog, like a hamster, off the bed, 
+                  from a standing start, happily, sadly ineptly, carefully, 
+                  but don't quite make the landing, head over heels, 
+                  off into the distance, into the garbage bin, viciously, 
+                  dangerously, spectacularly, #)
+      (self   "You somersault over $hcname$ $arg$.")
+      (target "$mcname$ somersault$s$ over you $arg$.")
+      (rest   "$mcname$ somersault$s$ over $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  lap)
+      (self   "You somersault and land on $mhcname$ $arg$.")
+      (target "$mcname$ somersault$s$ and lands on your $arg$.")
+      (rest   "$mcname$ somersault$s$ and lands on $mhcname$ $arg$.") 
+    )
+    (arguments
+      (arguments  shoulders)
+      (self   "You somersault and land on $mhcname$ $arg$.")
+      (target "$mcname$ somersault$s$ and lands on your $arg$.")
+      (rest   "$mcname$ somersault$s$ and lands on $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  diving board, trampoline, bed, chair, lounge, roof, ceiling, 
+                  feet)
+      (self   "You somersault off your $arg$ and land on $hcname$.")
+      (target "$mcname$ somersault$s$ off $mposs$ $arg$ and lands on you.")
+      (rest   "$mcname$ somersault$s$ off $mposs$ $arg$ and lands on $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sorry.s
+==================================================
+
+(sorry
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You apologise to $hcname$.")
+      (target "$mcname$ apologise$s$ to you.")
+      (rest  "$mcname$ apologise$s$ to $hcname$.")
+    )
+    (arguments
+      (arguments  profusely,reservedly,perfunctorily,carefully,insultingly,insolently)
+      (self   "You apologise $arg$ to $hcname$.")
+      (target "$mcname$ apologise$s$ $arg$ to you.")
+      (rest  "$mcname$ apologise$s$ $arg$ to $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spam.s
+==================================================
+
+(spam
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<string> <indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You spam away.")
+      (rest "$mcname$ spam$s$ away.")
+    )
+    (arguments
+    (arguments  the room, the boards, the talker, everyone, the creators, 
+                mercilessly, annoyingly, endlessly, forever, 
+                forever and a day, relentlessly, proudly, unknowingly, 
+                torturously, like a newbie, like a creator, #)
+      (self "You spam $arg$.")
+      (rest "$mcname$ spam$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  at, like)
+      (self   "You spam $arg$ $hcname$.")
+      (target "$mcname$ spam$s$ $arg$ you.")
+      (rest   "$mcname$ spam$s$ $arg$ $hcname$.")
+    )
+    (arguments
+      (arguments  the room, the boards, the talker, everyone, the creators, 
+                  mercilessly, annoyingly, endlessly, forever, 
+                  forever and a day, relentlessly, proudly, unknowingly, 
+                  torturously, like a newbie, like a creator, specifically, 
+                  personally, #)
+      (self   "You spam $arg$ at $hcname$.")
+      (target "$mcname$ spam$s$ $arg$ at you.")
+      (rest   "$mcname$ spam$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/spank.s
+==================================================
+
+(spank
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You spank $hcname$.")
+      (target "$mcname$ spank$s$ you.")
+      (rest   "$mcname$ spank$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  seductively, carefully, gently, uncontrollably, politely, 
+                  sensuously, selectively, unexpectedly, with an evil smirk, 
+                  painfully, sneakily, unprovoked, professionally, vigorously, 
+                  reflexively, with a cat, like a train, like a virgin mary, 
+                  with a virgin mary, with a wooden spoon, #)
+      (self   "You spank $hcname$ $arg$.")
+      (target "$mcname$ spank$s$ you $arg$.")
+      (rest   "$mcname$ spank$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sparkle.s
+==================================================
+
+(sparkle
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sparkle brightly.")
+      (rest "$mcname$ sparkle$s$ brightly.")
+    )
+  )
+  (targeted
+      (arguments
+      (arguments brightly,lovely,happily,mischievously,cheekily,idiotically,wryly,sceptically,
+                 derisively,annoyingly,absentmindedly,whilst you work,distractedly,pointlessly,
+                 silently,loudly,rudely,with laughter,vaguely,obviously,#)
+      (self   "You sparkle $arg$ at $hcname$.")
+      (target "$mcname$ sparkle$s$ $arg$ at you.")
+      (rest  "$mcname$ sparkle$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spin.s
+==================================================
+
+(spin
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You spin.")
+      (rest "$mcname$ spin$s$.")
+    )
+    (arguments
+      (arguments around, like a top, about, deliriously, dizzily, 
+                 suddenly, quickly, slowly, dizzily, nauseatingly, 
+                 in a panic, like a tornado, like a blender, in a spiral, 
+                 in a holding pattern, clockwise, counterclockwise, 
+                 anti-clockwise, hubwards, deosil, widdershins, turnwise, 
+                 in your grave, a yarn, a tale, right round, like a record, #)
+      (self "You spin $arg$.")
+      (rest "$mcname$ spin$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You spin $hcname$ around.")
+      (target "$mcname$ spin$s$ you around.")
+      (rest "$mcname$ spin$s$ $hcname$ around.")
+    )
+    (arguments
+      (arguments like a top, about, deliriously, dizzily, 
+                 suddenly, quickly, slowly, dizzily, nauseatingly, 
+                 in a panic, like a tornado, like a blender, in a spiral, 
+                 in a holding pattern, clockwise, counterclockwise, 
+                 anti-clockwise, hubwards, deosil, widdershins, turnwise, 
+                 a yarn, a tale, right round, like a record, #)
+      (self "You spin $hcname$ $arg$.")
+      (target "$mcname$ spin$s$ you $arg$.")
+      (rest "$mcname$ spin$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/spit.s
+==================================================
+
+(spit
+  (pattern "[at] <indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You spit.")
+      (rest "$mcname$ spit$s$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You spit in $mhcname$ face.")
+      (target "$mcname$ spit$s$ in your face.")
+      (rest   "$mcname$ spit$s$ in $mhcname$ face.")
+    )
+    (arguments
+      (arguments  food, drink, general direction, face)
+      (self   "You spit in $mhcname$ $arg$.")
+      (target "$mcname$ spit$s$ in your $arg$.")
+      (rest   "$mcname$ spit$s$ in $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  in disgust, in loathing, hatefully, #)
+      (self   "You spit $arg$ at $hcname$.")
+      (target "$mcname$ spit$s$ $arg$ at you.")
+      (rest   "$mcname$ spit$s$ $hcname$ face.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spleep.s
+==================================================
+
+(spleep
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+      (arguments 
+        (arguments sleepily,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,like an alarm clock,like a roadrunner,#)
+      (self "You spleep $arg$.")
+      (rest "$mcname$ spleep$s$ $arg$.")
+    )
+  )
+  (targeted
+      (arguments 
+        (arguments sleepily,happily,sadly,brightly,curtly,patiently,
+                 slowly,eagerly,expectantly,firmly,sagely,emphatically,
+                 knowingly,vigorously,in disagreement,tentatively,angrily,
+                 kindly,like an alarm clock,like a roadrunner,#)
+      (self   "You spleep $arg$ at $hcname$.")
+      (target "$mcname$ spleep$s$ $arg$ at you.")
+      (rest   "$mcname$ spleep$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/*Hobbes 970317*/
+
+
+==================================================
+FILE: s/spliff.s
+==================================================
+
+(spliff
+  (single
+    (no-arguments
+      (self "You spliff up.")
+      (rest "$mcname$ $verb$spliffs,spliff$ up.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spock.s
+==================================================
+
+(spock
+  (pattern "[at] <indirect:any-living>")
+  (pattern "[in] <string>")
+  (pattern "[in] <string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> [in] <string>")
+  (single
+    (no-arguments
+      (self "You raise one eyebrow.")
+      (rest "$mcname$ raise$s$ one eyebrow.")
+    )
+  )
+  (targeted
+    (no-arguments 
+      (self   "You raise one eyebrow at $hcname$.")
+      (target "$mcname$ raise$s$ one eyebrow at you.")
+      (rest  "$mcname$ raise$s$ one eyebrow at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spull.s
+==================================================
+
+(spull
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+     (arguments over, under, away, along, around, up, down, #)
+      (self "You pull $hcname$ $arg$.")
+      (target "$mcname$ pull$s$ you $arg$.")
+      (rest "$mcname$ pull$s$ $hcname$ $arg$.")
+    )
+  )
+)
+/* Saffra, 4-26-00 */
+
+
+
+==================================================
+FILE: s/spunch.s
+==================================================
+
+(spunch
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You punch yourself.")
+      (rest "$mcname$ punch$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You punch $hcname$.")
+      (target "$mcname$ punch$s$ you.")
+      (rest  "$mcname$ punch$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/spy.s
+==================================================
+
+(spy
+  (pattern "<string>")
+  (pattern "<indirect:any-living>" )
+  (pattern "<indirect:any-living> <string>" )
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You spy on people with rays.")
+      (rest "$mcname$ spy$s$ on people with rays.")
+    )
+    (arguments
+    (arguments  with rays, with closed circuit cameras, with 
+                telephone bugs, despite the tinfoil hat, with
+                crystal balls, through a painting, cunningly,
+                cleverly, obviously, incessantly, surreptitiously,
+                covertly, like a High Lord, with Ray, #)
+      (self "You spy on people $arg$.")
+      (rest "$mcname$ spy$s$ on people $arg$.")
+    )
+  )
+  (targeted
+  (no-arguments
+    (self "You spy on $hcname$.")
+    (target "$mcname$ spy$s$ on you.")
+    (rest "$mcname$ spy$s$ on $hcname$.")
+  )
+  (arguments
+  (arguments  with rays, with closed circuit cameras, with 
+              telephone bugs, despite the tinfoil hat, with
+              crystal balls, through a painting, cunningly,
+              cleverly, obviously, incessantly, surreptitiously,
+                covertly, like a High Lord, with Ray, #)
+    (self "You spy on $hcname$ $arg$." )
+    (target "$mcname$ spy$s$ on you $arg$." )
+    (rest "$mcname$ spy$s$ on $hcname$ $arg$." )
+    )
+  )
+)
+
+
+==================================================
+FILE: s/squeak.s
+==================================================
+
+(squeak
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You squeak.")
+      (rest "$mcname$ squeak$s$.")
+    )
+    (arguments
+      (arguments manically,evilly,affirmatively,excitedly,unhappily,moodily,sulkily,wickedly,insanely,mischievously,devilishly,impishly,cheekily,idiotically,tentatively,wryly,sceptically,happily,like a mouse,like a confused cat, #)
+      (self "You squeak $arg$.")
+      (rest "$mcname$ squeak$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You squeak at $hcname$.")
+      (target "$mcname$ squeak$s$ at you.")
+      (rest  "$mcname$ squeak$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  manically,evilly,affirmatively,excitedly,unhappily,moodily,sulkily,wickedly,insanely,mischievously,devilishly,impishly,cheekily,idiotically,wryly,sceptically,happily,like a mouse,like a confused cat, #)
+      (self   "You squeak $arg$ at $hcname$.")
+      (target "$mcname$ squeak$s$ $arg$ at you.")
+      (rest  "$mcname$ squeak$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+/* Hobbes, 96 */
+
+==================================================
+FILE: s/squeal.s
+==================================================
+
+(squeal
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+        (self "You squeal.")
+        (rest "$mcname$ squeal$s$.")
+    )
+    (arguments
+      (arguments in delight, in terror, in pain, in mortal fear, 
+                 like a pig, like a rubber chew toy, #)
+        (self "You squeal $arg$.")
+        (rest "$mcname$ squeal$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+        (self   "You squeal at $hcname$.")
+        (target "$mcname$ squeal$s$ at you.")
+        (rest   "$mcname$ squeal$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments in delight, in terror, in pain, in mortal fear, 
+                 like a pig, like a rubber chew toy, #)
+        (self   "You squeal $arg$ at $hcname$.")
+        (target "$mcname$ squeal$s$ $arg$ at you.")
+        (rest   "$mcname$ squeal$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+/* Given all the good options by Saffra, 1-31-01. */
+
+==================================================
+FILE: s/squeeze.s
+==================================================
+
+(squeeze
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (arguments
+      (arguments  fondly, gently, tightly, #)
+      (self   "You squeeze $hcname$ $arg$.")
+      (target "$mcname$ squeeze$s$ you $arg$.")
+      (rest  "$mcname$ squeeze$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/squirm.s
+==================================================
+
+(squirm
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You squirm.")
+      (rest "$mcname$ squirm$s$.")
+    )
+    (arguments
+    (arguments uncomfortably, antsily, guiltily, damply, impatiently, 
+               helplessly, suggestively, spinelessly, nervously, sexily,  
+               politely, idly, lewdly, under pressure, in Quirm, with joy, 
+               like a worm, under the rug, #)
+      (self "You squirm $arg$.")
+      (rest "$mcname$ squirm$s$ $arg$.")
+    )
+    (arguments
+      (arguments seat)
+      (self "You squirm in your seat.")
+      (rest "$mcname$ squirm$s$ in $mposs$ seat.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You squirm at $hcname$.")
+      (target "$mcname$ squirm$s$ at you.")
+      (rest  "$mcname$ squirm$s$ at $hcname$.")
+    )
+    (arguments 
+      (arguments uncomfortably, antsily, guiltily, damply, impatiently, 
+                 helplessly, suggestively, spinelessly, nervously, sexily,  
+                 politely, idly, lewdly, under pressure, in Quirm, with joy, 
+                 like a worm, under the rug, #)
+      (self   "You squirm $arg$ at $hcname$.")
+      (target "$mcname$ squirm$s$ $arg$ at you.")
+      (rest   "$mcname$ squirm$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/ssit.s
+==================================================
+
+(ssit
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sit down.")
+      (rest "$mcname$ sit$s$ down.")
+    )
+    (arguments
+      (arguments quickly,slowly,clumsily,carefully,thoughtfully,
+                 with one hand tied behind your back,in shock,gracefully,
+                 gratefully,inconsiderately)
+      (self "You sit down $arg$.")
+      (rest "$mcname$ sit$s$ down $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  heavily, lightly, delicately, suddenly, #)
+      (self   "You sit on $hcname$ $arg$.")
+      (target "$mcname$ sit$s$ on you $arg$.")
+      (rest  "$mcname$ sit$s$ on $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sskip.s
+==================================================
+
+(sskip
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You skip around happily.")
+      (rest "$mcname$ skip$s$ around happily.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You skip around $hcname$.")
+      (target "$mcname$ skip$s$ around you.")
+      (rest  "$mcname$ skip$s$ around $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/ssmell.s
+==================================================
+
+(ssmell
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "Wahhhhhh.")
+      (rest "$mcname$ smell$s$ sweet and attract$s$ flies.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sswim.s
+==================================================
+
+(sswim
+  (single
+    (no-arguments
+      (self "You give a good imitation of swimming.")
+      (rest "$mcname$ swim$s$ around.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/stagger.s
+==================================================
+
+(stagger
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You stagger around.")
+      (rest "$mcname$ stagger$s$ around.")
+    )
+    (arguments
+      (arguments  drunkenly, blindly, in the dark, with a hat on, like a frog, 
+                  #)
+      (self "You stagger around $arg$.")
+      (rest "$mcname$ stagger$s$ around $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You stagger around $hcname$.")
+      (target "$mcname$ stagger$s$ around you.")
+      (rest   "$mcname$ stagger$s$ around $hcname$.")
+    )
+    (arguments
+      (arguments  burden, with, with the added burden of carrying)
+      (self   "You stagger around with the added burden of carrying $hcname$.")
+      (target "$mcname$ stagger$s$ around with the added burden of carrying you.")
+      (rest   "$mcname$ stagger$s$ around with the added burden of carrying $hcname$.")
+    )
+    (arguments
+      (arguments  drunkenly, blindly, in the dark, with a hat on, like a frog, 
+                  #)
+      (self   "You stagger around $hcname$ $arg$.")
+      (target "$mcname$ stagger$s$ around you $arg$.")
+      (rest   "$mcname$ stagger$s$ around $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/stalk.s
+==================================================
+
+(stalk
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You get the impression someone's stalking you.")
+      (rest "$mcname$ feel$s$ stalked.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You stalk $hcname$.")
+      (target "$mcname$ stalk$s$ you.")
+      (rest  "$mcname$ stalk$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  slowly, silently, closely, tenderly, lovingly,
+                  lovingly, like a crotch sniffing labrador, from a distance, carefully, demandingly,
+                  continuously, longingly, like Taffyd, whilst going through your trash, back, boringly,
+                  with a gang of penguins, absentmindedly, wearing rubber,
+                  in an igloo, to the toilet, in the shower,
+                  slowly, suspiciously, like a deranged guilds creator who's got no marbles left, calmly,#)
+      (self   "You stalk $hcname$ $arg$.")
+      (target "$mcname$ stalk$s$ you $arg$.")
+      (rest  "$mcname$ stalk$s$ $hcname$ $arg$.")
+    )s
+  )
+)
+
+
+
+==================================================
+FILE: s/stamp.s
+==================================================
+
+(stamp
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You stamp your foot.")
+      (rest "$mcname$ stamp$s$ $mposs$ foot.")
+    )
+    (arguments
+      (arguments angrily,impatiently,warningly,frighteningly,in frustration)
+      (self "You stamp your foot $arg$.")
+      (rest "$mcname$ stamp$s$ $mposs$ foot $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/stand.s
+==================================================
+
+(stand
+  (pattern "<string>")
+  (single
+    (arguments
+      (arguments in uffish thought,about,patiently,on one hand)
+      (self "You stand $arg$.")
+      (rest "$mcname$ stand$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/stare.s
+==================================================
+
+(stare
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You stare into space.")
+      (rest "$mcname$ stare$s$ into space.")
+    )
+    (arguments
+      (arguments happily, sadly, worriedly, lazily, rudely, dazedly,
+                 hungrily, macabrely, absentmindedly, fanatically,
+                 lovingly, respectfully, womblely, froggily, desperately,
+                 sternly, tentatively, politely, listlessly, jealously,
+                 enviously, dreamily, intently, mindlessly, expectantly,
+                 longingly, anxiously, fluffily, spongily, portablely, #)
+      (self "You stare $arg$ into space.")
+      (rest "$mcname$ stare$s$ $arg$ into space.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You stare at $hcname$.")
+      (target "$mcname$ stare$s$ at you.")
+      (rest  "$mcname$ stare$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly, worriedly, lazily, rudely, dazedly,
+                  hungrily, macabrely, absentmindedly, fanatically,
+                  lovingly, respectfully, womblely, froggily, desperately,
+                    sternly, tentatively, politely, listlessly, jealously,
+                    enviously, dreamily, intently, mindlessly, romantically,
+                    expectantly, longingly, continuously, annoyingly,
+                    anxiously, fluffily, spongily, portablely, #)
+      (self   "You stare $arg$ at $hcname$.")
+      (target "$mcname$ stare$s$ $arg$ at you.")
+      (rest  "$mcname$ stare$s$ $arg$ at $hcname$.")
+     )
+    (arguments
+      (arguments eyes, mouth, nose, lips, ears, eyebrows, hands, fingers,
+                 fingernails, arms, chest, waist, stomach, legs, 
+                 ankles, feet, toenails)
+      (self   "You stare at $hcname$'s $arg$.")
+      (target "$mcname$ stare$s$ at your $arg$")
+      (rest  "$mcname$ stare$s$ at $hcname$'s $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/step.s
+==================================================
+
+(step
+  (pattern "[on] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You do a little step dance.")
+      (rest "$mcname$ do$s$ a little step dance.")
+    )
+    (arguments
+      (arguments happily,professionally,in shame,on the head,quickly,
+                 in joy,sadly,#)
+      (self "You step dance $arg$.")
+      (rest "$mcname$ step dance$s$ $arg$.")
+    )
+)  
+  (targeted
+   (arguments
+    (arguments foot,frog,keyboard,code,head,body,toes,#)
+      (self   "You step on $mhcname$ $arg$.")
+      (target "$mcname$ step$s$ on your $arg$.")
+      (rest  "$mcname$ step$s$ on $mhcname$ $arg$.")
+    )
+   )
+ )  
+
+
+==================================================
+FILE: s/stifle.s
+==================================================
+
+(stifle
+  (single
+    (no-arguments
+      (self "You stifle a giggle.")
+      (rest "$mcname$ stifle$s$ a giggle.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/stir.s
+==================================================
+
+(stir
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments enthusiastically, excitedly, quietly, calmly, carefully, politely, wildly, oddly, 
+                        unconvincingly, happily, slightly, up, loudly, lamely)
+      (self "You stir $arg$.")
+      (rest "$mcname$ stir$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments enthusiastically, excitedly, quietly, calmly, carefully, politely, wildly, oddly, 
+                        unconvincingly, happily, slightly, up, loudly, lamely)
+      (self   "You stir $arg$ at $hcname$.")
+      (target "$mcname$ stir$s$ $arg$ at you.")
+      (rest  "$mcname$ stir$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/strangle.s
+==================================================
+
+(strangle
+  (pattern "<indirect:any-living>")
+  (single
+    (no-arguments
+      (self "You strangle yourself.")
+      (rest "$mcname$ strangle$s$ $mobj$self.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You strangle $hcname$.")
+      (target "$mcname$ strangle$s$ you.")
+      (rest   "$mcname$ strangle$s$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/streak.s
+==================================================
+
+(streak
+   (pattern "<indirect:any-living>")
+   (pattern "<string>")
+   (pattern "<string> <indirect:any-living>")
+   (pattern "<indirect:any-living> <string>")
+   (single
+      (no-arguments
+       (self "You shed all your clothes and streak around the room naked.")
+       (rest "$mcname$ shed$s$ all $mposs$ clothes and streaks around the room naked.")
+      )
+      (arguments
+      (arguments laughing,screaming,in a frenzy,with naughty bits flapping,
+        panting,frightening everyone,with your frog,backwards,
+        doing a dance to the great frog in the sky,#)
+ (self "You shed all your clothes and streak around the room $arg$.")
+ (rest "$mcname$ shed$s$ all $mposs$ clothes and streaks around the room $arg$.")
+      )
+   )
+   (targeted
+      (no-arguments
+         (self   "You shed your clothes and streak by $hcname$.")
+         (target "$mcname$ shed$s$ $mposs$ clothes and streaks by you.")
+         (rest   "$mcname$ shed$s$ $mposs$ clothes and streaks by $hcname$.")
+      )
+ (arguments
+      (arguments laughing, screaming, in a frenzy, with naughty bits flapping,
+        panting, frightening everyone,with your frog,backwards,
+        doing a dance to the great frog in the sky,#)
+      (self   "You shed your clothes and streak by $hcname$ $arg$.")
+      (target "$mcname$ shed$s$ $mposs$ clothes and streaks by you $arg$.")
+      (rest   "$mcname$ shed$s$ $mposs$ clothes and streaks by $hcname$ $arg$.")
+      )
+   )
+)
+/* Thanks to Iam for the idea of this one. */
+
+
+==================================================
+FILE: s/stretch.s
+==================================================
+
+(stretch
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [to] <indirect:any-living>")
+  (pattern "[to] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You stretch.")
+      (rest "$mcname$ stretches.")
+    )
+    (arguments
+      (arguments lazily, slowly, seductively, carefully, excitedly, sleepily,
+                 sadly, happily, your legs, your arms, your eyebrows, #)
+      (self "You stretch $arg$.")
+      (rest "$mcname$ stretch$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You stretch at $hcname$.")
+      (target "$mcname$ stretch$s$ at $hcname$.")
+      (rest "$mcname$ stretch$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments lazily, slowly, seductively, carefully, excitedly, sleepily,
+                 sadly, happily, your legs, your arms, your eyebrows, #)
+      (self "You stretch $arg$ at $hcname$.")
+      (target "$mcname$ stretch$s$ $arg$ at you.")
+      (rest "$mcname$ stretch$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/stroke.s
+==================================================
+
+(stroke
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You stroke your chin thoughtfully.")
+      (rest "$mcname$ stroke$s$ $mposs$ chin thoughtfully.")
+    )
+    (arguments
+      (arguments  ear, nose, cheek, hand, forehead, eyebrow, 
+                  finger, foot, toe, fingernail, back, spine, arm, thigh, 
+                  upper thigh, calf, elbow, knee, fingers, neck, 
+                  shoulder, palm, toes, hair, chicken, ego, beard, goatee, 
+                  moustache, #)
+      (self   "You stroke your $arg$.")
+      (rest   "$mcname$ stroke$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You stroke $hcname$.")
+      (target "$mcname$ stroke$s$ you.")
+      (rest  "$mcname$ stroke$s$ $hcname$.")
+         )
+    (arguments
+      (arguments  gently, warmly, softly, lovingly, roughly, lightly,
+                  quickly, slowly)
+      (self   "You stroke $hcname$ $arg$.")
+      (target "$mcname$ stroke$s$ you $arg$.")
+      (rest   "$mcname$ stroke$s$ $hcname$ $arg$.")
+    )
+    (arguments
+      (arguments  ear, nose, cheek, hand, forehead, eyebrow, 
+                  finger, foot, toe, fingernail, back, spine, arm, thigh, 
+                  upper thigh, calf, elbow, knee, fingers, neck, 
+                  shoulder, palm, toes, hair, chicken, ego, beard, goatee, 
+                  moustache, #)
+      (self   "You stroke $mhcname$ $arg$.")
+      (target "$mcname$ stroke$s$ your $arg$.")
+      (rest   "$mcname$ stroke$s$ $mhcname$ $arg$.")
+    )
+  )
+)
+
+/* Hobbes 970513*/
+
+
+==================================================
+FILE: s/strut.s
+==================================================
+
+(strut
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You strut your stuff.")
+      (rest "$mcname$ strut$s$ proudly around the room.")
+    )
+    (arguments
+    (arguments proudly, egotistically, sarcastically, mockingly, 
+               like a rooster, like an assassin, like a seamstress, 
+               like a stray cat, #)
+      (self "You strut $arg$.")
+      (rest "$mcname$ strut$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self "You strut your stuff at $hcname$.")
+      (target "$mcname$ strut$s$ $mposs$ stuff at you.")
+      (rest "$mcname$ strut$s$ $mposs$ stuff at $hcname$.")
+    )
+    (arguments
+    (arguments proudly, egotistically, sarcastically, mockingly, 
+               like a rooster, like an assassin, like a seamstress, 
+               like a stray cat, #)
+      (self "You strut $arg$ at $hcname$.")
+      (target "$mcname$ strut$s$ $arg$ at you.")
+      (rest "$mcname$ strut$s$ $arg$ at $hcname$.")    
+    )
+  )
+)
+
+
+==================================================
+FILE: s/stumble.s
+==================================================
+
+(stumble
+  (pattern "<string>")
+  (single
+    (no-arguments
+      (self "You stumble around the room.")
+      (rest "$mcname$ stumble$s$ around the room.")
+    )
+    (arguments
+      (arguments #)
+      (self "You stumble $arg$.")
+      (rest "$mcname$ stumble$s$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/suck.s
+==================================================
+
+(suck
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments thumb,pen,#)
+      (self "You suck your $arg$.")
+      (rest "$mcname$ suck$s$ $mposs$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  ear, nose, leg, arm, finger, apples, strawberries,
+                  frog, straw, cow, coffee table, car, tent,
+                  house, lawnmower, thumb, toe, knee, thigh, lolly, #)
+      (self   "You suck on $mhcname$ $arg$.")
+      (target "$mcname$ suck$s$ on your $arg$.")
+      (rest   "$mcname$ suck$s$ on $mhcname$ $arg$.")
+    )
+    (arguments
+      (arguments  up to)
+      (self   "You suck $arg$ $hcname$.")
+      (target "$mcname$ suck$s$ $arg$ you.")
+      (rest   "$mcname$ suck$s$ $arg$ $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sue.s
+==================================================
+
+(sue
+  (pattern "<indirect:any-living>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You feel like sueing the pants off someone.")
+      (rest "$mcname$ look$s$ mad enough to sue.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You attempt to sue $hcname$ for all $hpronoun$ $tverb$is,are$ worth.")
+      (target "$mcname$ attempt$s$ to sue you for all you are worth.")
+      (rest   "$mcname$ attempt$s$ to sue $hcname$ for all $hpronoun$ $tverb$is,are$ worth.")
+    )
+    (arguments
+      (arguments  for gobs of money, for having a name like that, for divorce,
+                  for custody, for peace, #)
+      (self   "You attempt to sue $hcname$ $arg$.")
+      (target "$mcname$ attempt$s$ to sue you $arg$.")
+      (rest   "$mcname$ attempt$s$ to sue $hcname$ $arg$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sulk.s
+==================================================
+
+(sulk
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You sulk in the corner.")
+      (rest "$mcname$ sulk$s$ in the corner.")
+    )
+    (arguments
+      (arguments sulkily, stubbornly, whimperingly, whingingly, childishly, 
+                 under the desk, under the bed, under the chair, in the closet,
+                 #)
+      (self "You sulk $arg$.")
+      (rest "$mcname$ sulk$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You sulk in the corner away from $hcname$.")
+      (target "$mcname$ sulk$s$ in the corner away from you.")
+      (rest   "$mcname$ sulk$s$ in the corner away from $hcname$.")
+    )
+    (arguments
+      (arguments sulkily, stubbornly, whimperingly, whingingly, childishly, 
+                 under the desk, under the bed, under the chair, in the closet,
+                 #)
+      (self   "You sulk $arg$ at $hcname$.")
+      (target "$mcname$ sulk$s$ $arg$ at you.")
+      (rest   "$mcname$ sulk$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/surprise.s
+==================================================
+
+(surprise
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (targeted
+    (no-arguments
+      (self   "You surprise $hcname$.")
+      (target "$mcname$ surprise$s$ you.")
+      (rest   "$mcname$ surprise$s$ $hcname$.")
+    )
+    (arguments
+      (arguments  happily, sadly, cunningly, again, with a rubber snake, 
+                  with a real snake, nicely, wonderfully, sneakily, 
+                  with flowers, with chocolates, with a present, 
+                  with two tickets for a rim-to-rim Disc-wide adventure 
+                  holiday visiting every major attraction en route, #)
+      (self   "You surprise $hcname$ $arg$.")
+      (target "$mcname$ surprise$s$ you $arg$.")
+      (rest   "$mcname$ surprise$s$ $hcname$ $arg$.")
+    )
+  )
+)
+
+
+==================================================
+FILE: s/swagger.s
+==================================================
+
+(swagger
+  (pattern "<string>")
+  (pattern "<indirect:any-living>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You swagger about.")
+      (rest "$mcname$ swagger$s$ about.")
+    )
+    (arguments
+      (arguments suavely, impressively, lustily, bravely, arrogantly, 
+                 far too arrogantly, seductively, drunkenly, from side 
+                 to side, like a drunken sailor, like a drunken creator, 
+                 like Captain Bligh, like John Wayne, like an eighth level 
+                 wizard, like a High Lord, #)
+      (self "You swagger about $arg$.")
+      (rest "$mcname$ swagger$s$ about $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You swagger at $hcname$.")
+      (target "$mcname$ swagger$s$ at you.")
+      (rest  "$mcname$ swagger$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments suavely, impressively, bravely, arrogantly, far too 
+                 arrogantly, seductively, drunkenly, from side to side, 
+                 like a drunken sailor, like a drunken creator, like 
+                 Captain Bligh, like John Wayne, like an eighth level 
+                 wizard, like a High Lord, #)
+      (self   "You swagger $arg$ at $hcname$.")
+       (target "$mcname$ swagger$s$ $arg$ at you.")
+      (rest  "$mcname$ swagger$s$ $arg$ at $hcname$.")
+    )
+   )
+)
+
+/* Saffra June 4, 2000 */
+
+
+==================================================
+FILE: s/swear.s
+==================================================
+
+(swear
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You swear.")
+      (rest "$mcname$ swear$s$.")
+    )
+    (arguments
+      (arguments violently,on your life,on the bible,on your mother's grave,loudly,#)
+      (self "You swear $arg$.")
+      (rest "$mcname$ swear$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You swear at $hcname$.")
+      (target "$mcname$ swear$s$ at you.")
+      (rest  "$mcname$ swear$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments  violently,on your life,on the bible,on your mother's grave,loudly,#)
+      (self   "You swear $arg$ at $hcname$.")
+      (target "$mcname$ swear$s$ $arg$ at you.")
+      (rest  "$mcname$ swear$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/sweat.s
+==================================================
+
+(sweat
+  (pattern "<indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments profusely,vigorously,wetly,rudely,petrol,bricks,buckets,
+       buckets of igloos,artichokes,loudly,igloos,silently,anxiously,patiently,hotly,blood)
+      (self "You sweat $arg$.")
+      (rest "$mcname$ sweat$s$ $arg$.")
+    )
+  )
+  (targeted
+    (arguments
+      (arguments  profusely,vigorously,wetly,rudely,petrol,bricks,buckets,buckets of igloos,
+       artichokes,loudly,igloos,silently,anxiously,patiently,hotly,blood)
+      (self   "You sweat $arg$ on $hcname$.")
+      (target "$mcname$ sweat$s$ $arg$ on you.")
+      (rest  "$mcname$ sweat$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: s/swing.s
+==================================================
+
+(swing
+   (pattern "<indirect:any-living>")
+   (pattern "<string> <indirect:any-living>")
+   (pattern "<indirect:any-living> <string>")
+   (targeted
+     (no-arguments
+       (self "You swing $hcname$ out onto the dance floor.")
+       (target "$mcname$ swing$s$ you out onto the dance floor.")
+       (rest "$mcname$ swing$s$ $hcname$ out onto the dance floor.")
+     )
+     (arguments 
+     (arguments spinning, twirling, dipping, whirling, flinging, 
+                tripping, hopping, dragging, pulling, pushing, #)
+       (self "You swing $hcname$ out onto the dance floor, $arg$ $hobj$ as you dance.")
+       (target "$mcname$ swing$s$ you out onto the dance floor, $arg$ you as you dance.")
+       (rest "$mcname$ swing$s$ $hcname$ out on the dance floor, $arg$ $hobj$ as they dance.")
+      ) 
+   )
+)
+
+/* Saffra 2-25-00, idea by Archana, fixed 3-29-03 */
+
+
+==================================================
+FILE: s/swoon.s
+==================================================
+
+(swoon
+  (pattern "[at] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [at] <indirect:any-living>")
+  (pattern "[at] <indirect:any-living> <string>")
+  (single
+    (no-arguments
+      (self "You swoon.")
+      (rest "$mcname$ swoon$s$.")
+    )
+    (arguments
+       (arguments like a swallow on a warm summers day with the sunlight 
+                 streaming through the trees and small fluffy clouds wandering
+                 across the deep blue sky,like Ariadne, dramatically, heavily, 
+                 desperately, suggestively,melodramatically,like Pinkfish on dried
+                 frog pills,happily,backwards,sideways,in some sort of a swoony way,#)
+      (self "You swoon $arg$.")
+      (rest "$mcname$ swoon$s$ $arg$.")
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You swoon at $hcname$.")
+      (target "$mcname$ swoon$s$ at you.")
+      (rest  "$mcname$ swoon$s$ at $hcname$.")
+    )
+    (arguments
+      (arguments like a swallow on a warm summers day with the sunlight
+                 streaming through the trees and small fluffy clouds wandering
+                 across the deep blue sky,like Ariadne, dramatically, heavily, 
+                 desperately, suggestively,melodramatically,like Pinkfish on dried 
+                 frog pills,happily,backwards,sideways,in some sort of a swoony way,#)
+      (self   "You swoon $arg$ at $hcname$.")
+      (target "$mcname$ swoon$s$ $arg$ at you.")
+      (rest  "$mcname$ swoon$s$ $arg$ at $hcname$.")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: j/james.s
+==================================================
+
+(james
+  (single
+    (no-arguments
+      (self "Ow! I feel good! da na da na da na da! I knew that I would!")
+      (rest "$mcname$ feel$s$ good, da na da na da na da!")
+    )
+  )
+)
+
+
+
+==================================================
+FILE: j/jedi.s
+==================================================
+
+(jedi
+  (pattern "<indirect:any-living>")
+  (pattern "<indirect:any-living> <string>")
+  (pattern "<string> <indirect:any-living>")
+  (pattern "<string>")  
+  (single
+    (no-arguments
+      (self   "You do wavy hand movements and say: \"These are not the imps you are looking for.\"")    
+      (rest   "$mcname$ do$s$ wavy hand movements and says: \"There are not the imps you are looking for.\"")
+    )
+    (arguments
+      (arguments These are not the imps you are looking for., You have no need to see my papers., #)
+      (self   "You do wavy hand movements and say: \"$arg$\"")    
+      (rest   "$mcname$ do$s$ wavy hand movements and says: \"$arg$\"")
+    )    
+  )
+  (targeted
+    (no-arguments
+      (self   "You do wavy hand movements and say to $hcname$: \"These are not the imps you are looking for.\"")    
+      (rest   "$mcname$ do$s$ wavy hand movements and says to $hcname$: \"These are not the imps you are looking for.\"")    
+      (target   "$mcname$ do$s$ wavy hand movements and says to you: \"These are not the imps you are looking for.\"")          
+    )
+    (arguments
+      (arguments These are not the imps you are looking for., You have no need to see my papers., #)
+      (self   "You do wavy hand movements and say to $hcname$: \"$arg$\"")    
+      (rest   "$mcname$ do$s$ wavy hand movements and says to $hcname$: \"$arg$\"")    
+      (target   "$mcname$ do$s$ wavy hand movements and says to you: \"$arg$\"")          
+    )
+  )
+)
+
+
+==================================================
+FILE: j/jump.s
+==================================================
+
+(jump
+  (pattern "[on] <indirect:any-living>")
+  (pattern "<string>")
+  (pattern "<string> [on] <indirect:any-living>")
+  (pattern "[on] <indirect:any-living> <string>")
+  (single
+    (arguments
+      (arguments  excitedly, happily, carefully, slowly, joyfully, 
+                  unsteadily, ecstatically, worriedly, sideways, 
+                  absentmindedly, like Pinkfish, like a prancing piranha, #)
+      (self "You $position$jump up and down $arg$.")
+      (rest "$mcname$ $position$jump$s$ up and down $arg$.")
+      (position
+        (standing "ignore")
+        (default
+          (cmd "stand")
+          (self "stand up and ")
+          (rest "stands up and ")
+        )
+        (silent "yes")
+      )
+    )
+  )
+  (targeted
+    (no-arguments
+      (self   "You $aposition$jump up and down on $hcname$.")
+      (target "$mcname$ $aposition$jump$s$ up and down on you.")
+      (rest   "$mcname$ $aposition$jump$s$ up and down on $hcname$.")
+      (position
+        (actor
+          (default
+            (cmd "stand")
+            (self "stand up and ")
+            (target "stands up and ")
+            (rest "stands up and ")
+          )
+          (standing "ignore")
+          (silent "yes")
+        )
+      )
+    )
+    (arguments
+      (arguments  excitedly, happily, carefully, slowly, joyfully, 
+                  unsteadily, ecstatically, worriedly, sideways, 
+                  absentmindedly, like Pinkfish, like a prancing piranha, #)
+      (self   "You $aposition$jump up and down on $hcname$ $arg$.")
+      (target "$mcname$ $aposition$jump$s$ up and down on you $arg$.")
+      (rest   "$mcname$ $aposition$jump$s$ up and down on $hcname$ $arg$.")
+      (position
+        (actor
+          (default
+            (cmd "stand")
+            (self "stand up and ")
+            (target "stands up and ")
+            (rest "stands up and ")
+          )
+          (standing "ignore")
+          (silent "yes")
+        )
+      )
+    )
+  )
+)
+
