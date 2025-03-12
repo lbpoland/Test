@@ -1,5 +1,4 @@
 inherit "/std/room";
-
 void setup() {
    set_short( "large room" );
    set_light( 20 );
@@ -11,6 +10,5 @@ void setup() {
    add_item( "large stone block", "The blocks of stone that make up the "+
          "surfaces of this room are not too rough, but they were never "+
          "polished smooth either." );
-} /* setup() */
-
+}
 string query_exit_type( string word ) { return "corridor"; }

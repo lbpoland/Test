@@ -1,11 +1,4 @@
-/*
-Davyd
-Item
-For General Item Stores
-*/
-
 inherit "/obj/container";
-
 void setup(){
     set_name("frame");
     set_short("picture frame");

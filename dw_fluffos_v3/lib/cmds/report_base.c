@@ -1,22 +1,3 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: report_base.c,v 1.44 2003/07/08 07:12:18 pinkfish Exp $ 
- */
-/**
- * This is the base object for creating typo, bug, idea etc reporting
- * commands from.  You should set the error type of the
- * object in its create function.  The use_last_error flag should
- * be set for those error report types which will need to use the last
- * runtime error on the player object.
- * @example
- * inherit "/cmds/report_base";
- * 
- * void create() {
- *    ::create();
- *    set_error_type("TYPO");
- * } /\* create() *\/
- */
-
 #include <creator.h>
 #include <log.h>
 #include <command.h>
@@ -24,10 +5,8 @@
 #include <user_parser.h>
 #include <soul.h>
 #include <error_handler.h>
-
 inherit "/cmds/base";
 inherit "/cmds/bug_replies";
-
 class errors {
    int type;
    string file;
@@ -53,49 +32,26 @@ int bug_man(string str);
 int bug_room();
 int bug_general();
 int bug_soul(string str);
-
 private nosave mapping _globals;
 private nosave string _error_type;
 private nosave int _use_last_error;
-
 void create()
 {
    bug_replies::create();
    _globals = ([ ]);
-}                               /* create() */
-
-/**
- * This sets the error type name.  The error type should be one
- * of "TYPO", "BUG", "IDEA".
- * @param type the type to set
- * @see query_verb()
- */
+}
 void set_error_type(string type)
 {
    _error_type = type;
-}                               /* set_error_type() */
-
-/**
- * This sets the use_last_error flag.  If this flag is set to a non-zero
- * value then the last runtime error stored on the player object will
- * be attached to the error report.
- * @param error the new value of the last error flag
- */
+}
 void set_use_last_error(int error)
 {
    _use_last_error = error;
-}                               /* set_use_last_error() */
-
-/**
- * This method returns the currently set value of the last error flag.
- * @return the current value of the last error flag
- */
+}
 int query_use_last_error()
 {
    return _use_last_error;
-}                               /* query_use_last_error() */
-
-/** @ignore yes */
+}
 int bug_room()
 {
    if (environment(this_player())) {
@@ -107,8 +63,7 @@ int bug_room()
    }
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_room() */
-
+}
 int bug_special(string which) {
   _globals[this_player()] = new (class errors,
                                  type: GENERAL_BUG,
@@ -117,7 +72,6 @@ int bug_special(string which) {
   this_player()->do_edit(0, "end_of_edit");
   return 1;
 }
-
 int bug_misc(string which) {
   _globals[this_player()] = new (class errors,
                                  type: GENERAL_BUG,
@@ -126,17 +80,11 @@ int bug_misc(string which) {
   this_player()->do_edit(0, "end_of_edit");
   return 1;
 }
-
-/** @ignore yes */
 int bug_general()
 {
    string dir;
    string *bits;
    string file;
-
-   //
-   // For a general bug put it in the domains base directory.
-   //
    if (!environment(this_player())) {
       dir = "/d/am/fluff";
    } else {
@@ -151,9 +99,7 @@ int bug_general()
  _globals[this_player()] = new (class errors, type: GENERAL_BUG, error: "GENERAL " + _error_type, file:file);
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_general() */
-
-/** @ignore yes */
+}
 int bug_command(string str)
 {
    int i;
@@ -167,8 +113,6 @@ int bug_command(string str)
    class command_data cmd_data;
    class command_class cmd_class;
    mapping temp;
-
-
    bing = new (class errors);
    coms = ({ });
    junk = actions_defined(this_player(), 0, 12);
@@ -195,19 +139,13 @@ int bug_command(string str)
          bing->file = coms[0] + "/" + cmd->verb;
       } else {
          if ((cmd_class = this_player()->query_parse_command(str))) {
-//tell_creator("presto", "%O\n", coms);
             temp = cmd_class->patterns;
             cmd_data = temp[keys(temp)[0]];
-//tell_creator("presto", "%O\n", cmd_data->calls[0]);
-//tell_creator("presto", "%O\n", values(coms->patterns));
             bing->file = base_name(cmd_data->calls[0]);
-//            bing->file = base_name((values(coms->patterns))[0]->calls[0]);
-//            bing->file = base_name(coms[0][OBJS]);
          } else {
             if ((coms = SOUL_OBJECT->query_soul_command(str))) {
                bing->file = "/soul/" + str[0..0] + "/" + str;
             } else if (_error_type == "IDEA") {
-               //bing->file = "/soul/" + str[0..0] + "/" + str;
                dir = file_name(environment(this_player()));
                bits = explode(dir, "/");
                if (bits[0] == "d") {
@@ -227,24 +165,19 @@ int bug_command(string str)
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_command() */
-
-/** @ignore yes */
+}
 int bug_help(string str)
 {
    mixed *stuff;
    class errors bing;
    string tmp;
-
    bing = new (class errors);
    tmp = "/cmds/player/help"->query_synonym(str);
    if (strlen(tmp))
       str = tmp;
-
    if (str && str != "") {
       stuff = "/cmds/player/help"->query_help_on(str);
       if (!sizeof(stuff)) {
-         // See if it is a soul command.
          if (!SOUL_OBJECT->query_soul_command(str)) {
             notify_fail("Could not find the help file '" + str +
                         "'.  If you wish "
@@ -259,20 +192,16 @@ int bug_help(string str)
    } else {
      bing->file = "/cmds/player/help";
    }
-
    bing->error = "HELP " + _error_type + " " + str;
    bing->type = HELP_BUG;
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_help() */
-
-/** @ignore yes */
+}
 int bug_soul(string str)
 {
    class errors bing;
    string tmp;
-
    bing = new (class errors);
    if (str)  {
       tmp = sprintf("/soul/%c/%s.s", str[0], str);
@@ -288,10 +217,7 @@ int bug_soul(string str)
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_help() */
-
-
-/** @ignore yes */
+}
 int bug_ritual(string str)
 {
    mapping junk;
@@ -299,15 +225,12 @@ int bug_ritual(string str)
    string sname;
    mixed* data;
    string file;
-
    str = this_player()->expand_nickname(str);
    bing = new (class errors);
    junk = this_player()->query_spells();
-   // Do a case insensative search.
    foreach (sname, data in junk) {
       if (lower_case(sname) == lower_case(str)) {
          if (sizeof(data) <= S_OBJECT) {
-            // If it has a bad file name, ignore it
             file = file_name(environment(this_player()));
          } else {
             file = data[S_OBJECT];
@@ -325,18 +248,10 @@ int bug_ritual(string str)
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_ritual() */
-
-/**
- * This entry point is used to erroring spells without specifically saying
- * which one.
- * @param file the file path to use
- * @param name the name to use
- */
+}
 int bug_web(string url)
 {
    class errors bing;
-
    bing = new (class errors);
    bing->file = "/www/fluff";
    bing->error = "OBJECT " + _error_type + " " + url;
@@ -344,18 +259,10 @@ int bug_web(string url)
    _globals[this_player()] = bing;
    this_player()->do_edit("Url: " + url + "\n\n", "end_of_edit");
    return 1;
-}                               /* bug_spell() */
-
-/**
- * This entry point is used to erroring spells without specifically saying
- * which one.
- * @param file the file path to use
- * @param name the name to use
- */
+}
 int bug_spell_file(string file, string name)
 {
    class errors bing;
-
    bing = new (class errors);
    bing->file = file;
    bing->error = "SPELL " + _error_type + " " + name;
@@ -363,23 +270,18 @@ int bug_spell_file(string file, string name)
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_spell() */
-
-/** @ignore yes */
+}
 int bug_spell(string str)
 {
    mapping junk;
    string file;
    string sname;
    mixed data;
-
    if (str == "wizards" || str == "witches") {
       file = "/obj/spells/" + str;
    } else {
-      // Expand the nickname
       str = this_player()->expand_nickname(str);
       junk = this_player()->query_spells();
-      // Do a case insensative search.
       foreach (sname, data in junk) {
          if (lower_case(sname) == lower_case(str) && arrayp(data)) {
             file = data[S_OBJECT];
@@ -393,14 +295,11 @@ int bug_spell(string str)
    }
    bug_spell_file(file, str);
    return 1;
-} /* bug_spell() */
-
-/** @ignore yes */
+}
 int bug_object_new(string name)
 {
    string info;
    class errors bing;
-
    bing = new (class errors);
    bing->file = base_name(environment(this_player()));
    bing->error = "OBJECT " + _error_type + " " + name;
@@ -409,9 +308,7 @@ int bug_object_new(string name)
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_object() */
-
-/** @ignore yes */
+}
 int bug_object(object * obj,
                string str)
 {
@@ -420,7 +317,6 @@ int bug_object(object * obj,
    string name;
    string short;
    string* bits;
-
    bing = new (class errors);
    if (sizeof(obj) > 1) {
       notify_fail("More than one object can be identified with the name " +
@@ -460,7 +356,6 @@ int bug_object(object * obj,
       bits = explode(bing->file, "/");
       name = bits[0];
       if (name == "obj" || name == "std") {
-         // Put it in the room by default.
          if (sizeof(bits) == 2 ||
              (bits[1] != "food" && bits[1] != "armours" &&
              bits[1] != "weapons" && bits[1] != "amulets" &&
@@ -471,7 +366,7 @@ int bug_object(object * obj,
             bing->file = base_name(environment(this_player()));
          }
       }
-      if (pointerp(obj[0]->query_name()))  { /* doors */
+      if (pointerp(obj[0]->query_name()))  {
          name = (obj[0]->query_name())[0];
       } else {
          name = obj[0]->query_name();
@@ -492,9 +387,7 @@ int bug_object(object * obj,
    _globals[this_player()] = bing;
    this_player()->do_edit(0, "end_of_edit");
    return 1;
-}                               /* bug_object() */
-
-/** @ignore yes */
+}
 void end_of_edit(string body)
 {
    if (strlen(body)) {
@@ -503,7 +396,6 @@ void end_of_edit(string body)
         trace = 0;
       mapping last_error;
       class errors bing;
-
       bing = _globals[this_player()];
       if (bing->extra) {
          body = bing->extra + body;
@@ -511,7 +403,7 @@ void end_of_edit(string body)
       if (body[<1] != '\n') {
          ending = 1;
       }
-      if (environment(this_player())) { // && bing->type != ROOM_BUG) {
+      if (environment(this_player())) {
          if (ending) {
             body += "\n";
             ending = 0;
@@ -527,7 +419,6 @@ void end_of_edit(string body)
             this_player()->set_last_error(0);
          }
       }
-
       if (ending) {
          body += "\n";
       }
@@ -538,20 +429,14 @@ void end_of_edit(string body)
       printf("Not saving %s report, aborting.\n", lower_case(_error_type));
    }
    map_delete(_globals, this_player());
-}                               /* end_of_edit() */
-
-/** @ignore yes */
+}
 int clean_up()
 {
    return 0;
-}                               /* clean_up() */
-
-/** @ignore yes */
+}
 void reset()
 {
-}                               /* reset() */
-
-/** @ignore yes */
+}
 mixed *query_patterns()
 {
    return ({ "command <string'name'>", (: bug_command($4[0]) :),
@@ -583,4 +468,4 @@ mixed *query_patterns()
                implode(filter(get_dir("/obj/"),
                               (:  file_size("/obj/"+$1+"/BugReports") >= 0 :)),
                        "|") + "}", (: bug_misc($4[0]) :) });
-}                               /* query_patterns() */
+}

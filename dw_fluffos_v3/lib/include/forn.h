@@ -1,20 +1,7 @@
-/**
- *  Forn include file
- *  @author Drakkos
- *  @stared 28/11/2000
- */
-
-
 #ifndef __FORN_H
 #define __FORN_H
-
-/* Domain define */
- 
 #define FORN                   "/d/forn/"
-
-/* General defines */
-
-#define CHARS                  FORN + "chars/" 
+#define CHARS                  FORN + "chars/"
 #define DOCS                   FORN + "docs/"
 #define FORN_INCLUDE           FORN + "include/"
 #define HANDLERS               FORN + "handlers/"
@@ -27,25 +14,13 @@
 #define UTILS                  FORN + "utils/"
 #define WEB                    FORN + "public_html/"
 #define EFFECTS                FORN + "effects/"
-
-/* Save file defines */
-
 #define SAVE_DIR               "/save/"
 #define SAVE                   SAVE_DIR + "forn/"
-
-/* Area defines */
-
 #define GENUA                  FORN + "genua/"
-
-/* Miscellaneous defines */
-
 #define POLICY                 DOCS + "policy/"
 #define HELP                   DOCS + "help_files/"
 #define SCRIPTS                DOCS + "scripts/"
 #define WARGAME_MAPS           DOCS + "wargame_maps/"
-
-/* Genua defines */
-
 #define GENUA_CHARS            GENUA + "chars/"
 #define GENUA_CITY             GENUA + "genua_city_dev/"
 #define GENUA_EFFECTS          GENUA + "effects/"
@@ -90,19 +65,10 @@
 #define GENUA_WATCH_INHERIT    GENUA_INHERITS + "watch_house"
 #define GRAVEYARD_INHERIT      GENUA_INHERITS + "graveyard_inherit"
 #define MURDER_SUSPECT         GENUA_INHERITS + "murder_suspect"
-
-/* Handler directory defines */
-
 #define CRIME_HANDLER_DIR      GENUA_HANDLERS + "ledger/"
 #define PUNISHMENT_HANDLER_DIR GENUA_HANDLERS + "punishment/"
 #define SERVICE_HANDLER_DIR    PUNISHMENT_HANDLER_DIR + "service/"
-
-/* Genua Village Areas */
-
 #define BOIS                   GENUA_VILLAGES + "bois/"
-
-/* Bois Defines */
-
 #define BOIS_BEARS_HOUSE       BOIS + "bears_house/"
 #define BOIS_GRANDMA           BOIS + "grandma/"
 #define BOIS_LAKE              BOIS + "lake/"
@@ -110,10 +76,6 @@
 #define BOIS_THREE_PIGS        BOIS + "three_pigs/"
 #define BOIS_VILLAGE           BOIS + "village/"
 #define BOIS_CHARS             GENUA_CHARS + "bois/"
-
-
-/* Genua city areas */
-
 #define BLACK_MARKET           GENUA_CITY + "black_market/"
 #define CALYPSO_STREET         GENUA_CITY + "calypso_street/"
 #define CARREFOUR_CRESCENT     GENUA_CITY + "carrefour_crescent/"
@@ -170,9 +132,6 @@
 #define VOODOO_LANE            GENUA_CITY + "voodoo_lane/"
 #define WATCH_HOUSE            GENUA_CITY + "watch_house/"
 #define ZOMBIE_WALK            GENUA_CITY + "zombie_walk/"
-
-/* Liquor Alley Pubs */
-
 #define ABSINTHE_HOUSE         LIQUOR_ALLEY + "absinthe_house/"
 #define BAYOU_BOURBON          LIQUOR_ALLEY + "bayou_bourbon/"
 #define DAIQUIRY_DELIGHTS      LIQUOR_ALLEY + "daiquiry_delights/"
@@ -180,10 +139,7 @@
 #define LADY_BROOK_LIQUOR      LIQUOR_ALLEY + "lady_brook_liquor/"
 #define MADAME_DELIGHT         LIQUOR_ALLEY + "madame_delight/"
 #define SALUT                  LIQUOR_ALLEY + "salut/"
-
-/* Specific domain object defines */
-
-#define BROCHURE               IDEAS + "brochure_text/"     
+#define BROCHURE               IDEAS + "brochure_text/"
 #define CALYPSO_FLOWER_HANDLER (GENUA_HANDLERS + "calypso_blooms")
 #define CASTLE_HANDLER         (GENUA_HANDLERS + "sleeping_castle_handler")
 #define CHIVALRY_HANDLER       (GENUA_HANDLERS + "chivalry")
@@ -210,11 +166,7 @@
 #define TRAINABLE_PET          (INHERITS + "trainable_pet")
 #define WEB_HANDLER            (WEB + "misc/web_handler")
 #define WHITEBOARD             (INHERITS + "whiteboard")
-
-/* Some other stuff */
-
 #define GENUA_DOLLAR 300
 #define GENUA_CENT (GENUA_DOLLAR / 100)
 #define GENUA_FORIN (GENUA_DOLLAR * 10)
-
 #endif

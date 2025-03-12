@@ -1,6 +1,4 @@
-
 inherit "/std/object";
-
 string me, him;
 void setup() {
      set_name("football");
@@ -13,15 +11,12 @@ void setup() {
      set_value(1);
      add_plural("footballs");
      add_plural("balls");
-} /* setup() */
-
+}
 void init() {
   this_player()->add_command("kick", this_object(),
         "<direct:object:me> to <indirect:player>");
   add_command( "kickup", "<direct:object>" );
-  /*  ::init(); */
-} /* init() */
-
+}
 int do_kickup()  {
    write( "You kick the football into the air a few times, stopping it from "
    "hitting the floor by bouncing it off your knee, your chest and your feet."
@@ -32,11 +27,9 @@ tell_room( environment( this_player() ),
      "an uncanny level of skill.\n", this_player());
    return 1;
 }
-
 int do_kick(object *in_dir) {
   if (!sizeof(in_dir))
     return 0;
-
   if (move(in_dir[0])) {
     tell_object(in_dir[0], this_player()->query_cap_name()+" kicks "+
         this_object()->query_short()+" at you, but it falls on the floor.\n");
@@ -55,7 +48,7 @@ int do_kick(object *in_dir) {
            "catch it. HANDBALL!",
            "look like the famous footballer Fele and trap it.",
            "trap it easily.  You should sign up for Ankh Morpork Wanderers."})
-           [random (6) ]+"\n"); 
+           [random (6) ]+"\n");
     tell_room(environment(in_dir[0]), "A leather football curls "
            "gracefully towards "+ in_dir[0]->query_cap_name()+", who "+
                 "manages to "+
@@ -72,4 +65,4 @@ int do_kick(object *in_dir) {
   }
   this_player()->add_succeeded(in_dir[0..0]);
   return 1;
-} /* do_kick() */
+}

@@ -1,42 +1,21 @@
-// Seems to fail when moving sometimes.
 #include <npc/transport.h>
 #include <broadcaster.h>
 inherit TRANSPORT_INHERIT;
-
 private int _quiet;
-
-/**
- * This method sets the quiet flag on the camel.  If they are quiet
- * they will not say anything when they do commands and so on.
- * @param quiet the new value for the quiet flag
- */
 void set_quiet( int quiet ) {
    _quiet = quiet;
-} /* set_quiet() */
-
-/**
- * This method queries the quiet flag on the camel.  If they are quiet
- * they will not say anything when they do commands and so on.
- * @return the current setting of the quiet flag
- */
+}
 int query_quiet() {
    return _quiet;
-} /* query_quiet() */
-
-/** @ignore yes */
+}
 void hear_name( object player, string mess ) {
    string *bits;
    string str;
    int allowed;
-
    if ( !player ) {
       return ;
    }
-
    if ( is_allowed_to_use( player->query_name() ) ) {
-      //
-      // Ok, lets see if they asked us to do anything...
-      //
       bits = explode( mess, " " ) - ({ "" });
       foreach ( str in bits ) {
          switch ( str ) {
@@ -60,7 +39,6 @@ void hear_name( object player, string mess ) {
       }
       allowed = 1;
    }
-
    if ( !query_quiet() ) {
       if ( allowed ) {
         if( player->query_visible( this_object() ) )
@@ -78,9 +56,7 @@ void hear_name( object player, string mess ) {
          break;
       }
    }
-} /* hear_name() */
-
-/** @ignore yes */
+}
 void event_person_shout( object thing, string start, string mess, string lang,
                          int *co_ord, int range ) {
    if ( !environment() )
@@ -102,23 +78,17 @@ void event_person_shout( object thing, string start, string mess, string lang,
          }
       }
    }
-} /* event_person_shout() */
-
-/** @ignore yes */
+}
 mapping query_dynamic_auto_load() {
    return ([ "::" : ::query_dynamic_auto_load(),
              "quiet" : query_quiet() ]);
-} /* query_dynamic_auto_load() */
-
-/** @ignore yes */
+}
 void setup_responses() {
   add_respond_to_with( explode(
                        lower_case( query_transport_base_name() ), " " ),
                        (: hear_name :) );
   BROADCASTER->npc_hear_shouts( this_object() );
-} /* setup_responses() */
-
-/** @ignore yes */
+}
 void init_dynamic_arg( mapping map ) {
    ::init_dynamic_arg( map["::"] );
    if ( map["quiet"] ) {
@@ -133,9 +103,7 @@ void init_dynamic_arg( mapping map ) {
       add_alias( explode( lower_case( query_transport_name() ), " " )
                  - ({ "the" }) );
    }
-} /* init_dynamic_arg() */
-
-/** @ignore */
+}
 int do_name( string name ) {
    if ( ::do_name( name ) ) {
       setup_responses();
@@ -143,4 +111,4 @@ int do_name( string name ) {
       return 1;
    }
    return 0;
-} /* do_name() */
+}

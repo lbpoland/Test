@@ -1,67 +1,14 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: nroff.c,v 1.9 2003/01/29 17:23:50 wyvyrn Exp $
- * $Log: nroff.c,v $
- * Revision 1.9  2003/01/29 17:23:50  wyvyrn
- * Fixed up justification on document title (.DT) for mud and web viewing
- *
- * Revision 1.7  2001/06/13 22:58:51  pinkfish
- * Fix up the columns stuff for the nroffing of files
- *
- * Revision 1.6  2001/02/05 20:20:02  pinkfish
- * Fix up columns.
- *
- * Revision 1.5  1999/10/28 02:22:21  ceres
- * can't remember
- *
- * Revision 1.4  1998/03/26 10:23:32  pinkfish
- * Make it handle html files neater.
- *
- * Revision 1.3  1998/03/26 10:11:54  pinkfish
- * Change the nroff system to not break when there is no
- * this_)player and doing a cat_file
- *
- * Revision 1.2  1998/03/06 10:22:50  pinkfish
- * Make the header stuff look better in html files.
- *
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
-*/
-/**
- * An nroff like object for formating text files.
- *<p>
- * This creates a saveable file format thingy.
- *
- * @author Pinkfish
- */
 #include <nroff.h>
-
 mixed *nroffed_file;
 string nroffed_file_name;
 int modified_time;
 nosave int new_string;
 nosave int force_string;
-
 void create() {
   nroffed_file = ({ });
-  seteuid("Root"); /* Security risk?  nahhhhh */
-} /* create() */
-
+  seteuid("Root");
+}
 #define do_bounds(bing) (bing<0?bing+cols:bing)
-
-/**
- * Creates a string from a nroffed file.
- * <p>
- * If update is non zero it will look to see if the source file has been 
- * modified since the saved nroff file was created.  If it has, this
- * function returns 0 and the nroff file needs to be recreated.
- *
- * @param fname the file to process
- * @param update force update if file is newer?
- * @return the string representation of the nroff file
- */
 string cat_file(string fname, int update) {
    int i;
    int k;
@@ -69,7 +16,6 @@ string cat_file(string fname, int update) {
    string ret;
    string pat;
    mixed* tmp;
-   
    if (!master()->valid_read(fname, geteuid(previous_object()),
                              "restore_object")) {
       return 0;
@@ -82,7 +28,6 @@ string cat_file(string fname, int update) {
       return 0;
    if (update) {
       mixed *something;
-      
       if (!master()->valid_read(nroffed_file_name,
                                 geteuid(previous_object()),
                                 "restore_object"))
@@ -102,7 +47,7 @@ string cat_file(string fname, int update) {
    for (i=0;i<sizeof(nroffed_file);i++) {
       if (stringp(nroffed_file[i])) {
          ret += nroffed_file[i];
-      } else {     
+      } else {
          switch (nroffed_file[i]) {
           case V_HEADER :
             ret += sprintf("%%^BOLD%%^%s%%^RESET%%^\n", nroffed_file[i+1]);
@@ -119,8 +64,6 @@ string cat_file(string fname, int update) {
                            nroffed_file[i+3],
                            nroffed_file[i+1],
                            nroffed_file[i+4]) + "%^RESET%^\n";
-//if (this_player() == find_player("presto"))  write("middle == :" + nroffed_file[i + 3] + ":\n" + nroffed_file[i + 1] + "\n");
-//if (this_player() == find_player("wyvyrn"))  write( "file: '" + nroffed_file[i+1] + "', left: '" + nroffed_file[i+2] + "', centre: '" + nroffed_file[i+3] + "', right: '" + nroffed_file[i+4] + "'\n");
             i += 4;
             break;
           case V_INDENT :
@@ -152,7 +95,6 @@ string cat_file(string fname, int update) {
             break;
           case V_COLUMN : {
              int j;
-             
              switch (sizeof(nroffed_file[i+1])) {
               case 2 :
                 for (j=0;j<sizeof(nroffed_file[i+2]);j++) {
@@ -194,28 +136,14 @@ string cat_file(string fname, int update) {
       }
    }
    return " \n"+ret;
-} /* cat_file() */
-
-/**
- * @ignore yes
- */
+}
 private string htmlify(string  str) {
   return replace(str, ({ "&", "&amp;", "<", "&lt;", ">", "&gt;"}));
-} /* htmlify() */
-
-/**
- * Turns the nroff file into a html output.  This works on nroff files
- * creating a html output from the mud source.
- *
- * @param file the name to process
- * @param title the title to give the document
- * @return the html file
- */
+}
 string html_file(string file, string title) {
    int i, j, cols, in_bold, in_italic;
    int k;
    string ret, *bits;
-   
    if (!master()->valid_read(file, geteuid(previous_object()),
                              "restore_object"))
       return 0;
@@ -225,7 +153,6 @@ string html_file(string file, string title) {
       return 0;
    ret = "";
    cols = 78;
-
    for (i=0;i<sizeof(nroffed_file);i++)
      if (stringp(nroffed_file[i]))
        nroffed_file[i] = htmlify(nroffed_file[i]);
@@ -233,14 +160,11 @@ string html_file(string file, string title) {
        for (j=0;j<sizeof(nroffed_file[i]);j++)
          if(stringp(nroffed_file[i][j]))
            nroffed_file[i][j] = htmlify(nroffed_file[i][j]);
-     }           
-
-   
+     }
    for (i=0;i<sizeof(nroffed_file);i++) {
       if (stringp(nroffed_file[i])) {
          ret += "<h3>"+nroffed_file[i]+"</h3>";
-
-#ifdef UNUSED         
+#ifdef UNUSED
          if(strsrch(nroffed_file[i], "See also") > -1) {
            for(j=i+1; j < sizeof(nroffed_file); j++) {
              if(stringp(nroffed_file[j])) {
@@ -248,7 +172,7 @@ string html_file(string file, string title) {
              }
            }
          }
-#endif         
+#endif
       } else {
          switch (nroffed_file[i]) {
           case V_HEADER :
@@ -262,13 +186,13 @@ string html_file(string file, string title) {
             i++;
             break;
           case V_ALL :
-            ret += "\n<table width=100%><tr>\n" + 
-                   "<td nowrap width=* align=left><h2>" + 
-                   nroffed_file[i+2] + "</h2></td>\n" + 
-                   "<td nowrap align=center><h2>" + 
-                   nroffed_file[i+3] + "</h2></td>\n" + 
-                   "<td nowrap width=* align=right><h2>" + 
-                   nroffed_file[i+4] + "</h2></td>\n" + 
+            ret += "\n<table width=100%><tr>\n" +
+                   "<td nowrap width=* align=left><h2>" +
+                   nroffed_file[i+2] + "</h2></td>\n" +
+                   "<td nowrap align=center><h2>" +
+                   nroffed_file[i+3] + "</h2></td>\n" +
+                   "<td nowrap width=* align=right><h2>" +
+                   nroffed_file[i+4] + "</h2></td>\n" +
                    "</tr></table>\n";
             i += 4;
             break;
@@ -328,7 +252,6 @@ string html_file(string file, string title) {
          }
       }
    }
-   
    bits = explode(ret, "%^");
    ret = "";
    for (i=0;i<sizeof(bits);i+=2) {
@@ -361,8 +284,7 @@ string html_file(string file, string title) {
     }
    }
    return ret;
-} /* html_file() */
-
+}
 private void add_array(mixed *i) {
   if (!sizeof(nroffed_file)) {
     nroffed_file += ({ i });
@@ -373,8 +295,7 @@ private void add_array(mixed *i) {
   }
   force_string = 0;
   new_string = 0;
-} /* add_array() */
-
+}
 private void add_int(int i) {
   if (!sizeof(nroffed_file)) {
     nroffed_file += ({ i });
@@ -385,8 +306,7 @@ private void add_int(int i) {
   }
   force_string = 0;
   new_string = 0;
-} /* add_int() */
-
+}
 private void add_string(string s) {
   if (!sizeof(nroffed_file) || new_string) {
     nroffed_file += ({ s });
@@ -397,16 +317,7 @@ private void add_string(string s) {
   }
   new_string = 0;
   force_string = 0;
-} /* add_string() */
-
-/**
- * Makes the nroff saveable file.  Turns the input nroff file into a saved
- * output format.
- *
- * @param in_file the file name been processed
- * @param out_file the file to save it as
- * @return 1 if the operation was successful
- */
+}
 int create_nroff(string in_file, string out_file) {
   string text,
          tmp,
@@ -418,7 +329,6 @@ int create_nroff(string in_file, string out_file) {
       conv_tabs,
       i, j, k, fluff,
       num_cols;
-
   if (!master()->valid_read(in_file, geteuid(previous_object()),
                             "read_file"))
     return 0;
@@ -443,23 +353,23 @@ int create_nroff(string in_file, string out_file) {
         fluff = 0;
      }
      switch (tmp[0..1]) {
-      case "SH" : /* Section header */
+      case "SH" :
         add_int(V_HEADER);
         add_string(tmp[3..]);
         new_string = 1;
         break;
-      case "SI" : /* Start indent */
+      case "SI" :
         add_int(V_INDENT);
         j = 0;
         sscanf(tmp[2..], "%d%s", j, tmp);
         add_int(j);
         force_string = 1;
         break;
-      case "EI" : /* End indent */
+      case "EI" :
         add_string("");
         new_string = 1;
         break;
-      case "SP" : /* Start paragraph */
+      case "SP" :
         add_int(V_PARA);
         j = 0;
         sscanf(tmp[2..], "%d%s", j, tmp);
@@ -470,35 +380,35 @@ int create_nroff(string in_file, string out_file) {
         force_string = 1;
         strip_crs = 1;
         break;
-      case "EP" : /* End paragraph */
+      case "EP" :
         add_string("");
         new_string = 1;
         strip_crs = 0;
         break;
-      case "SC" : /* start centering */
+      case "SC" :
         add_int(V_CENTER);
         force_string = 1;
         break;
-      case "EC" : /* End centering */
+      case "EC" :
         new_string = 1;
         break;
-      case "SL" : /* Start left justify */
+      case "SL" :
         add_int(V_LEFT);
         force_string = 1;
         break;
-      case "EL " : /* End left justify */
+      case "EL " :
         new_string = 1;
         break;
-      case "ST" : /* Start table mode (Turn tabs into new lines) */
+      case "ST" :
         add_int(V_TABLE);
         force_string = 1;
         conv_tabs = 1;
         break;
-      case "ET" : /* End table mode */
+      case "ET" :
         new_string = 1;
         conv_tabs = 0;
         break;
-      case "DT" : /* Do title.  Take the next three lines... */
+      case "DT" :
         bing = explode(bits[i], "\n");
         if (sizeof(bing) < 3) {
            if (this_player()->query_creator()) {
@@ -506,7 +416,7 @@ int create_nroff(string in_file, string out_file) {
                           " did not have enough lines after the .DT directive.\n");
               tell_object(this_player(), sprintf("%O\n", bing));
            }
-           return 0; /* failed! */
+           return 0;
         }
         add_int(V_ALL);
         if (strlen(bing[0]) > strlen(bing[2]))
@@ -522,8 +432,7 @@ int create_nroff(string in_file, string out_file) {
         new_string = 1;
         bits[i] = implode(bing[3..], "\n");
         break;
-      case "SO" : /* starts column mode. The numbers after it
-                   * are column size */
+      case "SO" :
         num_cols = 0;
         tmp = tmp[2..];
         cols = ({ });
@@ -545,14 +454,13 @@ int create_nroff(string in_file, string out_file) {
         }
         col_mode = 1;
         break;
-      case "EO" : /* End column mode */
+      case "EO" :
         for (j=0;j<num_cols;j++) {
            add_array(cols[j]);
         }
         col_mode = 0;
         break;
-      case "NF" : /* New File.  Take the next line and ignore everything
-                   * else in the file */
+      case "NF" :
         bing = explode(bits[i], "\n");
         if (sizeof(bing) < 1) {
            if (this_player()->query_creator()) {
@@ -560,9 +468,8 @@ int create_nroff(string in_file, string out_file) {
                           " did not have enough lines after the .NF directive.\n");
               tell_object(this_player(), sprintf("%O\n", bing));
            }
-           return 0; /* failed! */
+           return 0;
         }
-        /* read the new file and start again, but keep the old name */
         text = read_file(bing[ 0 ]);
         if (!text) {
           return 0;
@@ -584,7 +491,6 @@ int create_nroff(string in_file, string out_file) {
      }
      if (col_mode) {
         string *frog;
-        
         frog = explode(bits[i], "\n");
         for (k = 0; k < sizeof(frog); k++) {
            bing = explode("#"+frog[k], "\t");
@@ -610,15 +516,7 @@ int create_nroff(string in_file, string out_file) {
   force_string = 0;
   unguarded((: save_object, out_file :));
   return 1;
-} /* create_nroff() */
-
-/**
- * Will attempt to find the name of the nroffed file.  Will attempt to
- * find the name of the source file associated with the save file.
- *
- * @param fname the name of the file to check
- * @return the source file name or 0
- */
+}
 string query_file_name( string fname ) {
    if (!master()->valid_read(fname, geteuid(previous_object()),
                              "restore_object")) {
@@ -630,5 +528,4 @@ string query_file_name( string fname ) {
       return 0;
    }
    return nroffed_file_name;
-} /* query_file_name() */
-
+}

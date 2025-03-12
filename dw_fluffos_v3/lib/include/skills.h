@@ -1,44 +1,17 @@
-/**
- * The main skills header file.  This contains the skill tree and any bits
- * relating to the skill tree.
- * @author Pinkfish
- * @see /std/skills.c
- * @see /std/living/skills.c
- */
 #ifndef __SYS__SKILLS
-/** @ignore yes */
 #define __SYS__SKILLS
-
-/** The index corresponding to the skill name in the skill array. */
 #define SKILL_NAM 0
-/** The index corresponding to the skill level in the skill array. */
 #define SKILL_LVL 1
-/** The index corresponding to the skill exp in the skill array. */
 #define SKILL_EXP 2
-/** The index corresponding to the array of sub skills in the skill array. */
 #define SKILL_BIT 3
-/** The size of the skill array. */
 #define SKILL_ARR_SIZE 4
-/** The skill handling object. */
 #define SKILL_OB "/std/skills"
-/** The maximum level that you can teach someone else too. */
 #define SKILL_MAX_TEACH 600
-
-/*
- * These are used in /std/living/skills.c for the training/learning of skills.
- */
-/** @ignore yes */
 #define O_SKILL 0
-/** @ignore yes */
 #define O_NUM 1
-/** @ignore yes */
 #define O_LVL 2
-/** @ignore yes */
 #define O_XP 3
-/** @ignore yes */
 #define O_OTHER_PER 4
-
-/** @ignore yes */
 #define STD_SKILLS_COVERT ({ \
         "covert", 0, 0, ({ \
             "stealth", 0, 0, ({ \
@@ -73,8 +46,6 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-
-/** @ignore yes */
 #define STD_SKILLS_CRAFTS ({ \
         "crafts", 0, 0, ({ \
             "smithing", 0, 0, ({ \
@@ -172,8 +143,6 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-
-/** @ignore yes */
 #define STD_SKILLS_FAITH ({ \
         "faith", 0, 0, ({ \
             "rituals", 0, 0, ({ \
@@ -204,7 +173,6 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-/** @ignore yes */
 #define STD_SKILLS_FIGHTING ({ \
         "fighting", 0, 0, ({ \
             "combat", 0, 0, ({ \
@@ -235,7 +203,6 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-/** @ignore yes */
 #define STD_SKILLS_MAGIC ({ \
         "magic", 0, 0, ({ \
             "spells", 0, 0, ({ \
@@ -293,8 +260,6 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-
-/** @ignore yes */
 #define STD_SKILLS_OTHER ({ \
         "other", 0, 0, ({ \
             "trading", 0, 0, ({ \
@@ -341,12 +306,5 @@
             "points", 0, 0, ({ }), \
         }), \
     })
-
-/**
- * The complete standard skill tree.  This should be avoided being used
- * if possible.
- * @see /std/skills.c
- * @see /std/living/skills.c
- */
 #define STD_SKILLS ( STD_SKILLS_COVERT + STD_SKILLS_CRAFTS + STD_SKILLS_FAITH + STD_SKILLS_FIGHTING + STD_SKILLS_MAGIC + STD_SKILLS_OTHER )
-#endif /* __SYS__SKILLS */
+#endif

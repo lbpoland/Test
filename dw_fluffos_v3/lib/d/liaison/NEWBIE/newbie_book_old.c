@@ -1,40 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: newbie_book.c,v 1.4 2002/08/14 09:02:14 wyvyrn Exp $
- *
- * $Log: newbie_book.c,v $
- * Revision 1.4  2002/08/14 09:02:14  wyvyrn
- * Added general language
- *
- * Revision 1.3  2002/08/14 07:09:14  pinkfish
- *  Forcibly unlocked by wyvyrn
- *
- * Revision 1.2  2000/03/09 01:40:03  ceres
- * Made it valueless so the newbie shop doesn't end up full of them.
- *
- * Revision 1.1  2000/03/01 06:06:45  ceres
- * Initial revision
- *
- * Revision 1.1  1998/01/16 02:18:32  arby
- * Initial revision
- *
-*/
-/* Yikes!  Please don't read the code, as it has no punctation 
-   whatsoever :) (I blame the colours)
-   This newbie brochure is *completly* rewritten from the
-   old /d/am/am/items/colourful brochure, found in the tray in the Mended
-   Drum.
-   
-   Hobbes, July 96 
-
-   Rewritten as a book in Mars 97
-                                                     */
-
 #include "path.h"
 #define PAGES    8
 inherit "/std/book";
-
 void setup() {
   set_name( "book" );
   set_short( "newbie guide book");
@@ -74,12 +40,9 @@ void setup() {
 "   \\  |____________        <open book to page #>       ____________|  /  \n"
 "   /____/          \\__________________________________/          \\____\\ ",
 "general");
-
-            /* Artwork by Gototh, modified and 'transformed' by me */
-
   set_open_page( 1 );
   set_read_mess( "                                                \n"
- "                                                                \n"     
+ "                                                                \n"
 "                            %^B_RED%^TABLE OF CONTENTS%^RESET%^                        Page 1\n"
  "                    .o0o.o0o.o0o.o0o.o0o.o0o.o0o.o0o.       \n"
  "                                            \n"
@@ -93,10 +56,9 @@ void setup() {
  " the FAQ's around (Frequently Asked Questions).  To read the "
  "Discworld FAQ,\n"
  " type 'help FAQ' or point your http browser at \n"
- " <http://discworld.imaginary.com/> and click on the \n"
+ " <http:
  " 'Frequently Asked Questions' link.",
  "general", 100 );
-
   set_open_page( 2 );
   set_read_mess( "\n"
  "                            GENERAL INFORMATION                     Page 2\n"
@@ -120,12 +82,11 @@ void setup() {
  "\n"
  " CONTINUES ON NEXT PAGE.",
  "general", 100 );
-  
   set_open_page( 3 );
   set_read_mess( "\n"
  "                        MORE GENERAL INFORMATION                   Page 3\n"
  "                       -=-=-=-=-=-=-=-=-=-=-=-=- \n"
- "\n" 
+ "\n"
  " In Ankh-Morpork there are GUIDES wandering around that can take you to \n"
  " certain destinations.  These are often waiting by the guilds or in the \n"
  " Mended Drum.  To use one you say in the same room as one, for example: \n"
@@ -135,13 +96,12 @@ void setup() {
  "                                                    \n"
  " You start off with a total of eight lives.  If you should happen to die,\n"
  " Harry at the Temple of Small Gods, can RAISE you from the dead and you \n"
- " are then set to go again (one life shorter).  Some player Priests also \n" 
+ " are then set to go again (one life shorter).  Some player Priests also \n"
  " have the ability to resurrect.\n"
 " And please BUG report bugs and typos you see.  Do  '%^B_RED%^help bug%^RESET%^' "
  " and \n"
- " '%^B_RED%^help typo%^RESET%^'  for more information.", 
+ " '%^B_RED%^help typo%^RESET%^'  for more information.",
  "general", 100 );
-
   set_open_page( 4 );
   set_read_mess( " \n"
   "                                  COMMANDS                         Page 4\n"
@@ -165,8 +125,7 @@ void setup() {
   " '%^B_RED%^.%^RESET%^'                Will repeat your last command.\n"
   "\n"
   " CONTINUES ON NEXT PAGE.",
-  "general", 100 );  
-
+  "general", 100 );
   set_open_page( 5 );
   set_read_mess("\n"
   "                              MORE COMMANDS                        Page 5\n"
@@ -180,8 +139,7 @@ void setup() {
   " '%^B_RED%^commands%^RESET%^', "
   "'%^B_RED%^nickname%^RESET%^',  '%^B_RED%^consider%^RESET%^'\n"
   " '%^B_RED%^gp%^RESET%^' and  '%^B_RED%^playerkilling%^RESET%^'.",
-  "general", 100 );  
-
+  "general", 100 );
   set_open_page( 6 );
   set_read_mess( "\n"
  "                               THE GUILDS                           Page 6\n"
@@ -201,7 +159,6 @@ void setup() {
  "\n"
  " CONTINUES ON NEXT PAGE.",
  "general", 100 );
-
  set_open_page( 7 );
  set_read_mess( "\n"
  "                               THE GUILDS                           Page 7\n"
@@ -213,7 +170,6 @@ void setup() {
  " See Gennie Applebottom at Dione Street in Ankh-Morpork if you have \n"
  " trouble finding the place.",
  "general", 100 );
-
   set_open_page( 8 );
   set_read_mess( "\n"
  "                        THE LANDS OUTSIDE ANKH-MORPORK              Page 8\n"
@@ -235,8 +191,6 @@ void setup() {
  " '%^B_RED%^help map%^RESET%^'  will give you a nice map of Discworld and "
  "there are more \n"
  " fantastic and exciting places to come.",
- "general", 100 );   
+ "general", 100 );
   set_open_page( 0 );
-
 }
-

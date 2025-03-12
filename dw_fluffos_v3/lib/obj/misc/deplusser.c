@@ -1,5 +1,4 @@
 inherit "/std/object.c";
-
 void setup()  {
    set_short("deplusser");
    set_name("deplusser");
@@ -7,15 +6,12 @@ void setup()  {
              "slash across it.  Type 'deplus <path>' to use.");
    set_weight(9);
 }
-
 void init()  {
    add_command("deplus", "<string'file'>", (:this_object()->deplus($4[0]):));
 }
-
 int deplus( string fname )  {
    string *files, *lines, last_line, this_line, next_line, old;
    int i, j, sz;
-
    seteuid(geteuid(this_player()));
    files = get_dir( this_player()->get_path( fname ) );
    if ( !sizeof(files) )

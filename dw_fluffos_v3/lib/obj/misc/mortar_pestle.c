@@ -1,13 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: mortar_pestle.c,v 1.2 2001/09/06 11:43:00 siel Exp $
- *
- *
- */
-
 inherit "/obj/misc/grinder";
-
 void setup() {
   set_name( "pestle" );
   set_short( "mortar and pestle" );
@@ -20,6 +11,6 @@ void setup() {
   add_alias( ({ "mortar", "pestle", "bowl" }) );
   set_value( 800 );
   set_weight( 44 );
-  set_max_grindable( 8 ); // eight stalks or ~ 1 lb. of stuff at once
-  set_max_weight( 8 );    // It can hold what it can grind
+  set_max_grindable( 8 );
+  set_max_weight( 8 );
 }

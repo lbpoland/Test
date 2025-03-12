@@ -1,6 +1,5 @@
 #include <npc/transport.h>
 inherit "/obj/monster/transport/camel_base";
-
 void setup() {
    set_race("camel");
    set_level(20);
@@ -9,8 +8,6 @@ void setup() {
              "have.\n");
    set_inside_long( "Nothing smells worse than a camel.  Not even something "
                     "from Dibbler's tray.\n");
-
-   // 12 royals in value ( they're exotic )
    set_value(40000 * 12);
    set_maximum_speed(RIDE_GALLOP);
    set_transport_type( "camel" );
@@ -21,4 +18,4 @@ void setup() {
    set_transport_speed(1);
    set_maximum_exhaustion(400);
   set_transport_colour("off-yellow");
-} /* setup() */
+}

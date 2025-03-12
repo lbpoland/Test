@@ -1,17 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: coverage.c,v 1.5 2003/02/21 01:28:10 pinkfish Exp $
- *
- *
- */
-
 inherit "/cmds/base.c";
-
 #define CLOTHING_HANDLER "/obj/handlers/clothing_handler"
-
 private string _zone_patterns;
-
 int cmd(object *items, int inverse, string bits)  {
    object   armor;
    object  *wearing;
@@ -29,7 +18,6 @@ int cmd(object *items, int inverse, string bits)  {
    string   mess;
    mapping  covered;
    mapping  pot_covered;
-
    all_zones = keys(CLOTHING_HANDLER->query_all_clothing_zones());
    covered = allocate_mapping(sizeof(all_zones));
    pot_covered = allocate_mapping(sizeof(all_zones));
@@ -37,17 +25,14 @@ int cmd(object *items, int inverse, string bits)  {
       covered[zone] = ({ });
       pot_covered[zone] = ({ });
    }
-
    if (sizeof(items) == 0)
       armors = this_player()->query_armours();
    else
       armors = items;
-
    fail = filter(armors,
                  (: !$1->query_armour()  &&  !$1->query_clothing() :));
    armors -= fail;
    wearing = this_player()->query_wearing();
-
    if (bits)  {
       bits = replace(bits, " ", ",");
       bits = replace(bits, ",and,", ",");
@@ -59,13 +44,11 @@ int cmd(object *items, int inverse, string bits)  {
          return 1;
       }
    }
-
    foreach (armor in armors)  {
       if (!arrayp(armor->query_type()))
          types = ({ armor->query_type() });
       else
          types = armor->query_type();
-
       zones = ({ });
       foreach (type in types)  {
          equiv_type = CLOTHING_HANDLER->query_equivilant_type(type);
@@ -74,7 +57,6 @@ int cmd(object *items, int inverse, string bits)  {
          else
             zones += CLOTHING_HANDLER->query_zone_names(type);
       }
-
       if (sizeof(zones))  {
          if (member_array(armor, wearing) > -1)
             foreach (zone in zones)
@@ -85,13 +67,11 @@ int cmd(object *items, int inverse, string bits)  {
       }
       else fail += ({ armor });
    }
-
    if (bits)  {
       covered = filter(covered, (: member_array($1, $(parts)) != -1 :));
       pot_covered = filter(pot_covered,
                            (: member_array($1, $(parts)) != -1 :));
    }
-
    if (inverse)  {
       zones = filter(all_zones, (: sizeof($(covered)[$1]) == 0 :));
       if (sizeof(zones) > 0)  {
@@ -107,7 +87,6 @@ int cmd(object *items, int inverse, string bits)  {
       else write("You are covered from head to foot.\n");
       return 1;
    }
-
    zones = sort_array(keys(covered) | keys(pot_covered), 1);
    foreach (zone in zones)  {
       if (zone == "arms"  ||  zone == "hands"  ||
@@ -137,7 +116,6 @@ int cmd(object *items, int inverse, string bits)  {
       }
       else if (bits) write("Your " + zone + verb + " unprotected.\n");
    }
-
    if (sizeof(fail) != 0  &&  sizeof(items) != 0)  {
       if (sizeof(fail) == 1  &&  fail[0] == this_player())
          write("You don't offer any protection.  Perhaps you should invest "
@@ -147,13 +125,10 @@ int cmd(object *items, int inverse, string bits)  {
                (sizeof(fail) == 1 ? " doesn't" : " don't") +
                " offer any protection.\n");
    }
-   else if (sizeof(armors - fail) == 0) /* Everything failed! */
+   else if (sizeof(armors - fail) == 0)
       write("You are completely unprotected.  Good luck!\n");
-
    return 1;
 }
-
-
 mixed *query_patterns()  {
    return ({ "", (: cmd(({ }), 0, 0) :),
              "[by] <indirect:object'armour/clothing'>", (: cmd($1, 0, 0) :),

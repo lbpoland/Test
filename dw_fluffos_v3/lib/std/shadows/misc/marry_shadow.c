@@ -1,67 +1,39 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: marry_shadow.c,v 1.2 2003/02/15 20:13:45 pinkfish Exp $
- * $Log: marry_shadow.c,v $
- * Revision 1.2  2003/02/15 20:13:45  pinkfish
- * Fix up some stuff.
- *
- * Revision 1.1  1998/01/06 04:39:04  ceres
- * Initial revision
- * 
-*/
-/* The wonderful fully interactive marriage shadow by Olorin, 
- * the response mappings basically contain the recognised
- * responses of different types of interaction, if an entry is an 
- * array, both strings have to be in the response ie. shake head is
- * recognized as refusal, shake flipper isn't.
- */
-
 #include "/cmds/guild-race/masters/marry.h"
-
 #define RING "/obj/misc/wedding_ring.c"
-
 #define LOG "/w/olorin/responselog"
-#define MAXLOG 8000          
-
+#define MAXLOG 8000
 object player, marry1, marry2, ring1, ring2;
 int found, response_index;
 string asking, askingwho, *words, *yes_array, *no_array;
 mapping local_prop, yes_response, no_response;
-
 void do_accept();
 void do_refuse();
-
 void create() {
-   yes_response = ([ "say":({ "yes", "yep", "sure", "ok", 
-                     ({ "will" , "i" }), ({ "do" , "i" }) }), 
+   yes_response = ([ "say":({ "yes", "yep", "sure", "ok",
+                     ({ "will" , "i" }), ({ "do" , "i" }) }),
                      "soul":({ "nod" , "ack", }) ]);
-   no_response = ([ "say":({ "no", "nope", ({ "won't", "i" }), 
-                          ({ "don't", "i" }), ({ "can't", "i" }), 
-                    "cannot" }), 
+   no_response = ([ "say":({ "no", "nope", ({ "won't", "i" }),
+                          ({ "don't", "i" }), ({ "can't", "i" }),
+                    "cannot" }),
                     "soul":({ ({ "shake" , "head" }), "panic", "puke" }) ]);
-   local_prop = ([ MARRYPROP : 1, ]);        /* I am performing a wedding */
-} /* create() */
-
+   local_prop = ([ MARRYPROP : 1, ]);
+}
 object add_marry_shadow( object p, object m1, object m2 ) {
    player = p;
    marry1 = m1;
    marry2 = m2;
-   askingwho = (string)marry1->query_name();   /* who am I asking now */
-   asking = ASKFIRST;          /* where am I in the ceremony */
+   askingwho = (string)marry1->query_name();
+   asking = ASKFIRST;
    tell_object( player, "Now you should ask " +
          (string) marry1->query_short() + " whether " +
          (string) marry1->query_pronoun() + " will marry " +
          (string) marry2->query_short() + "\n");
    return shadow( p, 1 );
-} /* add_marry_shadow() */
-
-/* removing annoying readmarks..  Like .'s and ?'s, taken from response_mon */
+}
 string remove_read_marks(string str) {
    int index, size;
    string result;
    string temp;
- 
    index = 0;
    size = strlen(str);
    result = "";
@@ -73,8 +45,7 @@ string remove_read_marks(string str) {
       index++;
    }
   return result;
-} /* remove_read_marks() */
-
+}
 void check_response( string resptype, string mess ) {
    if ( mess && strlen( mess ) ) {
       mess = lower_case( mess );
@@ -85,9 +56,9 @@ void check_response( string resptype, string mess ) {
       response_index = sizeof( yes_array );
       while ( response_index-- ) {
    if ( !stringp( yes_array[ response_index ] ) ) {
-      if ( ( member_array( yes_array[ response_index ][ 0 ], 
-         words ) != -1 ) && 
-     ( member_array( yes_array[ response_index ][ 1 ], 
+      if ( ( member_array( yes_array[ response_index ][ 0 ],
+         words ) != -1 ) &&
+     ( member_array( yes_array[ response_index ][ 1 ],
          words ) != -1 ) ) {
          do_accept();
          return;
@@ -96,15 +67,15 @@ void check_response( string resptype, string mess ) {
       if ( member_array( yes_array[ response_index ], words ) != -1 ) {
              do_accept();
          return;
-      } 
+      }
    }
       }
       response_index = sizeof( no_array );
       while ( response_index-- ) {
    if ( !stringp( no_array[ response_index ] ) ) {
-      if ( ( member_array( no_array[ response_index ][ 0 ], 
-         words ) != -1 ) && 
-     ( member_array( no_array[ response_index ][ 1 ], 
+      if ( ( member_array( no_array[ response_index ][ 0 ],
+         words ) != -1 ) &&
+     ( member_array( no_array[ response_index ][ 1 ],
          words ) != -1 ) ) {
          do_refuse();
          return;
@@ -113,34 +84,30 @@ void check_response( string resptype, string mess ) {
       if ( member_array( no_array[ response_index ], words ) != -1 ) {
          do_refuse();
          return;
-      } 
+      }
    }
       }
 #ifdef LOG
-      /* for getting more ideas */
       if ( file_size( LOG ) <= MAXLOG)
-  unguarded((: write_file, LOG , 
+  unguarded((: write_file, LOG ,
              "MARRY response: "+resptype+": '"+mess+"'\n" :));
 #endif
    }
 }
-   
 void event_person_say( object ob, string start, string mess, string lang ) {
    if ( ob->query_name() == askingwho ) {
       check_response("say", mess);
    }
    player->event_person_say( ob, start, mess, lang );
    return;
-}  /* event_person_say() */
-
+}
 void event_person_tell(object ob, string start, string mess, string lang) {
    if ( ob->query_name() == askingwho ) {
       check_response("say", mess);
    }
    player->event_person_tell( ob, start, mess, lang );
    return;
-}  /* event_person_tell() */
-
+}
 void event_soul(object ob, string mess, object *avoid, string verb,
                 string last, mixed at) {
    if ( sizeof( avoid ) &&
@@ -155,8 +122,7 @@ void event_soul(object ob, string mess, object *avoid, string verb,
    }
    tell_object( player, mess );
    return;
-}  /* event_soul() */
-
+}
 void do_accept() {
    if ( asking == ASKFIRST ) {
       asking = ASKSECOND;
@@ -169,7 +135,7 @@ void do_accept() {
       tell_object( marry1, "You accepted.\n" );
    } else if ( asking == ASKSECOND ) {
       asking = DONEASK;
-      askingwho = "*NoOne*"; /* I don't think this will match the name of anyone */
+      askingwho = "*NoOne*";
       tell_object( player, (string) marry2->query_pronoun() +
       " accepted. Now you can ask if there are any objections or" +
       " you can finalize the wedding with 'marry them'.\n" );
@@ -179,15 +145,14 @@ void do_accept() {
       "what you where doing.\n" );
 #ifdef LOG
      unguarded((: write_file, LOG ,
-                "marry_error "+   /* this is for debugging! */
+                "marry_error "+
      "in accept:" + asking + ";" + askingwho + "(" +
      (string) marry1->query_short() + " to " +
      (string) marry2->query_short() + ")" :));
 #endif
       call_out( "remove_propose_shadow", 0 );
    }
-} /* do_accept() */
-
+}
 void do_refuse() {
    if ( asking == ASKFIRST ) {
       tell_object( player, (string) marry1->query_pronoun() +
@@ -204,25 +169,21 @@ void do_refuse() {
       "what you where doing.\n" );
 #ifdef LOG
       unguarded((: write_file, LOG ,
-                 "marry_error"+   /* this is for debugging! */
+                 "marry_error"+
      "in refuse:" + asking + ";" + askingwho + "(" +
      (string) marry1->query_short() + " to " +
      (string) marry2->query_short() + ")" :));
 #endif
    }
    call_out( "remove_marry_shadow", 0 );
-} /* do_refuse() */
-
+}
 mixed query_property( string str ) {
    if ( str == MARRYPROP ) {
-      return 1; /* I *am* doing a wedding */
+      return 1;
    } else {
       return player->query_property( str );
    }
-} /* query_property() overridden because Deutha don't like  
-   * having properties rattling around in the player object *grin*
-   */
-
+}
 int do_wedding() {
    if ( environment( player ) == environment( marry1 ) ) {
       if ( environment( player ) == environment( marry2 ) ) {
@@ -253,15 +214,12 @@ int do_wedding() {
    }
    call_out( "remove_marry_shadow", 0 );
    return 0;
-} /* do_wedding() */
-
+}
 int abort_wedding() {
    call_out( "remove_marry_shadow", 0 );
-   return 0;  /* returns 0 because the marry command is failing */
-} /* abort_wedding() */
-
+   return 0;
+}
 void remove_marry_shadow() {
-   destruct( this_object() ); 
+   destruct( this_object() );
    return;
-} /* remove_marry_shadow() */
-
+}

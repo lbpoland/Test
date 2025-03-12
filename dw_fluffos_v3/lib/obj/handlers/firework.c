@@ -1,32 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: firework.c,v 1.5 2002/09/20 11:15:06 tilly Exp $
- * $Log: firework.c,v $
- * Revision 1.5  2002/09/20 11:15:06  tilly
- * Typo.
- *
- * Revision 1.4  1998/06/08 00:50:08  presto
- * fixed typo, removed unused variable.
- *
- * Revision 1.3  1998/04/19 19:59:45  pinkfish
- * Add in the missed $
- *
- * Revision 1.2  1998/04/19 18:33:47  pinkfish
- *  Added documentation.
- *
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
- */
-/**
- * This handler helps control the fireworks used in the wizards spells.
- */
 #define BROADCASTER "/obj/handlers/broadcaster"
 #define MAX_RANGE 1600
-#define SHIFT 30 /* needs to be more, once broadcaster is better */
+#define SHIFT 30
 #define TIME 15
-
 class firework_running {
    string *messages;
    int index;
@@ -34,12 +9,9 @@ class firework_running {
    string text;
    int *co_ord;
 }
-
 mixed *_effects;
 class firework_running *_fireworks;
-
 protected void do_effects();
-
 void create() {
   _effects = ({
     ({
@@ -73,20 +45,10 @@ void create() {
     }),
   });
   _fireworks = ({ });
-} /* create() */
-
-/**
- * This method creates a random firework at the casters location from the
- * current list of fireworks.  If the text field is not filled in then
- * the casters name is used.
- * @param caster the caster of the spell
- * @param text the text to print in the firework
- * @see do_effect()
- */
+}
 varargs void random_firework( object caster, string text ) {
   mixed *co_ord;
   class firework_running new_firework;
-
   co_ord = (mixed *)environment( caster )->query_co_ord();
   if ( sizeof( co_ord ) < 3 ) {
     co_ord = ({ 0, 0, 0 });
@@ -103,15 +65,9 @@ varargs void random_firework( object caster, string text ) {
     call_out( (: do_effects :), TIME );
   }
   _fireworks += ({ new_firework });
-} /* random_firework() */
-
-/**
- * This method broadcasts the actual firework messages.
- * @see random_firework()
- */
+}
 protected void do_effects() {
   class firework_running firework;
-
   foreach (firework in _fireworks) {
     BROADCASTER->broadcast_event( users(), firework->co_ord, "you see:\n"+
         replace( firework->messages[firework->index] , "$arg$",
@@ -124,28 +80,7 @@ protected void do_effects() {
   if ( sizeof( _fireworks ) ) {
     call_out( (: do_effects :), TIME );
   }
-} /* do_effects() */
-
-/**
- * This method returns the list of fireworks currently available.
- * The list constists of an array of firework effects.  Each effect
- * consists of a list of strings.  The strings are printed one by
- * one with a delay between each. <br>
- * ie:
- * <pre>
- * ({
- *   ({
- *      mess1,
- *      mess2,
- *      ...
- *    }),
- *   ({
- *      /\* Second effect *\/
- *    })
- * });
- * </pre>
- * @return the effects array
- */
+}
 mixed *query_effects() {
    return _effects;
-} /* query_effects() */
+}

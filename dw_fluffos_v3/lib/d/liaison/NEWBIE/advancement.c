@@ -1,16 +1,11 @@
 #include "path.h"
-
-
 inherit PATH + "inside";
-
 object sign;
-
 void setup() {
   set_zone( "Newbie" );
   set_short("Advancement Room" );
   set_light( 75 );
   add_property("no teleport", 1);
-
   set_long( "This is a rather cosy room designed to encourage visitors to "
             "linger a while and read a few of the notices pinned to the "
             "walls.  The air is thick and overly warm, and there is a "
@@ -22,7 +17,6 @@ void setup() {
             "a small cage holding an odd-looking creature in one corner, "
             "and an immense ball of yarn in the other.  A door to the south "
             "leads back to the foyer.\n");
-
   add_item(({ "floor", "ground" }), "The floor is scuffed, dusty wood.  It "
            "was probably nice at some point.");
   add_item( "wall", "The walls (what can be seen of them under the notices) "
@@ -75,14 +69,12 @@ void setup() {
                 "once.\n", 0, "statistics", "general" );
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'statistics and rearrange'");
-
   sign=add_sign("A handwritten notice marked 'Guildpoints'.\n",
            "Guildpoints are a measure of your capability to perform guild "
            "commands such as stealing, fighting, casting spells or rituals, "
            "etc.  When you have used all your guild points, you will have to "
            "rest to allow them to regenerate.  For more information, type "
            "in 'help guildpoints'.\n", 0, "guildpoints", "general");
-  
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'guild points'");
   sign=add_sign("A handwritten notice marked 'Experience'.\n",
@@ -94,7 +86,6 @@ void setup() {
                 "experience", "general");
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'experience'");
-
   sign=add_sign("A handwritten notice marked 'Hitpoints'.\n",
            "Hitpoints, or HP determine how much damage you can take in "
            "combat before you die.  The number of hit points you have is "
@@ -105,7 +96,6 @@ void setup() {
            "'help wimpy'.\n", 0, "hitpoints", "general");
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'hitpoints'");
-
   sign=add_sign("A handwritten notice marked 'Skills'.\n",
            "To check your skill levels, use the command 'skills', and "
            "to see various statistics about yourself, use 'score'.  Your "
@@ -114,7 +104,6 @@ void setup() {
            "information.", 0, "skills", "general");
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'skills'");
-
   sign=add_sign("A handwritten notice marked 'advancement'.\n\n",
            "Skills can be advanced in a variety of ways on Discworld.  "
            "The guild you join will allow you to advance your skills "
@@ -129,19 +118,11 @@ void setup() {
            "Finally, many of your skills can be advanced simply by performing "
            "tasks that make use of those skills.  For example, your fighting "
            "skills will get better as you participate in more fights.  For "
-           "more information on this system, type " 
+           "more information on this system, type "
            "'help taskmaster'.\n",0, "advancement", "general");
   sign->add_property("determinate","the ");
   sign->set_short("sign marked 'advancement'");
-
-  /* Make it so you cannot godmother out of here */
   add_property("no godmother", 1);
-
   add_exit( "foyer", PATH + "foyer", "door" );
   add_alias( "south", "foyer");
-  /*
-  room_chat(({10, 40, ({"A voice whispers something that you can't quite "
-                         "make out."
-                              })}));
-  */
-} /* setup() */
+}

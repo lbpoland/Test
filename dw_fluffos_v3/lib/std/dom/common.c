@@ -1,20 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: common.c,v 1.2 2000/06/27 00:24:50 pinkfish Exp $
- * $Log: common.c,v $
- * Revision 1.2  2000/06/27 00:24:50  pinkfish
- * Fix up the drum exit.
- *
- * Revision 1.1  1998/01/06 04:03:45  ceres
- * Initial revision
- * 
-*/
-/* PLEASE re-describe me */
 #include <config.h>
 inherit "/std/dom/cmn_mas";
 object board;
-
 void setup() {
   set_dom(DOMAIN);
   set_light(100);
@@ -64,7 +50,6 @@ void setup() {
   board->set_datafile(DOMAIN);
   board->move(this_object());
 }
-
 void dest_me()
 {
   if(board) board->dest_me();

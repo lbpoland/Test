@@ -1,22 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: debate.c,v 1.9 2001/05/31 00:55:23 presto Exp $
- */
 #include <tasks.h>
-
 #define EFFECT "/std/effects/religious/theological_debate"
 #define HANDLER "/obj/handlers/philosophies"
-
 #define DEBATE_MULT 4
-
 inherit "/cmds/base";
-
 mapping _debaters;
-
 void create() {
    _debaters = ([ ]);
-} /* create() */
-
+}
 mixed cmd(object * indirect_obs,
           string indir_match,
           string dir_match,
@@ -28,7 +18,6 @@ mixed cmd(object * indirect_obs,
    string type;
    string needed;
    object target;
-
    if (sizeof((int *)this_player()->effects_matching("debating"))) {
       return notify_fail("You are already engaged in a debate.\n");
    }
@@ -38,7 +27,6 @@ mixed cmd(object * indirect_obs,
                   "challenge from you.\n");
       map_delete(_debaters, this_player());
    }
-
    target = indirect_obs[0];
    if (target == this_player()) {
       return notify_fail("Debating with yourself?  Which one of your "
@@ -83,11 +71,6 @@ mixed cmd(object * indirect_obs,
                          " at the moment.\n");
    }
    this_player()->adjust_gp(-(bonus * DEBATE_MULT));
-/*
-   if (environment(this_player()) != environment(target)) {
-      tell_object(_debaters[i - 1], "Your challenge is ignored.\n");
-   }
- */
    write("You challenge " + (string) target->the_short() +
          " to a debate on " + topic + ".\n");
    say((string) this_player()->one_short() + " challenges " +
@@ -99,8 +82,7 @@ mixed cmd(object * indirect_obs,
    _debaters[this_player()] = ({ target, topic });
    call_out("answer_challenge", 5, this_player(), target, topic);
    return 1;
-}                               /* cmd() */
-
+}
 void answer_challenge(object challenger,
                       object target,
                       string topic)
@@ -108,7 +90,6 @@ void answer_challenge(object challenger,
    int bonus;
    int diff;
    string type;
-
    if (!challenger) {
       return;
    }
@@ -132,9 +113,7 @@ void answer_challenge(object challenger,
    }
    type = (string) HANDLER->query_philosophy_type(topic);
    bonus = (int) target->query_skill_bonus(type + ".points");
-   /* Query the challenger last as it'll be (s)he who is awarded a level. */
    diff = (int) target->query_skill_bonus(type + ".points") / 3;
-
    switch ((int) TASKER->perform_task(challenger, type + ".points", 2 * diff,
                                       TM_COMMAND)) {
    case AWARD:
@@ -163,15 +142,13 @@ void answer_challenge(object challenger,
                      "\" to accept the challenge.\n");
       }
    }
-}                               /* answer_challenge() */
-
+}
 mapping query_debaters()
 {
    return _debaters;
 }
-
 mixed *query_patterns()
 {
    return ({ "<word'topic'> with <indirect:living'person'>",
              (: cmd($1, $2, $3, $4, $5) :) });
-}                               /* query_patterns() */
+}

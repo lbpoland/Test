@@ -1,35 +1,23 @@
-/*  -*- LPC -*-  */
 #include <weather.h>
 #include <clothing.h>
 #include <playtesters.h>
-
 #define COMFORTABLE 20
-
 #define ABS(x) (x > 0? x : -x)
-
 string disp_warmth(int, int);
 string disp_total(int i);
-
 int cmd(string str) {
   object where, *clothes, item;
   string zone, type, *zones, tmp;
   mixed types;
   int adjustment, correction, temperature, room_temp, *enums, cwarm, ccool;
-  
   where = environment(this_player());
-  
   if(!where)
     return notify_fail("You have no environment.\n");
-  
-  // If they're on a horse or somesuch then use that locations temperature
-  // info.
   if(!where->query_property("location") &&
      environment(where) &&
      environment(where)->query_property("location")) {
     where = environment(where);
   }
-
-  // Figure out the temperature where we are.
   switch(where->query_property("location")) {
   case "outside":
     room_temp = (WEATHER->query_temperature(where) - COMFORTABLE);
@@ -37,39 +25,26 @@ int cmd(string str) {
   default:
     room_temp = 0;
   }
-
   temperature = this_player()->query_personal_temp();
-                 
-  // set the warmth of the room.
   room_temp += where->query_property("warmth");
   room_temp -= where->query_property("cooling");
-
   write(sprintf("It's %s here.\n",
          WEATHER->temp_string(room_temp + COMFORTABLE)));
-
-  // Calculate how warm (or cool) their clothing is keeping them.
   clothes = filter_array(this_player()->query_wearing(),
                          (: !$1->id("scabbard") &&
                           !$1->id("belt") &&
                           !$1->id("backpack") &&
                           !$1->id("glasses") &&
                           !$1->id("jewellery") :));
-  
   zones = ({ });
   foreach(item in clothes) {
     types = item->query_type();
     if(!arrayp(types)) {
       types = ({ item->query_type() });
     }
-    
     ccool = 0;
     cwarm = 0;
-    
     foreach(type in types) {
-      // Find out what zone this clothing type covers.
-      // If it doesn't cover a zone (eg. jewellery) it doesn't give any
-      // warmth.
-      
       foreach(zone in CLOTHING_HANDLER->query_zone_names(type)) {
         if(member_array(zone, zones) == -1)
           zones += ({ zone });
@@ -80,9 +55,6 @@ int cmd(string str) {
           adjustment++;
           cwarm++;
         }
-        
-        // If it's warm here then do adjustments for clothing that
-        // cool you.
         if(room_temp > 0 && item->query_property("cooling")) {
           adjustment -= item->query_property("cooling");
           ccool += item->query_property("cooling");
@@ -105,11 +77,6 @@ int cmd(string str) {
              disp_warmth(ccool, 0)));
     }
   }
-  
-  // You get a warmth bonus or coolness bonus for each zone covered.
-  // This means it's better to cover more of your body when it's cold.
-  // It also means you can wear light clothing with less temperature
-  // penalties since the warmth & cooling cancel out somewhat.
   if(room_temp < 0) {
     adjustment += sizeof(zones);
     if(room_temp + sizeof(zones) > 5)
@@ -119,37 +86,25 @@ int cmd(string str) {
     if(room_temp - sizeof(zones) < -5)
       adjustment -= (room_temp - sizeof(zones) + 5);
   }
-
-  // Wetness makes you cooler -- so sweating isn't necessarily a bad thing.
   ccool = 0;
-  enums = (int *)this_player()->effects_matching("body.wetness"); 
+  enums = (int *)this_player()->effects_matching("body.wetness");
   if ( sizeof( enums ) ) {
     adjustment -= sqrt(sqrt((int)this_player()->arg_of( enums[ 0 ] ))) * 2;
     ccool = sqrt(sqrt((int)this_player()->arg_of( enums[ 0 ] ))) * 2;
   }
-
-  // add their personal warmth (from effects or shadows)
   adjustment += this_player()->query_property("warmth");
   adjustment -= this_player()->query_property("cooling");
-  
-  // this hopefully it does two things.
-  // 1. effectively puts a maximum/minimum on temperature
-  // 2. accounts for the body working to adjust temperature.
   if(temperature > room_temp && room_temp >= 0 || temperature > 5)
     correction -= (temperature / 5) + 5;
   if(temperature < room_temp && room_temp <= 0 || temperature < -5)
     correction -= (temperature / 5) - 5;
-
   write(sprintf("On balance, you are %s and %s.\n",
          this_player()->query_temp_str(),
          disp_total(to_int((room_temp+adjustment + correction)))));
-  
   return 1;
 }
-
 string disp_warmth(int i, int warm) {
   string pos, neg;
-
   if(warm) {
     pos = " warmth";
     neg = " cooling";
@@ -157,7 +112,6 @@ string disp_warmth(int i, int warm) {
     pos = " cooling";
     neg = " warmth";
   }
-  
   switch(i) {
   case -1000..-19: return "an enormous amount of"+neg;
   case -9..-18: return "a lot of"+neg;
@@ -172,7 +126,6 @@ string disp_warmth(int i, int warm) {
   default: return "an enormous amount of"+pos;
   }
 }
-
 string disp_total(int i) {
   switch(i) {
   case -1000..-51: return "are freezing fast";
@@ -188,7 +141,6 @@ string disp_total(int i) {
     return "broken: " + i + "\n";
   }
 }
-
 mixed *query_patterns()  {
    return ({ "", (: cmd("") :) });
 }

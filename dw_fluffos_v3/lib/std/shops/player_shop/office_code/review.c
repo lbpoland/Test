@@ -1,28 +1,13 @@
-/******************************************************************************
- * This file contains the code to deal with the maintenance reviews
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Called once a month to conduct the shop's monthly review.
- * This method is the monthly maintenance function for the shop.  This review
- * involves paying employees direct into their nominated bank account, and
- * awarding bonuses based on the current value of the bonus fund.  If there is
- * not enough money in the profit account to pay the correct amount, the
- * employees are paid on a pro-rata basis.
- */
 private void monthly_review()
-{  
+{
    int amount = calc_pay(),
        bonus_divisor = 0,
        cabinet_cost = (_num_cabinets - MIN_CABINETS) * CABINET_COST,
        pay;
    float pay_multiplier = 1.0;
-   string *emps = m_indices(_employees); 
-
+   string *emps = m_indices(_employees);
    log_file("/log/PLAYER_SHOP", "%s: %s entered monthly review (review.c)\n",
-      ctime(time()), _very_short); 
-
+      ctime(time()), _very_short);
    if (cabinet_cost)
    {
       adjust_profit(_proprietor, -cabinet_cost);
@@ -34,7 +19,6 @@ private void monthly_review()
    if (_accounts["profit"] < 0) adjust_bonus("Shop",_accounts["profit"]);
    if (amount > _accounts["profit"])
       pay_multiplier = _accounts["profit"] / amount;
-
    foreach (string word in emps)
    {
       if (!_employees[word][EMP_PAY]) continue;
@@ -60,14 +44,12 @@ private void monthly_review()
    {
       _accounts["bonus"] = _bonus;
       _bonus = 0;
-   } 
+   }
    else _accounts["bonus"] = 0;
-
    foreach (string word in m_indices(_employees))
    {
       if (_employees[word][EMP_NOBONUS]) continue;
       if (!test_prop(word, _very_short+ " handbook")) continue;
-
       if (_employees[word][EMP_POINTS] & MANAGER)
       {
          bonus_divisor += 4;
@@ -84,7 +66,6 @@ private void monthly_review()
    }
    if (!bonus_divisor) _bonus_val = _bonus;
    else _bonus_val = (_bonus * 2) / bonus_divisor;
-
    _got_bonus = ({});
    _eom = sort_array(get_employees(),
       (: _employees[$2][EMP_EOM] - _employees[$1][EMP_EOM] :))[0];
@@ -116,14 +97,14 @@ private void monthly_review()
    if (_eom == _shopkeeper->query_name())
    {
       _bonus -= to_int(_bonus_val * 1.5);
-      shop_log(GENERAL, _eom, "claimed "+ 
+      shop_log(GENERAL, _eom, "claimed "+
          MONEY_HAND->money_value_string(to_int(_bonus_val * 1.5), _place),
          UNPAID);
    }
    else
    {
       _bonus -= _bonus_val;
-      shop_log(GENERAL, _shopkeeper->query_name(), "claimed "+ 
+      shop_log(GENERAL, _shopkeeper->query_name(), "claimed "+
          MONEY_HAND->money_value_string(_bonus_val, _place), UNPAID);
    }
    if (_bonus < 0) _bonus = 0;
@@ -132,18 +113,6 @@ private void monthly_review()
    save_me();
    save_emps();
 }
-/* monthly_review() */
-
-/**
- * @ignore yes 
- * Called once a day to conduct the shop's daily review.
- * This method is the daily maintenance function for the shop.  It checks that
- * employees are still valid players, and not creators.  It conducts automatic
- * promotions, and handles demotions for inactive employees.  It also updates
- * the lists of declined applicants and banned people and removes that status
- * if applicable.  Finally, it calls the check_hire_list function to see if 
- * we can hire any new employees.
- */
 private void review_employees()
 {
    int prom = FALSE,
@@ -153,23 +122,17 @@ private void review_employees()
    string *promos = ({}),
           promopost,
           *emps = _retired + m_indices(_employees);
-
    log_file("/log/PLAYER_SHOP", "%s: %s entered review_employees (review.c)\n",
-      ctime(time()), _very_short); 
-
-   /* Fire non-users, creators and demote creator alts */
+      ctime(time()), _very_short);
    foreach (string word in emps)
    {
       if (!test_player(word))
-      { 
-         /* Make sure we are not firing the npc shopkeeper */
+      {
          if (_employees[word][EMP_POINTS] & NPC) continue;
          fire_them(_proprietor, word, "not existing");
       }
-
       else if (test_cre(word))
          fire_them(_proprietor, word, "being a creator");
-
       else if (test_prop(word,"no score") &&
          _employees[word][EMP_POINTS] & SUPERVISOR )
       {
@@ -182,7 +145,6 @@ private void review_employees()
          employee_log(word, "Demoted by "+ _proprietor);
          shop_log(PERSONNEL, _proprietor, "demoted "+ cap_name(word), UNPAID);
       }
-
       if (!test_prop(word, _very_short+ " handbook"))
       {
          _employees[word][EMP_PAY] = 0;
@@ -190,16 +152,13 @@ private void review_employees()
             _employees[word][EMP_POINTS] & CLOCKED_IN + EMPLOYEE;
       }
    }
-
-
-   /* Check for inactive managers */
    foreach (string word in get_managers())
       if ((time - _times[word]) > (60*60*24*MGR_DEMOTE) &&
          _employees[word][EMP_INACTIVE] &&
          last_login(word) - _times[word] > (60*60*24*2))
             demote( _proprietor, word );
       else if (time - _times[word] > (60*60*24*MGR_WARN) &&
-         !_employees[word][EMP_INACTIVE] && 
+         !_employees[word][EMP_INACTIVE] &&
          last_login(word) - _times[word] > (60*60*24*2))
       {
          PLAYER_SHOP->auto_mail(word, _proprietor, "Poor attendance",
@@ -213,11 +172,7 @@ private void review_employees()
          shop_log(PERSONNEL, _proprietor, "warned "+
                cap_name(word) + " about inactivity", UNPAID);
       }
-
-   /* Check supervisors for inactivity or promotion.  Sorted by points so
-    * people promoted in order.
-    */
-   foreach(string word in sort_array(get_supervisors(), 
+   foreach(string word in sort_array(get_supervisors(),
      (: _employees[$1][EMP_POINTS] - _employees[$2][EMP_POINTS] :)))
       if (time - _times[word] > (60*60*24*SPR_DEMOTE) &&
          _employees[word][EMP_INACTIVE] &&
@@ -240,12 +195,8 @@ private void review_employees()
       }
       else
       {
-         /* See if any managerial vacancies.  If so, and this person has
-          * sufficient points & is not being ignored for promotion,
-          * promote them.
-          */
          prom_number = (_max_emp * PERCENT_M) / 100;
-         if ((_employees[word][EMP_POINTS] > 32 * MANAGER_POINTS) && 
+         if ((_employees[word][EMP_POINTS] > 32 * MANAGER_POINTS) &&
            sizeof(get_managers()) < prom_number &&
            !_employees[word][EMP_NOPROMOTE])
          {
@@ -253,7 +204,7 @@ private void review_employees()
             shop_log(PERSONNEL, _proprietor, "promoted "+
                cap_name(word)+ " to manager", UNPAID);
             employee_log(word, "Promoted to manager");
-            PLAYER_SHOP->auto_mail(word, _proprietor, "Promotion!", 
+            PLAYER_SHOP->auto_mail(word, _proprietor, "Promotion!",
               "", "Congratulations!  You've been promoted to manager "
               "of "+ _shop_name+ ".  You'll find that you can now enter "
               "the managers' office.  Please remember to use the \"memo\" "
@@ -263,11 +214,7 @@ private void review_employees()
             prom = TRUE;
          }
       }
-
-   /* Check employees for inactivity or promotion.  Sorted by points so
-    * people promoted in order.
-    */
-   foreach(string word in sort_array(get_employees(), 
+   foreach(string word in sort_array(get_employees(),
      (: _employees[$1][EMP_POINTS] - _employees[$2][EMP_POINTS] :)))
    {
       if (_employees[word][EMP_POINTS] & NPC) continue;
@@ -287,20 +234,16 @@ private void review_employees()
               "", "It has come to my attention that you have now been "
               "inactive for over "+ EMP_WARN+ " days.  Unless this "
               "situation is resolved, the management may have no option "
-              "but to terminate your employment.\n---\n"+ _proprietor+ 
+              "but to terminate your employment.\n---\n"+ _proprietor+
               " (proprietor)\n");
             _employees[word][EMP_INACTIVE] = TRUE;
-            shop_log(PERSONNEL, _proprietor, "warned "+ 
+            shop_log(PERSONNEL, _proprietor, "warned "+
               cap_name(word)+ " about inactivity", UNPAID);
             employee_log(word, "Warned about inactivity");
          }
       }
       else
       {
-         /* See if any supervisory vacancies.  If so, and this person has
-          * sufficient points & is not being ignored for promotion,
-          * promote them.
-          */
          prom_number = (_max_emp * PERCENT_S) / 100;
          if ((_employees[word][EMP_POINTS] > 32 * SUPER_POINTS) &&
            sizeof( get_supervisors() ) < prom_number &&
@@ -310,7 +253,7 @@ private void review_employees()
                _employees[word][EMP_POINTS] = (SUPER_POINTS * 32) +
                  EMPLOYEE+ SUPERVISOR + CLOCKED_IN;
             else
-               _employees[word][EMP_POINTS] = (SUPER_POINTS * 32) + 
+               _employees[word][EMP_POINTS] = (SUPER_POINTS * 32) +
                  EMPLOYEE+ SUPERVISOR;
             shop_log(PERSONNEL, _proprietor, "promoted "+
               cap_name(word)+ " to supervisor", UNPAID);
@@ -324,8 +267,6 @@ private void review_employees()
          }
       }
    }
-
-   /* Post about promotions */
    if (prom)
    {
       promopost = "The following employees have been promoted:\n\n";
@@ -336,23 +277,15 @@ private void review_employees()
       promopost += "\nCongratulations!\n";
       add_board_message("Promotions", promopost);
    }
-
-   /* Check the list of banned people */
    foreach (string word in m_indices(_baddies))
       if (time - _baddies[word][BAD_TIME] > (60*60*24*BAN_LENGTH))
          remove_baddie( word );
-
-   /* Check the list of declined applicants */
    foreach (string word in m_indices(_declined))
       if (time - _declined[word] > (60*60*24*DECLINE_LENGTH))
          remove_declined(word);
-
-   /* See if anyone can be hired */
    remove_call_out(_call_hire_list);
    _call_hire_list = call_out((: check_hire_list() :), 5);
    save_emps();
-
-   /* Update policies */
    managers = sizeof(get_managers()) + sizeof(get_retired());
    load_new_policies();
    if (sizeof(_new_policies))
@@ -374,10 +307,7 @@ private void review_employees()
          }
       }
    }
-
    clear_new_policies();
-
-   /* Update the player history data */
    load_history();
    foreach (string word in m_indices(_history))
    {
@@ -385,10 +315,9 @@ private void review_employees()
         !_times[word] || _times[word] < (time - HIST_TIMEOUT))
       {
          map_delete(_times, word);
-         map_delete(_history, word);      
+         map_delete(_history, word);
       }
    }
    save_hist();
    save_times();
 }
-/* review_employees() */

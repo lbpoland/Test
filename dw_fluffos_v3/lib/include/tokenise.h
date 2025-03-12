@@ -1,6 +1,5 @@
 #ifndef __SYS__TOKENISE
 #define __SYS__TOKENISE
-
 #define TOK_PLUS 1
 #define TOK_MINUS 2
 #define TOK_MULT 3
@@ -23,5 +22,4 @@
 #define TOK_GREATOREQ 20
 #define TOK_EQUAL 21
 #define TOK_ASSIGN 22
-
-#endif /* __SYS__TOKENISE */
+#endif

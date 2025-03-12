@@ -1,18 +1,6 @@
 #include <effect.h>
-
 string query_classification(){return "crafts.description"; }
-
-//Desc[0]: short
-//Desc[1]: long
-//Desc[2]: adjective
-//Desc[3]: alias
-//Desc[4]: determinate
-
-//string* description = ({"bing", "bing", "bing", "bing", "bing"});
- //Whee. Global effect variables. Kids, don't try this at home.
-
 string* beginning(object thing, string* desc){
-   //description = desc;
    switch(sizeof(desc)){
       case 5:
          thing->add_property("determinate", desc[4]);
@@ -26,12 +14,10 @@ string* beginning(object thing, string* desc){
          thing->set_short(desc[0]);
    }
    return desc;
-}/*beginning()*/
-
+}
 string* merge_effect(object player, string* old_desc, string* new_desc){
    return new_desc;
-}/*merge_effect()*/
-
+}
 mixed* restart(object thing, string* description, int id){
    switch(sizeof(description)){
       case 5:
@@ -47,5 +33,3 @@ mixed* restart(object thing, string* description, int id){
    }
    return ({thing, description, id});
 }
-
-/*A SkankyCode Creation, by Rodion*/

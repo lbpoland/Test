@@ -2,10 +2,8 @@
 #define DOM_TITLE "the domain of admin"
 #define LORD "pinkfish"
 #define DOMAIN "admin"
-/* PLEASE re-describe me */
 inherit "/std/dom/cmn_mas";
 object board;
-
 void setup() {
   set_dom(DOMAIN);
   set_light(100);

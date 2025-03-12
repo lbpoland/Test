@@ -1,19 +1,4 @@
-/**
- * This handles the standard messages for attacks.  I cannot be bothered
- * rewriting the docs for this.
- * This handles the standard messages for the given damage types:
- *    blunt, sharp, pierce, fire.
- *
- *  There are also subtypes:
- *    blunt - hands, feet, tail, hoof, wrestle, pommel.
- *    sharp - claws, chew, slice, chop.
- *    pierce - bite, beak, stab, horns, tusks.
- * @author pinkfish
- */
-
 mapping weapon_mess;
-
-/** @ignore */
 void create() {
   weapon_mess = ([
     "blunt" : ({
@@ -248,11 +233,8 @@ void create() {
         }),
     ]);
 }
-
-/** @ignore */
 string parse_string(string mess, object him, object me, object wep,
                     string zone) {
-
    return replace( replace( mess, ({
       "$mposs$ $D", (string)wep->poss_short() }) ),
          ({ "$hname$", (string)him->query_name(),
@@ -271,26 +253,20 @@ string parse_string(string mess, object him, object me, object wep,
             "$wcname$", (string)wep->short(0),
             "$zname$", zone})
    );
-} /* parse_string() */
-
+}
 mixed query_message( int dam, string type, object him, object me,
                      string name, object wep, string zone) {
   int j;
   mixed ind;
   string tmp;
-
   if(!zone) {
     zone = "body";
   } else {
     if(zone[sizeof(zone)]-1 == 's')
       zone = zone[0..<2];
   }
-
   ind = wep->query_attack_message(name, type);
-
   if (!ind) {
-    // When we changed weapons to use AT_SKILL instead of AT_NAME
-    // it broke unarmed combat.
     if(type == "unarmed") {
       switch(name) {
       case "bite":
@@ -318,17 +294,13 @@ mixed query_message( int dam, string type, object him, object me,
       }
     }
   }
-
-  /* Find the correct message */
   while (j < sizeof(ind) && dam > ind[j]) {
     j += 2;
   }
   if (j >= sizeof(ind)) {
     j = sizeof(ind)-2;
   }
-
   ind = ind[j+1];
-  /* If it is a string, new format */
   if (stringp(ind)) {
     tmp = replace(ind,
                   ({ "$N", (string)me->the_short(),
@@ -341,7 +313,6 @@ mixed query_message( int dam, string type, object him, object me,
                        "$P", (string)him->the_poss_short(),
                        "$O", (string)him->query_objective(),
                        "$es", "es", "$s", "s" }) );
-
     ind = ({ replace( ind, ({ "$N", "you", "$p ", "your ",
                                 "$r", "you", "$o", "you",
                                 "$es", "", "$s", "",
@@ -350,7 +321,6 @@ mixed query_message( int dam, string type, object him, object me,
                                 "$I",  him->the_short(),
                                 "$P", him->the_poss_short(),
                                 "$O", him->query_objective(),
-                                
                                 }) ),
                tmp,
                tmp });
@@ -360,4 +330,4 @@ mixed query_message( int dam, string type, object him, object me,
     parse_string(ind[0], him, me, wep, zone),
       parse_string(ind[1], him, me, wep, zone),
       parse_string(ind[2], him, me, wep, zone)});
-} /* query_message() */
+}

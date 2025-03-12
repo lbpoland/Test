@@ -1,9 +1,5 @@
-// Only for use within CWC - Una 07.02.02
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
-
     set_name( "screen" );
     set_short( "cherry blossom shoji screen" );
     add_adjective( ({ "cherry", "blossom", "shoji" }) );
@@ -17,7 +13,4 @@ void setup() {
     set_allowed_room_verbs((["standing" : "stands", "sitting" : "sits" ]) );
     set_weight(20);
     set_value(400000);
-
-} /* setup() */
-
-	
+}

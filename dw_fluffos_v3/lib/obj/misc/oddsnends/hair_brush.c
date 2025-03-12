@@ -1,11 +1,4 @@
-/*
-Davyd
-Item
-For General Item Stores
-*/
-
 inherit "/std/object";
-
 void setup(){
     set_name("brush");
     set_short("stiff hair brush");

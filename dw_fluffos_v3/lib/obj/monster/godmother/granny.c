@@ -1,13 +1,10 @@
 inherit "/obj/monster";
 #include <panic.h>
 #include <armoury.h>
-
 void finish_up();
-
 int state, start_time, prodded;
 object lost;
 string safeplace;
-
 void setup() {
   start_time = time();
   set_name( "godmother" );
@@ -18,7 +15,6 @@ void setup() {
     "looks slightly uncomfortable and is currently glaring at her wand, "
     "which appears to be malfunctioning.  If you cross her, you might find "
     "yourself turned into a wombat or worse.\n" );
-
   set_race( "human" );
   set_guild( "witch" );
   set_level( 300 );
@@ -26,13 +22,11 @@ void setup() {
   set_language("general");
   set_response_mon_understand_anything(1);
   add_property( "anchor", 1);
-
   ARMOURY->request_item("hobnailed boots", 100)->move( this_object() );
   ARMOURY->request_item("antique black dress", 100)->move( this_object() );
   ARMOURY->request_item("witchs pointy hat", 100)->move( this_object() );
   ARMOURY->request_item("black witches cloak", 100)->move( this_object() );
   init_equip();
-
   add_respond_to_with(({ "yes" }), "#yes_response");
   add_respond_to_with(({ "@nod" }), "#yes_response");
   add_respond_to_with(({ "no" }), "#no_response");
@@ -41,26 +35,19 @@ void setup() {
   add_respond_to_with(({ "@think", "safe" }), "#think_safe");
   add_respond_to_with(({ "@think", "safety" }), "#think_safe");
   add_respond_to_with(({ "@womble" }), "#think_mended_drum");
-} /* setup() */
-
-
+}
 void do_panic(object pl) {
-
   string home;
   string nationality;
-
   nationality = pl->query_nationality();
-   
-  if ( !nationality ) { 
+  if ( !nationality ) {
       queue_command( "say Oops.. you haven't got a nationality, I can't "
         "send you home!");
       finish_up();
       return;
   }
-
   home = nationality->query_default_start_location();
   safeplace = home->query_short();
- 
   queue_command( "say I hope you're not foreign.  You know, where "
     "you gabble at me in heathen lingo and eat foreign muck and "
     "worship objects." );
@@ -69,12 +56,8 @@ void do_panic(object pl) {
   queue_command( "glare "+pl->query_name() );
   lost = pl;
   start_time = time();
-} /* do_panic() */
-
-
+}
 int query_waiting() { return time()-start_time; }
-
-
 void yes_response(object ob) {
   if (ob != lost)
     return ;
@@ -82,9 +65,7 @@ void yes_response(object ob) {
   queue_command( "say Think of somewhere safe." );
   prodded = 0;
   call_out("check_think", 30);
-} /* yes_response() */
-
-
+}
 void no_response(object ob) {
   if (ob != lost)
     return ;
@@ -93,20 +74,15 @@ void no_response(object ob) {
   queue_command( "pinch "+lost->query_name()+" cheek" );
   PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
   lost = 0;
-} /* no_response() */
-
-
+}
 void think_safe(object ob) {
   if (ob != lost)
-    return ; 
-  
+    return ;
   queue_command( "say Now the world will just rearrange itself "
     "to suit you." );
   PANIC_HANDLER->finish_panic(lost, PANIC_OK);
   lost = 0;
-} /* think_safe() */
-
-
+}
 void check_think() {
   if(!lost)
     return;
@@ -122,9 +98,7 @@ void check_think() {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* check_think() */
-
-
+}
 void event_exit(object ob, string message, object to) {
   if (ob == lost) {
     queue_command("hrmph");
@@ -134,12 +108,9 @@ void event_exit(object ob, string message, object to) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* event_exit() */
-
-
+}
 void event_fight_in_progress(object attacker, object attackee) {
   if (attackee == this_object()) {
-/* Someone is attacking us! */
     attacker->adjust_tmp_str(-4);
     attacker->adjust_tmp_con(-4);
     attacker->adjust_tmp_dex(-4);
@@ -154,21 +125,16 @@ void event_fight_in_progress(object attacker, object attackee) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* event_fight_in_progress() */
-
-
+}
 void hurry_up() {
   if (!lost) {
-    /* If the player has buggered off, we give up */
     queue_command( "blink" );
     queue_command( "say Where'd that bugger go?  Oh well.");
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
   else  check_think();
-} /* hurry_up() */
-
-
+}
 void finish_up() {
   if (lost) {
     queue_command( "say Well.  You took too long.  What a complete "
@@ -183,26 +149,20 @@ void finish_up() {
     queue_command( "scowl" );
   }
   PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
-} /* finish_up() */
-
-
+}
 void event_dest(object ob) {
   if (ob == lost) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* event_dest() */
-
-
+}
 void dest_me() {
   if (lost) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
   ::dest_me();
-} /* dest_me() */
-
-
+}
 int unambushable() {
   return 1;
 }

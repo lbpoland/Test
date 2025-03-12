@@ -1,11 +1,6 @@
-/* Coded by Talonia, Nov., '95*/
-/* Modified to expound on multiplaying by Arby, June 16, 1998 */
-
 #include "path.h"
 #include <library.h>
-
 inherit "/obj/monster";
-
 void setup() {
   set_name("womble");
   set_short("womble");
@@ -26,12 +21,11 @@ void setup() {
       "'Thank you, will you find my brooch for me?",
     ({({"@kick", "@punch"}), "womble"}),
       "cry"}));
-
   add_respond_to_with(({ ({ "hello", "hi", "gday", }),
                      ({ "womble", "all" }) }), ({ "'Hello $hcname$",
                                                     "greet $hname$" }));
   add_respond_to_with(
-                           ({ ({"good day", "greetings"}), 
+                           ({ ({"good day", "greetings"}),
          ({ "womble", "all" }) }), ({ "'Hello $hcname$",
                                         "bow deep $hname$" }));
   add_respond_to_with(
@@ -55,7 +49,6 @@ void setup() {
                            "womble" }), "slap $hname$");
   add_respond_to_with(({ ({ "@bing", "@womble", }),
                            "womble" }), "smile bri $hname$");
-
   load_chat(50, ({
     1, ":sobs loudly.",
     1, "'Boo Hoo!  I've lost my brooch!",
@@ -66,16 +59,14 @@ void setup() {
     2, "'Please find my brooch for me.",
     2, "'I lost my brooch in one of the rooms while I was reading all "+
        "the wonderful information here."}) );
-} /* setup() */
-
+}
 void event_enter(object obj, string mess, object from) {
   if( (obj->query_property("wombles brooch")) &&
       (obj->query_name() == "brooch") &&
       (environment(obj) == this_object()) ) {
     call_out("brooch", 1, ({ this_player() }) );
   }
-} /* event_enter() */
-
+}
 void brooch(mixed arg) {
   object item, tp;
   tp = arg[0];
@@ -87,7 +78,6 @@ void brooch(mixed arg) {
     do_command("'Wow!  My brooch!");
     do_command("'Thank you very much!");
   }
-
   do_command("'You may now enter the game by typing \"out\" in the foyer.");
   do_command("'Good Luck!");
   do_command("huggle "+(string)tp->query_short());
@@ -95,8 +85,7 @@ void brooch(mixed arg) {
   foreach(item in all_inventory()) {
     item->dest_me();
   }
-} /* brooch() */
-
+}
 int attack_by(object thing) {
   write("The womble smacks you round the head with her paw sending you "
   "flying across the room.\n");
@@ -107,11 +96,9 @@ int attack_by(object thing) {
   this_object()->stop_fight(thing);
   thing->stop_fight(this_object());
   return 0;
-} /* attack_by() */
-
+}
 int attack_ob(object thing) {
   this_object()->stop_fight(thing);
   thing->stop_fight(this_object());
   return 0;
-} /* attack_ob() */
-
+}

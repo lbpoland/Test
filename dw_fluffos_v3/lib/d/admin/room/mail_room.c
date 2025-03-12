@@ -1,16 +1,12 @@
 inherit "/std/room/basic_room";
-
 #include "path.h"
 #include <mail.h>
-
 #define NAME (string)this_player()->query_name()
 #define HIGHLORD() (master()->high_programmer(NAME))
-
 int do_add(string list, string name);
 varargs int do_list(string str);
 int do_create(string str);
 int do_remove(string list, string names);
-
 void setup() {
   set_short("Mail control room");
   set_long(
@@ -20,9 +16,7 @@ void setup() {
 "the room is a small control panel, with odd levers and lots of strange "
 "buttons.\n");
   set_light(100);
-
-  add_exit("south", ROOM + "development", "door"); 
-
+  add_exit("south", ROOM + "development", "door");
   add_item("important looking post office frog",
            "They are rushing around in a seemless unending hurry.  They are "
            "all wearing nice little hats that have the post office symbol on "
@@ -40,13 +34,10 @@ void setup() {
            "It is covered with odd levers and buttons.  Some of them are "
            "labeled in a readable script.  They are \"add\", \"list\", "
            "\"listcreate\" and \"remove\".");
-} /* setup() */
-
+}
 void init() {
   ::init();
-
   if (!this_player()) return;
-
   this_player()->add_command(
     "add", this_object(),
     "<string:small'list'> <string:long'names'>",
@@ -67,11 +58,9 @@ void init() {
     "listcreate", this_object(),
     "<string:small'list'>",
     (: do_create($4[0]) :) );
-} /* init() */
-
+}
 int do_add(string list, string name) {
   string *names;
-
   if (!MAIL_TRACK->query_list(list)) {
     notify_fail("The mailing list \"" + list + "\" does not exist.\n");
     return 0;
@@ -88,7 +77,6 @@ int do_add(string list, string name) {
   }
   foreach (name in names) {
     if (name[0] == '*') {
-      /* They are trying to add a controller. */
       name = name[1..];
       if (!"/secure/login"->test_user(name)) {
         write("The player \"" + name + "\" does not exist.\n");
@@ -108,11 +96,9 @@ int do_add(string list, string name) {
     }
   }
   return 1;
-} /* do_add() */
-
+}
 varargs int do_list(string str) {
   string *strs, *cont, creator;
-
   if (!str) {
     strs = MAIL_TRACK->query_mailing_lists();
     write("$I$5=Current mailing lists: " + query_multiple_short(strs) + ".\n");
@@ -134,11 +120,9 @@ varargs int do_list(string str) {
           query_multiple_short(strs) + ".\n");
   }
   return 1;
-} /* do_list() */
-
+}
 int do_remove(string list, string name) {
   string *names;
-
   if (!MAIL_TRACK->query_list(list)) {
     notify_fail("The mailing list \""+list+"\" does not exist.\n");
     return 0;
@@ -155,7 +139,6 @@ int do_remove(string list, string name) {
   }
   foreach (name in names) {
     if (name[0] == '*') {
-      /* They are trying to remove a controller. */
       name = name[1..];
       if (MAIL_TRACK->remove_controller(list, name)) {
         write("Removed " + name + " as a controller of \"" + list + "\".\n");
@@ -173,8 +156,7 @@ int do_remove(string list, string name) {
     }
   }
   return 1;
-} /* do_remove() */
-
+}
 int do_create(string str) {
   if (MAIL_TRACK->query_list(str)) {
     notify_fail("The list \"" + str + "\" already exists.\n");
@@ -190,4 +172,4 @@ int do_create(string str) {
   }
   notify_fail("Failed to create the mailing list.\n");
   return 0;
-} /* do_create() */
+}

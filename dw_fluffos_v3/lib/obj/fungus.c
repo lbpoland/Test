@@ -1,16 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: fungus.c,v 1.7 2001/09/24 21:56:19 danbala Exp $
- */
 #include <move_failures.h>
-
 inherit "/obj/food";
-
 int delay, large_weight, stage;
 string adjs, extra, type, *messages;
 void next_stage();
-
 void create() {
   do_setup++;
   ::create();
@@ -34,65 +26,47 @@ void create() {
     this_object()->setup();
    if ( clonep( this_object() ) )
       call_out( "next_stage", delay / 2 + random( delay ) );
-} /* create() */
-
+}
 int query_growing() { return 1; }
-
 int query_delay() { return delay; }
-
 void set_delay( int number ) {
   if ( number < 60 )
     number = 60;
   delay = number;
   if ( remove_call_out( "next_stage" ) > -1 )
     call_out( "next_stage", delay / 2 + random( delay ) );
-} /* set_delay() */
-
+}
 int query_large_weight() { return large_weight; }
-
 int query_stage() { return stage; }
-
-void set_stage( int number ) { 
+void set_stage( int number ) {
   if(number > 0) {
     stage = number - 1;
   }
   this_object()->next_stage();
 }
-
 void set_large_weight( int number ) { large_weight = number; }
-
 string query_adjs() { return adjs; }
-
 void set_adjs( string words ) { adjs = words; }
-
 string query_extra() { return extra; }
-
 void set_extra( string words ) { extra = words; }
-
 string query_type() { return type; }
-
 void set_type( string word ) { type = word; }
-
 string *query_messages() { return messages; }
-
 void set_messages( string *words ) {
   if ( sizeof( words ) != 5 ) {
     write( "WARNING: there must be five messages.\n" );
     return;
   }
   messages = words;
-} /* set_messages() */
-
+}
 void init() {
    ::init();
    if ( stage > 5 )
       this_player()->add_command( "pick", this_object() );
-} /* init() */
-
+}
 int test_non_spore( object thing ) {
   return ( (int)thing->query_stage() > 5 );
-} /* test_non_spore() */
-
+}
 void setup_spore() {
   set_name("pile");
   set_short("small, dusty pile of fungus spores");
@@ -114,15 +88,13 @@ void setup_spore() {
   set_type( type );
   set_messages( messages );
 }
-
 object make_spore( object place ) {
   object spore;
   spore = clone_object( explode( file_name( this_object() ), "#" )[0]);
   spore->setup_spore();
   spore->move( place );
   return spore;
-} /* make_spore() */
-
+}
 void next_stage() {
   int i, number;
   string words;
@@ -134,10 +106,10 @@ void next_stage() {
   else
     words = type;
   switch ( stage ) {
-    case 0 .. 4 : /* dormant spore */
+    case 0 .. 4 :
       this_object()->setup_spore();
       break;
-    case 5 : /* small */
+    case 5 :
       things = match_objects_for_existence( pluralize(words),
                                             ({ environment() }) );
       things = filter_array( things, "test_non_spore", this_object() );
@@ -163,7 +135,7 @@ void next_stage() {
         if ( living( things[ i ] ) )
           things[ i ]->add_command( "pick", this_object() );
       break;
-    case 6 : /* medium */
+    case 6 :
       tell_room( environment(), replace( messages[ 1 ], "$type$", words ) );
       set_short( "medium "+ words );
       if ( adjs )
@@ -175,7 +147,7 @@ void next_stage() {
           extra : "" ) +"\n" );
       set_weight( large_weight / 2 );
       break;
-    case 7 : /* large */
+    case 7 :
       tell_room( environment(), replace( messages[ 2 ], "$type$", words ) );
       set_short( "large "+ words );
       if ( adjs )
@@ -187,26 +159,24 @@ void next_stage() {
           "\n" );
       set_weight( large_weight );
       break;
-    case 8 .. 10 : /* spore production */
+    case 8 .. 10 :
       break;
-    case 11 : /* spore release */
+    case 11 :
       if(!environment() || base_name(environment()) == "/room/rubbish")
         break;
-      
       tell_room( environment(), replace( messages[ 3 ], "$type$", words ) );
       number = 2 + random( 3 );
       for ( i = 0; i < number; i++ )
         make_spore( environment() );
       break;
-    default : /* death */
+    default :
       tell_room( environment(), replace( messages[ 4 ], "$type$", words ) );
       move( "/room/rubbish" );
       return;
   }
   stage++;
   call_out( "next_stage", delay / 2 + random( delay ) );
-} /* next_stage() */
-
+}
 int do_get() {
   if ( stage != -1 ) {
     write( the_short() +" is currently growing.  You could \"pick\" "+
@@ -216,10 +186,8 @@ int do_get() {
   if ( move( this_player() ) == MOVE_OK )
     return 1;
   return 0;
-} /* do_get() */
-
+}
 int do_take() { return do_get(); }
-
 int do_pick() {
   if ( stage < 6 )
     return 0;
@@ -228,24 +196,20 @@ int do_pick() {
   if ( move( this_player() ) != MOVE_OK )
     call_out( "too_heavy_mess", 0, this_player() );
   return 1;
-} /* do_pick() */
-
+}
 void too_heavy_mess( object thing ) {
   if ( thing )
     tell_object( thing, "You are carrying too much to lift the "+ type +
         " as well, so you leave it on the ground.\n" );
-} /* too_heavy_mess() */
-
+}
 string query_medium_short() {
   if ( adjs )
     return adjs +" "+ type;
   return type;
-} /* query_medium_short() */
-
+}
 mapping query_static_auto_load() { return int_query_static_auto_load(); }
-
 void init_dynamic_arg( mapping args, object) {
   ::init_dynamic_arg( args );
   stage = -1;
   remove_call_out( "next_stage" );
-} /* init_dynamic_arg() */
+}

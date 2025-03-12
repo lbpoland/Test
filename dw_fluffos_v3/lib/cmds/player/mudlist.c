@@ -1,37 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: mudlist.c,v 1.3 2002/07/18 23:21:36 ceres Exp $
- * $Log: mudlist.c,v $
- * Revision 1.3  2002/07/18 23:21:36  ceres
- * Added baselib
- *
- * Revision 1.2  2000/03/21 21:04:38  ceres
- * Fixed typo
- *
- * Revision 1.1  1998/01/06 05:29:43  ceres
- * Initial revision
- * 
-*/
-/*    /cmds/player/mudlist.c
- *    from the Nightmare IV LPC Library
- *    gives information about muds
- *    created by Descartes of Borg 950623
- *    Modified for Discworld by Turrican 1-11-95
- */
-
 #define INTERMUD_D "/net/intermud3/intermud"
-
 int cmd(string str) {
   mixed *info;
   string *list;
   mapping borg;
   string mud;
-  
   if( str && str != "") {
     mapping tmp;
     string opt, tmpstr;
-    
     tmp = (mapping)INTERMUD_D->GetMudList();
     if( str[0] != '-' ) str = "-n " + str;
     opt = str[1..1];
@@ -39,7 +14,6 @@ int cmd(string str) {
     borg = ([]);
     foreach(mud, info in tmp) {
       int x, y, z;
-      
       switch(opt) {
       case "m":
         x = 5;
@@ -58,7 +32,7 @@ int cmd(string str) {
         borg = ([ mud : info ]);
         break;
       }
-      else if( y > z && tmpstr[0..z-1] == str && info[0] == -1 ) 
+      else if( y > z && tmpstr[0..z-1] == str && info[0] == -1 )
         borg[mud] = info;
     }
   }
@@ -75,7 +49,6 @@ int cmd(string str) {
   else if( sizeof(borg) == 1 ) {
     string msg, svc;
     int val, comma = 0;
-    
     mud = keys(borg)[0];
     msg = "\nDetailed information on %^GREEN%^" + mud + "%^RESET%^:\n";
     msg += "Server: " + borg[mud][7] + " (" + borg[mud][8] + ")\n";
@@ -95,9 +68,9 @@ int cmd(string str) {
     }
     msg += "\nHost: " + borg[mud][1] + "\n";
     msg += "Telnet port: " + borg[mud][2] + "\n";
-    if( borg[mud][11]["http"] ) 
+    if( borg[mud][11]["http"] )
       msg += "HTTP port (World Wide Web): " + borg[mud][11]["http"]+"\n";
-    if( borg[mud][11]["ftp"] ) 
+    if( borg[mud][11]["ftp"] )
       msg += "FTP port (File Transfer): " + borg[mud][11]["ftp"] + "\n";
     if( borg[mud][11]["rcp"] )
       msg += "RCP port (Remote Creator): " + borg[mud][11]["rcp"] + "\n";
@@ -114,13 +87,11 @@ int cmd(string str) {
   previous_object()->more_string(implode(list, "\n")+"\n", "Mudlist");
   return 1;
 }
-
 int alphabet(string a, string b) {
     if((a = lower_case(a)) == (b = lower_case(b))) return 0;
     else if(a > b) return 1;
     else return -1;
 }
-
 void help() {
     message("help", "Syntax: <mudlist>\n"
       "        <mudlist -dmn [arg]>\n\n"
@@ -138,15 +109,12 @@ void help() {
       "begins with the string \"idea\".\n\n"
       "See also: finger, mail, rwho, tell", this_player());
 }
-
 void clean_up() {
   destruct(this_object());
 }
-
 void reset() {
   destruct(this_object());
 }
-
 void dest_me() {
   destruct(this_object());
 }

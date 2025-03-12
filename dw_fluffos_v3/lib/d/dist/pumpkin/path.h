@@ -1,4 +1,3 @@
-/* Created at Thu Jun 22 04:14:19 2000 */
 #undef CITY
 #define CITY "/d/dist/pumpkin/"
 #define CITYROOM (CITY "inherit/cityroom")

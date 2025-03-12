@@ -1,5 +1,4 @@
 inherit "/std/races/base";
-
 void setup() {
    set_name( "wombat" );
    set_long( "One of several stocky marsupials (family Vombatidae) "
@@ -7,8 +6,7 @@ void setup() {
    set_height( 40 );
    set_weight( 600 );
    set_desc( "a stocky wombat, looking for something to nibble" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 100, 0,
          "left eye", "right eye", "left ear", "right ear", "skull" }),
       "left eye", "eye", ({ "head", 1, 0 }),
@@ -42,47 +40,34 @@ void setup() {
       "tail", "tail", ({ 0, 25, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "teeth", "tail", "skin" });
    unrottable = ({ "skull", "teeth" });
    set_skin( "fur" );
-
    set_stats( ({ 2, 4, -2, 6, -4 }) );
-} /* setup() */
-
+}
 void new_set_level( mixed *args ) {
    int level;
    object thing;
-
    if( sizeof(args) < 2 || !args[1] )
       return;
-
    level = args[ 0 ];
    thing = args[ 1 ];
-
    level = 1 + ( 2 * level + random( level ) ) / 10;
-
    thing->add_ac( "blunt", "blunt", level );
    thing->add_ac( "sharp", "sharp", 2 + level );
    thing->add_ac( "pierce", "pierce", 2 * level );
-} /* new_set_level() */
-
+}
 void set_unarmed_attacks( object thing ) {
    int number;
-
    number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
    number = 4 + sqrt( number ) / 2;
-
    thing->remove_attack( "hands" );
    thing->remove_attack( "feet" );
-
    thing->remove_attack( "chew" );
    thing->remove_attack( "claws" );
-
    thing->add_attack( "chew", 100, ({ 3 * number, 0, number }),
       "sharp", "unarmed", 0 );
    thing->add_attack( "claws", 50, ({ ( 3 * number ) / 2, number, number }),
       "sharp", "unarmed", 0 );
-
    thing->tactics( "response dodge" );
-} /* set_unarmed_attacks() */
+}

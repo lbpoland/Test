@@ -1,49 +1,34 @@
 inherit "/std/room/basic_room";
-
 #include <money.h>
-
-//#define DEBUGGER "presto"
-
 #define MAX_OBJECTS 12
-
 nosave private object *list;
 nosave private int reused;
-
 void setup() {
   set_short( "vault room" );
   set_long( "This is the vault for money.\n" );
   set_keep_room_loaded(1);
   list = ({ });
 }
-
 string long(string word, int dark) {
   if(query_verb() == "scry" )
     return "empty space.";
-  
   return ::long(word, dark);
 }
-
 int no_init() { return 1; }
-
-// add to the list of objects.
 void add_to_list(object ob) {
   if(sizeof(list) >= MAX_OBJECTS) {
     ob->move("/room/rubbish");
-
 #ifdef DEBUGGER
     if (this_player() == find_player(DEBUGGER))
       tell_creator(DEBUGGER,
                    "list too large... throwing away %O\n", ob);
 #endif
-
     return;
   }
-
 #ifdef DEBUGGER
   if (this_player() == find_player(DEBUGGER))
     tell_creator(DEBUGGER, "Saving %O\n", ob);
 #endif
-
   if (member_array(ob, list) > -1)  {
     log_file("MONEY_RECYCLE", ctime(time()) + "Same object (%O) added twice, this "
              "time by %O. Call stack is %O, %O.  CMD == %s\n",
@@ -51,7 +36,6 @@ void add_to_list(object ob) {
              this_player()->query_current_cmd());
     return;
   }
-
   if (!environment(ob)  ||
       environment(ob)->test_remove(ob, ob->drop(this_object()),
                                    this_object()))
@@ -66,19 +50,13 @@ void add_to_list(object ob) {
   else
     log_file("MONEY_RECYCLE", ctime(time()) + "Could not move %O from %O (%s) to here\n",
              ob, environment(ob), environment(ob)->short());
-
 #ifdef DEBUGGER
   if (this_player() == find_player(DEBUGGER))
     tell_creator(DEBUGGER, "list is now %O\n", list);
 #endif
 }
-
 object get_money_ob() {
    object ob;
-
-   // Don't do any recycling coz there's some bad money about.
-//   return clone_object(MONEY_OBJECT);
-   
    if(sizeof(list)) {
       ob = list[0];
       if(ob) {
@@ -102,17 +80,13 @@ object get_money_ob() {
    if(!ob) {
       ob = clone_object(MONEY_OBJECT);
    }
-   
    return ob;
 }
-
 object *query_list() { return list; }
-
 mixed stats() {
   return ::stats() + ({
     ({ "list", sizeof(list) }),
       ({ "reused", reused }),
   });
 }
-
 int query_theft_command() { return -1; }

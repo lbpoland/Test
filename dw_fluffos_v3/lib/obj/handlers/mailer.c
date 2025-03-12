@@ -1,34 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: mailer.c,v 1.27 2003/03/19 20:44:14 ceres Exp taffyd $
- */
-
-/**
- * The mailer handler object.  This is used to send mail and do oyther
- * stuff related to mail.
- *  The new mailer object ! *shiver*
- *  Thanks to Wodan and Pinkfish for ideas and help.
- *  By Turrican@Discworld, May 1995.
- * @author Turrican
- * @started May 1995
- *
- * @change 1-10-96, Turrican
- *  Changed the way Ccs and including yourself get done
- * @change 17-09-97, Olorin
- *  Swapped 'r' and 'R' to make don't sent to CC's the default use
- */
-
 #include <mime.h>
 #include <mail.h>
 #include <localtime.h>
 #include <player_handler.h>
-
 #define FOLDER_H "/obj/handlers/folder_handler.c"
 #define MAIL_PATH "/save/mail/"
 #define COLS (int)owner->query_cols()
 #define ROWS (int)owner->query_rows()
 #undef CONVERTER
-
 nosave class mail_header *folder;
 nosave int *deleted, *newish, no_menu, last_read, full_header;
 nosave string current, to, subject, cc, mailrc;
@@ -93,9 +71,6 @@ nosave string *ignore = ({
   "return-path"
 });
 string *folder_names;
-
-/* PROTOTYPES */
-
 varargs protected void rm_message(string input);
 protected void unrm_message(string input);
 private void print_message(int number);
@@ -122,12 +97,8 @@ void read_mail(string str, string sub);
 private void forward_email(int number);
 private void write_message();
 private void check_external_mail();
-
-/* BEGIN */
-
 private void create() {
     mapping aliases;
-
     seteuid("Mailer");
     no_menu = full_header = 0;
     last_read = -1;
@@ -147,20 +118,16 @@ private void create() {
     } else {
         check_external_mail();
     }
-} /* create() */
-
+}
 #define HEADER_NAME 1
 #define HEADER_VAL  2
-
 private string folder_filename(string name) {
     return MAIL_PATH+name[0..0] + "/"  + name;
 }
-
 private string strip_header(string message) {
     mixed *ra;
     int i;
     string header;
-
     if ((i = strsrch(message, "\n\n")) == -1) {
         return message;
     }
@@ -179,12 +146,10 @@ private string strip_header(string message) {
     }
     return implode(ra[0], "") + message;
 }
-
 private void check_external_mail() {
     string *dir, fname, mess, t, ccs;
     class mail_message msg = new(class mail_message);
     class mime_header hdr;
-
     dir = unguarded((: get_dir, EXTERNAL_MAIL_PATH :));
     if (!dir) {
         call_out((: check_external_mail :), 60);
@@ -215,43 +180,13 @@ private void check_external_mail() {
         unguarded((: rm, EXTERNAL_MAIL_PATH + fname :));
     }
     call_out((: check_external_mail :), 60);
-} /* check_external_mail() */
-
-/**
- * This method sets the call back fuinction to use when
- * the mailer has finished. ({ ob, func })
- * @param bing the call back function
- */
+}
 void set_do_this_last(mixed *bing) { do_this_last = bing; }
-/**
- * This method returns the call back fuinction to use when
- * the mailer has finished. ({ ob, func })
- * @return the call back function
- */
 mixed *query_do_this_last() { return do_this_last; }
-
-/* For backwards compatibility. */
-/**
- * This method allows a message to be mailed.  It checks the previous
- * object to make sure it is one of the allowed set to
- * do mailing.
- * @param t who it is to
- * @param from who it is from
- * @param sub the subject of the message
- * @param ccs the carbon copy recipients
- * @param body the body of the message
- * @param only_to only mail to the to address
- * @param flag prevent this_player() from getting the messages if flag != 0
- * @example
- * MAIL_HANDLER->do_mail_message("pinkfish", "gumboot, killer tomato":,
- *                               "About the tomatoes", "",
- *                   "The grass ius greener yesterday,.\nYours\nGumboot.");
- */
 varargs int do_mail_message(string t, string from, string sub, string ccs,
   string body, int, string only_to, int flag) {
     string *cc_e, *goto;
     class mail_message msg;
-
     if(file_name(previous_object())[0..12] != "/secure/login" &&
        file_name(previous_object())[0..13] != "/secure/nlogin" &&
        file_name(previous_object())[0..13] != "/obj/handlers/" &&
@@ -272,7 +207,7 @@ varargs int do_mail_message(string t, string from, string sub, string ccs,
        file_name(previous_object()) != "/d/am/buildings/council/court" &&
        file_name(previous_object()) != "/d/klatch/djel/city/palace/council_court" &&
        file_name(previous_object()) != "/d/guilds/error_tracker" &&
-       file_name(previous_object())[0..25] != "/d/ram/ohulan/market/post2") { 
+       file_name(previous_object())[0..25] != "/d/ram/ohulan/market/post2") {
         printf("MAILER: illegal access (%O).\n", file_name(previous_object()));
         return 0;
     }
@@ -304,44 +239,16 @@ varargs int do_mail_message(string t, string from, string sub, string ccs,
     msg->subject = sub;
     FOLDER_H->add_it(msg, flag);
     return 1;
-} /* do_mail_message() */
-
-/**
- * This method returns the mail information which is placed into the
- * the finger command.
- * @param pname the name of the player
- * @return the function mail string
- */
+}
 string finger_mail(string pname) {
     return FOLDER_H->finger_mail(lower_case(pname));
-} /* finger_mail() */
-
-/**
- * This method returns a string saying if the player has new mail or not.
- * This is what is used when the player first logs on.
- * @param pname the name of the player
- * @return the new mail string
- * @example
- * str = MAIL_HANDLER->new_mail(this_player()->query_name());
- */
+}
 string new_mail(string pname) {
     return FOLDER_H->check_mail(lower_case(pname));
-} /* new_mail() */
-
-/**
- * This method prints the prompt which is used in the main mail loop.
- */
+}
 private void prompt() {
     printf("\nCommand (h for main menu): ");
-} /* prompt() */
-
-/**
- * This method is the main entry point to the mailer.  It is
- * what is called to start up the system when a mailer is used.
- * @example
- * mailer = clone_object(MAIL_HANDLER);
- * mailer->read_mail();
- */
+}
 void read_mail(string str, string sub) {
     if (this_player()->query_property("guest")) {
         write("Sorry, mailer access is not allowed for guests.\n");
@@ -352,7 +259,6 @@ void read_mail(string str, string sub) {
         }
         return;
     }
-
     if (!load_me()) {
         if (do_this_last && objectp(do_this_last[0])) {
             call_other(do_this_last[0], do_this_last[1], do_this_last[2]);
@@ -371,15 +277,12 @@ void read_mail(string str, string sub) {
         }
         return;
     }
-    MAIL_TRACK->add_mailer(this_object(), owner->query_name()); 
+    MAIL_TRACK->add_mailer(this_object(), owner->query_name());
     main_menu("inbox");
     return;
-} /* read_mail() */
-
-/** @ignore yes */
+}
 varargs private void main_menu(string fname, int flag, int *range) {
     int i, size, offs, cols, fromcols, statcols;
-
     cols = COLS;
     printf("%|=*s", cols, "" + mud_name() + " mailer system version 2.0\n\n");
     if (!strlen(fname)) {
@@ -431,11 +334,11 @@ varargs private void main_menu(string fname, int flag, int *range) {
         printf(owner->
           fix_string(sprintf("%s%-6s %-*.*s %-*.*s%s\n",
               (last_read == i+offs?
-                "%^REVERSE%^":""), 
+                "%^REVERSE%^":""),
               (last_read == i+offs?">":" ")+
               folder[i+offs]->status+
               " " + (i+offs+1), statcols, statcols, "From: " +
-              folder[i+offs]->from, fromcols, fromcols, 
+              folder[i+offs]->from, fromcols, fromcols,
               "Subject: "+
               replace_string(terminal_colour(folder[i+offs]->subject,
                   ([ ])), "%", "%%"),
@@ -448,18 +351,10 @@ varargs private void main_menu(string fname, int flag, int *range) {
       "To read next unread message, press <return>.\n");
     printf("Command: ");
     input_to("read_loop");
-} /* main_menu() */
-
-/** @ignore yes */
+}
 protected void read_loop(string input) {
     int i, num;
     string s1, s2, comm, *tmp;
-
-    /*
-     * ok this should (theoreticaly) do some clever things and get the
-     * message number being reffered to out of the junk.  But then again,
-     * maybe not.
-     */
     num = 0;
     i = 0;
     if (sscanf(input, "%d%s", num, input) != 2) {
@@ -477,13 +372,13 @@ protected void read_loop(string input) {
         input = ""+num+" "+input;
     switch(comm) {
     case "q" :  if (current == "inbox") {
-            if (sizeof(folder) && 
-              (sizeof(folder) != sizeof(newish)) && 
+            if (sizeof(folder) &&
+              (sizeof(folder) != sizeof(newish)) &&
               (sizeof(deleted) != sizeof(folder))) {
                 printf( "\nMove read message(s) to \"received\" folder? "
                   "(y/[n]): ");
                 input_to("get_yesno");
-                break; 
+                break;
             }
         }
         delete_it(current, 1);
@@ -495,7 +390,7 @@ protected void read_loop(string input) {
         }
         printf( "\nDelete which messages (number or range): " );
         input_to("rm_message");
-        break; 
+        break;
     case "u" :
         if (input != "") {
             unrm_message(input);
@@ -516,7 +411,7 @@ protected void read_loop(string input) {
         if (input != "") {
             get_recipient(input);
             break;
-        } 
+        }
         printf( "\nRecipient: " );
         input_to("get_recipient");
         break;
@@ -544,7 +439,7 @@ protected void read_loop(string input) {
         break;
     case "i" :
         printf("\nHere's the index of your folders:\n");
-        printf("\n%-#*s\n", COLS, implode(folder_names, "\n")); 
+        printf("\n%-#*s\n", COLS, implode(folder_names, "\n"));
         prompt();
         input_to("read_loop");
         break;
@@ -591,7 +486,7 @@ protected void read_loop(string input) {
           "separated by a comma: ");
         input_to("move_message");
         break;
-    case "h" :  
+    case "h" :
         if (input != "") {
             main_menu(current, 1, expand_range(input));
             break;
@@ -625,14 +520,11 @@ protected void read_loop(string input) {
         printf("\nUnknown command.  Use \"?\" for help.\n");
         prompt();
         input_to("read_loop");
-        break; 
+        break;
     }
-} /* read_loop() */
-
-/** @ignore yes */
+}
 protected void get_yesno(string input) {
     int bing, i;
-
     if (!input || (input == "")) {
         printf("No.\n");
         delete_it(current, 1);
@@ -645,20 +537,18 @@ protected void get_yesno(string input) {
     if (lower_case(input) == "y") {
         bing = sizeof(folder);
         for (i = 0; i < bing; i++) {
-            if ((member_array(i, newish) == -1) && 
+            if ((member_array(i, newish) == -1) &&
               (member_array(folder[i]->number, deleted) == -1)) {
-                move_message(""+(i+1)+" received", 1); 
+                move_message(""+(i+1)+" received", 1);
             }
         }
     }
     delete_it(current, 1);
     return;
-} /* get_yesno() */
-
+}
 private void forward_email(int number) {
     int i;
     string email, body;
-
     if (!number) {
         if (!(i = sizeof(folder))) {
             printf("No messages in folder.\n");
@@ -677,7 +567,7 @@ private void forward_email(int number) {
         }
         else if (last_read > -1)
             number = last_read+1;
-        else 
+        else
             number = i;
     }
     if (sizeof(folder) < number) {
@@ -705,22 +595,18 @@ private void forward_email(int number) {
     }
     prompt();
     input_to("read_loop");
-} /* forward_mail() */
-
+}
 private string rewrite_local(string rcpt) {
     string tmpr;
-
     if ((tmpr = FOLDER_H->check_local(rcpt))) {
         return tmpr;
     }
     return rcpt;
-} /* rewrite_local() */
-
+}
 varargs private void reply_message(int number, int flag) {
     int i;
     string body;
     class mime_header hdr;
-
     if (!number) {
         if (!(i = sizeof(folder))) {
             printf("No messages in folder.\n");
@@ -739,7 +625,7 @@ varargs private void reply_message(int number, int flag) {
         }
         else if (last_read > -1)
             number = last_read+1;
-        else 
+        else
             number = i;
     }
     if (sizeof(folder) < number) {
@@ -768,7 +654,6 @@ varargs private void reply_message(int number, int flag) {
     }
     if (!flag) {
         string tmp;
-
         cc = hdr->header_m["cc"];
         tmp = hdr->header_m["to"];
         if (tmp) {
@@ -789,13 +674,10 @@ varargs private void reply_message(int number, int flag) {
     }
     printf("Include original message? (y/[n]/q) ");
     input_to("finish_reply_message", 0, number);
-} /* reply_message() */
-
-/** @ignore yes */
+}
 protected void finish_reply_message(string input, int number) {
     int flag, i;
     string s1;
-
     if (!input || input == "" || lower_case(input)[0] != 'y') {
         if (lower_case(input)[0] == 'q') {
             cc = 0;
@@ -810,16 +692,14 @@ protected void finish_reply_message(string input, int number) {
     subject = folder[number]->subject;
     if (sscanf(subject, "Re:#%d %s", i, s1) != 2)
         subject = "Re:#1 " + subject;
-    else 
+    else
         subject = sprintf("Re:#%d %s", (i+1), s1);
     printf("Press return for a subject of \"%s\"\nSubject: ", subject);
     if (flag)
         input_to("get_subject", 0, ++number, 1);
     else
         input_to("get_subject");
-} /* finish_reply_message() */
-
-/** @ignore yes */
+}
 protected void change_folder(string input) {
     if (!input || input == "") {
         prompt();
@@ -837,14 +717,11 @@ protected void change_folder(string input) {
         return;
     }
     delete_it(current, 0, input);
-} /* change_folder() */
-
-/** @ignore yes */
+}
 protected void get_recipient(string input) {
     string *str, *full, nn;
     int i;
     mixed *addrs;
-
     if (!input || input == "") {
         printf("No recipient given: aborting.\n");
         prompt();
@@ -862,11 +739,11 @@ protected void get_recipient(string input) {
         if (!valid_name(str[i])) {
             printf("%s is not a valid recipient.\n", str[i]);
             str = delete(str, i, 1);
-            full = delete(full, i--, 1); 
+            full = delete(full, i--, 1);
         }
     }
     if (sizeof(full))
-        to = implode(full, ","); 
+        to = implode(full, ",");
     else {
         if (no_menu) {
             delete_it("inbox", 1);
@@ -879,9 +756,7 @@ protected void get_recipient(string input) {
     subject = "";
     printf("Subject: ");
     input_to("get_subject");
-} /* get_recipient() */
-
-/** @ignore yes */
+}
 varargs protected void get_subject(string input, int number, int flag) {
     if ((!input || input == "") && (!subject || subject == "")) {
         printf("No subject given: aborting.\n");
@@ -897,30 +772,24 @@ varargs protected void get_subject(string input, int number, int flag) {
         subject = input;
     printf("Cc: ");
     input_to("get_cc", 0 , number, flag);
-} /* get_subject() */
-
+}
 private int valid_name(string str) {
     string mud;
-
     str = lower_case(str);
-    if (!sscanf(str, "%s@%s", str, mud) || 
+    if (!sscanf(str, "%s@%s", str, mud) ||
       lower_case(mud) == lower_case(mud_name())) {
-        /* local...  */
         return (int)PLAYER_HANDLER->test_user(str) ||
         (int)MAIL_TRACK->query_list(str);
     }
     return 1;
-} /* valid_name() */  
-
-/** @ignore yes */
+}
 varargs protected void get_cc(string input, int number, int flag) {
     string *str, body, *full, nn;
     int i;
     mixed *addrs;
-
     if (!input || input == "**" || input == "") {
         if (number) {
-            body = FOLDER_H->load_message(owner->query_name(), current, 
+            body = FOLDER_H->load_message(owner->query_name(), current,
               folder[number-1]->number);
             if (!body) {
                 prompt();
@@ -931,7 +800,7 @@ varargs protected void get_cc(string input, int number, int flag) {
                 finish_write_message("> " + replace_string(body, "\n", "\n> ") + "\n");
                 return;
             }
-            owner->do_edit("> " + replace_string(body, "\n", "\n> ") + "\n", 
+            owner->do_edit("> " + replace_string(body, "\n", "\n> ") + "\n",
               "finish_write_message");
             return;
         }
@@ -958,13 +827,10 @@ varargs protected void get_cc(string input, int number, int flag) {
         cc = implode(full, ",");
     printf("Cc: ");
     input_to("get_cc", 0, number, flag);
-}  /* get_cc() */
-
+}
 private void write_message() {
     owner->do_edit(0, "finish_write_message");
-} /* write_message() */
-
-/** @ignore yes */
+}
 void finish_write_message(string input) {
     if (!input || input == "") {
         if (no_menu) {
@@ -977,15 +843,12 @@ void finish_write_message(string input) {
     }
     printf("Cc: ");
     input_to("get_cc_after", 0, input);
-} /* finish_write_message() */
-
-/** @ignore yes */
+}
 protected void get_cc_after(string input, string body) {
     mixed *goto, cc_e, *addrs;
     class mail_message msg;
     string *str, *full, nn;
     int i;
-
     if (!input || input == "**" || input == "") {
         body += owner->append_signature();
         FOLDER_H->mark_read(owner->query_name(), current, newish);
@@ -1040,8 +903,7 @@ protected void get_cc_after(string input, string body) {
         cc = implode(full, ",");
     printf("Cc: ");
     input_to("get_cc_after", 0, body);
-} /* get_cc_after() */
-
+}
 varargs private void delete_it(string fname, int last, string newish_folder) {
     if (!fname)
         fname = current;
@@ -1064,12 +926,10 @@ varargs private void delete_it(string fname, int last, string newish_folder) {
         main_menu(fname);
     else
         main_menu(newish_folder);
-} /* delete_it() */
-
-/** @ignore yes */
-protected void finish_delete_it(string input, string fname, int last, 
+}
+protected void finish_delete_it(string input, string fname, int last,
   string newish_folder) {
-    if (lower_case(input) == "n" || (input && input != "" && 
+    if (lower_case(input) == "n" || (input && input != "" &&
         lower_case(input) != "y")) {
         printf("Keeping message(s).\n");
         deleted = ({ });
@@ -1106,13 +966,10 @@ protected void finish_delete_it(string input, string fname, int last,
     else
         main_menu(newish_folder);
     return;
-} /* finish_delete_it() */
-
-/** @ignore yes */
+}
 varargs protected void rm_message(string input, int flag) {
     int i, tmp;
     int *range;
-
     if (!input || input == "") {
         prompt();
         input_to("read_loop");
@@ -1121,7 +978,7 @@ varargs protected void rm_message(string input, int flag) {
     range = expand_range(input);
     tmp = sizeof(range);
     for (i = 0; i < tmp; i++) {
-        if (member_array(folder[range[i]-1]->number, 
+        if (member_array(folder[range[i]-1]->number,
             deleted) == -1) {
             newish -= ({ range[i]-1 });
             deleted += ({ folder[range[i]-1]->number });
@@ -1133,13 +990,10 @@ varargs protected void rm_message(string input, int flag) {
         prompt();
         input_to("read_loop");
     }
-} /* rm_message() */
-
-/** @ignore yes */
+}
 protected void unrm_message(string input) {
     int i, tmp;
     int *range;
-
     if (!input || input == "") {
         prompt();
         input_to("read_loop");
@@ -1148,7 +1002,7 @@ protected void unrm_message(string input) {
     range = expand_range(input);
     tmp = sizeof(range);
     for (i = 0; i < tmp; i++) {
-        if (member_array(folder[range[i]-1]->number, 
+        if (member_array(folder[range[i]-1]->number,
             deleted) > -1) {
             deleted -= ({ folder[range[i]-1]->number });
             folder[range[i]-1]->status = "U";
@@ -1157,14 +1011,11 @@ protected void unrm_message(string input) {
     }
     prompt();
     input_to("read_loop");
-} /* unrm_message() */
-
-/** @ignore yes */
+}
 protected void forward_message(string input) {
     int number, i;
     string *str, *full, nn;
     mixed *addrs;
-
     if (!input || input == "") {
         prompt();
         input_to("read_loop");
@@ -1175,7 +1026,7 @@ protected void forward_message(string input) {
         prompt();
         input_to("read_loop");
         return;
-    } 
+    }
     if (number > sizeof(folder) || !number) {
         printf("Oh dear. No message with that number.\n");
         prompt();
@@ -1206,9 +1057,7 @@ protected void forward_message(string input) {
     cc = 0;
     printf("Edit outgoing message? (y/[n]) ");
     input_to("edit_it", 0, number);
-} /* forward_message() */
-
-/** @ignore yes */
+}
 protected void edit_it(string input, int number) {
     subject = folder[number-1]->subject + " (fwd)";
     if (!input || input == "")
@@ -1219,13 +1068,10 @@ protected void edit_it(string input, int number) {
     else if (lower_case(input) == "y")
         input_to("get_subject", 0, number, 1);
     return;
-} /* edit_it() */
-
-/** @ignore yes */
+}
 varargs protected void move_message(string input, int flag) {
     int *range, i, bing;
     string to_folder, number;
-
     if (!input || input == "") {
         prompt();
         input_to("read_loop");
@@ -1248,16 +1094,15 @@ varargs protected void move_message(string input, int flag) {
     range = expand_range(number);
     bing = sizeof(range);
     FOLDER_H->mark_read(owner->query_name(), current, newish);
-    for (i = 0; i < bing; i++) { 
+    for (i = 0; i < bing; i++) {
         int status;
-
-        if (member_array(to_folder, folder_names) == -1) { 
+        if (member_array(to_folder, folder_names) == -1) {
             if (FOLDER_H->can_create_folder(owner->query_name(), to_folder)) {
                 folder_names += ({ to_folder });
             } else {
                 printf("Cannot create a folder called %s, please choose "
                     "another another name.\n", to_folder);
-                break; 
+                break;
             }
         }
         deleted += ({ folder[range[i]-1]->number });
@@ -1279,12 +1124,10 @@ varargs protected void move_message(string input, int flag) {
         prompt();
         input_to("read_loop");
     }
-} /* move_message() */
-
+}
 private void save_message(string input) {
     int *range, i, bing, ret;
     string to_file, number, body, err;
-
     if (!wizardp(owner)) {
         printf("Sorry, only creators can save mail to files.\n");
         prompt();
@@ -1299,7 +1142,7 @@ private void save_message(string input) {
             prompt();
             input_to("read_loop");
             return;
-        } 
+        }
     }
     if (!sscanf(input, "%s %s", number, to_file)) {
         printf("Wrong syntax.\n");
@@ -1327,7 +1170,7 @@ private void save_message(string input) {
     bing = sizeof(range);
     i = 0;
     for (i = 0; i < bing; i++) {
-        body = FOLDER_H->load_message(owner->query_name(), current, 
+        body = FOLDER_H->load_message(owner->query_name(), current,
           folder[range[i]-1]->number);
         if (!body) {
             continue;
@@ -1344,11 +1187,9 @@ private void save_message(string input) {
     seteuid("Mailer");
     prompt();
     input_to("read_loop");
-} /* save_message() */
-
+}
 private void print_message(int number) {
     string body;
-
     if (number > sizeof(folder)-1 || number < 0) {
         printf("No message with that number.\n");
         prompt();
@@ -1359,7 +1200,7 @@ private void print_message(int number) {
         newish -= ({ number });
         folder[number]->status = " ";
     }
-    body = FOLDER_H->load_message(owner->query_name(), current, 
+    body = FOLDER_H->load_message(owner->query_name(), current,
       folder[number]->number);
     if (!body) {
         rm_message(""+(number+1));
@@ -1369,15 +1210,12 @@ private void print_message(int number) {
     printf("\n\nMessage %d\n", (number + 1));
     owner->more_string((full_header?body:strip_header(body)),
       "Message "+(number+1));
-} /* print_message() */
-
-/** @ignore yes */
+}
 void finish_print() {
     printf("\n");
     prompt();
     input_to("read_loop");
-} /* finish_print() */
-
+}
 private void save_me() {
     if (!PLAYER_HANDLER->test_user(owner->query_name())) {
         return;
@@ -1388,8 +1226,7 @@ private void save_me() {
         }
     }
     unguarded((: save_object, folder_filename(owner->query_name()) :));
-} /* save_me() */
-
+}
 private int load_me() {
 #ifdef CONVERTER
     if ("/obj/handlers/converter"->query_busy(owner->query_name())) {
@@ -1402,54 +1239,35 @@ private int load_me() {
         folder_names = ({ "inbox" });
     }
     return 1;
-} /* load_me() */
-
-/**
- * This method returns the list of folders associated with the player.
- * @param pname the player name
- * @return an array containing the folder names
- */
+}
 string *query_folders(string pname) {
     unguarded((: restore_object, folder_filename(pname) :));
     if (!folder_names)
         return ({});
     return folder_names;
-} /* query_folders() */
-
+}
 private void read_messages(string fname) {
     folder = FOLDER_H->get_messages(owner->query_name(), fname);
-} /* read_messages() */
-
-/** @ignore yes */
+}
 void dest_me() {
     MAIL_TRACK->delete_mailer(this_object());
     destruct(this_object());
-} /* dest_me() */
-
-/**
- * This formats the date as needed by the mailer object.
- * @param x the date to format
- * @return the new date
- */
+}
 string format_date(int x) {
     string str;
     string mon;
     mixed *tm;
-
     if (x<0 || !intp(x))
         return "Bad time";
-
     tm = localtime(x);
     str = DAYS[tm[LT_WDAY]];
     mon = MONTHS[tm[LT_MON]];
     str = sprintf("%s, %d %s %d %02d:%02d %s", str, tm[LT_MDAY], mon,
       tm[LT_YEAR], tm[LT_HOUR], tm[LT_MIN], tm[LT_ZONE]);
     return str;
-} /* format_date() */
-
+}
 private int *expand_range(string str) {
     int *ms, i, start, end;
-
     if (!str)
         str = "";
     if (!sizeof(folder))
@@ -1484,4 +1302,4 @@ private int *expand_range(string str) {
         sscanf(str, ",%s", str);
     }
     return ms;
-} /* expand_range() */
+}

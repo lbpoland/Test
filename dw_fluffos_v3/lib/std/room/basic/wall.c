@@ -1,37 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: wall.c,v 1.6 2002/06/10 15:30:28 vashti Exp $
- *
- * $Log: wall.c,v $
- * Revision 1.6  2002/06/10 15:30:28  vashti
- * Added the "no_drop" option.
- *
- * Revision 1.5  2002/06/10 00:57:05  vashti
- * Added the "ghost_action" option.
- *
- */
-
-/**
- * This is a wall object.  It is added to rooms when you use the set_wall()
- * function to add a climbable wall exit to a room.  If you wish to have
- * players climb somewhere this is the preferred method to use.
- *
- * @author Deutha
- * @see climb
- * @see /std/room.c
- * @see /std/rooftop.c
- */
-
 string *belows, death_mess, old_here;
 mixed *bottom, *moves;
 mixed ghost_action;
 int no_drop;
 object room;
-
-/**
- * @ignore yes
- */
 void create() {
    belows = ({ });
    bottom = 0;
@@ -39,26 +10,17 @@ void create() {
    moves = ({ });
    no_drop = 0;
    death_mess = 0;
-} /* create() */
-
-/**
- * @ignore yes
- */
+}
 void setup_shadow( object thing ) {
    shadow( thing, 1 );
    room = thing;
-} /* setup_shadow() */
-
-/**
- * @ignore yes
- */
+}
 void destruct_shadow( object thing ) {
    if ( thing == this_object() )
       destruct( this_object() );
    else
       thing->destruct_shadow( thing );
-} /* destruct_shadow() */
-
+}
 string *query_belows() { return copy( belows ); }
 mixed *query_bottom() { return copy( bottom ); }
 mixed query_ghost_action() { return copy( ghost_action ); }
@@ -66,15 +28,13 @@ mixed *query_moves() { return copy( moves ); }
 int query_no_drop() { return copy( no_drop ); }
 string query_death_mess() { return death_mess; }
 int query_at_bottom() { return !bottom; }
-
 mixed *query_move( string word ) {
    int i;
    i = member_array( word, moves );
    if ( i == -1 )
       return 0;
    return moves[ i + 1 .. i + 3 ];
-} /* query_move() */
-
+}
 void calc_co_ord() {
    int i, delta, *co_ord;
    string word, other;
@@ -83,7 +43,7 @@ void calc_co_ord() {
       return;
    foreach ( word in ({ "down", "up" }) ) {
       i = member_array( word, moves );
-      if ( i == -1 ) 
+      if ( i == -1 )
          continue;
       other = moves[ i + 2 ];
       if ( !find_object( other ) )
@@ -91,7 +51,7 @@ void calc_co_ord() {
       co_ord = copy( (int *)other->query_co_ord() );
       if ( !co_ord )
          continue;
-      delta = (int)room->query_room_size_array()[2] + 
+      delta = (int)room->query_room_size_array()[2] +
          (int)other->query_room_size_array()[2];
       if ( word == "down" )
          co_ord[ 2 ] += delta;
@@ -100,12 +60,10 @@ void calc_co_ord() {
       room->set_co_ord( co_ord );
       return;
    }
-} /* calc_co_ord() */
-
+}
 void set_wall( mixed *args ) {
    int i, j;
    mixed arg;
-    
    for ( i = sizeof( args ) - 2; i > -1; i -= 2 ) {
       arg = args[ i + 1 ];
       switch ( args[ i ] ) {
@@ -116,11 +74,9 @@ void set_wall( mixed *args ) {
                 room->add_property( "here", "falling past you" );
             }
             break;
-         
          case "below" :
             belows += arg;
             break;
-         
          case "move" :
             j = member_array( arg[ 0 ], moves );
             if ( j == -1 )
@@ -128,17 +84,14 @@ void set_wall( mixed *args ) {
             else
                moves[ j + 1 .. j + 3 ] = arg[ 1 .. 3 ];
             break;
-            
          case "death mess" :
          case "death_mess" :
             death_mess = arg;
             break;
-         
          case "ghost action" :
          case "ghost_action" :
              ghost_action = arg;
              break;
-         
          case "no drop" :
          case "no_drop" :
              no_drop = arg;
@@ -151,17 +104,12 @@ void set_wall( mixed *args ) {
              break;
       }
    }
-} /* set_wall() */
-
-/**
- * @ignore yes
- */
+}
 void event_enter( object thing, string mess, object from ) {
    room->event_enter( thing, mess, from );
    if ( !living( thing ) && bottom && ( ! no_drop ) )
       call_out( "fall_down", 0, thing );
-} /* event_enter() */
-
+}
 void fall_down( object thing ) {
    int damage;
    string word;
@@ -219,4 +167,4 @@ void fall_down( object thing ) {
          thing->move( word,
                "$N fall$s from above with a loud thump.",
                "$N drop$s downwards out of sight." );
-} /* fall_down() */
+}

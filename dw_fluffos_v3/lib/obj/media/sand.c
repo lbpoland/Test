@@ -1,9 +1,4 @@
-/*  -*- LPC -*-  */
 inherit "/obj/cont_medium";
-
-/* One unit = 1 grain of sand.  About.  I'm roughing this
- * heavily.
- */
 void setup()
 {
   set_name("sand");
@@ -14,8 +9,8 @@ void setup()
   set_long("This is some lovely soft sand, the type that you'd find on "
     "a beach.\n");
   add_property("determinate", "some ");
-  set_weight_unit( ({ 1, 1000 }) ); /* 1000 grains in 50 grams? */
-  set_value_scale( 0.00001 ); /* "cheap as sand" */
+  set_weight_unit( ({ 1, 1000 }) );
+  set_value_scale( 0.00001 );
   set_medium_alias("BeachAndDesertSand");
   set_pile_name("pile");
   set_continuous();

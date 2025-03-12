@@ -1,16 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: rituals.c,v 1.1 1998/01/06 05:29:43 ceres Exp $
- * $Log: rituals.c,v $
- * Revision 1.1  1998/01/06 05:29:43  ceres
- * Initial revision
- * 
-*/
 #include <spells.h>
-
 inherit "/cmds/base";
-
 int cmd( string words ) {
    string spell, *religious;
    mapping spells;
@@ -47,4 +36,4 @@ int cmd( string words ) {
             implode( sort_array( religious, 1 ), "\n" ) );
    }
    return 1;
-} /* cmd() */
+}

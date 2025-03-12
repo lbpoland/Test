@@ -1,10 +1,6 @@
-/*  -*- LPC -*-  */
 #include "path.h"
-
 inherit "/obj/monster";
-
 void respond_to_soul(object play);
-
 void setup() {
    int i;
    string *types = ({ "playful", "quiet", "thin", "fat", "noisy",
@@ -16,7 +12,6 @@ void setup() {
    set_main_plural( types[ i ] +" children" );
    set_race( "human" );
    set_gender( 1 + random( 2 ) );
-/* Some sort of "young" property for the race object to check? */
    i = (int)"/std/races/human"->query_weight();
    i += (int)"/std/races/human"->modifier( weight );
    set_base_weight( ( 3 * i ) / ( 4 + random( 6 ) ) );
@@ -32,12 +27,10 @@ void setup() {
    set_long( "This is one of the inhabitants of Pumpkin.\n" );
    add_effect( "/std/effects/npc/gossip", 5);
    load_chat(40, ({ 1, "#do_gossip_say:$mess$" }));
-
    add_respond_to_with(({ ({ "@skick", "@spunch", "@jump", "@push",
                              "@shove", "@knee" }) }),
                        (: respond_to_soul :));
-} /* setup() */
-
+}
 void respond_to_soul(object play) {
    switch (random(6)) {
    case 0:
@@ -64,4 +57,4 @@ void respond_to_soul(object play) {
       break;
    }
    call_out("run_away", 2);
-} /* respond_to_soul() */
+}

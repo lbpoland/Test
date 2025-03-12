@@ -1,50 +1,31 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: bob.c,v 1.3 2000/06/09 06:47:35 pinkfish Exp $
- * 
-*/
 #include <tasks.h>
 #include <weapon.h>
-
 #define QUEST_MAX 570
 #define DIFFICULTY 100
-//#define DEBUG 1
-
 inherit "/std/effect_shadow";
-
 string *data;
-
 void set_data( string *words ) { data = words; }
-
 mapping special_attack( object target ) {
     int damage;
     int skill;
     int difficulty;
     object *args;
-
     args = arg();
-
     if((object)environment(target) != (object)environment(player)) {
         tell_object(player, "Where did "+target->short()+" go?\n");
         remove_this_effect();
         return ([ ]);
     }
-
     if (!sizeof(match_objects_for_existence("bucket", ({ this_player() }))) &&
         !sizeof(match_objects_for_existence("apple", ({ this_player() })))) {
        add_failed_mess("You must have an apple and a bucket to use bob.\n");
        return 0;
     }
-
     difficulty += target->query_str() * 10;
-
     skill = (int)player->query_skill_bonus("fighting.combat.melee."+ data[1]);
-
     damage = 4 + sqrt( damage ) / 2;
     damage = 2 * damage + 8 * (random(damage)) +
              2 * damage + 8 * (random(damage));
-
     switch( (int)TASKER->perform_task(player, "fighting.combat.melee."+ data[1],
         difficulty, TM_COMMAND)) {
     case AWARD :
@@ -73,7 +54,6 @@ mapping special_attack( object target ) {
         remove_this_effect();
         return 0;
     }
-
 #ifdef DEBUG
     tell_creator("ceres", sprintf("Crush: player: %s, weapon: %s (%d), Diff: %d, Dam: %d Ski: %d\n",
         player->query_name(),
@@ -81,17 +61,13 @@ mapping special_attack( object target ) {
         args[1]->query_enchant(),
         difficulty, damage, skill));
 #endif
-
     remove_this_effect();
     return ([ args[ 1 ] : ({ damage }) + data ]);
-} /* special_attack() */
-
+}
 int tasking_done() { return 1; }
-
 void event_death(object killed, object * others, object killer, string rmess,
                       string kmess) {
   object *args;
-
   player->event_death(killed, others, killer, rmess, kmess);
   args = arg();
   if ( killed == args[ 0 ] ) remove_this_effect();

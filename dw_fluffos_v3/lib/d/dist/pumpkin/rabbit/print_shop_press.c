@@ -1,7 +1,5 @@
 #include "path.h"
-
 inherit "/std/room/basic_room";
-
 void setup() {
    set_light(70);
    set_room_size(5);
@@ -13,7 +11,6 @@ void setup() {
 "pages, bound books and trays of moving type.  The floor is covered in "
 "spilled ink, both new and old, and little bits of metal, forgotten "
 "bits of moving type and the odd rat.\n");
-
    add_item(({ "big huge black machine", "press", "machines" }),
 "The machines are big presses that squish the moving type down onto "
 "bits of paper which are then shuffled off to the binding department.  Steam "
@@ -47,10 +44,8 @@ void setup() {
    add_item(({ "tray", "tray of moving type" }),
 "Trays of moveable type to be inserted into the machines, they then print "
 "the pages which get placed into the final book.");
-
    add_exit("west", PATH + "print_shop_foyer", "corridor");
    add_exit("north", PATH + "print_shop_binding", "corridor");
-
    room_chat( ({ 120, 240, ({
       "Someone reading a book blushes bright red and drops a tray of "
       "moving type.",
@@ -60,6 +55,5 @@ void setup() {
       "Someone wanders off with a bunch of pages to be bound to the binding "
       "room."
     }) }) );
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

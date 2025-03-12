@@ -1,15 +1,8 @@
-// Only for use within CWC - Una 07.02.02
-
-
 inherit "/std/room/furniture/basic";
-
 int folded;
-
 int do_unfold(object ob);
 int do_fold(object ob);
-
 void setup() {
-
     folded = 0;
     set_name( "futon" );
     set_short( "traditional red futon" );
@@ -29,49 +22,33 @@ void setup() {
     set_weight(150);
     set_value(650000);
     add_extra_look( this_object() );
-
-} /* setup() */
-
+}
 void init() {
-
     add_command("unfold", "<indirect:object'futon'>" );
     add_command("fold", "<indirect:object'futon'>" );
-  
     ::init();
-  
-} /* init() */
-
+}
 int do_unfold(object ob) {
-   
     if(folded ) {
         add_failed_mess("$D is already folded.\n", ({ }) );
         return 0;
     }
-
     add_succeeded_mess("$N $V $D back into a sofa.\n", ({ }) );
     folded = 1;
     return 1;
-    
-} /* do_unfold() */
-
+}
 int do_fold(object ob) {
-	
     if(!folded) {
         add_failed_mess("$D is already folded.\n", ({ }) );
 	    return 0;
     }
-    
     add_succeeded_mess("$N $V $D out into a bed.\n", ({ }) );
-    folded = 0; 
+    folded = 0;
     return 1;
-    
-} /* do_fold */
-
+}
 string extra_look() {
-
     if(!folded) {
         return "The futon has been folded out into a bed.\n";
     }
     return "The futon is folded into a sofa.\n";
-    
-} /* extra_look() */
+}

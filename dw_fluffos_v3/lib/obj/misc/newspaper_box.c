@@ -1,34 +1,20 @@
-/**
- * A dispenser for papers.  It will sell papers to people for money!
- * @author Pinkfish
- * @started Thu May 24 15:51:25 PDT 2001
- */
 inherit "/std/object";
 #include <room/newspaper.h>
 #include <money.h>
 #include <move_failures.h>
-
 private string _paper;
-
 void setup() {
    set_name("box");
    set_short("newspaper box");
    add_adjective("box");
    add_help_file("newspaper_box");
    reset_get();
-} /* setup() */
-
-/**
- * This sets the current paper that will be dispensed.
- * @param paper the paper to dispense
- */
+}
 void set_paper(string paper) {
    int cost;
    string place;
    string* bits;
-
    _paper = paper;
-
    place = query_property("place");
    if (!place) {
       if (environment()) {
@@ -49,16 +35,13 @@ void set_paper(string paper) {
    }
    bits = explode(lower_case(_paper), " ");
    add_adjective(bits);
-} /* set_paper() */
-
-/** @ignore yes */
+}
 int do_buy() {
    int cost;
    int edition;
    string place;
    object ob;
    int *editions;
-
    place = query_property("place");
    if (!place) {
       place = environment()->query_property("place");
@@ -69,7 +52,6 @@ int do_buy() {
       add_failed_mess("There is no edition to buy.\n");
       return -1;
    }
-
    if (this_player()->query_value_in(place) < cost) {
       add_failed_mess("You do not have enough money to pay for " +
                       _paper + ", you need " +
@@ -77,9 +59,7 @@ int do_buy() {
                       ".\n");
       return -1;
    }
-
    this_player()->pay_money(MONEY_HAND->create_money_array(cost, place), place);
-
    ob = clone_object("/obj/misc/newspaper");
    ob->set_paper(_paper);
    ob->set_edition(edition);
@@ -88,7 +68,6 @@ int do_buy() {
       write("Unable to move the paper into your inventory, putting it on "
             "the ground.\n");
    }
-
    editions = this_player()->query_property("Paper " + _paper);
    if (!editions) {
       editions = ({ });
@@ -96,20 +75,17 @@ int do_buy() {
    if (member_array(edition, editions) == -1) {
       editions += ({ edition });
       this_player()->add_property("Paper " + _paper, editions);
-      // We only keep track of unique sales.
       NEWSPAPER_HANDLER->add_edition_paper_sold(_paper, edition,
                         NEWSPAPER_HANDLER->query_paper_cost(_paper));
    } else {
       NEWSPAPER_HANDLER->add_edition_revenue(_paper, edition,
                         NEWSPAPER_HANDLER->query_paper_cost(_paper));
    }
-
    add_succeeded_mess("$N $V a paper from $D.\n");
    return 1;
-} /* do_buy() */
-
+}
 void init() {
    add_command("buy", "paper from <direct:object>", (: do_buy() :));
    add_command("pull", "[door] [on] <direct:object>", (: do_buy() :));
    add_command("pull", "open <direct:object>", (: do_buy() :));
-} /* init() */
+}

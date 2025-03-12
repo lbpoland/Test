@@ -1,7 +1,5 @@
 #include "path.h";
-
 inherit "/std/outsides/plain";
-
 void setup() {
   set_short("Plains");
   set_long("This is Plains at the junction with Woods.

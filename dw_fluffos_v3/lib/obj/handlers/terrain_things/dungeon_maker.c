@@ -1,35 +1,18 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: dungeon_maker.c,v 1.2 1999/08/17 17:46:06 wodan Exp $
- * $Log: dungeon_maker.c,v $
- * Revision 1.2  1999/08/17 17:46:06  wodan
- * changed to add_command
- *
- * Revision 1.1  1998/01/06 05:06:10  ceres
- * Initial revision
- * 
-*/
 #include <dirs.h>
 #include <terrain.h>
-
 #define END 0
 #define TWO 1
 #define FOUR 2
 #define ROOM 3
-
 #define HALF 0
 #define FULL 1
-
 #define DIRS ({ "north", "northeast", "east", "southeast", \
       "south", "southwest", "west", "northwest" })
 inherit "/std/object";
-
 int max, size, *clear, *c_probs, *p_probs, *r_probs, *start;
 string terrain_name, *passage_files, *room_files;
 object easel;
 mixed *passages, *room_entries;
-
 void setup() {
    set_name( "box" );
    set_short( "green box" );
@@ -40,49 +23,42 @@ void setup() {
    start = allocate( 3 );
    passages = ({ });
    room_entries = ({ });
-} /* setup() */
-
+}
 void dest_me() {
    if ( easel )
       easel->dest_me();
    ::dest_me();
-} /* dest_me() */
-
+}
 int query_max_locations() { return max; }
 void set_max_locations( mixed arg ) { max = to_int( arg ); }
-
 int *query_junction_clearance() { return clear; }
 void set_junction_clearance( mixed *args ) {
    int i;
    clear = allocate( sizeof( args ) );
    for ( i = 0; i < sizeof( args ); i++ )
       clear[ i ] = to_int( args[ i ] );
-} /* set_junction_clearance() */
-
+}
 int *query_continue_probabilities() { return c_probs; }
 void set_continue_probabilities( mixed *args ) {
    int i;
    c_probs = allocate( sizeof( args ) );
    for ( i = 0; i < sizeof( args ); i++ )
       c_probs[ i ] = to_int( args[ i ] );
-} /* set_continue_probabilities() */
-
+}
 int *query_passage_probabilities() { return p_probs; }
 void set_passage_probabilities( mixed *args ) {
    int i;
    p_probs = allocate( sizeof( args ) );
    for ( i = 0; i < sizeof( args ); i++ )
       p_probs[ i ] = to_int( args[ i ] );
-} /* set_passage_probabilities() */
-
+}
 int *query_room_probabilities() { return r_probs; }
 void set_room_probabilities( mixed *args ) {
    int i;
    r_probs = allocate( sizeof( args ) );
    for ( i = 0; i < sizeof( args ); i++ )
       r_probs[ i ] = to_int( args[ i ] );
-} /* set_room_probabilities() */
-
+}
 int *query_start_co_ord() { return start; }
 void set_start_co_ord( mixed *args ) {
    int i;
@@ -90,43 +66,31 @@ void set_start_co_ord( mixed *args ) {
       return;
    for ( i = 0; i < sizeof( args ); i++ )
       start[ i ] = to_int( args[ i ] );
-} /* set_passage_probabilities() */
-
+}
 string query_terrain_name() { return terrain_name; }
 void set_terrain_name( string word ) { terrain_name = word; }
-
 string *query_passage_files() { return passage_files; }
 void set_passage_files( string *words ) { passage_files = words; }
-
 string *query_room_files() { return room_files; }
 void set_room_files( string *words ) { room_files = words; }
-
 object query_easel() { return easel; }
-
 mixed *query_passages() { return passages; }
-
 mixed *query_room_entries() { return room_entries; }
-
 int do_generate(string);
-
 void init() {
-//  ::init();
    add_command( "generate", "<word'terrainname'>", (:do_generate($4[0]):));
-} /* init() */
-
+}
 void mark_passage( int *co_ord ) {
    easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] ) / size,
          ( start[ 0 ] - co_ord[ 0 ] ) / size }), ({ "#" }) );
-} /* mark_passage() */
-
+}
 void mark_room( int *co_ord, string room ) {
    int width;
    width = (int)room->query_room_size();
    easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] - width - size / 2 ) / size,
          ( start[ 0 ] - co_ord[ 0 ] - width - size / 2 ) / size }),
          (string *)easel->make_block( ( 2 * width ) / size + 2 ) );
-} /* mark_room() */
-
+}
 int do_generate( string word ) {
    int i;
    string data, direc, *lines;
@@ -174,8 +138,7 @@ int do_generate( string word ) {
          start, 0 );
    call_out( "process_passages", 2 );
    return 1;
-} /* do_generate() */
-
+}
 void stop_working() {
    tell_room( environment(), "The box stops humming as it extrudes an "+
          "easel from a slot in one side.\n" );
@@ -188,8 +151,7 @@ void stop_working() {
    room_entries = ({ });
    set_long( "This is a green box.  It's quite featureless but, strangely "+
          "enough, something tells you it's a dungeon generator.\n" );
-} /* stop_working() */
-
+}
 int *shift_in( int *co_ord, string direc, string from, string to ) {
    int i, delta, *new_co_ord, *vector;
    delta = (int)from->query_room_size() + (int)to->query_room_size();
@@ -198,8 +160,7 @@ int *shift_in( int *co_ord, string direc, string from, string to ) {
    for ( i = 0; i < 3; i++ )
       new_co_ord[ i ] = co_ord[ i ] - delta * vector[ i ];
    return new_co_ord;
-} /* shift_in() */
-
+}
 void process_passages() {
    int i, j, k, prob, straight, *co_ord, *new_co_ord;
    string direc, new_direc, type, new_type;
@@ -399,4 +360,4 @@ void process_passages() {
    passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
          straight }) });
    mark_passage( new_co_ord );
-} /* process_passages() */
+}

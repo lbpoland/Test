@@ -7,14 +7,12 @@ string *find_stuff(object ob, string varname){
     foreach(obj in inhobs){
       ret += find_stuff(obj, varname);
     }
-    
     if(ret == ({})){
       ret = ({file_name(ob)});
     }
   }
   return ret;
 }
-
 int cmd(object ob, string var){
   string *files = find_stuff(ob, var);
   if(sizeof(files) > 1)
@@ -24,7 +22,6 @@ int cmd(object ob, string var){
     write("No redefinition found.\n");
   return 1;
 }
-
 string *query_patterns(){
   return ({"<indirect:wiz-present> <word'global'>", (:cmd($1[0], $4[1]):)});
 }

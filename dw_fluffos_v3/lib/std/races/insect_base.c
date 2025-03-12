@@ -1,14 +1,11 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "your standard insect.  This should not be used since it is a "
       "base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 200, 0,
          "left feeler", "right feeler", "brain", "left eye", "right eye",
          "mandible" }),
@@ -29,15 +26,12 @@ void create() {
       "right back leg", "leg", ({ "thorax", 50, 0 }),
       "abdomen", "abdomen", ({ 0, 500, 0 })
    });
-
    inedible = ({ "mandible" });
    unrottable = ({ "mandible" });
    set_skin( "carapace" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
+}
 string *query_target_zones() {
   return ({ "head", "head",
               "thorax","thorax", "thorax", "thorax", "thorax", "thorax",
@@ -46,10 +40,9 @@ string *query_target_zones() {
               "right front leg", "right front leg",
               "right middle leg", "right middle leg",
               "abdomen", "abdomen", "abdomen", "abdomen", "abdomen",
-              "left back leg", "left back leg", 
+              "left back leg", "left back leg",
               "right back leg", "right back leg" });
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "neck":

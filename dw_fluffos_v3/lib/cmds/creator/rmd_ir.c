@@ -1,18 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: rmd_ir.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: rmd_ir.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
-/* rmdir command, trial out by Turrican for a commands daemon. */
-
 mixed cmd(string str) {
    string *filenames;
    int fsize, loop;
- 
    seteuid(geteuid(this_player()));
    if (!str || str == "") {
       notify_fail("Remove what dir?\n");
@@ -23,7 +11,6 @@ mixed cmd(string str) {
       notify_fail("No such directory : " + str + "\n");
       return 0;
    }
- 
    for(loop = 0; loop < sizeof(filenames); loop++) {
       str = filenames[loop];
       fsize = file_size(str);
@@ -43,15 +30,12 @@ mixed cmd(string str) {
    write("Ok.\n");
    return 1;
 }
-
 void dest_me() {
   destruct(this_object());
 }
-
 void clean_up() {
   dest_me();
 }
-
 void reset() {
   dest_me();
 }

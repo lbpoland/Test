@@ -1,5 +1,4 @@
 inherit "/obj/misc/lock";
-
 void setup() {
    set_name("lock");
    set_short("chubby standard door lock");
@@ -15,7 +14,6 @@ void setup() {
    set_weight(19);
    set_value(80000);
 }
-
 void set_key_number(int num) {
    add_property("key prop", "door_lock_"+num);
    add_property("locktype", "door");

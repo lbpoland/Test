@@ -1,35 +1,18 @@
-/* 
- * written by Dwayne Fontenot (Jacques)
- * last modified: 1992 October 19 (runs on the Basis mudlib)
- *
- * This object implements a telnet client (providing a subset of the telnet
- * protocol) using STREAM mode of MudOS 0.9 LPC sockets.  See the init()
- * function // to find out the commands this terminal understands.
- * This object may be used from within a MudOS mud to connect to any
- * networked server that understands the telnet protocol (including
- * another LPmud).
- */
-
 #include <socket.h>
 #include <socket_errors.h>
-
 #define WRITE_WAIT_CALLBACK 0
 #define WRITE_GO_AHEAD      1
-
 #define DISCONNECTED "an internet terminal"
 #define CONNECTED "an internet terminal (connected)"
-
 #define IAC  255
 #define DONT 254
 #define DO   253
 #define WONT 252
 #define WILL 251
-
 #define TELOPT_ECHO   1
 #define TELOPT_SGA    3
 #define TELOPT_TTYPE 24
 #define TELOPT_NAWS  31
-
 nosave string *telopts = ({"BINARY", "ECHO", "RCP", "SUPPRESS GO AHEAD",
 			"NAME", "STATUS", "TIMING MARK", "RCTE", "NAOL", "NAOP",
 		    "NAOCRD", "NAOHTS", "NAOHTD", "NAOFFD", "NAOVTS",
@@ -39,7 +22,6 @@ nosave string *telopts = ({"BINARY", "ECHO", "RCP", "SUPPRESS GO AHEAD",
 		    "TACACS UID", "OUTPUT MARKING", "TTYLOC",
 		    "3270 REGIME", "X.3 PAD", "NAWS", "TSPEED", "LFLOW",
 		    "LINEMODE"});
-
 nosave string s_iac_dont_echo;
 nosave string s_iac_do_echo;
 nosave string s_iac_wont_echo;
@@ -53,16 +35,12 @@ nosave string s_iac_wont_naws;
 nosave string s_iac;
 nosave string s_dont_echo;
 nosave string s_do_echo;
-
 private string callback;
-
 private int conn_fd;
 private int connected;
 private int verbose;
-
 private int write_state = WRITE_WAIT_CALLBACK;
 private string write_message = "";
-
 protected void init_tel_neg()
 {
   s_iac_dont_echo  = sprintf("%c%c%c",IAC,DONT,TELOPT_ECHO);
@@ -79,13 +57,11 @@ protected void init_tel_neg()
   s_dont_echo      = sprintf("%c%c",  DONT,TELOPT_ECHO);
   s_do_echo        = sprintf("%c%c",  DO,  TELOPT_ECHO);
 }
-
 void
 set_callback(string arg)
 {
 	callback = arg;
 }
-
 void create()
 {
   init_tel_neg();
@@ -93,35 +69,29 @@ void create()
   verbose = 0;
   set_callback("handler");
 }
-
 void
 set_verbosity(int v)
 {
 	verbose = v;
 }
-
 int
 query_connected()
 {
 	return connected;
 }
-
 void disconnected()
 {
   call_other(this_object(), callback, "close");
   connected = 0;
 }
-
 int connected()
 {
   call_other(this_object(), callback, "open");
   connected = 1;
 }
-
 void my_socket_write(int fd, string message)
 {
   int ret;
-
   write_message = write_message + message;
   if(write_state == WRITE_GO_AHEAD){
     ret = socket_write(fd, write_message);
@@ -130,7 +100,6 @@ void my_socket_write(int fd, string message)
     else if(ret == EECALLBACK) write_state = WRITE_WAIT_CALLBACK;
   }
 }
-
 int line(string str)
 {
   if(connected){
@@ -140,7 +109,6 @@ int line(string str)
   }
   return(0);
 }
-
 int char(string str)
 {
   if(connected){
@@ -150,11 +118,9 @@ int char(string str)
   }
   return(0);
 }
-
 int connect(string str)
 {
   int ret;
-
   if(!str) return(0);
   conn_fd = socket_create(STREAM,"socket_shutdown");
   ret = socket_connect(conn_fd,str,"receive_data","write_data");
@@ -165,7 +131,6 @@ int connect(string str)
   connected();
   return(1);
 }
-
 int send(string str)
 {
   if(connected){
@@ -179,11 +144,9 @@ int send(string str)
   }
   return(0);
 }
-
 int disconnect(string str)
 {
   int ret;
-
   ret = socket_close(conn_fd);
   if(ret <= 0){
     notify_fail("unable to disconnect.\n");
@@ -192,24 +155,19 @@ int disconnect(string str)
   disconnected();
   return(1);
 }
-
 void receive_data(int rec_fd, string msg) {
   string *chunks;
   int i;
   object hearer;
-
   this_object()->recieve_message(msg);
-} /* recieve_message() */
-
+}
 void write_data(int fd) {
   write_state = WRITE_GO_AHEAD;
   my_socket_write(fd,"");
-} /* write_data() */
-
+}
 void socket_shutdown(int fd)
 {
   object hearer;
-
   if(fd == conn_fd){
     hearer = environment(this_object());
     disconnected();

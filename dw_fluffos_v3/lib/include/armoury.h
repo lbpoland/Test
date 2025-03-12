@@ -1,25 +1,9 @@
-/**
- * The include file for all the armoury stuff.
- * @author Pinkfish
- */
 #ifndef __SYS__ARMOURY
 #define __SYS__ARMOURY
-
-/**
- * The path to the armour.
- */
 #define ARMOURY "/obj/handlers/armoury"
-/**
- * The property to use for no recycling.
- */
 #define ARMOURY_NO_RECYCLING_PROP "no recycling"
-/**
- * The property to use for finding the recycling area of the object.
- */
 #define ARMOURY_RECYCLING_AREA_PROP "recycling area"
-
 #ifdef UNUSED
-/* comment this rubbish out.  Not needed any more I think? */
 #define ARM_A_SIZE 15
 #define A_OBJ 0
 #define A_ANAME 1
@@ -36,8 +20,6 @@
 #define A_DEX_MINUS 12
 #define A_ARMOURS 13
 #define A_IMMUNE 14
-/* weapons junk... */
-
 #define WEAP_A_SIZE 14
 #define W_OBJ 0
 #define W_NAME 1
@@ -54,5 +36,4 @@
 #define W_ATTACKS 12
 #define W_UNDAMAGE 13
 #endif
-
-#endif /* __SYS__ARMOURY */
+#endif

@@ -1,7 +1,4 @@
-// Rue 5.2000 from Nassar's idea
-
 inherit "/std/room/furniture/clock";
-
 void setup() {
   set_name("clock");
   set_short("owl clock");
@@ -16,22 +13,17 @@ void setup() {
   set_allowed_room_verbs((["hanging" : "hangs" ]));
   set_weight(50);
   set_value(42000);
-  add_property("no recycling", 1); 
+  add_property("no recycling", 1);
   set_chimes(2, "The owl clock opens its beak and hoots twice.\n");
   set_chimes(1, "The owl clock opens its beak and hoots once.\n");
   set_show_date();
 }
-
 void chime(string mess) {
   int *co_ords;
-
   if(environment(this_object())) {
-
     co_ords = (int *)environment(this_object())->query_co_ord();
-    
     "/obj/handlers/broadcaster"->broadcast_event(users(), co_ords,
                                                  mess, 20, 1, 0 );
     tell_room(environment(this_object()), mess);
   }
 }
-

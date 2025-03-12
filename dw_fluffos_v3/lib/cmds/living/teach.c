@@ -1,54 +1,37 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: teach.c,v 1.48 2003/02/25 17:20:10 trilogy Exp $
- */
 #include <skills.h>
 #include <tune.h>
 #include <command.h>
 #include <cmds/teach.h>
 #include <playtesters.h>
 #include <player.h>
-
 inherit "/cmds/base";
-
-//#define DEBUG 1
 #define DEBUGGER "ceres"
-
-/** If this is defined it enforces a maximum level to teach others. */
 #undef ENFORCE_MAX_TEACH_LEVEL
-
 int command_teach( object *obs, string comm, object teacher );
 int spell_teach(object *obs, string spell, object teacher);
 int teach_skill(object *obs, string str, object teacher);
 int cmd_int(string str, object *obs, object teacher);
 int check_ignoring(object ignorer, object ignoree);
-
 int query_auto_teaching(object teacher, object learner) {
    return teacher->query_property(TEACH_COMMAND_AUTO_PROPERTY);
-} /* query_auto_teaching() */
-
+}
 int cmd(string str, object *obs, object player) {
   int ret;
   object ob;
   object* ear;
-
   if (this_player()->query_property(PASSED_OUT_PROP)) {
      add_failed_mess("You cannot teach while passed out.\n");
      return 0;
   }
-
   if (this_player()->query_fighting()) {
     add_failed_mess("You cannot teach or learn anything while you are "
                     "fighting!\n");
     return 0;
   }
-
   if (this_player()->check_earmuffs("teach")) {
     add_failed_mess("You have teaching earmuffed.\n");
     return 0;
   }
-
   if (player) {
     ear = filter(obs, (: userp($1) && !interactive($1) :));
     if (sizeof(ear)) {
@@ -59,7 +42,6 @@ int cmd(string str, object *obs, object player) {
         return 0;
       }
     }
-
     ear = filter(obs, (: $1->check_earmuffs("teach") :));
     if (sizeof(ear)) {
       obs -= ear;
@@ -73,7 +55,6 @@ int cmd(string str, object *obs, object player) {
         return 0;
       }
     }
-
     ear = filter(obs, (: check_ignoring($1, this_player()) :));
     if (sizeof(ear)) {
       obs -= ear;
@@ -83,7 +64,6 @@ int cmd(string str, object *obs, object player) {
         return 0;
       }
     }
-
     ear = filter(obs, (: $1->query_property(PASSED_OUT_PROP) :));
     if (sizeof(ear)) {
       obs -= ear;
@@ -93,7 +73,6 @@ int cmd(string str, object *obs, object player) {
         return 0;
       }
     }
-
     ear = filter(obs, (: $1->query_fighting() :));
     if (sizeof(ear)) {
       obs -= ear;
@@ -103,13 +82,11 @@ int cmd(string str, object *obs, object player) {
         return 0;
       }
     }
-
     obs = filter(obs, (: !$1->query_creator() :) );
     if (!sizeof(obs)) {
       add_failed_mess("None of those people are allowed to teach you.\n");
       return 0;
     }
-
     obs = filter(obs, (: query_auto_teaching($1, this_player()) :));
     if (!sizeof(obs)) {
       add_failed_mess("None of those people have auto teaching turned "
@@ -122,53 +99,41 @@ int cmd(string str, object *obs, object player) {
                       "to be busy.\n");
       return 0;
     }
-
     foreach (ob in obs) {
       ret |= cmd_int(str, ({ this_player() }), ob);
     }
     return ret;
   }
-
   return cmd_int(str, obs, this_player());
-} /* cmd() */
-
-
+}
 int cmd_int(string str, object *obs, object teacher) {
   if (teacher->query_property("dead")) {
     add_failed_mess("You wave your arms around, and your lips move but "
                        "they can't hear what you are saying.\n");
     return 0;
   }
-   
   obs = filter(obs,  (: !$1->query_property("dead") :));
   if (!sizeof(obs)) {
     add_failed_mess("You must teach someone, preferably living.\n");
     return 0;
   }
-
   if (sizeof(obs) > 1) {
     add_failed_mess("You can only teach one person at a time.\n");
     return 0;
   }
-  
   if (!command_teach(obs, str, teacher) &&
       !spell_teach(obs, str, teacher) &&
       !teach_skill(obs, str, teacher))
   {
     return 0;
   }
-
   return 1;
-} /* cmd() */
-
-
+}
 int check_ignoring(object ignorer, object ignoree) {
   return (ignorer->query_property("ignoring") &&
           member_array(ignoree->query_name(),
                        ignorer->query_property("ignoring")) != -1);
-} /* check_ignoring() */
-
-
+}
 int command_teach(object *obs, string comm, object teacher) {
   string cmd_ob;
   object *succ;
@@ -184,7 +149,6 @@ int command_teach(object *obs, string comm, object teacher) {
   int i;
   class command cmd = new(class command, verb : comm);
   mixed tmp;
-
   if (member_array(comm, teacher->query_known_commands()) == -1 ||
       !CMD_D->HandleStars(cmd))
   {
@@ -243,14 +207,12 @@ int command_teach(object *obs, string comm, object teacher) {
         case 1:
           succ += ({ ob });
           break;
-
         case 0 :
           no_go += ({ tmp });
           break;
         case -1 :
           me_low += ({ tmp });
           break;
-
         case -2 :
           him_low += ({ tmp });
           break;
@@ -263,7 +225,6 @@ int command_teach(object *obs, string comm, object teacher) {
                   "learn " + comm + " from you automatically, "
                   "but failed.\n");
     }
-
     if (sizeof(no_go) > 0) {
       add_failed_mess(teacher->the_short() + " cannot teach " + comm +
                       " to $I.\n", no_go);
@@ -337,7 +298,6 @@ int command_teach(object *obs, string comm, object teacher) {
   }
   say(capitalize((string)teacher->short()) + " teaches something to " +
       query_multiple_short(succ) + ".\n", succ + ({ teacher }));
-
   for (i = 0; i < sizeof(succ); i++) {
     tell_object(succ[i], capitalize(teacher->the_short()) +
                 " offers to teach " +
@@ -355,9 +315,7 @@ int command_teach(object *obs, string comm, object teacher) {
   }
   add_succeeded_mess("");
   return 1;
-} /* command_teach() */
-
-
+}
 int spell_teach(object *obs, string spell, object teacher) {
   object *succ, *no_go, *me_low, *him_low, ob;
   object *ignoring;
@@ -367,25 +325,20 @@ int spell_teach(object *obs, string spell, object teacher) {
   string is_are;
   mapping spells;
   mixed tmp;
-   
   spells = teacher->query_spells();
- 
   if (!spells[spell]) {
     return 0;
   }
-
   if (teacher == this_player()) {
     is_are = "are";
   } else {
     is_are = "is";
   }
- 
   if (teacher->check_earmuffs("teach")) {
     add_failed_mess("You have teaching earmuffed.\n");
     return 0;
   }
   ear_muffed = succ = no_go = me_low = him_low = ({ });
- 
   ignored = ({ });
   if (teacher->query_property("ignoring")) {
     ignoring = filter(obs, (: check_ignoring($(teacher), $1) :));
@@ -408,15 +361,12 @@ int spell_teach(object *obs, string spell, object teacher) {
           case 1:
             succ += ({ ob });
             break;
-
           case 0:
             no_go += ({ ob });
             break;
-
           case -1:
             me_low += ({ ob });
             break;
-
           case -2:
             him_low += ({ ob });
             break;
@@ -436,8 +386,8 @@ int spell_teach(object *obs, string spell, object teacher) {
                       " cannot teach " + spell + " to $I.\n", no_go);
     }
     if (sizeof(me_low) > 0) {
-      add_failed_mess(teacher->the_short() + 
-                      " " + is_are + 
+      add_failed_mess(teacher->the_short() +
+                      " " + is_are +
                       " too low a level to teach $I " + spell + ".\n",
                       me_low);
     }
@@ -489,14 +439,12 @@ int spell_teach(object *obs, string spell, object teacher) {
            spell + ".\n");
    }
    return 1;
-} /* spell_teach() */
-     
+}
 #define CANNOT 0
 #define TOO_LOW 1
 #define ONLY_LEAF 2
 #define TOO_HIGH 3
 #define CANNOT_TEACH 4
-
 int teach_skill(object *obs, string str, object teacher) {
   int num;
   int lvl;
@@ -524,7 +472,6 @@ int teach_skill(object *obs, string str, object teacher) {
   class teaching_skill frog;
   float k;
   mixed tmp;
-
   num = 1;
   if (sscanf(str, "%d levels of %s", num, skill) != 2) {
     if (sscanf(str, "%d level of %s", num, skill) != 2) {
@@ -547,7 +494,6 @@ int teach_skill(object *obs, string str, object teacher) {
     add_failed_mess("You have teaching earmuffed.\n");
     return 0;
   }
-  /* Make sure its a valid skill */
   skill_start = skill;
   bits = explode(implode(explode(skill, " "), "."), ".") - ({ "" });
   if (!bits || !(skill = (string)SKILL_OB->query_skill(bits))) {
@@ -557,12 +503,7 @@ int teach_skill(object *obs, string str, object teacher) {
     add_failed_mess("The skill " + implode(bits, ".") + " is invalid.\n");
     return 0;
   }
-  
   bits = explode(skill, ".");
-  /*
-   * We don't do the teaching here.  Figure out how much xp it will cost
-   * to go up the levels, and inform the person we are teaching...
-   */
   my_lvl = teacher->query_skill_bonus(skill, 1);
   ear_muffed = ({ });
   too_high = ({ });
@@ -576,13 +517,7 @@ int teach_skill(object *obs, string str, object teacher) {
     ignoring = filter(obs, (: check_ignoring($(teacher), $1) :));
     obs -= ignoring;
   }
-
   foreach (ob in obs) {
-    /*
-     * First make sure the skill can be taught.  There are only restrictions
-     * (currently) on teaching of languages.  You cannot teach yourself
-     * levels in a language.  You have to go and research them.
-     */
     if (teacher == this_player()) {
       tmp = ob;
     } else {
@@ -611,7 +546,6 @@ int teach_skill(object *obs, string str, object teacher) {
       continue;
     }
     lvl = (int)ob->query_skill(skill);
-
     if (ob != teacher) {
       if ((int)ob->calc_bonus(lvl + num, skill, 1) > my_lvl) {
         add_failed_mess(teacher->the_short() +
@@ -621,32 +555,24 @@ int teach_skill(object *obs, string str, object teacher) {
         continue;
       }
 #ifdef ENFORCE_MAX_TEACH_LEVEL
-      /*
-       * Check to see if your level, or the level being taught too is
-       * too high.
-       */
       if (lvl + num > SKILL_MAX_TEACH) {
         too_high += ({ tmp });
         continue;
       }
 #endif
     }
-
     if (sizeof(bits) > 1) {
       lvl_up = ob->query_skill(implode(bits[0 .. sizeof(bits) - 2], "."));
     } else {
       lvl_up = lvl;
     }
-
     depth = SKILL_OB->query_skill_depth(bits);
     if (!SKILL_OB->query_only_leaf(skill) && depth * 5 > lvl_up) {
       too_low += ({ tmp });
       continue;
     }
-
     total = 0;
     total2 = 0;
-
     foreach (sk in SKILL_OB->query_all_children(skill)) {
       if (SKILL_OB->query_immediate_children(sk) != ({ })) {
         continue;
@@ -655,11 +581,9 @@ int teach_skill(object *obs, string str, object teacher) {
       lvl = (int)ob->query_skill(sk);
       cost = DEFAULT_COST;
       cost *= STD_COST / 5;
-
       if (!my_lvl) {
         my_lvl = 1;
       }
-
       for (j = 0; j < num; j++) {
         k = 0.5 * (int)ob->calc_bonus(lvl + j, sk, 1 ) / my_lvl + 1.0;
         total2 += 500 + to_int(cost * (lvl+j) * exp((lvl + j) / 500.0) * k);
@@ -670,7 +594,6 @@ int teach_skill(object *obs, string str, object teacher) {
           total = total2;
         }
       }
-
 #ifdef DEBUG
       tell_object(find_player(DEBUGGER),
                   sprintf("%s:%s j:%d, lvl: %d, mylvl: %d, newbonus: %d, "
@@ -683,12 +606,10 @@ int teach_skill(object *obs, string str, object teacher) {
                           lvl,
                           total2));
 #endif
-
       if (!total) {
         total = cost;
       }
     }
-
     if (total > (int)ob->query_xp()) {
       if (teacher == this_player()) {
         add_failed_mess("It would have cost " + total + " xp to teach " +
@@ -703,7 +624,6 @@ int teach_skill(object *obs, string str, object teacher) {
       too_little += ({ tmp });
       continue;
     }
-
     if (ob != teacher) {
       if (teacher == this_player()) {
         tell_object(ob, teacher->the_short() + " offers to teach "
@@ -746,25 +666,21 @@ int teach_skill(object *obs, string str, object teacher) {
                   this_player()->the_short() + " tried to learn " + skill +
                   " from you automatically but failed.\n");
     }
-
     if (sizeof(only_leaf) > 0) {
       add_failed_mess("You cannot teach the skill " + skill +
                       ", as it is only possible to teach leaf skills in "
                       "this skill tree.\n");
     }
-
     if (sizeof(ear_muffed) > 0) {
       add_failed_mess("You cannot teach any levels of " + skill +
                       " to $I, they have teaching earmuffed and cannot "
                       "hear you.\n", ear_muffed);
     }
-
     if (sizeof(cannot_teach) > 0) {
       add_failed_mess("You cannot teach any levels of " + skill +
                       "; you need to look for alternative methods of "
                       "advancement.\n");
     }
-
     if (sizeof(too_low) > 0) {
       add_failed_mess(query_multiple_short(too_low, "the", 0, 1) +
                       ((sizeof(too_low) > 1    ||
@@ -774,7 +690,6 @@ int teach_skill(object *obs, string str, object teacher) {
                       "learn " + num + " levels of " + skill + ".   See "
                       "'help skills' for more details.\n");
     }
-
     if (sizeof(too_high) > 0) {
       add_failed_mess(query_multiple_short(too_low, "the", 0, 1) +
                       ((sizeof(too_high) > 1     ||
@@ -784,23 +699,19 @@ int teach_skill(object *obs, string str, object teacher) {
                       skill + ", they must be less than " +
                       SKILL_MAX_TEACH + " to learn from someone else.\n");
     }
-
     if (sizeof(ignoring) > 0) {
       add_failed_mess("You are ignoring $I.\n", ignoring);
     }
-
     if (sizeof(ignored) > 0) {
       add_failed_mess("You are being ignored by $I.\n", ignored);
     }
   }
-
   return sizeof(ok);
-} /* teach_skill() */
-
+}
 mixed *query_patterns() {
    return ({
       "<string:'skill|n levels of skill|command'> to <indirect:living>",
                    (: cmd($4[0], $1, 0) :),
       "me <string:'skill|n levels of skill|command'> from <indirect:living>",
                    (: cmd($4[0], $1, this_player()) :)});
-} /* query_patterns() */
+}

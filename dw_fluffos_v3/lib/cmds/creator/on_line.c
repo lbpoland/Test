@@ -1,9 +1,7 @@
 inherit "/cmds/base";
-
 string idle_time(object person) {
   int hours, mins, secs;
   string s, m, h;
-
   secs = query_idle(person);
   mins = secs / 60;
   secs %= 60;
@@ -16,22 +14,18 @@ string idle_time(object person) {
   }
   h = ("0"+hours)[<2..<1];
   return " (idle: "+h+":"+m+":"+s+")";
-} /* idle_time() */
-
+}
 int cmd( int show_idle ) {
   object *people, person;
   string *cre, *invis, *director, *trustee, bing, obtyp;
-
   cre = ({ });
   invis = ({ });
   director = ({ });
   trustee = ({ });
-
   people = filter_array( users(), (: $1->query_creator() :) );
   people = people - this_player()->query_ignoring( people );
   people = sort_array( people,
     (: strcmp( $1->query_name(), $2->query_name() ) :) );
-
   foreach( person in people )  {
     bing = person->query_cap_name();
     if ( show_idle && query_idle( person ) > 120 )  {
@@ -68,7 +62,6 @@ int cmd( int show_idle ) {
            break;
       }
     }
-
     switch( person->query_invis()  )  {
       case 0:
         cre += ({ bing });
@@ -84,7 +77,6 @@ int cmd( int show_idle ) {
         break;
     }
   }
-
   if(sizeof(cre)) {
     tell_object(this_player(),
       "/global/events"->convert_message("$I$2=%^GREEN%^"
@@ -106,9 +98,8 @@ int cmd( int show_idle ) {
       "Invisible%^RESET%^: "+query_multiple_short(trustee)+".\n"));
   }
   return 1;
-} /* cmd() */
-
-mixed *query_patterns() { 
+}
+mixed *query_patterns() {
     return ({ "", (: cmd(1) :),
               "noidle", (: cmd(0) :) });
-} /* query_patterns() */ 
+}

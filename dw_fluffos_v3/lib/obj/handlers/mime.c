@@ -1,21 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: mime.c,v 1.2 2000/02/18 17:24:08 turrican Exp $
- */
-
-/**
- * A parser for RFC 822 compliant messages, with emphasis on
- * the headers in them, also known as MIME headers.
- * <p>
- * RFC 822 describes the format of all Internet messages. This
- * includes things like email, usenet news and HTTP protocol
- * messages.
- * @author Turrican
- * @started 22 May 1998
- */
 #include <mime.h>
-
 #define HEADER_NAME 1
 #define HEADER_VAL  2
 #define MUDMAIL     3
@@ -33,15 +16,10 @@
 #define COMMENT     15
 #define EMAIL       16
 #define QUOTE       17
-
-/*
- * This function parses a string into RFC 822 tokens.
- */
 private mixed *tokenize(string header_field) {
   int i, quoted, paren_count, angle_count;
   int *tokens, state;
   mixed *bits;
-
   bits = reg_assoc(header_field,
                    ({ "\\\\.", "\"", "\\(", "\\)", "<", ">",
                       ",", "@",
@@ -127,22 +105,11 @@ private mixed *tokenize(string header_field) {
   }
   bits += ({ tokens });
   return bits;
-} /* tokenize() */
-
-/**
- * This method extracts valid email adresses from the given
- * header field or string.
- *
- * @param arg the string to parse
- * @return an array consisting of an array of machine usable email adresses
- * (no whitespace and comments) and an array of the full addresses
- * @see rewrite_field()
- */
+}
 mixed *get_email_addrs(string arg) {
   string *addrs, *full_addrs;
   int i, idx, state;
   mixed *bits;
-
   if (!arg) {
     return ({ ({ }), ({ }) });
   }
@@ -183,19 +150,10 @@ mixed *get_email_addrs(string arg) {
     }
   }
   return ({ addrs, full_addrs });
-} /* get_email_addrs() */
-
-/**
- * This method rewrites local email addresses (as found in mudmail)
- * to be usable outside Discworld, for instance from an email client.
- * @param header_field the string to rewrite
- * @return the new string
- * @see get_email_addrs()
- */
+}
 string rewrite_field(string header_field) {
   int i, idx, state;
   mixed *bits, *addrs, *indices;
-
   if (!header_field) {
     return "";
   }
@@ -250,21 +208,11 @@ string rewrite_field(string header_field) {
     }
   }
   return implode(bits[0], "");
-} /* rewrite_field() */
-
-/**
- * This method parses an RFC 822 compliant message and extracts all
- * the headers into a class mime_header. This class contains a mapping
- * with the header field names as keys, so you can easily select
- * the headers you need.
- * @param message the message to be parsed
- * @return a class mime_header with the headers from the message
- */
+}
 class mime_header parse_headers(string message) {
   string *bits, bit, cont, headers;
   int idx, len;
   class mime_header hdr;
-
   if ((idx = strsrch(message, "\n\n")) == -1) {
     return hdr;
   }
@@ -296,29 +244,11 @@ class mime_header parse_headers(string message) {
     }
   }
   return hdr;
-} /* parse_headers() */
-
-/**
- * This method rewrites all the fields from an RFC 822 compliant message
- * to make the message suited for Internet transport. It uses the
- * rewrite_field() method to achieve this. The affected header fields
- * are:
- * <UL>
- * <LI> To:
- * <LI> From:
- * <LI> Cc:
- * <LI> Bcc:
- * <LI> Reply-To:
- * </UL>
- * @param message the message to rewrite
- * @return the possibly modified message, suited for Internet transport
- * @see rewrite_field()
- */
+}
 string rewrite_header(string message) {
   mixed *ra;
   int i;
   string header, field;
-
   if ((i = strsrch(message, "\n")) == -1) {
     return message;
   }
@@ -350,14 +280,10 @@ string rewrite_header(string message) {
     }
   }
   return implode(ra[0], "") + message;
-} /* rewrite_header() */
-
-/** @ignore yes */
+}
 void dest_me() {
   destruct(this_object());
-} /* dest_me() */
-
-/** @ignore yes */
+}
 int cleanup(int inherited) {
   if (!inherited) {
     dest_me();

@@ -1,39 +1,18 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: cityroom.c,v 1.3 1999/10/12 20:07:31 ceres Exp $
- *
- * $Log: cityroom.c,v $
- * Revision 1.3  1999/10/12 20:07:31  ceres
- * Missed an unneeded callout
- *
- * Revision 1.2  1999/10/04 22:49:46  ceres
- * Modified to seriously simplify the guttering code. (Basically deleted most of it :)
- *
- * Revision 1.1  1998/02/11 04:13:54  terano
- * Initial revision
- *
-*/
 #include <armoury.h>
 #include <hospital.h>
 #include <move_failures.h>
 #include <weather.h>
 #include "path.h"
-
 #define CREVICE ({ "a crevice", "a pothole", "a gutter" })[ random( 3 ) ]
 #define LOG_FILE LOG +"city_log"
-
 inherit "/std/room/outside";
-
 int *crowd;
 string type, *froms;
 object *monsters;
 int last_found;
-
 int query_cityroom() { return 1; }
 int *query_crowd() { return crowd; }
 object *query_monsters() { return monsters; }
-
 void announce_entry( object thing ) {
   string word;
   if ( !froms ) {
@@ -47,7 +26,7 @@ void announce_entry( object thing ) {
         continue;
       froms += ({ "the "+ word });
     }
-  }  
+  }
   if ( !sizeof( froms ) )
     tell_room( this_object(), "$a_short:"+ file_name( thing ) +
                "$ $V$0=arrives,arrive$V$ from elsewhere.\n" );
@@ -55,14 +34,12 @@ void announce_entry( object thing ) {
     tell_room( this_object(), "$a_short:"+ file_name( thing ) +
                "$ $V$0=arrives,arrive$V$ from "+
                froms[ random( sizeof( froms ) ) ] +".\n" );
-} /* announce_entry() */
-
+}
 void make_citymonster( int number ) {
   if(!(int)HOSPITAL->ok_to_clone()) {
     HOSPITAL->add_empty( this_object() );
     return;
   }
-  
   if ( !monsters[ number ] ) {
     monsters[ number ] = (object)( HOSPITAL )->get_monster( type );
     monsters[ number ]->add_property( "start location", this_object() );
@@ -73,11 +50,9 @@ void make_citymonster( int number ) {
   number++;
   if ( number >= sizeof( monsters ) )
     return;
-  
   if((int)HOSPITAL->ok_to_clone())
     call_out( "make_citymonster", 5 + random( 5 ), number );
-} /* make_citymonster() */
-
+}
 void set_monster( mixed number, string word ) {
   if ( intp( number ) ) {
     crowd = ({ number });
@@ -91,8 +66,7 @@ void set_monster( mixed number, string word ) {
   }
   monsters = allocate( random( 1 + number ) );
   type = word;
-} /* set_monster() */
-
+}
 void create() {
   crowd = ({ 0, 0 });
   type = "unknown";
@@ -107,34 +81,28 @@ void create() {
     this_object()->setup();
     this_object()->reset();
   }
-} /* create() */
-
+}
 void reset() {
   if ( sizeof( monsters ) ) {
     call_out( "make_citymonster", 5 + random( 5 ), 0 );
   }
-} /* reset() */
-
+}
 void dest_me() {
   ::dest_me();
-} /* dest_me() */
-
+}
 int clean_up( int parent ) {
   if ( base_name( this_object() )[0..<3] == __FILE__) {
     return 0;
   }
   return ::clean_up( 0 );
-} /* clean_up() */
-
+}
 mixed *stats() {
   return ::stats() + ({
     ({ "crowd", array_to_string( crowd[ 0 .. <2 ] ) }),
       });
-} /* stats() */
-
+}
 int do_search( string words ) {
   object found;
-
   if ( query_property( "no scavenging" ) ) {
     return -1;
   }
@@ -178,7 +146,6 @@ int do_search( string words ) {
     if(sizeof(match_objects_for_existence("cockroach", this_object())) > 3) {
       return -1;
     }
-    
     found = (object)HOSPITAL->get_monster( "cockroach" );
     found->move( this_object(), "$N scuttle$s out of "+
                  CREVICE +"." );
@@ -187,7 +154,6 @@ int do_search( string words ) {
     if(sizeof(match_objects_for_existence("rodent", this_object())) > 3) {
       return -1;
     }
-    
     found = (object)HOSPITAL->get_monster( "rodent" );
     found->move( this_object(), "$N slink$s out of "+
                  CREVICE +"." );
@@ -218,13 +184,10 @@ int do_search( string words ) {
     write("Unfortunately you cannot pick it up and it disappears down "+
           CREVICE+".\n");
   }
-  
   return 1;
-} /* do_search() */
-
+}
 void add_monster( object old_thing, object new_thing ) {
   int i;
-
   i = member_array( old_thing, monsters );
   if ( i != -1 ) {
     monsters[ i ] = new_thing;
@@ -236,18 +199,14 @@ void add_monster( object old_thing, object new_thing ) {
     return;
   }
   monsters += ({ new_thing });
-} /* add_monster() */
-
-/* Temporary measure until NPCs clean up the streets themselves. */
+}
 void event_dest_me() {
   if ( find_call_out( "check_stuff" ) == -1 ) {
     call_out( "check_stuff", 30 );
   }
-} /* event_dest_me() */
-
+}
 void check_stuff() {
   object thing, *things;
-
   things = all_inventory( this_object() );
   foreach( thing in things ) {
     if ( userp( thing ) ) {
@@ -267,13 +226,11 @@ void check_stuff() {
   if ( sizeof( things ) ) {
     things->move( "/d/am/filigree/general_store" );
   }
-} /* check_stuff() */
-
+}
 int query_crowd_now() {
   return crowd[ ( (int)WEATHER->minute_number() *
                   sizeof( crowd ) - 720 ) / 1440 ];
-} /* query_crowd_now() */
-
+}
 string extra_look( object thing ) {
   switch ( query_crowd_now() ) {
   case 0 :
@@ -300,4 +257,4 @@ string extra_look( object thing ) {
     return "The densely packed crowds make it difficult to "
       "move, and unpleasant to breathe.\n";
   }
-} /* extra_look() */
+}

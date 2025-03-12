@@ -1,7 +1,4 @@
-// Aquilo //
-
 inherit "/std/room/furniture/surface";
-
 void setup(){
   set_name("stand");
   set_short("tall hat stand");
@@ -21,6 +18,4 @@ void setup(){
                            "looming"  : "looms"  ]));
 	set_put_aliases(({"hang"}));
   set_value(75000);
-
 }
-

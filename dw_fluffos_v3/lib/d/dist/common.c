@@ -1,19 +1,8 @@
 #define DOM_TITLE "the domain of dist"
 #define LORD "pinkfish"
 #define DOMAIN "dist"
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: common.c,v 1.1 1998/01/06 04:03:45 ceres Exp $
- * $Log: common.c,v $
- * Revision 1.1  1998/01/06 04:03:45  ceres
- * Initial revision
- * 
-*/
-/* PLEASE re-describe me */
 inherit "/std/dom/cmn_mas";
 object board;
-
 void setup() {
   set_dom(DOMAIN);
   set_light(100);
@@ -63,7 +52,6 @@ void setup() {
   board->set_datafile(DOMAIN);
   board->move(this_object());
 }
-
 void dest_me()
 {
   if(board) board->dest_me();

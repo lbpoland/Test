@@ -1,12 +1,9 @@
 #include "path.h"
 #include <armoury.h>
 #include <shops/pub_shop.h>
-
 inherit "/std/shops/pub_shop";
-
 object *drunkards;
 object bartender, barmaid;
-
 int do_sit(string str);
 int ref_to_serve(object player, int type);
 void setup() {
@@ -17,7 +14,6 @@ void setup() {
    set_theft_handler( HOSPITAL );
    set_zone("Flaming Cabbage");
    set_open_function( (: ref_to_serve :) );
-
    set_long("This is a beer bar.  Hence, all the bottles, signs and glasses "
       "are related to beer.  Maybe it could be possible to get something "
       "else, but most likely, beer (and of course the sort of healthy, "
@@ -27,7 +23,6 @@ void setup() {
       "some seedy-looking characters are whispering less merrily.  Of course, "
       "they too are enjoying a tasty beer.  A menu is tacked to the "
       "wall behind the counter.\n");
-
    add_item("floor", "The floor is sticky, and it seems like it'd be hard "
       "to walk out of here.  That could explain why some of the clientele "
       "here seem to have been drinking for days.");
@@ -41,7 +36,7 @@ void setup() {
    add_item("glass","Beer glasses (the empty kind which are not overly dirty "
       "on the inside) are flooding the bar behind the counter.  Considering "
       "how empty, used glasses seem to disappear altogether, it is probably "
-      "necessary to have quite a few glasses around."); 
+      "necessary to have quite a few glasses around.");
    add_item(({"customer","clientele"}), "The people in here seem to be "
       "mainly concerned with the intake of beer.  They all look rather red "
       "around their noses and, for some reason, they all look rather "
@@ -69,19 +64,18 @@ void setup() {
    add_item( "small table", ({"long", "This table is made of wood, but a "
       "lot smaller than the other tables here.",
       "position","the small table"}));
-   add_item( "sticky table", ({"long", "This large table is a lot stickier " 
+   add_item( "sticky table", ({"long", "This large table is a lot stickier "
       "than anything else in here, and that means it's pretty darn sticky!",
       "position","the sticky table"}));
    add_item( "old chair",
          ({ "long", "The chairs around the wooden table are old and worn.",
             "position","the wooden table"
-         }) );   
+         }) );
    add_item( "small chair",
          ({ "long", "The chairs around the wooden table are old and worn.",
             "position","a chair at the wooden table"
-         }) );   
+         }) );
    add_item("sticky beer", "It's just about everywhere.");
-
    add_menu_item("Spicy sausage", PUB_APPETISER, 396, "spicy sausage");
    add_menu_alias("sausage", "Spicy sausage");
    add_menu_item("Salad", PUB_MAINCOURSE, 796, "salad",
@@ -90,7 +84,7 @@ void setup() {
                  PUB_STD_DINNERPLATE);
    add_menu_item("Ribs", PUB_MAINCOURSE, 1304, "ribs",
                  PUB_STD_DINNERPLATE);
-   add_menu_item("Hot chicken sandwich", PUB_MAINCOURSE, 796, 
+   add_menu_item("Hot chicken sandwich", PUB_MAINCOURSE, 796,
       "chicken sandwich");
    add_menu_alias("chicken sandwich", "Hot chicken sandwich");
    add_menu_item("Ham'n'cheese sandwich", PUB_MAINCOURSE, 796, "ham sandwich");
@@ -111,18 +105,13 @@ void setup() {
    add_menu_item("Schlorg Beer", PUB_ALCOHOL, 1838, "schlorg beer",
                  "schlorg bottle", 0, 2);
    add_menu_alias("schlorg", "Schlorg Beer");
-
    add_exit("west", PATH + "squash9", "corridor");
-
-} /* setup() */
-
+}
 object create_item( string word ) {
    object thing, thang;
-
    switch ( word ) {
- 
    case "spicy sausage" :
-      thing = clone_object( "/obj/food" );        
+      thing = clone_object( "/obj/food" );
       thing->set_weight_per_bite(1);
       thing->set_name("sausage");
       thing->set_short("spicy sausage");
@@ -130,12 +119,10 @@ object create_item( string word ) {
          "to be designed to increase the thirst of whomever eats it.\n" );
       thing->set_value( 396 );
       thing->set_weight(5);
-      /* thing->add_eat_effect( "SOMETHING THAT MAKES YOU THIRSTY", 120 ); *
-       * so... I'd have to make a thirst effect :P */
       return thing;
    case "unnameable liquid" :
       thang = clone_object( "/obj/reagents/generic_liquid.ob" );
-      thang->set_medium_alias("beer");          
+      thang->set_medium_alias("beer");
       thang->set_name("unnameable");
       thang->set_short( "unnameable liquid" );
       thang->set_long( "This sludge is definitely better off without a "
@@ -143,13 +130,13 @@ object create_item( string word ) {
            "something along the lines of \"Stinking Mud\", \"Utterly "
            "Disgusting and Undrinkable Slush\" or maybe just \"Yuck!\".\n" );
       thang->add_eat_effect( "/std/effects/ingested/drunk", 40 );
-      thang->add_eat_effect("/std/effects/ingested/nausea", 100);       
+      thang->add_eat_effect("/std/effects/ingested/nausea", 100);
       thang->set_amount( 2000 );
       return thang;
    case "finest brew" :
       thang = clone_object( "/obj/reagents/generic_liquid.ob" );
       thang->set_name("brew");
-      thang->set_medium_alias("beer");        
+      thang->set_medium_alias("beer");
       thang->set_short( "CMOTD's Finest Brew" );
       thang->add_alias(({"finest brew","CMOTD's finest","CMOTD's brew"}));
       thang->set_long( "CMOT Dibbler has produced an amazing beer from "
@@ -161,7 +148,7 @@ object create_item( string word ) {
       return thang;
    case "troll beer" :
       thang = clone_object( "/obj/reagents/generic_liquid.ob" );
-      thang->add_alias("beer");        
+      thang->add_alias("beer");
       thang->set_name("beer");
       thang->set_short("troll beer");
       thang->add_adjective("pint");
@@ -173,7 +160,6 @@ object create_item( string word ) {
       thang->set_amount( 2000 );
       return thang;
    case "schlorg" :
-      /* the stuff that goes in the bottle */
       thang = clone_object( "/obj/reagents/generic_liquid.ob" );
       thang->set_name("schlorg");
       thang->set_short("Schlorg");
@@ -194,20 +180,20 @@ object create_item( string word ) {
       thing->set_short( "green salad" );
       thing->set_long( "This green salad is at least partially green, "
          "with interesting bits and thingies in it.\n" );
-      thing->add_eat_effect("/std/effects/ingested/nausea", 10);        
+      thing->add_eat_effect("/std/effects/ingested/nausea", 10);
       thing->set_value( 796 );
       thing->set_amount( 2000 );
       return thing;
    case "fish'n'chips" :
       thing = clone_object( "/obj/food" );
       thing->add_alias(({"fish","chips"}));
-      thing->add_property("food", 1);          
+      thing->add_property("food", 1);
       thing->set_name("cod");
       thing->set_short( "fish'n'chips" );
       thing->set_long( "It's hard to tell what is the fish and which of "
          "the small, sloppy pieces that are supposed to be the chips.  "
          "They all taste the same anyway.\n" );
-      thing->add_eat_effect("/std/effects/ingested/nausea", 10);        
+      thing->add_eat_effect("/std/effects/ingested/nausea", 10);
       thing->set_value( 1196 );
       thing->set_amount( 2000 );
       return thing;
@@ -226,7 +212,7 @@ object create_item( string word ) {
       return thing;
    case "chicken sandwich" :
       thing = clone_object( "/obj/food" );
-      thing->add_alias("sandwich");          
+      thing->add_alias("sandwich");
       thing->add_property("food", 1);
       thing->set_name("chicken");
       thing->set_short( "hot chicken sandwich" );
@@ -234,7 +220,7 @@ object create_item( string word ) {
          "It smells funny, moves funny and even sounds a bit funny.  The "
          "only nice thing to say about this sandwich is that it is indeed "
          "hot.  It should probably be eaten with caution, though.\n" );
-      thing->add_eat_effect("/std/effects/ingested/nausea", 40);        
+      thing->add_eat_effect("/std/effects/ingested/nausea", 40);
       thing->set_value( 796 );
       thing->set_amount( 2000 );
       return thing;
@@ -252,15 +238,11 @@ object create_item( string word ) {
       thing->set_amount( 2000 );
       return thing;
    }
-
-} /* create_object() */
-
+}
 object create_container(string name) {
    object thing;
-
    switch (name) {
    case "schlorg" :
-     /* the bottle */
       thing = clone_object( "/obj/bottle" );
       thing->make_bottle("green", 1000);
       thing->set_value(1596);
@@ -269,16 +251,12 @@ object create_container(string name) {
                "in the ordinary fashion of Schlorg-bottles discwide.\n");
       return thing;
    }
-} /* create_container() */
-
+}
 void reset() {
    int i, j, x, y, z;
-
-   string *kinds = ({"jolly","burly","fat","happy","drunk","very drunk", 
+   string *kinds = ({"jolly","burly","fat","happy","drunk","very drunk",
       "silly"});
-
    j = 5 + random(2);
-
    if (sizeof(drunkards) < 3) {
       drunkards = allocate(j);
    }
@@ -297,11 +275,9 @@ void reset() {
          drunkards[i]->add_plural("drunkards");
          drunkards[i]->add_plural(kinds[x]+" drunkards");
          drunkards[i]->set_gender(1+random(1));
-
          drunkards[i]->set_long("This "+kinds[x]+" drunkard seems very "
             "content with sitting here, chugging down beer after beer.  Who "
             "can blame " + drunkards[i]->query_objective() + ", really?\n");
-
          drunkards[i]->set_race("human");
          drunkards[i]->set_al(-300 + random(600));
          drunkards[i]->set_guild("fighters");
@@ -320,10 +296,6 @@ void reset() {
             case 0:
             ((object)ARMOURY->request_item("dagger",30 +
                     random(30)))->move(drunkards[i]);
-/*
-            ((object)ARMOURY->request_item("cloth robe",30 +
-                    random(30)))->move(drunkards[i]);
- */
             drunkards[i]->init_equip();
             drunkards[i]->do_command("tactics response parry");
             drunkards[i]->add_skill_level("fighting.combat.parry.held",
@@ -382,7 +354,7 @@ void reset() {
       bartender->adjust_dex(3);
       bartender->add_skill_level( "other.health",55);
       bartender->add_skill_level("fighting.combat.melee.sharp",100);
-      bartender->add_skill_level("fighting.combat.special",50); 
+      bartender->add_skill_level("fighting.combat.special",50);
       ((object)ARMOURY->request_item("dagger",100))->move(bartender);
       ((object)ARMOURY->request_item("dagger",85))->move(bartender);
       ((object)ARMOURY->request_item("leather undershirt",80))->
@@ -402,7 +374,6 @@ void reset() {
                   1, "'Bring you another beer, shall I?"
                     }));
       bartender->init_equip();
-      
       barmaid = clone_object( "/obj/monster" );
       barmaid->set_name("barmaid");
       barmaid->set_short("lovely barmaid");
@@ -416,23 +387,16 @@ void reset() {
       ((object)ARMOURY->request_item("white linen skirt",80))->move(barmaid);
       ((object)ARMOURY->request_item("white apron",80))->move(barmaid);
       barmaid->init_equip();
-
       call_out("make_bart", 20, bartender, barmaid);
    }
-
-} /* reset */
-
+}
 void make_drunk(object ob, int y, string str) {
-
    int a = random(2);
    string adj, adv;
-
    adv = ({ "not at all", "very", "quite", "extremely", "rather" })
      [ random(5) ];
-
    ob->move(this_object(), "A "+  str + " drunkard comes in, looking " + adv +
           " thirsty.");
-   
    switch (y) {
    case 0:
       adj = "small";
@@ -445,45 +409,33 @@ void make_drunk(object ob, int y, string str) {
       adj = "sticky";
       break;
    }
-
    if (a)
       ob->do_command("sit at "+adj+" table");
-
    y = 5 + random(50);
    call_out("buy_new", y, ob);
-
-} /* make_drunk() */
-
+}
 void make_bart(object ob, object obette) {
    ob->move(this_object(), "The bartender pops up from behind the counter "
           "with a wide grin on his face.");
    call_out("make_barm", 5, obette);
-} /* make_bart() */
-
+}
 void make_barm(object ob) {
    ob->move(this_object(), "The barmaid appears from behind the counter and "
           "tries to look innocent.  She desperately tries to sort out her "
           "hair which is a bit unordered.");
-} /* make_barm() */
-
+}
 void buy_new(object ob) {
    int tim;
-
    if (!undefinedp(ob)) {
       if (environment(ob) == this_object()) {
          int z;
          string beer;
-         beer = ({ "troll beer", "brew", "brew", 
+         beer = ({ "troll beer", "brew", "brew",
                       "unnameable liquid" })[ random(4) ];
          ob->adjust_money(5, "Pumpkin dollar");
          ob->do_command("buy " + beer );
          ob->do_command("hold glass in left hand");
          z = 120 + random(120);
-         //
-         // Make them take a sip every ten seconds or so...
-         /* No! Way too spammy! I'll go for > 30 seconds though... *
-          *  Danbala, feb 2000                                     */
-         //
          tim = 20 + random(20);
          while (tim < z) {
             call_out("sip_beer", tim, ob);
@@ -492,32 +444,28 @@ void buy_new(object ob) {
          call_out("drink_beer", z, ob);
       }
    }
-} /* buy_new() */
-
+}
 void sip_beer(object ob) {
    if (ob &&
        environment(ob) == this_object()) {
       ob->do_command("drink 1/3rd of glass");
    }
-} /* sip_beer() */
-
+}
 void drink_beer(object ob) {
    if (!undefinedp(ob)) {
       ob->do_command("drink glass");
       ob->do_command("'Ha!  Nice beer, this.");
       call_out("no_litter",3,ob);
    }
-} /* drink_beer() */
-
-void no_litter(object ob) {         
+}
+void no_litter(object ob) {
    object pint, *obinv;
    int z;
    int a = random(2);
-
    if (!ob) {
       return ;
-   } 
-   obinv = deep_inventory(ob); 
+   }
+   obinv = deep_inventory(ob);
    if (sizeof(obinv)) {
       foreach( pint in obinv ) {
 	 if (pint->query_max_volume()) {
@@ -543,32 +491,22 @@ void no_litter(object ob) {
    } else {
       ob->do_command("north");
    }
-} /* no_litter() */
-
+}
 int ref_to_serve(object player, int type) {
-   int clock, servtime; 
-
-   clock = (time()%(3600*24)); 
-
-   servtime = ((clock > 35000) && (clock < 60000)); 
-
-   /* Because we all know pubs don't really serve food when they say     *
-    * they should, but at other mysterious times, when noone wants food  *
-    * anyway.                                                            */
-
-   if((!servtime) && (type == PUB_MAINCOURSE)) { 
+   int clock, servtime;
+   clock = (time()%(3600*24));
+   servtime = ((clock > 35000) && (clock < 60000));
+   if((!servtime) && (type == PUB_MAINCOURSE)) {
       add_failed_mess("Unfortunately, this pub doesn't serve food at the "
-         "moment.  Try to change your order, please.\n"); 
-      return 2; 
-   } 
-} /* ref_to_serve() */ 
-
+         "moment.  Try to change your order, please.\n");
+      return 2;
+   }
+}
 void event_enter(object ob, string str, object from) {
-
    if (ob->query_name() == "drunkard") {
       if( sizeof( match_objects_for_existence( "pint", ob ))) {
          ob->do_command("'Time for another beer for me.");
          call_out("buy_new",5 + random(50),ob);
       }
-   }  
-} /* event_enter() */
+   }
+}

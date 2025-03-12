@@ -1,10 +1,6 @@
-/* -*- LPC -*- */
 #include <armoury.h>
-
 #include "path.h"
-
 inherit "/obj/monster";
-
 #define TERRAIN_CONTROL "/d/admin/room/terrain"
 #define PROPERTY "terrain lesson stage"
 #define CROSS_IMPATIENCE 100
@@ -14,32 +10,20 @@ inherit "/obj/monster";
 #define COSTUME_DESERT 1
 #define COSTUME_WET 2
 #define COSTUME_COLD 3
-
 int costume_normal();
 int costume_desert();
 int costume_wet();
 int costume_cold();
 protected void to_terrain();
 protected void from_terrain(string to);
-
 object hq;
 object pupil;
 int impatience;
 int costume;
 int lesson_step;
 int speeching;
-
 mixed *lessons =
 ({
-   /* For each lesson, we give:
-    * string for exit name from foyer
-    * integer for costume
-    * array of commands for lesson text.  These commands can be strings
-    *    which will be fed to init_command(), function pointers which will
-    *    be fed to call_out(), or 0 (which makes the teacher pause).
-    * string for exit name back to foyer
-    */
-   /* Lesson #0: floating vs. fixed rooms, the set_terrain() function */
    ({ "grassyfield", COSTUME_NORMAL,
       ({
          "emote sniffs the air.",
@@ -188,7 +172,6 @@ mixed *lessons =
       }),
       "cottage"
    }),
-   /* Lesson #1: Multiple levels of floating rooms.   The 'nothing' room */
    ({ "desert", COSTUME_DESERT,
       ({
          "stretch",
@@ -254,7 +237,6 @@ mixed *lessons =
       }),
       "tent"
    }),
-   /* Lesson #2: Making sure the coordinates line up.  set_room_size() */
    ({ "mountaintop", COSTUME_COLD,
       ({ "rub hands",
          "shiver",
@@ -425,7 +407,6 @@ mixed *lessons =
       }),
       "down"
    }),
-   /* Lesson #3: Changing the exit types. */
    ({ "grassyfield", COSTUME_NORMAL,
       ({ "laugh",
          "'In spite of dragging you out here like this, Sin hasn't actually "
@@ -437,11 +418,9 @@ mixed *lessons =
       "cottage"
    }),
 });
-
 void setup() {
    object obj;
    object backpack;
-   
    set_name("terrain teacher");
    add_alias("teacher");
    set_short("terrain teacher");
@@ -455,71 +434,52 @@ void setup() {
    set_guild("monk");
    set_level(50);
    set_gender(1);
-   
    add_effect("/std/effects/other/wetness", 10000);
-
    set_respond_to_with( ({
       ({ "@say", "teach", "please" }), "#new_pupil",
       ({ "@say", "please", "teach" }), "#new_pupil",
       ({ "@say", "teach" }), "#new_rude_pupil",
       ({ "@say", ({ "ok", "ready" }) }), "#next_speech",
    }) );
-   
    backpack = ARMOURY->request_item("large backpack", 80);
    if (!backpack) backpack = ARMOURY->request_item("black leather backpack", 80);
    if (!backpack) backpack = ARMOURY->request_item("small backpack", 80);
    if (backpack) backpack->move(this_object());
-   
    obj = ARMOURY->request_item("large leather boots", 20);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("thermal underwear", 10);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("fawn cotton trousers", 50);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("leather belt", 50);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("black wool socks", 40);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("gaudy shirt", 35);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("brown felt hat", 10);
    if (obj) obj->move(this_object());
-   
    obj = ARMOURY->request_item("white cotton toga", 80);
    if (obj) obj->move(backpack);
-   
    obj = ARMOURY->request_item("yellow raincoat", 60);
    if (obj) obj->move(backpack);
-   
    obj = ARMOURY->request_item("old black cloak", 72);
    if (obj) obj->move(backpack);
-   
    obj = ARMOURY->request_item("amusing earmuffs", 100);
    if (obj) obj->move(backpack);
-   
    init_equip();
-   
    costume = COSTUME_NORMAL;
    hq = find_object(TERRAIN_TUTORIAL "foyer");
    impatience = 0;
    lesson_step = 0;
    speeching = 0;
-} /* setup() */
-
+}
 int check_anyone_here() {
    if (pupil) return 1;
    else return ::check_anyone_here();
-} /* check_anyone_here() */
-
+}
 void heart_beat() {
    ::heart_beat();
-   
    if (!pupil) return;
    ++impatience;
    if (impatience == CROSS_IMPATIENCE) {
@@ -533,12 +493,10 @@ void heart_beat() {
       pupil = 0;
       impatience = 0;
    }
-} /* heart_beat() */
-
+}
 int add_follower( object who ) {
    if (who == pupil) {
       int lesson;
-      
       impatience = 0;
       lesson = pupil->query_property(PROPERTY);
       if (lesson < 0 || lesson >= sizeof(lessons)) {
@@ -550,7 +508,6 @@ int add_follower( object who ) {
          return 0;
       } else if (::add_follower(who)) {
          int delay;
-         
          switch (lessons[lesson][1]) {
           case COSTUME_NORMAL: delay = costume_normal(); break;
           case COSTUME_DESERT: delay = costume_desert(); break;
@@ -569,21 +526,18 @@ int add_follower( object who ) {
                    who->short() + "?  I'm not teaching you.", 0);
       return 0;
    }
-} /* add_follower() */
-
+}
 void coming( object where ) {
    tell_room( where,
       "%^CYAN%^Someone says: One moment!  I'll be right down!%^RESET%^\n",
              ({ this_object() }) );
-} /* coming() */
-
+}
 void annoyed_coming( object where ) {
   tell_room( where,
     "%^CYAN%^An annoyed someone says: I said I'm coming!  "
     "Jeez!%^RESET%^\n",
     ({ this_object() }) );
-} /* annoyed_coming() */
-
+}
 void come( object where ) {
    hq = where;
    if (where != environment())
@@ -595,12 +549,10 @@ void come( object where ) {
    init_command( "emote looks at the sign", 9 );
    init_command( "sit on bench", 10 );
    init_command( "'What can I do for you?", 12 );
-} /* come() */
-
+}
 void done() {
    int delay = costume_normal();
    int lesson;
-   
    lesson = pupil->query_property(PROPERTY) + 1;
    if (lesson == sizeof(lessons)) {
       init_command("'congratulations, " + pupil->short() + ", you have "
@@ -608,22 +560,18 @@ void done() {
       pupil->remove_property(PROPERTY);
    } else
       pupil->add_property(PROPERTY, lesson);
-   
    init_command("emote looks around", delay + 1);
    init_command("sigh", delay + 4);
    init_command("get sign", delay + 7);
    init_command("emote looks at the sign", delay + 9);
    init_command("sit on bench", delay + 10);
-   
    pupil = 0;
    impatience = 0;
    speeching = 0;
-} /* done() */
-
+}
 void speech() {
    int lesson = pupil->query_property(PROPERTY);
    int delay;
-   
    delay = 0;
    speeching = 1;
    if (lesson_step == sizeof(lessons[lesson][2])) {
@@ -648,8 +596,7 @@ void speech() {
    lesson_step++;
    init_command("emote waits for " + pupil->a_short(), ++delay);
    call_out( (: speeching = 0 :), ++delay);
-} /* speech() */
-
+}
 void pupil_arrived( object where ) {
    if (pupil) return;
    if (!environment()) {
@@ -663,27 +610,23 @@ void pupil_arrived( object where ) {
    } else if (environment() == where) {
       init_command("'Oh, a pupil!", 2);
    }
-} /* pupil_arrived() */
-
+}
 protected void to_terrain() {
    move(TERRAIN_CONTROL, "The terrain teacher appears",
         "The terrain teacher snaps his fingers and vanishes");
    tell_object(pupil, "Something snags you through space\n");
    pupil->move_with_look(TERRAIN_CONTROL, pupil->short() + " appears",
                          pupil->short() + " looks surprised and disappears.");
-} /* to_terrain() */
-
+}
 protected void from_terrain( string to ) {
    move(to, "The terrain teacher appears",
         "The terrain teacher snaps his fingers and vanishes");
    tell_object(pupil, "Something snags you through space\n");
    pupil->move_with_look(to, pupil->short() + " appears",
                          pupil->short() + " looks surprised and disappears.");
-} /* from_terrain() */
-
+}
 protected int modesty() {
    int num;
-   
    num = sizeof(filter_array(all_inventory(environment()),
             (: living($1) && $1->query_gender() != 1 :) ));
    if (num) {
@@ -695,11 +638,9 @@ protected int modesty() {
                       "moment?", 1);
       return 10;
    } else return 0;
-} /* modesty() */
-
+}
 int costume_normal() {
    int i;
-   
    if (costume == COSTUME_NORMAL) return 0;
    i = modesty();
    init_command("remove backpack", ++i);
@@ -709,11 +650,9 @@ int costume_normal() {
    init_command("equip", ++i);
    costume = COSTUME_NORMAL;
    return i;
-} /* costume_normal() */
-
+}
 int costume_desert() {
    int i;
-   
    if (costume == COSTUME_DESERT) return 0;
    i = modesty();
    init_command("remove backpack", ++i);
@@ -726,11 +665,9 @@ int costume_desert() {
    init_command("equip", ++i);
    costume = COSTUME_DESERT;
    return i;
-} /* costume_desert() */
-
+}
 int costume_wet() {
    int i;
-   
    if (costume == COSTUME_WET) return 0;
    i = modesty();
    init_command("remove backpack", ++i);
@@ -741,11 +678,9 @@ int costume_wet() {
    init_command("equip", ++i);
    costume = COSTUME_WET;
    return i;
-} /* costume_wet() */
-
+}
 int costume_cold() {
   int i;
-   
    if (costume == COSTUME_COLD) return 0;
    i = modesty();
    init_command("remove backpack", ++i);
@@ -756,16 +691,13 @@ int costume_cold() {
    init_command("equip", ++i);
    costume = COSTUME_COLD;
    return i;
-} /* costume_cold() */
-
+}
 void next_speech( object who, string message ) {
    if (who != pupil) return;
    if (speeching) return;
-   
    impatience = 0;
    call_out("speech", 1);
-} /* next_speech() */
-
+}
 void new_pupil( object who, string message ) {
    if ( pupil ) {
       if ( pupil == who ) {
@@ -788,15 +720,13 @@ void new_pupil( object who, string message ) {
       init_command("'follow me, if you will", 6);
       impatience = 0;
    }
-} /* new_pupil() */
-
+}
 void new_rude_pupil( object who, string message ) {
    if (!pupil) {
       init_command("emote hums quietly to himself.", 2);
       init_command("mumble rude pupils", 5);
    }
-} /* new_rude_pupil() */
-
+}
 mixed *stats() {
    return ::stats() +
       ({
@@ -808,4 +738,4 @@ mixed *stats() {
               ((costume == COSTUME_COLD) ? "cold" : "???"))) }),
          ({ "lesson step", lesson_step }),
       });
-} /* stats() */
+}

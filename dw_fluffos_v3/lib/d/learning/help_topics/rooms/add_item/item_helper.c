@@ -1,16 +1,10 @@
-/****** This room is made my Mithal, learn and enjoy  ***/
-
 #include "path.h"
-
 inherit "/std/room";
-
 string pattern;
 string verb;
-
 void setup() {
    set_short("add_item room #15, Testing and creating a form ");
    set_light(100);
-
    set_long("add_item room #15, Testing and creating a form "
             +"This item is ment to help in the formulation of items."
 	    +"it provides a way to use add_item without coding.  I "
@@ -24,10 +18,8 @@ void setup() {
 	    +"test verb patterns - since many of them don't work - without "
 	    +"any coding.  It should help you get an idea how it all works.  "
 	    +"\nA reference sheet.\nA stupid object.\n");
-
    add_exit("west",PATH+"item_conflicts","path");
    add_exit("north",MAIN,"path" );
-
       add_item("reference sheet",
 	    "Pattern: Is the add_command pattern( parse_command): \n"
 	    +"Example string = \" 'get' / 'take' %i \" \n"
@@ -48,10 +40,8 @@ void setup() {
 	    +"Currently %s and %w behave a bit erradically... \n"
 	    +"If you put 'text' before and after them it might help.\n"
 	    +"Hope this helps!\n" );
-
    pattern = "%D";
    verb    = "use";
-   
    add_item("stupid object"
       ,({
             "long",       "This object is used to create items in the room!\n"
@@ -63,56 +53,40 @@ void setup() {
 	    ,"name"     ,({this_object(),"do_name","%D 'verb' 'to' %s" })
             ,"query"    ,"@@do_query:"+file_name(this_object())+"@@\n"
             ,"add"      ,({this_object(),"do_add","'an' %D 'named' %s" })
-            
         }));
-   
-   /************ END OF SETUP ***********************/
 }
-
-/************** COMMANDS ****************************************/
-
 int do_set(mixed a1,mixed a2,mixed a3,mixed a4, mixed a5, mixed a6)
 {
    pattern = (string) a5[1];
    return 1;
 }
-
 int do_name(mixed a1,mixed a2,mixed a3,mixed a4, mixed a5, mixed a6)
 {
    verb = (string) a5[1];
    return 1;
 }
-
 int do_add(mixed a1,mixed a2,mixed a3,mixed a4, mixed a5, mixed a6)
 {
    object *obs;
-
   add_item( a5[1]
       ,({
             "long",
 	       "This object's name is: "+a5[1]
 	        +"\nAnd it can be used with the pattern:"+pattern
 		+":\nAnd verb:"+verb+":\n\n"
-            ,verb      ,({this_object(),"do_use",pattern })     
+            ,verb      ,({this_object(),"do_use",pattern })
         }));
-   
    obs = all_inventory(this_object());
    obs->move("/room/void");
     obs->move(this_object());
    this_player()->move(this_object());
    return 1;
 }
-
 string do_query()
 { return "\nPattern:"+pattern+":Verb:"+verb+":\n"; }
-
 int  do_use(mixed a1, mixed a2, mixed a3, mixed a4, mixed a5, mixed a6)
 {
-
   printf("\nThe Verb:(A1):  %O\nThe Objects(A2):\n%O\nDirect Object(A3):  %O\nIndirect Object(A4):  %O\nReturn Array(A5):\n%O\nPattern(A6):  %O\n\n",a1,a2,a3,a4,a5,a6);
-  
   tell_object(this_player(),"Hope that worked...\n");
-  
   return 1;
 }
-    

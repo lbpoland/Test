@@ -1,15 +1,11 @@
 #include <virtual.h>
-
 void dest_me() { destruct( this_object() ); }
-
 void create()
 {
   seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
-} /* create() */
-
+}
 object create_virtual_ob() {
    object clone;
-
   clone = (object)SERVER->create_virtual_object( "/obj/vessel.c", 1 );
   clone->add_property( VIRTUAL_NAME_PROP, "/obj/misc/buckets/bucket_small.ob#1" );
   call_other( clone, "set_name",  "bucket"  );
@@ -27,4 +23,4 @@ object create_virtual_ob() {
   call_other( clone, "set_weight",  10  );
   call_other( clone, "set_material",  "metal" );
    return clone;
-} /* create_virtual_ob() */
+}

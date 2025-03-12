@@ -1,20 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: logroom.c,v 1.1 1998/01/06 05:06:10 ceres Exp $
- * $Log: logroom.c,v $
- * Revision 1.1  1998/01/06 05:06:10  ceres
- * Initial revision
- * 
-*/
 #include <terrain.h>
-
 #define SAVE_FILE RESTORE_PATH +"logroom"
-
 inherit "/std/room";
-
 mapping locations;
-
 void setup() {
    set_short( "limbo" );
    set_light( 50 );
@@ -28,12 +15,10 @@ void setup() {
    locations = ([ ]);
    if ( file_size( SAVE_FILE +".o" ) )
       unguarded((: restore_object, SAVE_FILE :));
-} /* setup() */
-
+}
 void save_this() {
   unguarded((: save_object, SAVE_FILE :));
 }
-
 void player_quitting( object player, object place ) {
    if ( player->query_property( "guest" ) )
       return;
@@ -42,16 +27,14 @@ void player_quitting( object player, object place ) {
          (int *)place->query_co_ord() });
    save_this();
    call_out( "check_quitted", 5, (string)player->query_name() );
-} /* player_quitting() */
-
+}
 void check_quitted( string word ) {
    if ( !find_player( word ) )
       return;
    if ( locations[ word ] )
       locations = m_delete( locations, word );
    save_this();
-} /* check_quitted() */
-
+}
 void event_enter( object player, string words, object thing ) {
    object location;
    mixed *data;
@@ -66,4 +49,4 @@ void event_enter( object player, string words, object thing ) {
    player->move( location );
    locations = m_delete( locations, (string)player->query_name() );
    save_this();
-} /* event_enter() */
+}

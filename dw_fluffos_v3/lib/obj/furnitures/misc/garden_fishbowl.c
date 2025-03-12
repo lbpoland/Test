@@ -1,13 +1,8 @@
-// Una
-// For use in Cwc
-
 inherit "/std/room/furniture/basic";
-
 void setup(){
-
     set_name( "fishbowl" );
     set_short( "gold-leafed garden fishbowl" );
-    add_adjective( ({ "gold", "leafed", "leaf", "gold-leaf", "gold-leafed", 
+    add_adjective( ({ "gold", "leafed", "leaf", "gold-leaf", "gold-leafed",
         "garden" }) );
     add_alias("bowl");
     add_plural( ({ "bowls", "fishbowls" }) );
@@ -26,7 +21,7 @@ void setup(){
     set_allowed_positions(({"sitting"}));
     set_allowed_room_verbs(([ "sitting" : "sits",
                               "standing" : "stands",
-                              "leaning" : "leans", 
+                              "leaning" : "leans",
                               "lying" : "lies",
                               "squatting" : "squats" ]));
-} /* setup() */
+}

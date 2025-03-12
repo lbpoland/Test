@@ -1,17 +1,8 @@
-/*  -*- LPC -*-  */
-/**
- * This handles both the surrender and club accepting stuff.
- * The surrender stuff was done by Sin and the club stuff by Pinkfish.
- */
-
 #include <clubs.h>
 #include <broadcaster.h>
-
 inherit "/cmds/base";
-
 mixed do_surrender(object player) {
   object *victims;
-
   victims = this_player()->query_surrenderers();
   if (!victims  ||  member_array(player, victims) == -1) {
     add_failed_mess("Sorry, but $I has not offered to surrender to you.\n",
@@ -22,20 +13,15 @@ mixed do_surrender(object player) {
   player->accepted_surrender(this_player());
   write("Good show!\n");
   return 1;
-} /* do_surrender() */
-
+}
 mixed do_club(string club_name, object *players) {
    object ob;
    string club;
    int ok;
-
    foreach (ob in players) {
       club = this_player()->query_respond_command(CLUB_RESPOND_TYPE, ob);
       if (club) {
          if (lower_case(club) == lower_case(club_name)) {
-            // Whooo!  Found the club!  They accept!
-            // Check to see if they are already a member, other wise
-            // add them.
             if (CLUB_HANDLER->is_member_of(club_name,
                                            this_player()->query_name())) {
                add_failed_mess("You are already a member of '" +
@@ -54,7 +40,7 @@ mixed do_club(string club_name, object *players) {
                                                                club_name);
             }
          } else {
-            add_failed_mess("$I is inviting you to join '" + 
+            add_failed_mess("$I is inviting you to join '" +
                             CLUB_HANDLER->query_club_name(club) +
                             "' not '" + club_name + "'.\n", ({ ob }));
          }
@@ -64,37 +50,31 @@ mixed do_club(string club_name, object *players) {
       }
    }
    return ok;
-} /* do_club() */
-
-int do_family(string family, 
+}
+int do_family(string family,
               string relationship,
               object *players) {
    object ob;
    int ok;
    string curr_family;
    class family_response_data frog;
-
    curr_family = this_player()->query_family_name();
    if (curr_family) {
       curr_family = CLUB_HANDLER->query_club_name(curr_family);
    }
-
    relationship = CLUB_HANDLER->query_ungendered_relationship(relationship);
-
    if (!relationship) {
       add_failed_mess("Could not figure out the relationship.\n");
       return 0;
    }
-
    foreach (ob in players) {
-      frog = this_player()->query_respond_command(CLUB_FAMILY_RESPOND_TYPE, 
+      frog = this_player()->query_respond_command(CLUB_FAMILY_RESPOND_TYPE,
                                                   ob);
       if (!family) {
          family = frog->family;
       }
       if (frog && frog->family) {
          if (lower_case(frog->family) == lower_case(family)) {
-            // Whooo!  Found the family!  They accept the relationship!
   	    if (lower_case(frog->relationship) != lower_case(relationship)) {
                add_failed_mess("You were asked to have the relationship of '" +
                      CLUB_HANDLER->query_relationship_gender(frog->relationship,
@@ -166,7 +146,7 @@ int do_family(string family,
                ob->remove_respond_command(CLUB_FAMILY_RESPOND_TYPE, ob);
             }
          } else {
-            add_failed_mess("$I is inviting you to a relationship in '" + 
+            add_failed_mess("$I is inviting you to a relationship in '" +
                             CLUB_HANDLER->query_club_name(frog->family) +
                             "' not '" + family + "'.\n", ({ ob }));
          }
@@ -176,8 +156,7 @@ int do_family(string family,
       }
    }
    return ok;
-} /* do_family() */
-
+}
 mixed *query_patterns() {
   return ({ "<indirect:living:here>", (: do_surrender($1[0]) :),
             "invite from <indirect:living:here> to <string'club name'>",
@@ -186,4 +165,4 @@ mixed *query_patterns() {
                 (: do_family($4[1], $4[2], $1) :),
             "relationship from <indirect:living:here> as <string'relationship'>",
 	       (: do_family(this_player()->query_family_name(), $4[1], $1) :) });
-} /* query_patterns() */
+}

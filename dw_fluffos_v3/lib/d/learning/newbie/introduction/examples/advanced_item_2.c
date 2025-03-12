@@ -1,12 +1,4 @@
-/*
-    Flourescent Flared Trousers
-   (Pink!)
-    Wrytten by Drakkos Thee Creator
-    21/10/2000
-*/
-
 inherit "/obj/clothing";
-
 void setup() {
     set_name("trousers");
     set_short("pair of flourescent pink flared trousers");
@@ -24,7 +16,6 @@ void setup() {
     add_pocket("right", 20);
     set_wear_remove_func(base_name(this_object()), "do_wear_stuff");
 }
-
 void do_wear_stuff(object ob) {
     if(this_player()->query_name() != "drakkos") {
         if(!ob) {

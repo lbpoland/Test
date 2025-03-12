@@ -1,13 +1,5 @@
-/*
-Davyd
-Item
-For General Item Stores
-*/
-
 #include <volumes.h>
-
 inherit "/obj/vessel";
-
 void setup(){
     set_name("glass");
     set_short("glass");

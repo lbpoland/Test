@@ -1,19 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: deaf_shadow.c,v 1.1 1998/01/06 04:35:35 ceres Exp $
- * $Log: deaf_shadow.c,v $
- * Revision 1.1  1998/01/06 04:35:35  ceres
- * Initial revision
- * 
-*/
 inherit "/std/effect_shadow";
-
 #include "effect.h"
-
 void event_whisper(object ob, string start, string mess, object *d, string lang) {
    int i;
-
    i = (int)arg() / 2;
    if (random(100) < i) {
       player->event_whisper(ob, start, mess, d, lang);
@@ -22,7 +10,6 @@ void event_whisper(object ob, string start, string mess, object *d, string lang)
 "can't make it out.\n", 1);
    }
 }
-
 void event_person_say(object ob, string start, string mess, string lang) {
    string dum1, dum2;
    if (sscanf(start, "%sloud%s", dum1, dum2)) {
@@ -41,8 +28,7 @@ void event_person_say(object ob, string start, string mess, string lang) {
       }
    }
 }
-
-void event_person_say_new(object ob, string start, string mess, string lang, 
+void event_person_say_new(object ob, string start, string mess, string lang,
   mixed avoid) {
    tell_object(player, sprintf("New Say: %O %O %O %O %O\n", ob, start, mess, lang, avoid));
 }

@@ -1,73 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: presto $
- * $Id: magic.c,v 1.23 2001/05/13 02:47:41 presto Exp presto $
- * $Log: magic.c,v $
- * Revision 1.23  2001/05/13 02:47:41  presto
- * Changed write()s to printf()s.  Cleaned up formatting.
- *
- * Revision 1.22  2000/07/31 02:47:42  presto
- * New '=' command.  Added file history for 'O' command.  Fixed up some little
- * bugs.  Removed some code dealing with coloring... the effort wasn't worth the
- * reward
- *
- * Revision 1.21  2000/02/06 21:57:53  presto
- * Added customizable setting for colors and tabs
- *
- * Revision 1.20  1999/12/09 01:53:15  presto
- * Fixed up a lot of little buglets
- *
- * Revision 1.19  1999/06/07 01:38:19  presto
- * Added syntax coloring (based on original code by Gototh).  Bug fixes.
- *
- * Revision 1.18  1999/04/16 05:28:46  pinkfish
- * Fix up a minor error in the magic editor.
- *
- * Revision 1.17  1999/03/28 03:24:10  presto
- * can now specify separation string with 'j' command
- *
- * Revision 1.16  1999/03/20 02:28:26  presto
- * Fixed a itsy-bitsy bug with adding text starting with a backslash
- *
- * Revision 1.15  1999/02/07 19:13:00  presto
- * s'a secret
- *
- * Revision 1.14  1999/01/08 01:28:00  presto
- * Fixed a parse error that was making things like 'I @10 ""' not work
- *
- * Revision 1.13  1998/08/22 01:17:44  presto
- * Changed some code that I couldn't remember the purpose of.  :-b
- *
- * Revision 1.12  1998/07/12 17:36:54  presto
- * Since last time: added 'j', '\', 'r' commands
- *
- * Revision 1.11  1998/03/07 02:10:40  presto
- * Some nifty new modes for C and M commands.  New workaround for rm problem.
- *
- * Revision 1.10  1998/02/07 23:23:27  presto
- * Fixed array out of bounds bug reported by Daxa
- *
- * Revision 1.9  1998/01/31 17:49:21  presto
- * Added undo support for 'F' command
- *
- * Revision 1.8  1998/01/31 17:24:42  presto
- * Workaround for damn problem with rm()
- *
- * Revision 1.7  1998/01/31 16:31:11  presto
- * Fixed bug with my_more function.  I think.
- *
- * Revision 1.6  1998/01/19 00:32:56  presto
- * quick fix so it's usable until line_ed gets sorted
- *
- * Revision 1.1  1998/01/06 04:54:05  ceres
- * Initial revision
- *
-*/
 #include <creator.h>
 #include <ed.h>
 #define HELPPATH "/w/presto/Misc/edit_help/"
 #define UPDATE "/secure/cmds/creator/upd_ate"
-
 #define SPACE      ' '
 #define COMMA      ','
 #define LPAREN     '('
@@ -96,48 +30,37 @@
 #define SQUOTES    '''
 #define PERIOD     '.'
 #define TAB        '\t'
-
 int *SEPARATORS = ({ SPACE, COMMA, SCOLON, TAB });
-
 int *OPERATORS = ({ LPAREN, RPAREN, PLUS, LSQUARE, RSQUARE, MINUS, TIMES,
                     DIVIDE, MOD, AND, OR, XOR, NOT, ONESCMP, EQUAL, COLON,
                     QUESTION, GREATER, LESS, LBRACE, RBRACE, PERIOD });
-
 string *RANGE_CMDS   = ({ "L", "c", "C", "m", "M", "d", "D", "S", "R", "->",
                           "<-", "j", "=", "rot13" });
-
 string *INDEX_CMDS   = ({ "d", "D", "i", "I", "a", "A", ">", "<", "c", "C",
                           "p", "P", "L", "E", "e", "S", "R", "f", "b", "m",
                           "M", "->", "<-", "F", "j", "=", "O", "ed",
                           "rot13" });
-
 string *M_INDEX_CMDS = ({ "d", "D", "c", "C", "L", "S", "R", "f", "b", "m",
                           "M", "->", "<-", "j", "=", "rot13" });
-
 string *MULTI_CMDS   = ({ "L", "C", "c", "m", "M", "D", "d", "S", "R", ">",
                           "<", "f", "b", "+", "-", "U", "->", "<-", "j",
                           "=", "rot13", "O" });
-
 string *CHAR_CMDS    = ({ "d", "c", "m" });
-
 string *STR_CMDS     = ({ ">", "<", "i", "a", "e", "d", "c", "m", "O", "H",
                           "w", "W", "T", "R", "I", "A", "E", "F", "\\", "r",
                           "set", "ed", "help", "#" });
-
 string *CMDS         = ({ "d", "D", "<", ">", "<<", ">>", "|", "^", "V", "I",
                           "i", "A", "a", "E", "e", "C", "c", "M", "m", "P",
                           "p", "O", "L", "f", "b", "S", "R", "T", "+", "++",
                           "-", "W", "w", "N", "Q", "H", "U", "{}", "()", "[]",
                           "->", "<-", "F", "\\", "j", "r", "h", "set", "=",
                           "ed", "help", "rot13", "#" });
-
 string *P_CMDS       = ({ "d", "D", "<", ">", "<<", ">>", "|", "^", "V", "I",
                           "i", "A", "a", "E", "e", "C", "c", "M", "m", "P",
                           "p", "L", "f", "b", "S", "R", "+", "++", "-", "W",
                           "N", "Q", "H", "U", "->", "<-", "F", "\\", "j",
                           "r", "=", "help", "rot13" });
 string *AVAIL_CMDS;
-
 string  keyw_color;
 string  comm_color;
 string  numb_color;
@@ -168,7 +91,6 @@ int     num_len;
 int     defs_not_done;
 mixed  *undo;
 mapping defs;
-
 private string *filter_regexp(string *incoming);
 private void    init_settings();
 private int     set_colors(string *words);
@@ -191,20 +113,17 @@ public  int     write_permission(string name);
 public  int     rm_file(string name);
 private string  expand_macros(string ins, string *sorted_defs);
 private string  strip_junk(string stuff);
-
 void create(string filename, int flag)  {
    int status;
-
    if (undefinedp(filename))  return;
    rows = this_player()->query_rows();
    cols = this_player()->query_cols();
    mode_flag = flag;
    seteuid(geteuid(this_player()));
    if (!filename)  filename = "";
-   else filename = implode(explode(filename, " "), ""); /* no leading spaces */
+   else filename = implode(explode(filename, " "), "");
    if (mode_flag)
       init_settings();
-
    status = open_file(filename);
    if (status == 0)  {
       printf("Cannot open file \"%s\".\n", filename);
@@ -225,9 +144,7 @@ void create(string filename, int flag)  {
       }
    }
    return;
-}  /* create() */
-
-
+}
 void get_command(string action)  {
    string   *bits;
    string    tmp;
@@ -243,7 +160,6 @@ void get_command(string action)  {
    int       rexp_flag;
    mixed    *rexp;
    function  search_func;
-
    bits = explode(action + " ", " ");
    if ((end  = sizeof(bits) - 1) == -1)  {
       printf(":");
@@ -283,13 +199,10 @@ void get_command(string action)  {
          }
       }
    }
-
-   /* See if it's a line number */
    if ((i = to_int(bits[0])) != 0  ||  bits[0][0] == '0')  {
       --i;
       if (i > fsize)  i = fsize;
       else if (i <= 0)  i = 0;
-
       if (highlight)  {
          if (i != lnptr + 1)
             in_string = 0;
@@ -303,8 +216,6 @@ void get_command(string action)  {
       input_to("get_command");
       return;
    }
-
-   /* If it's not a number, see if it's a known command */
    if (member_array(bits[0], AVAIL_CMDS) == -1)  {
       printf("Unknown command.  Enter 'H' for help.\n:");
       input_to("get_command");
@@ -398,14 +309,12 @@ void get_command(string action)  {
       else amt = 1;
    }
    else amt = 1;
-
    if (highlight)  {
       if (tmpln != lnptr  &&  tmpln != lnptr + 1)
          in_comment = 0;
       if (tmpln != lnptr + 1)
          in_string = 0;
    }
-
    switch (bits[0])  {
       case "d":
          if (lnptr == fsize)
@@ -459,7 +368,6 @@ void get_command(string action)  {
             print_line(1);
          }
          break;
-
       case ">":
          if (lnptr != fsize)  {
             if (index)  chptr = tmpch;
@@ -500,7 +408,6 @@ void get_command(string action)  {
          }
          else print_line(0);
          break;
-
       case "<":
          if (lnptr != fsize)  {
             if (index)  chptr = tmpch;
@@ -546,7 +453,6 @@ void get_command(string action)  {
          }
          else print_line(0);
          break;
-
       case ">>":
          if (lnptr != fsize)  {
             chptr = strlen(file[lnptr]);
@@ -554,7 +460,6 @@ void get_command(string action)  {
          }
          else print_line(0);
          break;
-
       case "<<":
          if (lnptr != fsize)  {
             chptr = 0;
@@ -562,7 +467,6 @@ void get_command(string action)  {
          }
          else print_line(0);
          break;
-
       case "|":
          if (lnptr != fsize)  {
             chptr = strlen(file[lnptr]) / 2;
@@ -570,14 +474,12 @@ void get_command(string action)  {
          }
          else print_line(0);
          break;
-
       case "^":
          i = showln;
          showln = 1;
          print_line(lnptr != fsize);
          showln = i;
          break;
-
       case "\\":
          if (lnptr != fsize)  {
             if (rexp_flag == 1)  {
@@ -629,7 +531,6 @@ void get_command(string action)  {
          }
          else printf("Cannot split beyond end of file.\n");
          break;
-
       case "j":
          if (tmpln < fsize)  {
             if (amt != 1)  {
@@ -661,7 +562,6 @@ void get_command(string action)  {
          }
          else printf("Cannot join beyond end of file.\n");
          break;
-
       case "=":
          if (tmpln < fsize)  {
             if (sizeof(bits) > 2)  {
@@ -692,7 +592,6 @@ void get_command(string action)  {
             i = 0;
             foreach (tmp in file[tmpln .. tmpln + amt - 1])  {
                if (tmp != "")
-                  /* strip off leading spaces and append */
                   tmp2 += implode(explode(tmp, " "), " ") + " ";
                else  {
                   scrap += explode(sprintf("%-=*s", j, tmp2[0 .. <2]) +
@@ -703,10 +602,8 @@ void get_command(string action)  {
             if (strlen(tmp2))
                scrap += explode(sprintf("%-=*s", j,
                                         tmp2[0 .. <2]), "\n")[1 .. ];
-
             if (sizeof(bits) > 3)
                scrap = map(scrap, (: $(bits[3]) + $1 :));
-            /* check for changes */
             if ((i = sizeof(scrap)) != amt)
                diff = 1;
             else for (j = 0; j < amt; j++)  {
@@ -715,7 +612,6 @@ void get_command(string action)  {
                   break;
                }
             }
-
             if (diff)  {
                changed = 1;
                undo = ({ ({ ({ "D", tmpln, i }),
@@ -742,7 +638,6 @@ void get_command(string action)  {
          }
          else printf("Cannot adjust beyond end of file.\n");
          break;
-
       case "->":
          if (tmpln != fsize)  {
             tmp = sizeof(bits) > 2 ? bits[2] : "   ";
@@ -765,7 +660,6 @@ void get_command(string action)  {
          }
          else printf("Cannot indent beyond end of file.\n");
          break;
-
       case "<-":
          if (tmpln != fsize)  {
             tmp = sizeof(bits) > 2 ? bits[2] : "   ";
@@ -804,7 +698,6 @@ void get_command(string action)  {
          }
          else printf("Cannot unindent beyond end of file.\n");
          break;
-
       case "[]":
       case "()":
       case "{}":
@@ -865,7 +758,6 @@ void get_command(string action)  {
             }
          }
          break;
-
       case "V":
          if (sizeof(clipboard))  {
             my_more("", clipboard, 0, 0, 0, 0, "");
@@ -873,7 +765,6 @@ void get_command(string action)  {
          }
          else printf("Clipboard is empty.\n");
          break;
-
       case "D":
          if (tmpln != fsize)  {
             if (tmpln + amt > fsize)  {
@@ -896,8 +787,6 @@ void get_command(string action)  {
          }
          else printf("Cannot delete beyond end of file.\n");
          break;
-
-      /* Old MacDonald had a farm ... */
       case "E":
       case "I":
       case "e":
@@ -911,7 +800,6 @@ void get_command(string action)  {
          printf("]");
          input_to("get_new_text", 0, bits[0], 0, 0);
          return;
-
       case "C":
       case "M":
          if (tmpln != fsize)  {
@@ -981,7 +869,6 @@ void get_command(string action)  {
          }
          else printf("Cannot copy beyond end of file.\n");
          break;
-
       case "c":
       case "m":
          if (rexp_flag == 1  &&  bits[0] == "c")  {
@@ -1062,7 +949,6 @@ void get_command(string action)  {
          }
          else printf(".\n");
          break;
-
       case "p":
          if (sizeof(clipboard) == 1)  {
             if (lnptr == fsize)  {
@@ -1087,8 +973,6 @@ void get_command(string action)  {
             print_line(1);
             break;
          }
-         /* No break here */
-
       case "P":
          if (i = sizeof(clipboard))  {
             undo = ({ ({ ({ "D", tmpln, i }) }) }) + undo;
@@ -1105,7 +989,6 @@ void get_command(string action)  {
          }
          else printf("Clipboard is empty.\n");
          break;
-
       case "O":
       case "ed":
          if (index)  {
@@ -1161,7 +1044,6 @@ void get_command(string action)  {
             else tmp = open_history[amt - 1];
          }
          else tmp = sizeof(bits) > 1 ? bits[1] : "";
-
          if (changed)  {
             printf("Current file has been changed.  Save now? (Y/N/A):]");
             input_to("get_new_text", 0, "O", 0, 0);
@@ -1171,7 +1053,6 @@ void get_command(string action)  {
          if (open_file(tmp) == -1)
             return;
          break;
-
       case "F":
          if (!this_player()->query_creator())
             printf("This command is only available to creators.\n");
@@ -1199,19 +1080,16 @@ void get_command(string action)  {
             }
          }
          break;
-
       case "L":
          my_more("", file[tmpln .. tmpln + amt - 1 + (tmp2 == ">")],
                  tmpln, showln, highlight, 0, "");
          return;
-
       case "f":
          lnptr = tmpln + amt * rows - amt;
          if (lnptr > fsize)  lnptr = fsize;
          my_more("", file[tmpln .. lnptr], tmpln, showln, highlight,
                  amt, "");
          return;
-
       case "b":
          lnptr = tmpln - (amt * rows - amt - 1);
          if (lnptr < 0)  {
@@ -1246,7 +1124,6 @@ void get_command(string action)  {
          }
          else my_more("", scrap[j .. ], lnptr, showln, highlight, 0, "");
          return;
-
       case "S":
          if (sizeof(bits) < 3)
             printf("Must specify search string.\n");
@@ -1291,7 +1168,6 @@ void get_command(string action)  {
          }
          else printf("Cannot search beyond end of file.\n");
          break;
-
       case "R":
          if ((i = sizeof(bits)) < 3  ||  (i == 3  &&  !diff))
             printf("Must specify both search and replace strings.\n");
@@ -1308,7 +1184,6 @@ void get_command(string action)  {
                   printf("REGEXP error: %s", tmp[1 .. ]);
                   break;
                }
-               // You are not expected to understand this.
                search_func =
                (: sizeof($4 = filter_regexp(reg_assoc($1, ({ $2 }),
                                                       ({ "1" }))[0])) > 1 ?
@@ -1320,10 +1195,8 @@ void get_command(string action)  {
                search_func = (: sizeof($4 = explode($5 + $1 + $5, $2)) - 1 ?
                                 ({ sizeof($4) - 1,
                                    implode($4, $3)[1 .. <2] }) : ({ 0 }) :);
-               /* Get a unique character to tack on */
                tmp = sprintf("%c", ((bits[2][0] + 1) % 127) + 1);
             }
-
             foreach (tmp2 in file[tmpln .. tmpln + amt - 1])  {
                rexp = evaluate(search_func, tmp2, bits[2], bits[3], scrap,
                                tmp);
@@ -1356,7 +1229,6 @@ void get_command(string action)  {
          }
          else printf("Cannot replace beyond end of file.\n");
          break;
-
       case "r":
          if (sizeof(bits) < 3)
             printf("Must specify both search and replace strings.\n");
@@ -1405,7 +1277,6 @@ void get_command(string action)  {
             printf("Cannot replace beyond end of file.\n");
          }
          break;
-
       case "T":
          if (sizeof(bits) == 1  ||  strlen(bits[1]) == 0)  {
             if (fsize == 0)  {
@@ -1433,7 +1304,6 @@ void get_command(string action)  {
          if (changed  &&  !rm_file(tmp2))
             printf("Couldn't remove temporary file %s\n", tmp2);
          break;
-
       case "+":
          lnptr = (lnptr + amt) % (fsize + 1);
          if (highlight)  {
@@ -1443,14 +1313,12 @@ void get_command(string action)  {
          chptr = 0;
          print_line(0);
          break;
-
       case "++":
          in_comment = 0;
          lnptr = fsize;
          chptr = 0;
          print_line(0);
          break;
-
       case "-":
          lnptr -= amt;
          while (lnptr < 0)  lnptr += fsize + 1;
@@ -1458,14 +1326,11 @@ void get_command(string action)  {
          chptr = 0;
          print_line(0);
          break;
-
       case "h":
          if (highlight = !highlight)
             printf("Syntax highlighting turned on.\n");
          else printf("Syntax highlighting turned off.\n");
-
          break;
-
       case "w":
       case "W":
          if (mode_flag  &&  sizeof(bits) > 1  &&  bits[1] != ""  &&
@@ -1479,13 +1344,11 @@ void get_command(string action)  {
          }
          if (save_file(bits[0], 0)  &&  bits[0] == "W")  return;
          break;
-
       case "N":
          showln = !showln;
          if (!showln)  printf("Line numbering turned off.\n");
          else printf("Line numbering turned on.\n");
          break;
-
       case "Q":
          printf("Quitting.\n");
          if (mode_flag)  save_history();
@@ -1494,7 +1357,6 @@ void get_command(string action)  {
          while (remove_call_out("defines") != -1)
             ;
          return;
-
       case "H":
       case "help":
          if (sizeof(bits) == 1)  tmp = mode_flag ? "main" : "p_main";
@@ -1509,7 +1371,6 @@ void get_command(string action)  {
          else printf("Sorry, no help available on \"%s\".  Go "
                      "holler at Presto.\n", tmp);
          break;
-
       case "U":
          if (diff = sizeof(undo) - 1)  {
             if (diff < amt)  {
@@ -1564,7 +1425,6 @@ void get_command(string action)  {
          }
          else printf("Nothing to undo.\n");
          break;
-
       case "set":
          if (sizeof(bits) == 1  ||  bits[1] == "save")  {
             tmp = sprintf("tab spacing %d\ntab replacement %s\n"
@@ -1622,7 +1482,6 @@ void get_command(string action)  {
             else printf("Invalid option '%s'.\n", bits[1]);
          }
          break;
-
       case "rot13":
          if (tmpln != fsize)  {
             for (i = 0; i < amt; i++)  {
@@ -1641,7 +1500,6 @@ void get_command(string action)  {
          }
          else printf("Cannot rot13 beyond end of file.\n");
          break;
-
       case "#":
          if (defs_not_done)
             printf("Warning: Macros have not yet been fully processed.\n");
@@ -1654,7 +1512,6 @@ if (bits[1] == "ALL")  printf("%O\n", defs);
          }
          else printf("Which macro do you want to look up?\n");
          break;
-
       default:
          printf("Something odd has happened.  Tell Presto.\n");
          break;
@@ -1662,21 +1519,16 @@ if (bits[1] == "ALL")  printf("%O\n", defs);
    printf(":");
    input_to( "get_command" );
    return;
-}  /* get_command() */
-
-
+}
 void get_new_text(string new_in, string cmd, int count, int cmdline)  {
    string new_in2;
    int len;
-
    if ((len = strlen(new_in) - 1) > -1  &&  new_in[0] == '\\'  &&  !cmdline)  {
       new_in2 = new_in[1 .. ];
       --len;
    }
    else new_in2 = new_in;
-
    if (tab_replace)  new_in2 = replace(new_in2, "\t", tab_str);
-
    switch (cmd)  {
       case "i":
          if (len > -1)  {
@@ -1699,7 +1551,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             print_line(1);
          }
          break;
-
       case "I":
          if (new_in != "."  ||  cmdline)  {
             if (new_in == "W"  &&  !mode_flag)  {
@@ -1731,7 +1582,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             undo = ({ ({ ({ "D", tmpln - count, count }) }) }) + undo;
          }
          break;
-
       case "a":
          if (len > -1)  {
             changed = 1;
@@ -1751,7 +1601,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             print_line(1);
          }
          break;
-
       case "A":
          if (new_in != "."  ||  cmdline)  {
             changed = 1;
@@ -1771,7 +1620,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             undo = ({ ({ ({ "D", tmpln - count + 1, count }) }) }) + undo;
          }
          break;
-
       case "E":
          if (new_in != "."  ||  cmdline)  {
             changed = 1;
@@ -1801,9 +1649,7 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
          }
          if (count)
             printf("%d line%s changed.\n", count, count == 1 ? "" : "s");
-
          break;
-
       case "e":
          if (len > -1)  {
             changed = 1;
@@ -1826,7 +1672,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             print_line(1);
          }
          break;
-
       case "w":
       case "W":
          if (len > -1)  {
@@ -1845,9 +1690,8 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
          }
          else printf("Save canceled.\n");
          break;
-
       case "O":
-         if (cmdline)  {  
+         if (cmdline)  {
             len = to_int(new_in2);
             new_in2 = "";
             if (len == 0)  {
@@ -1868,7 +1712,7 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             open_history = open_history[count .. ];
             if (new_in2 != "")  open_file(new_in2);
          }
-         else  { 
+         else  {
             if (new_in2 == "y"  ||  new_in2 == "Y")  {
                if (save_file("w", 1))  {
                   if (!changed)  {
@@ -1891,7 +1735,6 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
             }
          }
          break;
-
       default:
          printf("How in the hell did you get here?\n");
          break;
@@ -1900,9 +1743,7 @@ void get_new_text(string new_in, string cmd, int count, int cmdline)  {
    input_to("get_command");
    num_len = strlen(sprintf("%d", fsize + 1));
    return;
-}  /* get_new_text() */
-
-
+}
 private int open_file(string filename)  {
    object *things;
    string  oldname;
@@ -1910,7 +1751,6 @@ private int open_file(string filename)  {
    string *file_list;
    int     i;
    int     len;
-
    if (strlen(filename))  {
       if (mode_flag)  {
          if (filename == "...")  {
@@ -1960,7 +1800,6 @@ private int open_file(string filename)  {
                filename = oldname;
             else if (file_size(filename) == -1)  filename += ".c";
          }
-
          filename = this_player()->get_path(filename);
          if (file_size(filename) == -2)  {
             printf("\"%s\" is a directory.\n", filename);
@@ -1998,7 +1837,6 @@ private int open_file(string filename)  {
                    file_size(filename), file_size(filename) == 1 ? "" : "s");
          }
       }
-
       if (mode_flag)  {
          i = member_array(filename, open_history);
          if (i == -1)
@@ -2035,13 +1873,10 @@ private int open_file(string filename)  {
       call_out("defines", 1, name);
    }
    return 1;
-}  /* open_file() */
-
-
+}
 private int save_file(string cmd, int open_pending)  {
    string tmp;
    string ftext;
-
    if (changed)  {
       if (strlen(name) == 0)  {
          printf("Enter a name for this file (enter nothing to cancel):]");
@@ -2078,9 +1913,7 @@ private int save_file(string cmd, int open_pending)  {
                                     ftext);
    }
    return 1;
-}  /* save_file() */
-
-
+}
 void my_more(string input, string *text, int startln, int number, int hilite,
              int pages, string xtratxt)
 {
@@ -2092,7 +1925,6 @@ void my_more(string input, string *text, int startln, int number, int hilite,
    int    lines;
    int    oldlines;
    string junk;
-
    if (input == "q"  ||  input == "Q")  {
       printf(":");
       input_to("get_command");
@@ -2107,10 +1939,7 @@ void my_more(string input, string *text, int startln, int number, int hilite,
          junk = replace((number ? sprintf("%'.'*d] %s", num_len, 1 + startln++,
                                           text[i++])
                                 : text[i++]), "\t", "\\TAB\\", "%", "%%");
-//junk = replace(junk, "%", "%%");
-//write("junk == " + junk + "\n");
          len = strlen(junk);
-
          ++lines;
          while (k < len)  {
             junk = junk[0 .. k - 1] + "\n" + junk[k .. ];
@@ -2131,7 +1960,6 @@ void my_more(string input, string *text, int startln, int number, int hilite,
          }
          xtratxt = "";
       }
-
       if (lines < rows)  {
          if (len == 0)  printf("\n");
          else printf("%s\n", junk);
@@ -2158,9 +1986,7 @@ void my_more(string input, string *text, int startln, int number, int hilite,
       input_to("get_command");
    }
    return;
-}  /* my_more() */
-
-
+}
 private void print_line(int show_ptr)  {
    string tmp;
    int    i;
@@ -2168,22 +1994,18 @@ private void print_line(int show_ptr)  {
    int    chr;
    int    tchr;
    int    len;
-
    chr = chptr;
    if (showln)  {
       tmp = sprintf("%'.'*d] %s", num_len, lnptr + 1, file[lnptr]);
       chr += num_len + 2;
    }
    else tmp = file[lnptr];
-
    tchr = chr;
    if (chr)  {
       chr += 4 * (chr - strlen(replace(tmp[0 .. chr - 1], "\t", "")));
    }
    if (tchr < strlen(tmp)  &&  tmp[tchr] == '\t')  chr += 2;
-
    tmp = replace(tmp, "\t", "\\TAB\\", "%", "%%");
-
    len = strlen(tmp);
    j = cols;
    while (j < len)  {
@@ -2192,10 +2014,8 @@ private void print_line(int show_ptr)  {
       j += cols + 1;
    }
    tmp += "\n";
-
    if (in_comment == lnptr + 1)
       in_comment = 0;
-
    if (!show_ptr)  {
       if (highlight)  {
          printf("%s", highlight(tmp, lnptr, showln, 0));
@@ -2205,12 +2025,6 @@ private void print_line(int show_ptr)  {
       }
    }
    else  {
-//      if (this_player()->query_cur_term() == "ansi")  {
-//         tmp = this_player()->fix_string(tmp[0 .. chr - 1] + "%^REVERSE%^" + tmp[chr .. chr] +  tmp[chr + 1 .. ]);
-//         if (highlight)  tmp = highlight(tmp, lnptr, showln, 1);
-//         printf("%s", tmp);
-//      }
-//      else  {
       if (highlight)  tmp = highlight(tmp, lnptr, showln, 1);
       i = chr / cols + 1;
       tchr = 0;
@@ -2225,22 +2039,16 @@ private void print_line(int show_ptr)  {
       }
       else write("%^RESET%^^\n");
       printf("%s", tmp[tchr .. ]);
-//      }
    }
-
    return;
-}  /* print_line() */
-
-
+}
 private string color_word(string word,
                           int ref if_flag, int ref include_flag,
                           int ref type_flag, int ref class_flag)  {
    string newword;
    int    i;
-
    include_flag = 0;
    type_flag = 0;
-
    if (strlen(newword = replace(word, "\n", "")) != 0)  {
       if (newword[0] >= '0'  &&  newword[0] <= '9')  {
          word = numb_color + word + "%^RESET%^";
@@ -2280,40 +2088,35 @@ private string color_word(string word,
          case "new"      :
          case "efun"     :
             word = keyw_color + word + "%^RESET%^";
-            if (strlen(word) != strlen(newword))  {  /* embedded newline */
+            if (strlen(word) != strlen(newword))  {
                i = strsrch(word, "\n");
                word = word[0 .. i] + keyw_color + word[i + 1 .. ];
             }
             if_flag = 0;
             break;
-
-         /* This is so "#if defined(BLAH)" is colored correctly */
          case "#if"      :
             if_flag = 1;
             word = keyw_color + word + "%^RESET%^";
-            if (strlen(word) != strlen(newword))  {  /* embedded newline */
+            if (strlen(word) != strlen(newword))  {
                i = strsrch(word, "\n");
                word = word[0 .. i] + keyw_color + word[i + 1 .. ];
             }
             if_flag = 1;
             break;
-
          case "defined"  :
             if (if_flag)  {
                word = keyw_color + word + "%^RESET%^";
             }
             if_flag = 0;
             break;
-
          case "class"    :
             class_flag = 1;
             word = type_color + word + "%^RESET%^";
-            if (strlen(word) != strlen(newword))  {  /* embedded newline */
+            if (strlen(word) != strlen(newword))  {
                i = strsrch(word, "\n");
                word = word[0 .. i] + type_color + word[i + 1 .. ];
             }
             break;
-
          case "int"      :
          case "string"   :
          case "mixed"    :
@@ -2326,15 +2129,14 @@ private string color_word(string word,
             type_flag = 1;
          case "void"     :
             word = type_color + word + "%^RESET%^";
-            if (strlen(word) != strlen(newword))  {  /* embedded newline */
+            if (strlen(word) != strlen(newword))  {
                i = strsrch(word, "\n");
                word = word[0 .. i] + type_color + word[i + 1 .. ];
             }
-
          default         :
             if (class_flag)  {
                word = type_color + word + "%^RESET%^";
-               if (strlen(word) != strlen(newword))  {  /* embedded newline */
+               if (strlen(word) != strlen(newword))  {
                   i = strsrch(word, "\n");
                   word = word[0 .. i] + type_color + word[i + 1 .. ];
                }
@@ -2345,9 +2147,7 @@ private string color_word(string word,
       }
    }
    return word;
-} /* color_word() */
-
-
+}
 private string *boom(string str, int linenum, int last_line)  {
    int     i;
    int     j;
@@ -2362,11 +2162,9 @@ private string *boom(string str, int linenum, int last_line)  {
    int     type_flag;
    int     class_flag;
    string *shrapnel = ({ });
-
    last = 0;
    if_flag = 0;
    include_flag = 0;
-
    for (i = 0; i < strlen(str); i++)  {
       if (in_comment)  {
          split = 0;
@@ -2391,13 +2189,12 @@ private string *boom(string str, int linenum, int last_line)  {
          sep_flag = op_flag = 0;
          last = i + 1;
       }
-      /* Try to detect strings... */
       else if (in_string  ||  str[i] == DQUOTES)  {
          if (i != last)  {
             shrapnel += ({ str[last .. i - 1] });
          }
          last = i;
-         while (1)  { /* Don't worry, we'll break out eventually. */
+         while (1)  {
             j = strsrch(str[i + 1 .. ], DQUOTES);
             if (j == -1)  {
                shrapnel += ({ stri_color + str[last .. ] + "%^RESET%^" });
@@ -2440,7 +2237,7 @@ private string *boom(string str, int linenum, int last_line)  {
          last = i;
          while (1)  {
             j = strsrch(str[i + 1 .. ], SQUOTES);
-            if (j == -1)  {  /* Must be a syntax error... */
+            if (j == -1)  {
                shrapnel += ({ stri_color + str[last .. ] + "%^RESET%^" });
                i = strlen(str) - 1;
                break;
@@ -2460,7 +2257,6 @@ private string *boom(string str, int linenum, int last_line)  {
                }
                i += j + 1;
                if (count % 2 == 0)  {
-                  /* special case: ''' */
                   if (i == last + 1  &&  last + 2 < strlen(str)  &&
                       str[last + 2] == SQUOTES)
                   {
@@ -2501,19 +2297,11 @@ private string *boom(string str, int linenum, int last_line)  {
          sep_flag = op_flag = 0;
          last = i + 1;
       }
-
-      /* Try to detect comments... */
-      else if (str[i .. i + 1] == "/*"  ||  str[i .. i + 2] == "/\n*")  {
-         if (i != last)  {
-            shrapnel += ({ str[last .. i - 1] });
-         }
-         split = (str[i + 1] == '\n');
-         j = strsrch(str[i + 2 + split .. ], "*/");
+      else if (str[i .. i + 1] == "");
          if (j == -1)  {
             j = strsrch(str[i + 2 + split .. ], "*\n/");
             ++split;
          }
-
          if (j == -1)  {
             in_comment = linenum + 1;
             shrapnel += ({ comm_color + str[i .. ] + "%^RESET%^" });
@@ -2530,8 +2318,7 @@ private string *boom(string str, int linenum, int last_line)  {
          sep_flag = op_flag = 0;
          last = i + 1;
       }
-
-      else if (str[i .. i + 1] == "//"  ||  str[i .. i + 2] == "/\n/")  {
+      else if (str[i .. i + 1] == "
          if (i != last)  {
             shrapnel += ({ str[last .. i - 1] });
          }
@@ -2543,15 +2330,12 @@ private string *boom(string str, int linenum, int last_line)  {
          sep_flag = op_flag = 0;
          last = i + 1;
       }
-
       else if (member_array(str[i], SEPARATORS) != -1)  {
          if (last <= i - 1)  {
-            // Capture the word before the separator
             shrapnel += ({ color_word(str[last .. i - 1],
                                       ref if_flag, ref include_flag,
                                       ref type_flag, ref class_flag) });
          }
-         // Capture the separator
          if (sep_flag)  {
             shrapnel[<1] += str[i .. i];
          }
@@ -2564,7 +2348,6 @@ private string *boom(string str, int linenum, int last_line)  {
             type_flag = 0;
          last = i + 1;
       }
-
       else if (member_array(str[i], OPERATORS) != -1)  {
          if (last <= i - 1)  {
             shrapnel += ({ color_word(str[last .. i - 1],
@@ -2594,17 +2377,13 @@ private string *boom(string str, int linenum, int last_line)  {
                                 ref if_flag, ref include_flag,
                                 ref type_flag, ref class_flag) });
    }
-
    return shrapnel;
-} /* boom() */
-
-
+}
 private string highlight(string str, int linenum, int numbering,
                          int last_line)
 {
    string *words;
    string  num = "";
-
    if (linenum == fsize)  return str;
    if (numbering)  {
       num = str[0 .. num_len + 1];
@@ -2612,12 +2391,8 @@ private string highlight(string str, int linenum, int numbering,
    }
    words = boom(replace(str, "%^", "%%%^^^"), linenum, last_line);
    words = map(words, "fix_string", this_player());
-
    return this_player()->fix_string(num + implode(words, ""));
-
-} /* highlight() */
-
-
+}
 private void init_settings()  {
    string  rc;
    string  line;
@@ -2625,7 +2400,6 @@ private void init_settings()  {
    string *bits;
    int     spaces;
    int     i;
-
    tab_str = "   ";
    tab_replace = 0;
    keyw_color = "%^CYAN%^";
@@ -2634,10 +2408,8 @@ private void init_settings()  {
    oper_color = "%^BLUE%^";
    stri_color = "%^YELLOW%^";
    type_color = "%^BOLD%^%^CYAN%^";
-
    rc = read_bytes("/w/" + this_player()->query_name() + "/.magicrc");
    if (strlen(rc) == 0)  return;
-
    sets = explode(rc, "\n");
    foreach (line in sets)  {
       bits = explode(line, " ") - ({ "" });
@@ -2665,72 +2437,51 @@ private void init_settings()  {
       }
    }
    return;
-
-} /* init_settings() */
-
-
+}
 private int set_colors(string *words)  {
    string tmp_color;
-
    tmp_color = implode(map(words[1 .. ],
                            (: "%^" + upper_case($1) + "%^" :)), "");
    switch (words[0])  {
       case "keyword":
          keyw_color = tmp_color;
          return 1;
-
       case "comment":
          comm_color = tmp_color;
          return 1;
-
       case "number":
          numb_color = tmp_color;
          return 1;
-
       case "string":
          stri_color = tmp_color;
          return 1;
-
       case "operator":
          oper_color = tmp_color;
          return 1;
-
       case "type":
          type_color = tmp_color;
          return 1;
-
       default:
          return 0;
    }
-} /* set_colors() */
-
-
+}
 int write_permission(string name)  {
    return write_file(name, "");
 }
-
-
 int rm_file(string name)  {  return rm(name);  }
-
-
 string *filter_regexp(string *incoming)  {
    string *result;
    int     i;
-
    result = allocate((sizeof(incoming) + 1) / 2);
    for (i = sizeof(incoming) - 1; i >= 0; i -= 2)
       result[i / 2] = incoming[i];
    return result;
-
-} /* filter_regexp() */
-
-
+}
 int save_history()  {
    string tmp;
    string *junk;
    int i;
    int res;
-
    tmp = read_bytes("/w/" + this_player()->query_name() + "/.magicrc");
    if (tmp)  {
       junk = explode(tmp, "\n");
@@ -2747,20 +2498,14 @@ int save_history()  {
    res = write_file("/w/" + this_player()->query_name() + "/.magicrc",
                     implode(junk, "\n"), 1);
    return res;
-
-} /* save_history() */
-
-
+}
 string get_inc_path(string fname, string last_file)  {
    string  ret;
    string  tmp;
    string *bits;
    int     count;
-
-   /* Strip off any leading spaces */
    while (fname[0] == ' ')
       fname = fname[1 .. ];
-
    if (sscanf(fname, "<%s>", tmp) == 1)  {
       ret = "/include/";
       fname = tmp;
@@ -2780,20 +2525,15 @@ string get_inc_path(string fname, string last_file)  {
       fname = tmp;
    }
    else return "";
-
    if (file_size(ret + fname) < 0)
       return "";
    return ret + fname;
-
-} /* get_inc_path() */
-
-
+}
 string expand_macros(string ins, string *sorted_defs)  {
    int     changed;
    int    *allowed = ({' ', '\t', '+', '-', ',', '(', '\"', '[' });
    int     off;
    string  def;
-
    do {
       changed = 0;
       foreach (def in sorted_defs)  {
@@ -2806,18 +2546,12 @@ string expand_macros(string ins, string *sorted_defs)  {
       }
    }
    while(changed);
-
    return ins;
-
-} /* expand_macros() */
-
-
+}
 string strip_junk(string stuff){
    stuff = replace(stuff, ({ " ", "", "+", "", "(", "", ")", "" }));
    return replace_string(stuff, "\"\"", "");
 }
-
-
 void defines(string fname)  {
    string *lines;
    string  line;
@@ -2828,7 +2562,6 @@ void defines(string fname)  {
    int     i;
    int     j;
    int     nest;
-
    if (fname != name)  {
       tmp = read_file(fname);
       if (tmp)
@@ -2837,7 +2570,6 @@ void defines(string fname)  {
          lines = ({ });
    }
    else lines = regexp(file, "^#[ ]*(include|define)[ \t]+");
-
    foreach (line in lines)  {
       if ((off = strsrch(line, "include")) != -1)  {
          tmp = line[off + 8 .. ];
@@ -2848,7 +2580,6 @@ void defines(string fname)  {
       else {
          i = 0;
          nest = 0;
-
          off = strsrch(line, "define");
          tmp = line[off + 7 .. ];
          while (tmp[i] == ' ')
@@ -2866,15 +2597,12 @@ void defines(string fname)  {
          j = i;
          while (j < strlen(tmp)  &&  tmp[j] != ' ')
             ++j;
-
          tmp2 = tmp[j .. ];
          tmp = tmp[0 .. i - 1];
-
          defs[tmp] = tmp2;
       }
    }
    --defs_not_done;
-
    if (!defs_not_done)  {
       sorted_defs = sort_array(keys(defs), -1);
       foreach (tmp, tmp2 in copy(defs))  {
@@ -2882,4 +2610,4 @@ void defines(string fname)  {
             defs[tmp] = strip_junk(expand_macros(tmp2, sorted_defs));
       }
    }
-} /* defines() */
+}

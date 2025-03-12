@@ -1,25 +1,13 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: dom_ain.c,v 1.1 2003/03/21 02:01:51 ceres Exp $
- * 
- */
 #include <parser.h>
 #include <access.h>
 #include <player_handler.h>
-
 inherit "/cmds/base";
-
 #define MASTER "/secure/master"
-
 string get_last_log( int last_log_on );
-
 string master;
-
 int list(string arg) {
   int i, num, cols;
   string *members, *domains, mast;
-
   if (this_player() != this_player(1))
     return 0;
   domains = get_dir("/d/");
@@ -53,14 +41,11 @@ int list(string arg) {
             capitalize( (string)mast->query_lord() ) );
   }
   return 1;
-} /* list() */
-
+}
 int add_creator(string cre, string dom) {
   string mast;
-  
   if (this_player() != this_player(1))
     return 0;
-
   if(file_size("/d/" + dom) != -2) {
     notify_fail("No such domain as " + dom + ".\n");
     return 0;
@@ -79,14 +64,11 @@ int add_creator(string cre, string dom) {
   }
   write("Creator " + capitalize(cre) + " now added to domain " + dom + ".\n");
   return 1;
-} /* add_creator() */
-
+}
 int delete_creator(string cre, string dom) {
   string mast;
-
   if (this_player() != this_player(1))
     return 0;
-
   if(file_size("/d/" + dom) != -2) {
     notify_fail("No such domain as " + dom + ".\n");
     return 0;
@@ -105,14 +87,11 @@ int delete_creator(string cre, string dom) {
   }
   write("Member " + capitalize(cre) + " removed from domain " + dom + ".\n");
   return 1;
-} /* delete_creator() */
-
+}
 int do_project(string cre, string dom, string project) {
   string mast;
-
   if (this_player() != this_player(1))
     return 0;
-
   if(file_size("/d/" + dom) != -2) {
     notify_fail("No such domain as " + dom + ".\n");
     return 0;
@@ -129,13 +108,11 @@ int do_project(string cre, string dom, string project) {
                 capitalize(cre) + " in the domain " + dom + "\n");
     return 0;
   }
-  write("Project for " + capitalize(cre) + " set to " + project + 
+  write("Project for " + capitalize(cre) + " set to " + project +
         " in the domain " + dom + ".\n");
   return 1;
-} /* do_project() */
-
+}
 #ifdef DISABLED
-// This is disabled since it can freeze the mud for 10+ seconds
 int do_info() {
   string *creators,
          *domains,
@@ -144,7 +121,6 @@ int do_info() {
          bit;
   mapping no_dir, not_creator;
   int i, j, cols;
-
   cols = (int)this_player()->query_cols();
   creators = get_dir("/w/");
   domains = "/secure/master"->query_domains();
@@ -163,16 +139,13 @@ int do_info() {
   for (i=0;i<sizeof(domains);i++) {
     mem = (string *)("/d/"+domains[i]+"/master")->query_members() +
           ({ (string *)("/d/"+domains[i]+"/master")->query_lord() });
-/* remove the members from the creators domain. */
     creators -= mem;
-/* Check each one... */
     for (j=0;j<sizeof(mem);j++) {
       if (file_size("/w/"+mem[j]) != -2)
         no_dir[mem[j]] = domains[i];
       if (!PLAYER_HANDLER->test_creator(mem[j]))
         not_creator[mem[j]] = domains[i];
     }
-/* Ok...  print the membership list. */
     bit = "Members of "+domains[i]+" are: ";
     printf("%s%-=*s\n", bit, cols-strlen(bit), implode(mem, ", ")+".");
   }
@@ -194,18 +167,14 @@ int do_info() {
     printf("    %-=*s", cols-5, implode(cre_not, ", ")+".\n");
   }
   return 1;
-} /* do_info() */
+}
 #endif
-
 int detailed_info( string name, string option ) {
   string ret, *members;
   int i, cols;
-
   if(member_array(name, "/secure/master"->query_domains()) == -1)
     return notify_fail("No such domain: " + name + "\n");
-
   cols = this_player()->query_cols();
-  
   master = "/d/"+name+"/master";
   write(master+"\n");
   members = master->query_members();
@@ -225,7 +194,6 @@ int detailed_info( string name, string option ) {
     break;
   }
   ret = "The current members of this domain are:";
-  
   for (i=0;i<sizeof(members);i++) {
     ret += sprintf("\n%-12s: Last login: %s\n",
                    capitalize(members[i]),
@@ -239,12 +207,9 @@ int detailed_info( string name, string option ) {
   this_player()->more_string(ret, "Domain Info");
   return 1;
 }
-
 string get_last_log(int last_log_on) {
     string retval;
     int tmp_time, sec, min, hour, day;
-
-/* Should be a nice number.... */
     tmp_time = time()-last_log_on;
     if (!tmp_time) {
       sec = min = hour = day = 0;
@@ -260,10 +225,8 @@ string get_last_log(int last_log_on) {
         retval = "%^GREEN%^"+retval+"%^RESET%^";
     } else
       retval = "%^GREEN%^Today%^RESET%^";
-    
     return retval;
 }
-
 mixed *query_patterns() {
   return ({
     "list <string'list'>", (: list($4[0]) :),
@@ -272,10 +235,10 @@ mixed *query_patterns() {
       (: delete_creator($4[0], $4[1]) :),
     "project <word'creator'> <word'domain'> <string'project'>",
       (: do_project($4[0], $4[1], implode($4[2..], " ")) :),
-#ifdef DISABLED     
+#ifdef DISABLED
     "info", (: do_info() :),
-#endif      
+#endif
     "info <string'domain'>", (: detailed_info($4[0], " ") :),
     "info <string'domain'> [by] {n|name|p|project|l|login}",
       (: detailed_info($4[0], $4[1]) :) });
-} /* query_patterns() */
+}

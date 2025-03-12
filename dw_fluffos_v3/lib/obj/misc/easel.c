@@ -9,12 +9,9 @@
       "northwest" : ({ ({ -1, -1 }), ({ "\\" }) }), \
    ])
 #define PRIMES ({ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29 })
-
 inherit "/std/object";
-
 int *origin;
 string *lines;
-
 void setup() {
    set_name( "easel" );
    set_short( "small easel" );
@@ -23,12 +20,9 @@ void setup() {
    set_value( 800 );
    origin = ({ 0, 0 });
    lines = ({ });
-} /* setup() */
-
+}
 int *query_origin() { return origin; }
-
 string *query_lines() { return lines; }
-
 string long( string word, int dark ) {
    int i, max, min, width;
    string part;
@@ -47,8 +41,7 @@ string long( string word, int dark ) {
    for ( i = 0; i < sizeof( lines ); i++ )
       part += " "+ lines[ i ][ min .. max ] +"\n";
    return part;
-} /* long() */
-
+}
 int query_at( int *place ) {
    if ( !sizeof( lines ) )
       return 32;
@@ -61,8 +54,7 @@ int query_at( int *place ) {
    if ( ( origin[ 1 ] + place[ 1 ] ) >= sizeof( lines ) )
       return 32;
    return lines[ origin[ 1 ] + place[ 1 ] ][ origin[ 0 ] + place[ 0 ] ];
-} /* query_at() */
-
+}
 void add_shape( int *start, string *pieces ) {
    int i, number, max, width;
    string gap, front, back;
@@ -120,8 +112,7 @@ void add_shape( int *start, string *pieces ) {
          back = "";
       lines[ i ] = front + pieces[ i - origin[ 1 ] - start[ 1 ] ] + back;
    }
-} /* add_shape() */
-
+}
 string *make_block( int size, int home ) {
    int i, j;
    string start, end, *blocks;
@@ -158,8 +149,7 @@ string *make_block( int size, int home ) {
    else
       blocks[ size - 1 ] += "+";
    return blocks;
-} /* make_block() */
-
+}
 void make_map( mixed *locations, mapping connections ) {
    int i, j, k, x, y, *sizes;
    string *places;
@@ -225,4 +215,4 @@ void make_map( mixed *locations, mapping connections ) {
          reset_eval_cost();
       }
    }
-} /* make_map() */
+}

@@ -1,31 +1,17 @@
-/*
- * $Id: bank.c,v 1.6 2003/05/08 15:58:21 carmine Exp $
- */
-/**
- * This is the bank inheritable.  It handles all the bank transactions
- * and other such exciting stuff.
- * @author Pinkfish
- */
 #include <money.h>
 #include <move_failures.h>
-
 #define NAME (string)this_player()->query_name()
 #define CAP_NAME (string)this_player()->one_short()
 #define POSS (string)this_player()->query_possessive()
 #define HANDLER "/obj/handlers/bank_handler"
 #define OLD_BANK "/d/am/save/bank"
-
 nosave inherit "/std/room/basic_room";
-
 int total_account, total_made;
 nosave int account_cost, percentage;
 nosave string bank_name, place;
-
 int do_withdraw(int num, string type);
 int do_deposit(string str);
-
 nosave string save_file;
-
 void create() {
   account_cost = 0;
   percentage = 90;
@@ -35,8 +21,7 @@ void create() {
   place = "default";
   add_help_file("bank");
   ::create();
-} /* create() */
-
+}
 void init() {
   add_command( "balance", "" );
   add_command( "withdraw", "<number> <string>",
@@ -45,74 +30,32 @@ void init() {
   add_command( "close", "account" );
   add_command( "deposit", "<string>", (: do_deposit($4[0]) :) );
   ::init();
-} /* init() */
-
-/**
- * This method returns the amount of money it costs to start an account
- * at this bank.
- * @return the account cost
- */
+}
 int query_account_cost() { return account_cost; }
-
-/**
- * This method sets the amount of money that it costs to start an account
- * at this bank.
- * @param number the cost of starting an account
- */
 void set_account_cost( int number ) { account_cost = number; }
-
-/**
- * This method queries the percentage the bank charges on transactions.
- * @return the percentage the bank charges
- */
 int query_percentage() { return percentage; }
-
-/**
- * This method sets the percentage the bank charges on transactions.
- * @param number the percentage to charge
- */
 void set_percentage( int number ) { percentage = number; }
-
-/**
- * This method returns the total value of all the accounts.
- * @return the totaly value of all the accounts
- */
 int query_total_account() { return total_account; }
-
-/**
- * This method returns the amount of money the bank has made off the
- * players.
- * @param total_made the amount of money mae
- */
 int query_total_made() { return total_made; }
-
 string query_bank_name() { return bank_name; }
-
 void set_bank_name( string word ) { bank_name = word; }
-
 string query_place() { return place; }
 string query_money_place() { return query_place(); }
-
 void set_place( string word ) { place = word; }
-
 string query_save_file() { return save_file; }
-
 void set_save_file( string word ) {
   save_file = word;
   if ( file_size( save_file +".o" ) > 0 )
     unguarded((: restore_object, save_file :));
-} /* set_save_file() */
-
+}
 void do_save() {
    if ( !save_file ) {
       return;
    }
    unguarded( (: save_object, save_file :) );
-} /* do_save() */
-
+}
 int get_account() {
   int amount;
-
   if ( amount = (int)this_player()->query_property( "bank "+ OLD_BANK ) ) {
     HANDLER->adjust_account( NAME, bank_name, amount );
     this_player()->remove_property( "bank "+ OLD_BANK );
@@ -120,15 +63,12 @@ int get_account() {
     do_save();
   }
   return (int)HANDLER->query_account( NAME, bank_name );
-} /* get_account() */
-
+}
 int set_account( int amount ) {
   HANDLER->set_account( NAME, bank_name, amount );
-} /* set_account() */
-
+}
 int do_balance() {
   int amount;
-
   amount = get_account();
   if ( amount < 0 ) {
     notify_fail( "You do not have an account here.\n" );
@@ -145,26 +85,21 @@ int do_balance() {
         " in your account.\n",
         "$N checks the balance of $p account.\n" }), ({ }) );
   return 1;
-} /* do_balance() */
-
+}
 int do_withdraw( int number, string type ) {
   int amount;
   int best;
   int total;
   object money;
-
   total = get_account();
-
   if ( total < 0 ) {
     notify_fail( "You do not have an account here.\n" );
     return 0;
   }
-
   if ( number <= 0 ) {
     notify_fail( "You must withdraw something.\n" );
     return 0;
   }
-
   money = clone_object( MONEY_OBJECT );
   money->set_money_array( (mixed *)MONEY_HAND->query_values_in( place ) );
   if ( ( best = (int)money->find_best_fit( type ) ) == -1 ) {
@@ -185,8 +120,8 @@ int do_withdraw( int number, string type ) {
   total_account -= amount;
   do_save();
   this_player()->add_succeeded_mess(this_object(),
-   ({ "You withdraw "+ (string)money->short() +".\n" + 
-      "You have "+ (string)MONEY_HAND->money_value_string( get_account(), 
+   ({ "You withdraw "+ (string)money->short() +".\n" +
+      "You have "+ (string)MONEY_HAND->money_value_string( get_account(),
                                                            place ) +
         " in your account after the withdrawal.\n",
       "$N withdraws some money from $p account.\n"
@@ -198,8 +133,7 @@ int do_withdraw( int number, string type ) {
   }
   this_player()->save();
   return 1;
-} /* do_withdraw() */
-
+}
 int do_deposit( string words ) {
    int amount;
    int total;
@@ -209,13 +143,11 @@ int do_deposit( string words ) {
    object legal;
    object illegal;
    string howmuch;
-
    total = get_account();
    if ( total < 0 ) {
       notify_fail("You don't have an account here.\n");
       return 0;
    }
-
    money = (mixed)MONEY_HAND->parse_money( words, this_player(), place );
    if ( intp( money ) ) {
       switch( money ) {
@@ -227,8 +159,6 @@ int do_deposit( string words ) {
             return notify_fail( "You can only deposit legal tender.\n" );
       }
    }
-
-   // Figure out the legal tender
    if (!place) {
       place = "default";
    }
@@ -240,15 +170,12 @@ int do_deposit( string words ) {
      if (place != "default") {
        amount += legal->query_value_in("default");
      }
-
-     // Minimum amount added to prevent depositing 1c 1000 times to avoid
-     // charges.
      if(amount < 200) {
        if( legal->move( this_player() ) != MOVE_OK ) {
           legal->move( environment( this_player() ) );
           tell_object( this_player(), "You lose hold of some coins and "
              "they tumble to the floor.\n" );
-          tell_room( environment( this_player() ), this_player()->one_short() + 
+          tell_room( environment( this_player() ), this_player()->one_short() +
              "accidentally drops some coins.\n", this_player() );
        }
        if(illegal)
@@ -256,13 +183,12 @@ int do_deposit( string words ) {
             illegal->move( environment( this_player() ) );
             tell_object( this_player(), "You lose hold of some coins and "
                "they tumble to the floor.\n" );
-            tell_room( environment( this_player() ), this_player()->one_short() + 
+            tell_room( environment( this_player() ), this_player()->one_short() +
              "accidentally drops some coins.\n", this_player() );
          }
        add_failed_mess("That is too small an amount to deposit.\n");
        return 0;
      }
-     
      tmp = ( amount * ( 100 - percentage ) ) / 100;
      total_made += tmp;
      amount = amount - tmp;
@@ -270,18 +196,15 @@ int do_deposit( string words ) {
      total_account += amount;
      do_save();
    }
-
-   // Give them back their illegal money and zap the other stuff.
    if (illegal) {
       if( illegal->move( this_player() ) != MOVE_OK ) {
          illegal->move( environment( this_player() ) );
          tell_object( this_player(), "You lose hold of some coins and "
             "they tumble to the floor.\n" );
-         tell_room( environment( this_player() ), this_player()->one_short() + 
+         tell_room( environment( this_player() ), this_player()->one_short() +
             "accidentally drops some coins.\n", this_player() );
        }
    }
-
    if (legal) {
       howmuch = legal->the_short();
       legal->move( "/room/rubbish" );
@@ -290,25 +213,20 @@ int do_deposit( string words ) {
       add_failed_mess("Unable to find any legal money to deposit.\n");
       return 0;
    }
-
    write( "You give the teller "+ howmuch +".\n" );
    write( "After expenses, this leaves "+ (string)MONEY_HAND->
           money_value_string( amount, place ) +".\n" );
-
    this_player()->add_succeeded_mess(this_object(),
        ({  "$N $V "+words+".\n"
            "This gives a total of " +
            MONEY_HAND->money_value_string(total + amount, place ) +
            " in your account.\n",
            "$N deposit$s some money into $p account.\n" }), ({ }) );
-
    return 1;
-} /* do_deposit() */
-
+}
 int do_open() {
   int amount;
   object money;
-
   if ( get_account() >= 0 ) {
     notify_fail( "You already have an account here.\n" );
     return 0;
@@ -335,17 +253,15 @@ int do_open() {
   this_player()->add_succeeded_mess(this_object(),
      "$N $V an account.\n", ({ }) );
   return 1;
-} /* do_open() */
-
+}
 int check_open( string word ) {
   object money;
-
   word = lower_case( word );
-  if (word [ 0 ] == /* "n" */ 110 ) {
+  if (word [ 0 ] ==  110 ) {
     write( "Okay, not opening an account.\n" );
     return 1;
   }
-  if ( word[ 0 ] != /* "y" */ 121 ) {
+  if ( word[ 0 ] !=  121 ) {
     write( "Do you want to open an account? Answer \"yes\" or \"no\".\n" );
     input_to( "check_open" );
     return 1;
@@ -358,18 +274,15 @@ int check_open( string word ) {
   do_save();
   this_player()->save();
   return 1;
-} /* check_open() */
-
+}
 int do_close() {
   int total;
   object money;
-
   total = get_account();
   if ( total < 0 ) {
     notify_fail( "You do not have an account here.\n" );
     return 0;
   }
-
   if ( total ) {
     if ( money = (object)MONEY_HAND->make_new_amount( total, place ) ) {
       write( "You receive "+ (string)money->short() +" on closing "+
@@ -394,8 +307,7 @@ int do_close() {
   do_save();
   this_player()->save();
   return 1;
-} /* do_close() */
-
+}
 mixed *stats() {
   return ::stats() + ({
     ({ "account cost", account_cost }),
@@ -405,8 +317,7 @@ mixed *stats() {
     ({ "bank name", bank_name }),
     ({ "place", place }),
     ({ "save file", save_file }) });
-} /* stats() */
-
+}
 int make_bank_robbers() {
   int i, amount, loss, number, percent_loss, total;
   string player_name;
@@ -482,4 +393,4 @@ int make_bank_robbers() {
     robbers[ i ]->move( this_object() );
   }
   return amount;
-} /* make_bank_robbers() */
+}

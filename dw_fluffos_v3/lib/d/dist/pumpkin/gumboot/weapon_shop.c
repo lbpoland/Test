@@ -1,14 +1,11 @@
 #include "path.h"
 inherit "/std/shops/item_shop";
-
 void setup() {
    set_short("Pointy's Weapon Shop");
    set_long(
 "Racks of weapons line the room, don't touch, they look sharp.\n");
    set_light(70);
-
    add_exit("east", PATH + "gumboot4", "door");
-
    add_object("morning star", 1 + random(20));
    add_object("black handled ceremonial bronze knife", 1 + random(20));
    add_object("carving knife", 1 + random(20));
@@ -27,7 +24,5 @@ void setup() {
    add_object("stiletto", 1 + random(20));
    add_object("tanto", 1 + random(20));
    add_object("white handled ceremonial bronze knife", 1 + random(20));
-
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

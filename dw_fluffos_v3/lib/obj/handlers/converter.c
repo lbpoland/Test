@@ -1,37 +1,18 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: converter.c,v 1.1 1998/01/06 05:03:33 ceres Exp $
- * $Log: converter.c,v $
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
-*/
-/* 
- * Mail converter.
- * By Turrican@Discworld, May 1995
- */
-
 mixed *mail;
 nosave string *names;
 nosave int no_more;
-
 int query_busy(string name);
-
 void create() {
   seteuid("mailer");
   names = ({ });
   no_more = 0;
 }
-
 int ok_to_shut() {
   no_more = 1;
   return (sizeof(names) == 0);
 }
-
 void convert_it(string pname) {
   int i, bing;
-
   if (no_more) {
     write("Can't start converting mail, try again after the reboot.\n");
     return;
@@ -58,7 +39,6 @@ void convert_it(string pname) {
   call_out("reset_busy", (i+1)*3, pname);
   unguarded((: rm, "/save/post/"+pname+".o" :));
 }
-
 void do_it(mixed *arg) {
   object handler = clone_object("/obj/handlers/folder_handler");
   handler->add_it((["to" : ({ arg[6] }),
@@ -71,11 +51,9 @@ void do_it(mixed *arg) {
     "\nCc: "+(arg[4]?arg[4]:"")+"\n\n"+
     arg[5] ]), 1);
 }
-
 int query_busy(string name) {
   return (member_array(name, names) != -1);
 }
-
 void reset_busy(string name) {
   names -= ({ name });
   if (no_more && !sizeof(names)) {

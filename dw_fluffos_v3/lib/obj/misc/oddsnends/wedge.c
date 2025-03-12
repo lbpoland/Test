@@ -1,11 +1,4 @@
-/*
-Davyd
-Item
-For General Item Stores
-*/
-
 inherit "/std/object";
-
 void setup(){
     set_name("wedge");
     set_short("door wedge");

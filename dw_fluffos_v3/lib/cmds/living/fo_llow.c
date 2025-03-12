@@ -1,19 +1,11 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: fo_llow.c,v 1.5 2002/04/08 09:18:49 trilogy Exp $
- */
 inherit "/cmds/base";
-
 #define TP this_player()
-
 int cmd(object *obs) {
    object *ok, ob;
    object *already;
    string s;
    mapping hide_invis;
    int hiding, sneaking;
-   
    ok = ({ });
    already = ({ });
    foreach (ob in obs) {
@@ -25,7 +17,6 @@ int cmd(object *obs) {
          already += ({ ob });
       }
    }
-
    if (!sizeof(ok)) {
       if (sizeof(already)) {
          add_failed_mess("You are already following $I.\n", already);
@@ -43,12 +34,9 @@ int cmd(object *obs) {
       }
       return 0;
    }
-
   hide_invis = ( mapping )this_player()->query_hide_invis();
-
   hiding = hide_invis[ "hiding" ] ? 1 : 0;
   sneaking = this_player()->query_sneak_level() ? 1 : 0;
-
   if( hiding || sneaking )
     write("You follow " + ( s = query_multiple_short( ok ) ) + " unseen.\n" );
   else {
@@ -61,7 +49,6 @@ int cmd(object *obs) {
   }
    return 1;
 }
-
 mixed *query_patterns() {
    return ({ "<indirect:living>", (: cmd($1) :) });
 }

@@ -1,14 +1,8 @@
-/*
- * A guide for new home owners.
- */
 inherit "/std/book";
 #include <room/newspaper.h>
-
 #define AUTO_LOAD_TAG "newspaper"
-
 private string _paper;
 private int _edition;
-
 void setup() {
   set_name("newspaper");
   set_short("newspaper");
@@ -20,11 +14,9 @@ void setup() {
   set_value(10);
   set_ignore_saved_pages(1);
 }
-
 int query_binding_force() {
   return 100;
 }
-
 void setup_paper() {
    class article* articles;
    class advert* adverts;
@@ -38,7 +30,6 @@ void setup_paper() {
    int page;
    mixed* stuff;
    object ob;
-
    if (_paper && _edition) {
       bits = explode(_paper, " ");
       if (bits[0] != "The") {
@@ -54,11 +45,7 @@ void setup_paper() {
       add_adjective( ({ "copy", "of" }) );
       add_adjective(bits[0..<2]);
       add_alias(lower_case(bits[<1]));
-      //if (bits[0] == "the") {
       add_property("determinate", "a ");
-      //} else {
-         //add_property("determinate", "The ");
-      //}
       page = query_open_page();
       articles = NEWSPAPER_HANDLER->query_edition_articles(_paper, _edition);
       set_no_pages(sizeof(articles) + 1);
@@ -115,7 +102,6 @@ void setup_paper() {
       set_read_mess( index, NEWSPAPER_HANDLER->query_language_for( _paper ), 0);
       ob = query_current_page();
       ob->set_value(0);
-
       fluff = NEWSPAPER_HANDLER->query_paper_long(_paper);
       if (fluff[<1] != '\n') {
          fluff += "\n";
@@ -123,30 +109,25 @@ void setup_paper() {
       set_long(fluff + "Edition " + _edition + " of " + _paper + ".\n");
       set_open_page(page);
    }
-} /* setup_paper() */
-
+}
 void set_paper(string paper) {
    _paper = paper;
    set_long(NEWSPAPER_HANDLER->query_paper_long(_paper));
    setup_paper();
-} /* set_paper() */
-
+}
 void set_edition(int edition) {
    _edition = edition;
    setup_paper();
-} /* set_edition() */
-
+}
 mapping query_dynamic_auto_load() {
    mapping map;
-
    map = ::query_dynamic_auto_load();
    add_auto_load_value(map, AUTO_LOAD_TAG, "paper", _paper);
    add_auto_load_value(map, AUTO_LOAD_TAG, "edition", _edition);
    return map;
-} /* query_dynamic_auto_load() */
-
+}
 void init_dynamic_arg(mapping map, object player) {
    ::init_dynamic_arg(map);
    set_paper(query_auto_load_value(map, AUTO_LOAD_TAG, "paper"));
    set_edition(query_auto_load_value(map, AUTO_LOAD_TAG, "edition"));
-} /* init_dynamic_arg() */
+}

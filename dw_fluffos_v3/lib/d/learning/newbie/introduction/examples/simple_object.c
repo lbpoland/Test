@@ -1,12 +1,4 @@
-/*
-    This is a basic object!
-    Written by Drakkos.
-    
-    04/10/2000
-*/  
-
 inherit "/obj/clothing";
-
 void setup() {
     set_name("dungarees");
     set_short("pair of waterproof dungarees");

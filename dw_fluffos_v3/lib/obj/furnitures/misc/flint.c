@@ -1,7 +1,4 @@
-// Aquilo //
-
 inherit "/std/object";
-
 void setup(){
   set_name("flint");
   set_short("flint stone");
@@ -11,4 +8,3 @@ void setup(){
   add_alias("stone");
   set_value( 600 );
 }
-

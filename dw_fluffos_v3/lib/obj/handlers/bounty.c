@@ -1,25 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: bounty.c,v 1.1 1998/01/06 05:03:33 ceres Exp $
- * $Log: bounty.c,v $
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
-*/
-/*
- * Coded by:
- *     Bill, Turrican and Deutha.
-*/
-
 #include <money.h>
-
 #define SAVE_FILE "/save/bounty"
 #define EXPIRY 60 * 60 * 8 * 60
 #define BASE 40000
 #define TAXES 60
 #define LOGIN "/secure/login"
-
 class bounty {
    string short;
    string *victims;
@@ -27,12 +11,7 @@ class bounty {
    int active;
    int time;
 }
-
-/*
- * These are existing bounties and bounties fulfilled but uncollected.
-*/
 mapping bounty, collect;
-
 void create() {
    bounty  = ([ ]);
    collect = ([ ]);
@@ -40,23 +19,17 @@ void create() {
    if ( file_size( SAVE_FILE +".o" ) > 0 )
       unguarded( (: restore_object, SAVE_FILE :) );
    call_out( "tidy_bounties", 120 );
-} /* create() */
-
+}
 void save_file() { unguarded( (: save_object, SAVE_FILE :) ); }
-
 void delete_bounty( string word ) {
    map_delete( bounty, word );
    save_file();
-} /* delete_bounty() */
-
+}
 void tidy_bounties() {
    int now = time();
    string word;
    object thing;
    class bounty record;
-/*
- * A bounty may only be fulfilled during a certain time before it expires.
-*/
    foreach ( word, record in bounty ) {
       if ( LOGIN->test_creator( word ) ) {
          log_file( "BOUNTY", "%s: bounty removed from %s (creator)\n",
@@ -79,9 +52,6 @@ void tidy_bounties() {
          continue;
       }
    }
-/*
- * A bounty may only be collected during a certain time before it expires.
-*/
    foreach ( word, record in collect )
       if ( !LOGIN->test_user( word ) ) {
          map_delete( collect, word );
@@ -97,52 +67,31 @@ void tidy_bounties() {
          map_delete( collect, word );
       }
    save_file();
-} /* tidy_bounties() */
-
+}
 void clear_bounties() {
    if ( !master()->high_programmer( geteuid( this_player( 1 ) ) ) )
       return 0;
    bounty  = ([ ]);
    collect = ([ ]);
    save_file();
-} /* clear_bounties() */
-
+}
 void dest_me() { destruct( this_object() ); }
-
 void register_kill( object victim, object *attackers ) {
    int now, reward;
    string killed, killer, *killers;
    object thing;
    class bounty record;
-/*
- * Don't let someone get others into trouble or collect
- * their own bounties by committing suicide.
-*/
    if ( member_array( victim, attackers ) != -1 )
       return;
    if ( victim->query_creator() || victim->query_property( "no bounties" ) )
       return;
-/*
- * Ignore it all if it happens in a pub.
-*/
    if ( !environment( victim ) )
       return;
    if ( environment( victim )->query_property( "bar brawling" ) )
       return;
    now = time();
-/*
- * This will be okay so long as modifications
- * are via short() or pretty_short().
-*/
    killed = (string)victim->query_short();
-/*
- * If there is no bounty on the victim, set up bounties on the killers.
-*/
    if ( undefinedp( bounty[ lower_case( killed ) ] ) ) {
-/*
- * Temporarily, since I'm off on holiday.
- *    Deutha.
-*/
       return;
       foreach ( thing in attackers ) {
          if ( !objectp( thing ) )
@@ -151,9 +100,6 @@ void register_kill( object victim, object *attackers ) {
             continue;
          if ( !userp( thing ) && !thing->query_property( "unique" ) )
             continue;
-/*
- * Inhumations shouldn't lead to bounties.
-*/
          if ( ( (object)thing->query_property( "inhumer" ) == victim ) &&
                ( (object)victim->query_property( "inhumee" ) == thing ) )
             continue;
@@ -179,14 +125,8 @@ void register_kill( object victim, object *attackers ) {
       save_file();
       return;
    }
-/*
- * There is a bounty.  Is it active?
-*/
    if ( !( ( (class bounty)bounty[ lower_case( killed ) ] )->active ) )
       return;
-/*
- * Work out who the legitimate killers are.
-*/
    killers = ({ });
    foreach ( thing in attackers ) {
       if ( !objectp( thing ) )
@@ -200,18 +140,10 @@ void register_kill( object victim, object *attackers ) {
       killers += ({ killer });
       call_out( "well_done", 30, thing, (string)victim->query_gender() );
    }
-/*
- * If there are valid killers, distribute the bounties appropriately
- * and update the records.
-*/
    if ( sizeof( killers ) ) {
       reward = ( (class bounty)bounty[ lower_case( killed ) ] )->value /
             sizeof( killers );
       foreach ( killer in killers ) {
-/*
- * Killers with bounties themselves don't get paid.  This should also
- * limit some forms of possible abuse.
-*/
          if ( !undefinedp( bounty[ lower_case( killer ) ] ) )
             continue;
          if ( undefinedp( collect[ lower_case( killer ) ] ) ) {
@@ -233,16 +165,14 @@ void register_kill( object victim, object *attackers ) {
       map_delete( bounty, lower_case( killed ) );
    }
    save_file();
-} /* register_kill() */
-
+}
 void inform_bounty( object thing ) {
    if ( !thing )
       return;
    if ( !userp( thing ) )
       return;
    tell_object( thing, "You feel the price on your head rise.\n" );
-} /* inform_bounty() */
-
+}
 void well_done( object thing, int gender ) {
    if ( !thing )
       return;
@@ -250,11 +180,7 @@ void well_done( object thing, int gender ) {
       return;
    tell_object( thing, "You feel good about killing a wanted "+
          ({ "creature", "man", "woman" })[gender] +".\n" );
-} /* well_done() */
-
-/*
- * This is interfaced by a bounty office to allow people to report murders.
-*/
+}
 string report_murder( string killer ) {
    string place;
    class bounty record;
@@ -281,8 +207,7 @@ string report_murder( string killer ) {
             "a bounty notice for "+ record->short +" right away.";
    return "I'm sorry to hear that "+ record->short +" caused you "
          "harm.  I'll issue a bounty notice right away.";
-} /* report_murder() */
-
+}
 void issue_warrant( string killer ) {
    object thing;
    thing = find_player( killer );
@@ -301,11 +226,7 @@ void issue_warrant( string killer ) {
          "a small orange imp appears.  It promptly informs you that a bounty "
          "has been placed on your head.  The imp bows deeply, smiles evilly, "
          "and vanishes in an equally unspectacular flash of light.\n" );
-} /* issue_warrant() */
-
-/*
- * This is interfaced by a bounty office to allow people to collect bounties.
-*/
+}
 string collect_bounty() {
    int money;
    string collector, place;
@@ -331,19 +252,13 @@ string collect_bounty() {
          "administrative charges, which leaves you with the grand sum of "+
          (string)MONEY_HAND->money_value_string( money, place ) +
          ".  Nice doing business with you.";
-} /* collect_bounty() */
-
+}
 int query_bounty( string word ) { return !undefinedp( bounty[ word ] ); }
-
 int query_bounty_value( string word ) {
    if ( undefinedp( bounty[ word ] ) )
       return 0;
    return ( (class bounty)bounty[ word ] )->value;
-} /* query_bounty_value() */
-
-/*
- * Generate a list of bounties; creators see times as well.
-*/
+}
 string query_all_bounties() {
    int cre;
    string list, word, place;
@@ -373,11 +288,7 @@ string query_all_bounties() {
    if ( list == "" )
       return "There are no bounties currently offered.\n";
    return "The following bounters are currently offered:\n"+ list;
-} /* query_all_bounties() */
-
-/*
- * Only creators should get this function called for them.
-*/
+}
 string query_all_collectors() {
    string list, word, place;
    class bounty record;
@@ -393,8 +304,7 @@ string query_all_collectors() {
                (string)MONEY_HAND->money_value_string( record->value, place ),
                ctime( record->time + EXPIRY ) );
    return "The following bounties are awaiting collection:\n"+ list;
-} /* query_all_collectors() */
-
+}
 string query_bounty_info( string word ) {
    string place;
    class bounty record;
@@ -410,4 +320,4 @@ string query_bounty_info( string word ) {
          (string)MONEY_HAND->money_value_string( record->value, place ) +
          " is offered for the death of "+ record->short +" for the murder of "+
          query_multiple_short( record->victims ) +".\n";
-} /* query_bounty_info() */
+}

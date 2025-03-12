@@ -1,43 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: le.c,v 1.2 1998/04/13 14:19:14 pinkfish Exp $
- * $Log: le.c,v $
- * Revision 1.2  1998/04/13 14:19:14  pinkfish
- * Added documentation and moved some commands around ab it.
- *
- * Revision 1.1  1998/01/06 04:54:05  ceres
- * Initial revision
- * 
-*/
-/**
- * This is a quick and dirty line editor.  Useful when ed fails
- * or for a few other other things.
- * <p>
- *
- * This is a very quick and dirty line editor cooked up by
- * [als] in half an hour on a not-so-stormy night of 10/12/91
- * It uses NO input_to's, so ALL commands are prefixed with the command word
- * it was simply intended for those times when ed goes down the
- * proverbial gurgler.  If you HAVE to use it, set up aliases :)
- * commands: r file, w[file], >insert text, /search text,
- * number goes to line number, +, -, d, N-> clears line editor
- * Have fun, and win awards
- * One other possible use for LE is for cute aliases
- * @started 10th of December 1991
- * @author Ember
- */
-
 private nosave int line;
 private nosave string *cfile, cfile_name, last_search;
-
 protected int le(string s);
 int add_command(string str, object ob, string format, function funct);
-
 void create() {
   seteuid("PLAYER");
-} /* create() */
-
+}
 private void print_line() {
    if (line > sizeof(cfile)) {
       line = sizeof(cfile);
@@ -47,29 +14,15 @@ private void print_line() {
       return;
    }
    write(extract("   ", 0, 3 - strlen(line + "")) + line + ":" + cfile[line-1] + "\n");
-} /* print_line() */
-
-/**
- * This method adds in all the commands needed to access le.
- */
+}
 protected void le_commands() {
    add_command("le", this_object(), "<string>", (: le($4[0]) :));
-} /* le_commands() */
-
-/**
- * The main access point for le.  This takes in the comamnd
- * line arg and uses it as it should and does wild and
- * exciting thins, especially on those stormy  nights...
- * @param s the input string to the line editor
- * @return 1 if successful, 0 on failure
- */
+}
 protected int le(string s) {
    int j;
    string sB;
-
    if (!pointerp(cfile)) { cfile = ({ }); line = 0; }
    if (!s || s == "") { print_line(); return 1; }
-
    if (sscanf(s, "%d", j)) { line = j; print_line(); return 1; }
    switch (s[0]) {
    case 'd':
@@ -101,7 +54,6 @@ protected int le(string s) {
       s = extract(s, 1);
       {
          string *tmp1, *tmp2;
-
          tmp1 = (line > 1) ? cfile[0..line-2] : ({ });
          tmp2 = (line <= sizeof(cfile)) ? cfile[line-1..sizeof(cfile)-1] : ({ });
          cfile = tmp1 + ({ s }) + tmp2;
@@ -112,7 +64,6 @@ protected int le(string s) {
    case 'r':
       {
          string sA;
-      
          sA = extract(s, 1);
          while (sA[0] == ' ') sA = extract(sA,1);
          sB = this_player()->get_path(sA);
@@ -150,11 +101,10 @@ protected int le(string s) {
    case 'z':
       {
          int q;
-
          q = 20;
          while (q-- && line <= sizeof(cfile)) { print_line(); line++; }
          line --;
       }
       return 1;
    }
-} /* le() */
+}

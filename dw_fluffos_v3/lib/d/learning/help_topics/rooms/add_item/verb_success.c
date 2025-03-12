@@ -1,13 +1,8 @@
-/****** This room is made my Mithal, learn and enjoy  ***/
-
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_short("add_item room #8, verb success messages ");
    set_light(100);
-
    set_long("add_item room #8, verb success messages\n"
 	    "Let us continue with our rat.  Suppose now that we want the "
 	    "player to succeed - but that the default message is really "
@@ -23,8 +18,6 @@ void setup() {
 	    "multiple verbs, how do you know what verb the person used? "
 	    "The solution is to use $V for verb and $N for player name.\n"
 	    "A filthy rat.\nA note.\n");
-
-   
    add_item("note", ({ "long", "It can be read.",
 		       "read", "Here is the code for the do_touch:\n"
 	     "int  do_touch()\n"
@@ -46,23 +39,19 @@ void setup() {
 	     "insert tell_other and tell_room call's directly in your code."
 	     "Of course add_failed_mess and this one can be used together in "
 	     "the same code...\n" }));
-
-   
    add_item("large filthy rat", ({
 	        "long",
 	                   "It looks like it wants to be touched.",
 		"touch",
                            ({ this_object(), "do_touch" }) }));
-
    add_exit("west",PATH+"verb_failure","path");
    add_exit("east",PATH+"verb_patterns","path");
    add_exit( "start", MAIN, "path" );
    add_exit( "exit", LEARNING +"search", "path" );
-} /* setup() */
-
+}
 int  do_touch()
 {
   this_player()->add_succeeded_mess(previous_object(),
 	            "As $N $V $D, it snarls.\n",  ({}));
     return 1;
-} /* do_touch() */
+}

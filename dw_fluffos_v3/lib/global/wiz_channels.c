@@ -1,73 +1,43 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: wiz_channels.c,v 1.6 2003/01/30 18:37:02 taffyd Exp $
- *
- * System of intra-mud communications channels.
- * Access to channels is controlled by the noshadow channel_list() function.
- * By default each domain has a channel. Domains not wishing to have a channel
- * should be placed in the NO_CHANNELS array.
- * THE ADDITIONAL_CHANNELS array adds channels that do not have a domain and
- * are accessible to all creators.
- *
- * This has been hacked together from a bunch of things it can probably be
- * simplified considerably.
- */
 #include <broadcaster.h>
 #include <creator.h>
 #include <network.h>
 #include <newudp.h>
-
 #define TALKER "/std/shadows/object/talker"
-
 #define BEEP sprintf("%c",7)
 #define CHAN_OK 1
 #define CHAN_FORCED 2
 #define CHAN_EMOTED 4
 #define CHAN_QUERY 8
-
 private int channel_cmd(string mess);
 private int channel_hist();
-
 nomask string *channel_list() {
   string channel, *tmp, *channels;
-  
   tmp = "/secure/master"->query_domains();
   tmp -= NO_CHANNELS;
   channels = ({ });
-  
   foreach(channel in tmp)
     if("/secure/master"->query_senior(this_object()->query_name()) ||
        ("/d/"+channel+"/master")->query_member(this_object()->query_name()))
       channels += ({ channel });
-
   channels += ADDITIONAL_CHANNELS + keys(INTERMUD_MAP);
-  
   if(this_object()->query_lord())
     channels += ({ "lord" });
-  
   return channels;
 }
-
 void wiz_commands() {
   string channel;
-
   foreach(channel in channel_list()) {
     add_command(channel, "<string'mess'>", (: channel_cmd($4[0]) :));
     add_command(channel+"@", "<string'mess'>", (: channel_cmd("@"+$4[0]) :));
     add_command(channel+"?", "", (: channel_cmd("?") :));
-
     if(!INTERMUD_MAP[channel]) {
       add_command(channel+"!", "", (: channel_cmd("!") :));
       add_command("h"+channel, "", (: channel_hist() :));
     }
   }
 }
-
-/* to properly columnate word_typed things */
 private void my_mess(string fish, string erk) {
   int bing;
-  
   if (!interactive(this_player())) {
     return;
   }
@@ -80,29 +50,19 @@ private void my_mess(string fish, string erk) {
                                               (int)this_player()->query_cols(),
                                               bing));
 }
-
-/**
- * This method handles the command line and returns the type of command that
- * is represented by the command line.
- * @param mess the message to parse
- * @return the flags to determine what sort of message it is
- */
 protected int handle_command_line(string channel, string mess) {
   int retval;
   function map_func;
   int i;
   object *people, *off_line;
-
   add_failed_mess("Syntax: "+channel+"[@|?] [text]\n");
   if(!channel || !mess) {
     return 0;
   }
-
   if(member_array(channel, channel_list()) == -1) {
     add_failed_mess("No such channel " + channel + ".\n");
     return 0;
   }
-  
   switch (mess[0]) {
   case '!' :
     retval |= CHAN_FORCED;
@@ -112,13 +72,11 @@ protected int handle_command_line(string channel, string mess) {
     break;
   case '?' :
     if (mess == "?") {
-      // Handle intermud queries.
       if(INTERMUD_MAP[channel]) {
         SERVICES_D->eventSendChannelWhoRequest(INTERMUD_MAP[channel]);
         retval |= CHAN_QUERY;
         return retval;
       }
-      
       people = filter(users(), (: $1 && $1->query_creator() &&
                                 $1->query_visible(this_object()) :));
       off_line = ({ });
@@ -141,7 +99,6 @@ protected int handle_command_line(string channel, string mess) {
                                                 $2->query_name()) :) );
       map_func = function (object ob) {
         string str;
-        
         if (ob->query_invis()) {
           if (ob->query_invis() == 2) {
             str = "({" + $1->query_cap_name() + "})";
@@ -153,7 +110,6 @@ protected int handle_command_line(string channel, string mess) {
         }
         if (query_idle(ob) > 120) {
           int hours, mins, secs;
-          
           secs = query_idle(ob);
           mins = secs / 60;
           secs %= 60;
@@ -186,16 +142,13 @@ protected int handle_command_line(string channel, string mess) {
   }
   return retval;
 }
-
 private int channel_cmd(string mess) {
   int flags;
   string pad = " ";
   string start;
   string channel;
   object *things;
-  
   channel = query_verb();
-  
   if(channel[<1] == '?' || channel[<1] == '@' || channel[1] == ':') {
     channel = channel[0..<2];
   }
@@ -206,17 +159,15 @@ private int channel_cmd(string mess) {
   if (flags & CHAN_QUERY) {
     return 1;
   }
-  
   if(mess[0] == '!' || mess[0] == '@' || mess[0] == '?') {
     mess = mess[1..1000];
   }
   if (mess[0] == ' ') {
     mess = mess[1..1000];
-  } 
+  }
   if (mess == "") {
     return 0;
   }
-  
   if (this_object()->check_earmuffs(channel)) {
     write("Why use " + channel + "-tell when you can't hear a response?\n");
     return 1;
@@ -225,10 +176,8 @@ private int channel_cmd(string mess) {
   if (mess[0..0] == "'") {
     pad = "";
   }
-  
   if (flags & CHAN_EMOTED) {
     start = this_object()->query_cap_name() + pad;
-    
     if(INTERMUD_MAP[channel])
       SERVICES_D->eventSendChannel((string)this_player()->query_cap_name(),
                                    INTERMUD_MAP[channel], "$N " + mess,
@@ -239,7 +188,6 @@ private int channel_cmd(string mess) {
               mess);
   } else {
     start = this_object()->query_cap_name() +": ";
-    
     if(INTERMUD_MAP[channel])
       SERVICES_D->eventSendChannel((string)this_player()->query_cap_name(),
                                    INTERMUD_MAP[channel], mess,
@@ -247,17 +195,14 @@ private int channel_cmd(string mess) {
     else
       my_mess("You " + channel + "-tell: ", mess);
   }
-  
   if(INTERMUD_MAP[channel]) {
     user_event(this_object(), "intermud_tell", start, mess, channel);
-    
     if(channel == "dwchat") {
       things = children(TALKER);
       things -= ({ find_object(TALKER) });
-      if ( flags & CHAN_EMOTED ) { 
+      if ( flags & CHAN_EMOTED ) {
         mess = ":" + mess;
       }
-
       things->receive("intermud", this_object()->query_cap_name(),
                        mess);
     }
@@ -266,17 +211,13 @@ private int channel_cmd(string mess) {
                 flags & CHAN_FORCED, channel);
     HIST_HANDLER->add_chat_history(channel, start, mess);
   }
-  
   return 1;
 }
-
 private int channel_hist() {
   int i;
   mixed *hist;
   string channel;
-  
   channel = query_verb()[1..];
-  
   hist = HIST_HANDLER->query_chat_history(channel);
   if (!pointerp(hist) || !sizeof(hist)) {
     return notify_fail("Nobody said anything on the " + channel +
@@ -285,13 +226,13 @@ private int channel_hist() {
   write("The " + channel + " channel history is:\n");
   for (i=0;i<sizeof(hist);i++) {
     if (sizeof(hist[i]) > 2) {
-      efun::tell_object(this_object(), 
+      efun::tell_object(this_object(),
                         this_object()->fix_string(sprintf("*%s* %s%-=*s\n",
-                ctime(hist[i][2])[11..18], hist[i][0], 
+                ctime(hist[i][2])[11..18], hist[i][0],
                 (int)this_object()->query_cols()-strlen(hist[i][0])-11,
                                                           hist[i][1])));
     } else {
-      efun::tell_object(this_object(), 
+      efun::tell_object(this_object(),
                         (string)this_object()->fix_string(sprintf("%s%-=*s\n",
                hist[i][0], (int)this_object()->query_cols()-strlen(hist[i][0]),
                 hist[i][1])));

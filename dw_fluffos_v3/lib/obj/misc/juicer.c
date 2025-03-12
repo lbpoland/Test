@@ -1,13 +1,9 @@
 #include  <bit.h>
-
 inherit "/obj/vessel";
-
 int juice_bit( object ob, string fn );
-
 mapping juice_funs = ([
   "/std/bit" : (: juice_bit :),
 ]);
-
 void setup() {
   set_name( "juicer" );
   set_short( "juicer" );
@@ -20,18 +16,15 @@ void setup() {
   set_value( 4000 );
   set_weight( 100 );
   set_max_volume( 19200 );
-} /* setup() */
-
+}
 void init() {
   ::init();
   this_player()->add_command( "juice", this_object(), "%I 'in' %D" );
-} /* init() */
-
+}
 int do_juice( object *things ) {
   int i, amount, *weight_unit, percent;
   string medium_short, *types, fn;
   mapping amount_types;
-
   if ( living( environment() ) ) {
     this_player()->add_failed_mess( this_object(), "You have to put down "+
         "$D to use it.\n", ({ }) );
@@ -72,7 +65,6 @@ int do_juice( object *things ) {
     return 0;
   }
   things[ 0 ]->add_plural( (string)things[ 0 ]->query_name() );
-/* The weight unit has been set or is still the default.  Either is fine. */
   if ((amount = (int)things[ 0 ]->query_amount()) == 0) {
     weight_unit = (int *)things[ 0 ]->query_weight_unit();
     amount = ( weight_unit[ 1 ] * (int)things[ 0 ]->query_weight() ) /
@@ -87,11 +79,6 @@ int do_juice( object *things ) {
     medium_short = (string)things[ 0 ]->query_short();
   if ( !things[ 0 ]->query_medium_alias() )
     things[ 0 ]->set_medium_alias( "Ground"+ capitalize( medium_short ) );
-/* In fact, if the continuous medium details are not set and the object
- *     returns ([ ]) to query_static_auto_load() the object will fail
- *     dismally on autoloading next time.  Hope the person who created
- *     the object knows this and set it up properly...
- */
   amount_types = ([ "drop" : ({ 1, "drops" }), "ounce" :
         ({ 120, "ounces" }), "pint" : ({ 2400, "pints" }) ]);
   things[ 0 ]->set_amount_types( amount_types );
@@ -109,17 +96,14 @@ int do_juice( object *things ) {
   this_player()->add_succeeded_mess( this_object(), "$N $V $D to make $I.\n",
       ({ things[ 0 ] }) );
   return 1;
-} /* do_grind() */
-
+}
 int juice_bit( object ob, string fn ) {
     object juice_ob;
     mixed *bit_data;
     string *m, s;
     int i;
-    
     juice_ob = clone_object("/obj/reagents/generic_liquid.ob");
     juice_ob->set_name("juice");
-    // Create medium alias
     if (s = ob->query_race_name())
       s = capitalize(s);
     bit_data = ob->query_bit_data();
@@ -137,7 +121,6 @@ int juice_bit( object ob, string fn ) {
         juice_ob->set_amount(10*(int)ob->query_weight() + 10);
         break;
       default:
-        // For things I haven't foreseen...
         juice_ob->set_short("liquid");
         juice_ob->set_long("This is a non-descript liquid.  It's probably " +
                            "useless.\n");

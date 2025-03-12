@@ -1,25 +1,13 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: get.c,v 1.63 2002/02/22 00:48:08 ceres Exp $
- */
 #include <obj_parser.h>
 #include <move_failures.h>
 #include <player.h>
-
-// These were determined empirically (with my hand :) -- Jeremy
 #define DROP_H 40
 #define PINCH_H 120
-
 #define MAX_GET_NUMBER 20
-
 inherit "/cmds/base";
-
 #define TP this_player()
-
 object* find_matching_obs(string match_str, object dob) {
    class obj_match result;
-
    result = (class obj_match)match_objects_in_environments(match_str, dob);
    if (result->result != OBJ_PARSER_SUCCESS) {
       add_failed_mess(match_objects_failed_mess(result));
@@ -27,7 +15,6 @@ object* find_matching_obs(string match_str, object dob) {
    }
    return result->objects;
 }
-
 mixed cmd(object * obs, string dir, string indir, mixed *args) {
    object *dest;
    object ob;
@@ -49,16 +36,13 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
    mixed we;
    object env;
    object *bing;
-
    fail_dest = ({ });
    cap = (int) TP->query_max_weight();
-
    if (indir && sizeof(obs) > 10) {
       add_failed_mess("Please be more specific as to what you want "
                       "to get from.\n");
       return 0;
    }
-
    if (indir) {
       match_str = args[0];
       dest = obs;
@@ -69,19 +53,16 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
          dest = ({ environment(TP) });
       }
    }
-
    too_many = ({ });
    foreach(dob in dest) {
      if (!is_in_me_or_environment(dob, this_player())) {
          fail_dest += ({ dob });
          continue;
       }
-
       if (dob->cannot_get_stuff() || dob->query_closed()) {
          fail_dest += ({ dob });
          continue;
       }
-
       if (living(dob) && !dob->allowed_to_loot(this_player())) {
         fail_dest += ({ dob });
         continue;
@@ -91,7 +72,6 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
       if (!obs) {
          continue;
       }
-
       if (total_num + sizeof(obs) > MAX_GET_NUMBER) {
          if (total_num > MAX_GET_NUMBER) {
             too_many += obs;
@@ -106,29 +86,19 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
       fail = ({ });
       foreach(ob in obs) {
         env = environment(ob);
-        // If the environment of the object & the direct object are different
-        // something is wrong. It'll either be that it's a collective object
-        // that is in the wrong place or someone's using 'get xxx in yyy'
         if(env != dob) {
           if(ob->query_collective())
             ob->move(dob);
           else
             dob = env;
         }
-
         if ((living(dob) && !dob->allowed_to_loot(this_player(), ob)) ||
             (ob->query_liquid() && ob->query_food_object())) {
           fail += ({ ob });
           num++;
           continue;
         }
-
          if (ob->query_continuous()) {
-            // Can only get a handful at a time.
-            // Id like to make it so you need to have a free hand,
-            // but I'm not sure if it's worth it...
-            //if (!TP->query_free_limbs())
-            //   continue;
             amt = ob->query_amount_types();
             if (amt["handful"]) {
                hand_unit = "handful";
@@ -139,12 +109,10 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
             } else if (amt["pinch"]) {
                hand_unit = "pinches";
                handful = amt["pinch"][0] * PINCH_H;
-            } else {            // Dunno what to do here - I guess give it to them
+            } else {
                handful = ob->query_amount();
             }
             if (ob->query_amount() > handful) {
-               // Knock it down to a carryable amount
-               // (I hope this is right...)
                if (!match_str) {
                   match_str = ob->query_name();
                }
@@ -164,7 +132,6 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
                num++;
             }
          }
-
          if (function_exists("do_get", ob) ||
              function_exists("command_control", ob)) {
             if (function_exists("do_get", ob)) {
@@ -207,7 +174,7 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
             PLAYER_MULTIPLAYER_HANDLER->check_multiplayers("get", TP, ob)) {
            fail += ({ ob });
            num++;
-         } else 
+         } else
 #endif
          if ((int) ob->move(TP) == MOVE_OK) {
             we = (int) ob->query_weight();
@@ -227,11 +194,8 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
             num++;
          }
       }
-
-      /* Print out the different weight messages */
       for (i = 0; i < sizeof(ret); i++) {
          if (sizeof(ret[i])) {
-            /* Print out the different environments for the weights. */
             foreach(env, bing in ret[i]) {
                if (this_player()->query_succ_mess_dir()) {
                   bing -= this_player()->query_succ_mess_dir();
@@ -255,23 +219,15 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
             }
          }
       }
-
       if (sizeof(fail)) {
          add_failed_mess("You cannot get $I.\n", fail);
       }
    }
-
-   //
-   // This means everything failed.
-   //
    if (num == total_num) {
       if (query_notify_fail()) {
          return 0;
       }
       if (indir) {
-         //if (!num) {
-            //add_failed_mess("There is no " + match_str + " in $I.\n", dest);
-         //}
          if (sizeof(fail_dest)) {
             add_failed_mess("You cannot get anything from $I.\n", fail_dest);
          }
@@ -280,9 +236,6 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
       }
       return -1;
    } else {
-      //
-      // Success!
-      //
       if (sizeof(too_many)) {
          add_succeeded_mess(({ "You cannot pick up more than " +
                                query_num(MAX_GET_NUMBER) +
@@ -291,11 +244,10 @@ mixed cmd(object * obs, string dir, string indir, mixed *args) {
       }
    }
    return 1;
-}                               /* cmd() */
-
+}
 mixed *
 query_patterns()
 {
    return ({ "<indirect:object:here>", (: cmd($1, 0, 0, 0) :),
              "<string> from <indirect:object>", (: cmd($1, $2, $3, $4) :) });
-}                               /* query_patterns() */
+}

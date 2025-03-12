@@ -1,10 +1,3 @@
-/**
- * This handler deals will the options a player has.  It will return the
- * list of options, set options and control how the options can be
- * set.
- * @author Pinkfish
- * @started Thu Jun  8 17:13:47 PDT 2000
- */
 #include <cmds/options.h>
 #include <cmds/teach.h>
 #include <colour.h>
@@ -15,7 +8,6 @@
 #include <creator.h>
 #include <terrain_map.h>
 #include <error_handler.h>
-
 class option {
    mixed type;
    int restriction;
@@ -24,11 +16,9 @@ class option {
    mapping suboptions;
    string help;
 }
-
 private mapping _options;
 private string* _colours;
 private mapping _cache_input;
-
 protected int add_option(string path, mixed type, int cre_only,
                          function set_function, function query_function,
                          string help);
@@ -42,10 +32,8 @@ private int setup_earmuffs(object player, string value);
 private int valid_birthday(string str);
 private string convert_birthday(string birthday);
 private int change_error_reports(object player, string ear, int new_value);
-
 void create() {
    string womble;
-
    _options = ([ ]);
    _cache_input = ([ ]);
    _colours = ({
@@ -68,10 +56,6 @@ void create() {
     "B_WHITE",
     "B_GREEN",
     "B_MAGENTA" });
-
-   //
-   // Output brief/verbose.
-   //
    add_option("output look", OPTIONS_TYPE_BRIEF, OPTIONS_TYPE_ALL,
               (: $1->set_verbose($2[<1], $3), 1 :),
               (: $1->query_verbose($2[<1]) :),
@@ -135,7 +119,6 @@ void create() {
                     $1->remove_property(TERRAIN_MAP_IN_LOOK_PROP), 1 :),
               (: $1->query_property(TERRAIN_MAP_IN_LOOK_PROP) :),
               "Display room a map in the terrain long or not");
-
    add_option( "output tabstops", OPTIONS_TYPE_INTEGER, OPTIONS_TYPE_CRE_ONLY,
               (: $1->add_property( TABSTOP_PROP, $3 ) :),
               (: $1->query_property( TABSTOP_PROP ) :),
@@ -144,10 +127,6 @@ void create() {
                (: $1->add_property( SHORTHAND_OUTPUT_PROP, $3 ) :),
                (: $1->query_property( SHORTHAND_OUTPUT_PROP ) :),
                "Convert others shorthand text into long form");
-   
-   //
-   // Colours.
-   //
    foreach (womble in USER_COLOUR_LIST) {
       add_option("colour " + womble, OPTIONS_TYPE_COLOUR, 0,
                  (: $1->set_my_colours($2[<1], $3), 1 :),
@@ -166,17 +145,12 @@ void create() {
                  (: $1->colour_event($2[<1], "default") :),
                 "The colour for " + womble + " messages");
    }
-   
    add_option("colour inform", OPTIONS_TYPE_DYNAMIC_GROUP, 0,
               0, (: get_inform_colours :),
               "The colours of various informational messages");
    add_option("colour club", OPTIONS_TYPE_DYNAMIC_GROUP, 0,
               0, (: get_club_colours :),
               "The colour for club messages");
-
-   //
-   // Terminal stuff.
-   //
    add_option("terminal type", OPTIONS_TYPE_TERMINAL, 0,
               (: $1->set_term_type($3), 1 :),
               (: $1->query_term_name() :),
@@ -189,11 +163,6 @@ void create() {
               (: $1->set_cols($3), 1 :),
               (: $1->query_cols() :),
               "The number of coloumns in your terminal");
-
-   //
-   // Combat stuff.  Wimpy etc.
-   //
-    
     add_option("combat wimpy", OPTIONS_TYPE_INTEGER, 0,
               (: $1->set_wimpy($3) :),
               (: $1->query_wimpy() :),
@@ -233,7 +202,7 @@ void create() {
               (: $1->set_combat_mercy($3), 1 :),
               (: $1->query_combat_mercy() :),
               "Whether or not you will show mercy to opponents");
-#endif   
+#endif
    add_option("combat tactics focus",
               ({"upper body", "lower body", "head", "neck", "chest",
                   "abdomen", "arms", "hands", "legs", "feet", "none"}), 0,
@@ -246,15 +215,12 @@ void create() {
               (: $1->set_combat_distance($3), 1 :),
               (: $1->query_combat_distance() :),
               "Your ideal combat distance (see help tactics)");
-#endif   
+#endif
    add_option("combat killer",
               OPTIONS_TYPE_BOOLEAN, 1,
               (: $1->set_player_killer($3) :),
               (: $1->query_player_killer() :),
               "Whether or not you are a registered player killer");
-   //
-   // Input options.
-   //
    add_option("input ambiguous", OPTIONS_TYPE_BOOLEAN, 0,
               (: change_bool_property(OBJ_PARSER_AMBIGUOUS_PROP, $1, !$3) :),
               (: !$1->query_property(OBJ_PARSER_AMBIGUOUS_PROP) :),
@@ -271,10 +237,6 @@ void create() {
                (: $1->add_property( SHORTHAND_PROP, $3 ) :),
                (: $1->query_property( SHORTHAND_PROP ) :),
                "Convert your shorthand typing into long form");
-
-   //
-   // Earmuffs.
-   //
    foreach (womble in ({ "shout", "newbie", "cryer", "remote-soul",
                            "multiple-soul", "multiple-tell",  "teach",
                            "tell", "remote", "multiple-remote" })) {
@@ -295,7 +257,6 @@ void create() {
                 (: member_array($2[<1], ($1->query_property("earmuffs")?$1->query_property("earmuffs"):({}))) != -1 :),
                 "Should you be informed of " + womble + " messages");
    }
-   
    foreach(womble in ({ "lord", "intermud-all", "intercre",
                           "intergossip", "dwcre", "dwchat", "remote-spam" })) {
      add_option("earmuff events "  + womble, OPTIONS_TYPE_BOOLEAN, OPTIONS_TYPE_CRE_ONLY,
@@ -303,22 +264,17 @@ void create() {
                 (: member_array($2[<1], ($1->query_property("earmuffs")?$1->query_property("earmuffs"):({}))) != -1 :),
                 "Should you be informed of " + womble + " messages");
    }
-   add_option("earmuff state", 
+   add_option("earmuff state",
               ({ "on", "off", "allowfriends" }), 0,
               (: setup_earmuffs($1, $3) :),
               (: $1->query_earmuffs()? ($1->query_earmuffs() == PLAYER_ALLOW_FRIENDS_EARMUFF ? "allowfriends" : "on") : "off" :),
               "Enable or disable earmuffs always or just for friends");
-
    add_option("earmuff cut-through", ({ "off", "ask", "auto"}), 1,
               (: $1->add_property("cut earmuffed tells",
                     member_array($3, ({ "off", "ask", "auto"}))) :),
               (: ({ "off", "ask", "auto" })[$1->query_property(
                                              "cut earmuffed tells")] :),
               "Cut through a players tell earmuffs");
-   //
-   // Creator Command options
-   //
-
    add_option("command ls use_nickname", OPTIONS_TYPE_BOOLEAN, OPTIONS_TYPE_CRE_ONLY,
               (: $3 ? change_bool_property( LS_COMMAND_NICKNAME_PROPERTY, $1, 1 ) : change_bool_property( LS_COMMAND_NICKNAME_PROPERTY, $1, 0 ) :),
               (: $1->query_property( LS_COMMAND_NICKNAME_PROPERTY ) :),
@@ -332,10 +288,6 @@ void create() {
               "Show the errors of type " + lower_case(womble) +
               " when doing a look.");
    }
-
-   //
-   // Player options.
-   //
    add_option("personal description", OPTIONS_TYPE_STRING, 0,
               (: strlen($3) > 30?0:($1->set_desc($3 == "none"?0:$3), 1) :),
               (: (($1->query_desc())?($1->query_desc()):"none") :),
@@ -368,48 +320,25 @@ void create() {
               (: $3?$1->add_property(TEACH_COMMAND_AUTO_PROPERTY,$3):$1->remove_property(TEACH_COMMAND_AUTO_PROPERTY) :),
               (: $1->query_property(TEACH_COMMAND_AUTO_PROPERTY) :),
               "Are you available to auto-teach");
-
    add_option("personal travel",
               ({ "walk", "journey" }), 0,
               (: $3 == "walk" ?$1->remove_property(TERRAIN_MAP_LONG_JUMP_PROPERTY):$1->add_property(TERRAIN_MAP_LONG_JUMP_PROPERTY,1), 1 :),
               (: $1->query_property(TERRAIN_MAP_LONG_JUMP_PROPERTY)?"journey":"walk" :),
               "By default should you walk or journey across terrains");
-
-   //
-   // Playtester options.
-   //
    add_option("playtester protection", OPTIONS_TYPE_BOOLEAN,
               OPTIONS_TYPE_PLAYTESTER_ONLY,
               (: $3 ? $1->enable_personal_pt_protection() : $1->disable_personal_pt_protection() :),
               (: $1->query_pt_protection() :),
               "Enable or disable playtester protection");
-
    add_option("personal roleplaying", OPTIONS_TYPE_BOOLEAN, OPTIONS_TYPE_PLAYTESTER_ONLY,
               (: $1->set_role_playing($3), 1 :),
               (: $1->query_role_playing() :),
               "Enable or disable roleplaying mode");
-
-} /* create() */
-
-/**
- * This method adds in an option for the player to be able to set to
- * a mapping.  This method should be used by all the dynamic tree
- * methods to create leaves.
- * @param array the mapping to add the elements to
- * @param path the path to the option eg: ({ "output", "look" })
- * @param type the type of the option eg: OPTIONS_TYPE_BRIEF
- * @param set_function the function to call to set the option
- * @param query_function the function to call to query the option
- * @return 1 if successful, 0 if not
- */
+}
 protected void add_option_to_mapping(mapping array, string name, mixed type,
                                      int cre_only, function set_function,
                                      function query_function, string help) {
    class option fluff;
-
-   //
-   // Got to the end.
-   //
    fluff = new(class option);
    fluff->type = type;
    fluff->set = set_function;
@@ -418,33 +347,17 @@ protected void add_option_to_mapping(mapping array, string name, mixed type,
    fluff->suboptions = ([ ]);
    fluff->help = help;
    array[name] = fluff;
-} /* add_option() */
-
-/**
- * This method adds in an option for the player to be able to set.
- * The set function will be called with two parameters, the value to
- * set it to and the variable being set.  The set function must return
- * 1 if the value was successfuly set.
- * <p>
- * int set_function(variable, value);
- * @param path the path to the option eg: ({ "output", "look" })
- * @param type the type of the option eg: OPTIONS_TYPE_BRIEF
- * @param set_function the function to call to set the option
- * @param query_function the function to call to query the option
- * @return 1 if successful, 0 if not
- */
+}
 protected int add_option(string name, mixed type, int cre_only,
                          function set_function, function query_function,
                          string help) {
    string option;
    mapping stuff;
    string *path;
-
    path = explode(name, " ");
    stuff = _options;
    foreach (option in path[0..<2]) {
       if (!stuff[option]) {
-         //stuff[option] = ([ ]);
          add_option_to_mapping(stuff, option, OPTIONS_TYPE_GROUP, cre_only,
                                0, 0, help);
       } else if (((class option)stuff[option])->type != OPTIONS_TYPE_GROUP) {
@@ -452,19 +365,15 @@ protected int add_option(string name, mixed type, int cre_only,
       }
       stuff = stuff[option]->suboptions;
    }
-
    add_option_to_mapping(stuff, path[<1], type, cre_only, set_function,
                          query_function, help);
    return 1;
-} /* add_option() */
-
+}
 private mixed query_sub_option(object player, string name, mapping tree) {
    mixed tmp;
-
    if (mapp(tree[name])) {
       return tree[name];
    }
-
    if (classp(tree[name])) {
       switch (tree[name]->restriction) {
       case OPTIONS_TYPE_CRE_ONLY:
@@ -493,12 +402,10 @@ private mixed query_sub_option(object player, string name, mapping tree) {
       return tree[name];
    }
    return 0;
-} /* query_sub_option() */
-
+}
 private mixed query_bottom_sub_option(object player, string* path) {
    string option;
    mixed stuff;
-
    if (!sizeof(path)) {
       return _options;
    }
@@ -530,57 +437,30 @@ private mixed query_bottom_sub_option(object player, string* path) {
       }
    }
    return stuff;
-} /* query_bottom_sub_option() */
-
-/**
- * This method checks to see if the specified option path exists.  This
- * will only return true if it is an actual option, not an option group.
- * @param player the player this is relative to
- * @param name the option path to check
- * @return 1 if it is an option, 0 if not
- */
+}
 int is_option(object player, string name) {
    mixed stuff;
    string *path;
-
    path = explode(name, " ");
    stuff = query_bottom_sub_option(player, path);
    if (!classp(stuff)) {
       return 0;
    }
    return 1;
-} /* is_option() */
-
-/**
- * This method checks to see if the specified option group path exists.  This
- * will only return true if it is an option group, not an actual option.
- * @param player the player this is relative to
- * @param name the option path to check
- * @return 1 if it is an option group, 0 if not
- */
+}
 int is_option_group(object player, string name) {
    mixed stuff;
    string *path;
- 
    path = explode(name, " ");
    stuff = query_bottom_sub_option(player, path);
    if (!mapp(stuff)) {
       return 0;
    }
    return 1;
-} /* is_option() */
-
-/**
- * This method returns all the sub options and option groups at this
- * level.
- * @param player the player this is relative to
- * @param name the path to return the suboptions of
- * @return the sub options of the path
- */
+}
 string *query_sub_options(object player, string name) {
    mapping stuff;
    string *path;
- 
    path = explode(name, " ");
    stuff = query_bottom_sub_option(player, path);
    if (mapp(stuff)) {
@@ -589,20 +469,11 @@ string *query_sub_options(object player, string name) {
                     player, path);
    }
    return ({ });
-} /* query_sub_options() */
-
-/**
- * This method returns the different values this option can be
- * set to.
- * @param player the player this is relative to
- * @param name the name of the option
- * @return the allowed parameters
- */
+}
 string* query_option_values(object player, string name) {
    mixed stuff;
    class option opt;
    string *path;
-
    path = explode(name, " ");
    stuff = query_bottom_sub_option(player, path);
    if (classp(stuff)) {
@@ -627,18 +498,11 @@ string* query_option_values(object player, string name) {
       }
    }
    return ({ });
-} /* query_option_values() */
-
-/**
- * This method returns the value of the specified option.
- * @param player the player to find the value on
- * @param path the path to the option
- */
+}
 string query_option_value(object player, string path) {
    string* bits;
    mixed value;
    class option stuff;
-
    bits = explode(path, " ");
    stuff = query_bottom_sub_option(player, bits);
    if (classp(stuff)) {
@@ -665,7 +529,7 @@ string query_option_value(object player, string path) {
             } else if (value == "default") {
                value = "[default]";
             } else {
-               value = "[" + value + "" + 
+               value = "[" + value + "" +
                        lower_case(replace(value, ({ "%^%^", " ", "%^", "" }))) +
                        "%^RESET%^]";
             }
@@ -675,17 +539,10 @@ string query_option_value(object player, string path) {
       }
       return value + "";
    }
-} /* query_option_value() */
-
-/**
- * This method returns the help string of the specified option.
- * @param player the player to find the value on
- * @param path the path to the option
- */
+}
 string query_option_help(object player, string path) {
   string *bits;
   mixed stuff;
-  
   bits = explode(path, " ");
   stuff = query_bottom_sub_option(player, bits);
   if (classp(stuff)) {
@@ -693,19 +550,11 @@ string query_option_help(object player, string path) {
   }
   return "";
 }
-
-/**
- * This method sets an option value on the player.
- * @param player the player to find the value on
- * @param path the path to the option
- * @param value the value directly from the command line
- */
 int set_option_value(object player, string path, string value) {
    string* bits;
    string* bad;
    mixed set_value;
    class option stuff;
-
    bits = explode(path, " ");
    stuff = query_bottom_sub_option(player, bits);
    if (classp(stuff)) {
@@ -758,7 +607,6 @@ int set_option_value(object player, string path, string value) {
                return 0;
             }
             set_value = "%^" + implode(set_value, (: $1 + "%^ %^" + $2 :)) + "%^";
-
          }
          break;
       default :
@@ -768,14 +616,12 @@ int set_option_value(object player, string path, string value) {
       return evaluate(stuff->set, player, bits, set_value);
    }
    return 0;
-} /* set_option_value() */
-
+}
 private mapping get_inform_colours(object player) {
    string* colours;
    string womble;
    mapping ret;
    string index;
-
    if (player->query_creator()) {
       index = "colour 1";
    } else if (player->query_lord()) {
@@ -783,11 +629,9 @@ private mapping get_inform_colours(object player) {
    } else {
       index = "colour 0";
    }
-
    if (_cache_input[index]) {
       return _cache_input[index];
    }
-
    colours = player->query_inform_types();
    ret = ([ ]);
    foreach (womble in colours) {
@@ -798,19 +642,16 @@ private mapping get_inform_colours(object player) {
    }
    _cache_input[index] = ret;
    return ret;
-} /* get_inform_colours() */
-
+}
 private mapping get_club_colours(object player) {
    string* colours;
    string womble;
    mapping ret;
    string index;
-
    index = "colour " + player->query_name();
    if (_cache_input[index]) {
       return _cache_input[index];
    }
-
    colours = map(this_player()->query_player_clubs(),
                  (: CLUB_HANDLER->normalise_name($1) :) );
    ret = ([ ]);
@@ -823,8 +664,7 @@ private mapping get_club_colours(object player) {
    _cache_input[index] = ret;
    call_out((: map_delete(_cache_input, $1) :), 5 * 60, index);
    return ret;
-} /* get_inform_colours() */
-
+}
 private int change_bool_property(string prop, object player, int new_value) {
    if (new_value) {
       player->add_property(prop, 1);
@@ -832,8 +672,7 @@ private int change_bool_property(string prop, object player, int new_value) {
       player->remove_property(prop);
    }
    return 1;
-} /* change_bool_property() */
-
+}
 private int setup_earmuffs(object player, string ear) {
    switch (ear) {
    case "on" :
@@ -854,11 +693,9 @@ private int setup_earmuffs(object player, string ear) {
       break;
    }
    return 1;
-} /* setup_earmuffs() */
-
+}
 private int change_error_reports(object player, string error, int new_value) {
    string *on;
-
    on = player->query_property(PLAYER_SHOW_ERRORS_PROP);
    if (!on) {
       on = ({ });
@@ -874,11 +711,9 @@ private int change_error_reports(object player, string error, int new_value) {
       player->add_property(PLAYER_SHOW_ERRORS_PROP, on);
    }
    return 1;
-} /* change_earmuffs() */
-
+}
 private int change_earmuffs(object player, string ear, int new_value) {
    string *on;
-
    on = player->query_property("earmuffs");
    if (!on) {
       on = ({ });
@@ -893,13 +728,10 @@ private int change_earmuffs(object player, string ear, int new_value) {
       player->add_property("earmuffs", on);
    }
    return 1;
-} /* change_earmuffs() */
-
+}
 private int valid_birthday(string str) {
 #define LENGTHS ({ 0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 })
-
   int tot, month, day;
-
   if(strlen(str) != 4) {
     return 0;
   }
@@ -915,19 +747,13 @@ private int valid_birthday(string str) {
     return 0;
   }
   return day <= LENGTHS[month];
-} /* valid_birthday() */
-
-
-
+}
 string convert_birthday(string str) {
 #undef MONTHS
 #define MONTHS ({ "January", "February", "March", "April", "May", "June", \
       "July", "August", "September", "October", "November", "December" })
-  /* we assume it is 4 characters long */
-
   int day, month, tot;
   string retval;
-
   sscanf(str, "%d", tot);
   day = tot / 100;
   month = tot % 100;
@@ -951,4 +777,4 @@ string convert_birthday(string str) {
       }
   }
   return retval + " of " + MONTHS[month-1];
-} /* convert_birthday() */
+}

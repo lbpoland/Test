@@ -1,11 +1,4 @@
-/*
- * $Id$
- */
-
-/* Clay shard (remains of a golem) */
-
 inherit "/std/object";
-
 void setup() {
     set_name( "shard" );
     set_short( "cracked clay shard" );
@@ -15,6 +8,4 @@ void setup() {
     set_weight( 5 );
     set_value( 0 );
     add_property( "no recycling", 1 );
-} /* void setup() */
-
-
+}

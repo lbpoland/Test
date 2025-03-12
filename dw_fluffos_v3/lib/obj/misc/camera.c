@@ -1,25 +1,12 @@
-/*  -*- LPC -*-  */
-/* change log */
-
-/*  26/6/93   Add in codes by LIFE so that the object can actually be
- *            used to take photos instead of just a useless lump.
- *            Godot's original setup() is mostly kept but all the rest
- *            are my own code. 
- */
-
 #include <weather.h>
-
 inherit "/std/object";
-
 int  colour;
 int  black_white;
 int  scene;
-
 void setup() {
   colour = 2;
   black_white = 4;
   scene = 1;
-
   set_name( "box" );
   add_adjective( ({ "heavy" , "black" }) );
   set_short( "heavy black cube" );
@@ -32,22 +19,14 @@ void setup() {
   add_plurals(({ "cubes", "cameras"}));
   adjust_money( 1 , "gold" );
   add_help_file("camera");
-/*
-  set_read_mess("To make the demon paint the picture, simply \"use"
-                " camera on <subject>\".\n", "common", 1);
- */
 }
- 
-
-void init() {   
+void init() {
     add_command("use", "<direct:object> on <indirect:object>");
     add_command("use", "<direct:object>");
 }
-
 int query_colour()      { return colour;  }
 int query_black_white() { return black_white;  }
-
-int do_use(object *obs) {   
+int do_use(object *obs) {
   int i;
   string view;
   string photo_of;
@@ -59,7 +38,6 @@ int do_use(object *obs) {
   object  photo;
   object  env;
   object *yes;
-   
   players = ({ });
   chars = ({ });
   things = ({ });
@@ -68,10 +46,8 @@ int do_use(object *obs) {
   photo_of = "";
   chars_sorted = "";
   things_sorted = "";
- 
   env = environment(this_player()) ;
-  photo_of = "This is a beautiful "; 
-
+  photo_of = "This is a beautiful ";
   if (env->query_light() < 60) {
     this_player()->add_failed_mess(this_object(),
                                    "The little imp whispers: Hey! "
@@ -79,7 +55,6 @@ int do_use(object *obs) {
                                    "in the dark you know.\n",({ }));
     return 0;
   }
-  
   if (env->query_light() >180) {
     this_player()->add_failed_mess(this_object(),
                                    "The little demon said quietly: "
@@ -88,27 +63,24 @@ int do_use(object *obs) {
                                    ({ }));
     return 0;
   }
-  
   if (black_white <= 0) {
     call_out("out_of_paint", 0, env);
-    this_player()->add_failed_mess(this_object(), 
+    this_player()->add_failed_mess(this_object(),
                                    "The little imp gives up painting "
                                    "for you.\n",({ }));
     return 0;
   }
-  
   if (colour > 1) {
     photo_of += "colour ";
     colour --;
   } else if (colour == 1) {
     photo_of += "colour ";
-    call_out("out_of_colour", 2, env); 
+    call_out("out_of_colour", 2, env);
     colour --;
   } else {
     photo_of += "black and white ";
     black_white --;
   }
-
   if (sizeof(obs)) {
     for (i=0;i<sizeof(obs);i++) {
       if (obs[i]->query_property("player")) {
@@ -126,29 +98,21 @@ int do_use(object *obs) {
           yes  += ({ obs[i] });
         }
       }
-      
     }
     chars_sorted = query_multiple_short(chars);
-
     things_sorted = query_multiple_short(things);
-    
     if (chars_sorted || things_sorted || sizeof(players)) {
       scene = 0;
     }
   }
-
   view = env->query_long();
-
   if(view[sizeof(view)-1] != 10)
     view += "\n";
-  
   if(env->query_property("location") == "outside" &&
      !env->query_weather_obscured(WEATHER->query_day())) {
     view = WEATHER->weather_string(env) + ".  " + view;
   }
-  
   photo_of += "picture of " + env->a_short() + ".";
-
   if (scene == 0) {
     if ((sizeof(chars)+sizeof(players)) == 1) {
       if (sizeof(chars) == 1) {
@@ -164,23 +128,19 @@ int do_use(object *obs) {
           view += ", ";
         }
       }
-
       if (chars_sorted != "" && sizeof(players) > 0) {
         view += ", " + chars_sorted ;
       } else if (chars_sorted != "") {
         view += capitalize(chars_sorted) ;
       }
       view += " are smiling here.\n";
-    }   
-
+    }
     if (sizeof(things) == 1) {
-      
       view += "There is a "+ things_sorted +" in the photo.\n";
     } else if ( sizeof( things ) ) {
       view += "There are " + things_sorted+" lying here in the photo.\n" ;
     }
   }
-  
   photo = clone_object("/std/object");
   photo->set_name("glass");
   photo->add_adjective( ({"tiny", "square"}) );
@@ -190,7 +150,6 @@ int do_use(object *obs) {
   photo->set_read_mess(photo_of);
   photo->add_property("photographer", (string)this_player()->query_name()) ;
   photo->move(this_player());
-  
   if (scene == 0) {
     this_player()->add_succeeded_mess(this_object(),
                                       "$N $V $D on $I. After some frantic "
@@ -206,30 +165,24 @@ int do_use(object *obs) {
                                       "tiny demon inside hands a piece "
                                       "of painted glass to $N.\n");
   }
-  
   return 1;
 }
-
 mapping query_static_auto_load() {
   return ([ "colour" : colour,
           "black_white" : black_white ]);
 }
-
 void init_static_arg(mapping map) {
   colour = map["colour"];
   black_white = map["black_white"];
 }
-
-void out_of_paint(object room) {    
+void out_of_paint(object room) {
   tell_object(this_player(), "The tiny demon whispers sarcastically: "
               "Without any more paints, I can still paint "
               "you invisible picture if you like!\n");
   tell_room(room, "The tiny demon in the cube whispers something about "
             "paints to "+ this_player()->one_short() +".\n",
             this_player());
-  
 }
-
 void out_of_colour(object room) {
   tell_object(this_player(), "The tiny demon whispers: There are no more "
               "colour paints. This picture is the "
@@ -239,4 +192,3 @@ void out_of_colour(object room) {
             "colour to "+ this_player()->one_short() +".\n",
             this_player());
 }
-

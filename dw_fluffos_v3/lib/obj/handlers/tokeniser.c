@@ -1,28 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: tokeniser.c,v 1.3 2000/05/11 23:54:51 pinkfish Exp $
- * $Log: tokeniser.c,v $
- * Revision 1.3  2000/05/11 23:54:51  pinkfish
- * Make sure it detects floats correctly.
- *
- * Revision 1.2  1998/04/03 19:46:40  pinkfish
- * Add floating point support.
- *
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
-*/
-/**
- * Does tokenising the the parser used by the mudlib when someone uses
- * the ';' command.
- * @author Pinkfish
- */
-/* Ok, simple (hopefully) recursive descent parser. */
 #include "tokenise.h"
-
 mapping token;
-
 void create() {
   token = ([
            '+' : TOK_PLUS,
@@ -50,20 +27,11 @@ void create() {
            "->" : TOK_CALL,
            ".." : TOK_DOTDOT,
            ]);
-} /* create() */
-
-/**
- * Tokenise, we rip out strings and make them as seperate enties
- * Otherwise things inside strings will get processed elsewhere
- * which could be bad...
- * @param inp the input string
- * @return the tokenised string
- */
+}
 mixed tokenise(string inp) {
   string *bits, *cur;
   int pos, num;
   int start_pos;
-
   cur = ({ });
   while (pos < strlen(inp))
     switch (inp[pos++]) {
@@ -149,4 +117,4 @@ mixed tokenise(string inp) {
         break;
     }
   return cur;
-} /* tokenise() */
+}

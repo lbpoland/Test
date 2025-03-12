@@ -1,7 +1,4 @@
-// Rue - with help from Aquilo, 4.2000 //
-
 inherit "/std/room/furniture/surface";
-
 void setup(){
   set_name( "stand" );
   set_short( "wrought iron hat stand" );
@@ -17,6 +14,4 @@ void setup(){
   set_allowed_room_verbs(([ "standing" : "stands" ]));
 	set_put_aliases( ({ "hang" }) );
   set_value(9000);
-
 }
-

@@ -6,11 +6,8 @@ function get_function_pointer(string lpc){
       tmp = "/secure/functemp"->bing();
       destruct(find_object("/secure/functemp"));
     };
-
     rm("/secure/functemp.c");
     return tmp;
   };
   return bind(this_object()->unguarded((:evaluate($(tmp), $(lpc)):)), previous_object());
 }
-                   
-    

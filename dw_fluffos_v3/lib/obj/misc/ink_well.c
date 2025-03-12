@@ -1,5 +1,4 @@
 inherit "/obj/container";
- 
 void create() {
   ::create();
   set_name("well");

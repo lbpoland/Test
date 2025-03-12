@@ -1,5 +1,4 @@
 inherit "/std/room/furniture/surface";
-
 void setup() {
   set_name( "sideboard" );
   set_short( "marquetry sideboard" );
@@ -13,7 +12,5 @@ void setup() {
   set_weight(360);
   set_max_weight(200);
   set_value(100000);
-  set_allow_use_internals(1);    
-} /* setup() */
-
-
+  set_allow_use_internals(1);
+}

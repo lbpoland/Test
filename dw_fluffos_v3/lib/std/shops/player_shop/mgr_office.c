@@ -1,82 +1,15 @@
-/**
- * The standard inheritable object for player-run shop manager offices.
- *
- * <p><b>Description</b></p>
- * <p>The managers' office provides a front-end to the manager commands,
- * although these are mainly handled by the _office_. It also provides a
- * place of refuge for managers since only they have access to this room,
- * as well as allowing them to send and read their mail. Finally, it allows
- * them to claim a manager's handbook. 
- * </p>
- * <p>From here, managers can vote on employment applications and policy
- * suggestions. They can make personnel decisions such as commendations,
- * warnings, bonus suspensions, firing and demoting employees. They can
- * place employees on leave for a certain period if they know that employee
- * is away. They can view the ordinary, accounts, personnel and chart logs.
- * They can rent or remove additional stock cabinets. They can ban or unban
- * people from the shop. They can transfer monies between the profit account,
- * bonus account and cash register (see below). Finally, they can retire and
- * stay on as a retired manager, taking no further active role in the shop
- * other than voting on policy suggestions. 
- * </p>
- * 
- * <p><b>Accounts</b></p>
- * <p>There are three accounts in the shop, the first of which is the
- * register. This contains the 'float' - the money used for buying and
- * selling stock. The register is located behind the counter and is
- * accessible to every employee. 
- * </p>
- * <p>The profit account contains the funds used to pay operating expenses
- * such as cabinet rentals and employee pay. 
- * </p>
- * <p>The bonus account holds the funds used to pay the monthly bonus. 
- * </p>
- * <p>Monies can be transferred between all three accounts at any time, as
- * long as none would go negative as a result. 
- * </p>
- * 
- * @example
- * #include "path.h"
- * 
- * inherit "/std/shops/player_shop/mgr_office";
- * 
- * void setup()
- * {
- *    set_light(60);
- *    set_office( PATH+ "office" );
- * 
- *    set_short( "Tarnach Fendertwin's office" );
- *    set_long( "This room is the office of Tarnach Fendertwin himself.  "
- *     "Since he rarely visits this branch of the chain, it is more "
- *      "commonly used by the shop's managers.\n" );
- *    add_exit( "north", PATH +"office", "door" );
- * }
- * 
- * @see /include/player_shop.h
- * @see /std/shops/player_shop/office.c
- * @see /std/shops/player_shop/counter.c
- * @see /std/shops/player_shop/storeroom.c
- * @see /std/shops/player_shop/shop_front.c
- * @see /std/shops/player_shop/shopkeeper.c
- * @author Ringo
- * @started 1st August 1999
- */
 inherit "/std/room/basic_room";
-
 #include <player_shop.h>
 #include <mail.h>
 #include <move_failures.h>
 #include <money.h>
 #include "patterns.h"
-
-private nosave string _office = "", 
-_place = "", 
-_shop_front = "", 
+private nosave string _office = "",
+_place = "",
+_shop_front = "",
 _counter = "",
 _storeroom = "";
-
 private nosave object _notice = 0;
-
 private string cap_name(string);
 private int do_accounts();
 private int do_ban(mixed *);
@@ -110,8 +43,6 @@ private void end_policy_suggest(string,string,int);
 private void send_memo(string, string, string);
 protected void set_office(string);
 private void write_memo(string);
-
-/** @ignore yes */
 void create()
 {
     do_setup++;
@@ -125,10 +56,6 @@ void create()
     }
     add_help_file("player_shop_mgr_office");
 }
-/* create() */
-
-
-/** @ignore yes */
 void init()
 {
     ::init();
@@ -152,7 +79,6 @@ void init()
     add_command("policy", ({POLICY_SUGGEST, POLICY_REMOVE}),
       (: do_policy($4,$5) :));
     add_command("policies", "", (: do_policies() :));
-
     if (_office->query_retired(this_player()->query_name())) return;
     add_command("rent", "cabinet", (: do_rent() :));
     add_command("remove", "cabinet", (: do_remove() :));
@@ -177,27 +103,17 @@ void init()
       "{register|bonus|profit} [to] {register|bonus|profit}",
       (: do_transfer($4) :));
 }
-/* init() */
-
-
-/** @ignore yes */
-private string cap_name(string name) 
+private string cap_name(string name)
 {
     if (test_player(name))
         return PLAYER_HANDLER->query_cap_name(name);
     else return capitalize(name);
 }
-
-/** @ignore yes */
 void dest_me()
 {
     if (_notice) _notice->dest_me();
     ::dest_me();
 }
-/* dest_me() */
-
-
-/** @ignore yes */
 private int do_accounts()
 {
     tell_object(this_player(), "The shop's accounts are as follows:\n"+
@@ -207,20 +123,12 @@ private int do_accounts()
         MONEY_HAND->money_value_string(_office->query_profit(), _place)));
     return 1;
 }
-/* do_accounts() */
-
-
-/** @ignore yes */
 private int do_ban(mixed *args) { return _office->do_ban(args); }
-
-
-/** @ignore yes */
 private int do_check()
 {
     string results,
     name = this_player()->query_name();
     mapping applicants;
-
     add_succeeded_mess("");
     applicants = _office->get_applicants();
     applicants = filter(applicants, (: $(applicants)[$1][APP_TYPE] == 1 :));
@@ -259,14 +167,9 @@ private int do_check()
     tell_object(this_player(), results + "\n");
     return 1;
 }
-/* do_check() */
-
-
-/** @ignore yes */
 private int do_claim()
 {
     object thing;
-
     if (!_office || _office == "") return 0;
     thing = clone_object(MGR_BOOK);
     thing->set_read_mess("\n   "+ _office->query_shop_name()+ "\n\n"
@@ -282,37 +185,20 @@ private int do_claim()
     add_succeeded_mess("$N $V a new handbook.\n");
     return 1;
 }
-/* do_claim() */
-
-
-/** @ignore yes */
 private int do_commend(string emp) { return _office->do_commend(emp); }
-
-
-/** @ignore yes */
 private int do_demote(string emp) { return _office->do_demote(emp); }
-
-
-/** @ignore yes */
 private int do_fire(mixed *args) { return _office->do_fire(args); }
-
-
-/** @ignore yes */
 private int do_leave(mixed *args) { return _office->do_leave(args); }
-
-
-/** @ignore yes */
 private int do_list(mixed *args)
 {
     string results, word;
     mapping baddies, applicants;
     string *applied, *hired, *awaiting;
-
     if (!sizeof(args)) args = ({"employees"});
     add_succeeded_mess("");
     switch (args[0])
     {
-    case "applicants" : 
+    case "applicants" :
         results = "      Applications for employment as at " +
         ctime(time()) + "\n\n";
         applicants = _office->get_applicants();
@@ -323,12 +209,12 @@ private int do_list(mixed *args)
             return 1;
         }
         applied = sort_array(keys(filter(applicants,
-              (: $(applicants)[$1][APP_TYPE] == APPLIED :))), 
+              (: $(applicants)[$1][APP_TYPE] == APPLIED :))),
           (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
         hired = sort_array(keys(filter(applicants,
               (: $(applicants)[$1][APP_TYPE] == HIRED :))),
           (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
-        awaiting = sort_array(keys(filter(applicants, 
+        awaiting = sort_array(keys(filter(applicants,
               (: $(applicants)[$1][APP_TYPE] == AWAITING :))),
           (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
         if ( sizeof(awaiting))
@@ -373,7 +259,7 @@ private int do_list(mixed *args)
         results = "This is a list of people banned from the shop:\n\n";
         foreach (word in sort_array(keys(baddies), 1))
         {
-            results += cap_name(word)+ " banned by "+ 
+            results += cap_name(word)+ " banned by "+
             baddies[word][BAD_BANNER]+ " on "+
             ctime(baddies[word][BAD_TIME] )+ ".\n   Banned for "+
             baddies[word][BAD_REASON]+ ".\n\n";
@@ -385,22 +271,11 @@ private int do_list(mixed *args)
     }
     return 1;
 }
-/* do_list() */
-
-
-/** @ignore yes */
 private int do_logs(mixed *args, string pattern)
 {
     return _office->do_logs(args, pattern);
 }
-/* do_logs() */
-
-
-/** @ignore yes */
 private int do_mail(string words) { return MAIL_TRACK->mail(words); }
-
-
-/** @ignore yes */
 private int do_memo()
 {
     tell_object(this_player(), "Subject: (hit enter for general memo)\n");
@@ -408,17 +283,12 @@ private int do_memo()
     add_succeeded_mess("");
     return 1;
 }
-/* do_memo() */
-
-
-/** @ignore yes */
 private int do_office()
 {
     int retired = _office->query_retired(this_player()->query_name());
     string result = (retired)?
     "As a retired manager, you can use the following commands:\n":
     "As a manager, you can use the following commands:\n";
-
     result +=
     "   accounts  - view register, bonus & profit accounts\n"
     "   claim     - claim a manager's handbook\n"
@@ -455,10 +325,6 @@ private int do_office()
     add_succeeded_mess("");
     return 1;
 }
-/* do_office() */
-
-
-/** @ignore yes */
 private int do_policies()
 {
     mapping policies = _office->get_new_policies();
@@ -467,7 +333,6 @@ private int do_policies()
     else
     {
         int i = 1;
-
         tell_object(this_player(), "The following policies have been suggested."
           "  Policies in existence are proposed to be overturned.\n");
         foreach(string policy in m_indices(policies))
@@ -477,14 +342,9 @@ private int do_policies()
     }
     return 1;
 }
-/* do_policies() */
-
-
-/** @ignore yes */
 private int do_policy(mixed *args, string pattern)
 {
     string *managers, mgr;
-
     if (pattern == POLICY_SUGGEST)
     {
         if (_office->query_policy(args[1]))
@@ -516,11 +376,7 @@ private int do_policy(mixed *args, string pattern)
       args[0]+ " policy.\n", 0, 0);
     _office->add_policy_suggest(args[0], "", mgr);
     return 1;
-}   
-/* do_policy() */
-
-
-/** @ignore yes */
+}
 private int do_project(string projection)
 {
     add_succeeded_mess("");
@@ -532,16 +388,12 @@ private int do_project(string projection)
     case "pay" :
         tell_object(this_player(),
           "For the month to date, the staff wages total "+
-          MONEY_HAND->money_value_string( _office->calc_pay(), 
+          MONEY_HAND->money_value_string( _office->calc_pay(),
             _place)+ ".\n");
         break;
     }
     return 1;
 }
-/* do_project() */
-
-
-/** @ignore yes */
 private int do_query(string query)
 {
     add_succeeded_mess("");
@@ -554,70 +406,33 @@ private int do_query(string query)
         break;
     case "employees" :
         tell_object(this_player(),
-          "The maximum number of employees is currently "+ 
+          "The maximum number of employees is currently "+
           _office->query_maxemp()+ ".\n");
         break;
     default :
     }
     return 1;
 }
-/* do_query() */
-
-
-/** @ignore yes */
 private int do_remove() { return _office->do_remove(); }
-
-
-/** @ignore yes */
 private int do_rent() { return _office->do_rent(); }
-
-
-/** @ignore yes */
 private int do_retire() { return _office->do_retire(); }
-
-
-/** @ignore yes */
 private int do_set(mixed *args, string pattern)
-{ 
+{
     return _office->do_set(args, pattern);
 }
-/* do_set() */
-
-
-/** @ignore yes */
 private int do_suspend(mixed *args) { return _office->do_suspend(args); }
-
-
-/** @ignore yes */
 private int do_transfer(mixed *args) { return _office->do_transfer(args); }
-
-
-/** @ignore yes */
 private int do_unban( string person ) { return _office->do_unban(person); }
-
-
-/** @ignore yes */
 private int do_view(string person, string pattern)
 {
     _office->view_record(person, pattern);
     return 1;
 }
-/* do_view() */
-
-
-/** @ignore yes */
 private int do_vote(mixed *args, string pattern)
 {
     return _office->do_vote(args, pattern);
 }
-/* do_vote() */
-
-
-/** @ignore yes */
 private int do_warn(mixed *args) { return _office->do_warn(args); }
-
-
-/** @ignore yes */
 private void end_memo(string text, string subject)
 {
     if (!text)
@@ -625,24 +440,18 @@ private void end_memo(string text, string subject)
         tell_object(this_player(), "Aborted.\n");
         return;
     }
-    tell_object(this_player(), 
+    tell_object(this_player(),
       "Do you want to keep a copy of the memo? ");
     input_to((: send_memo($1,$(subject),$(text)) :), 0);
 }
-/* end_memo() */
-
-
-/** @ignore yes */
 private void end_policy_suggest(string text, string name, int type)
 {
     string mgr, *managers;
-
     if (!text)
     {
         tell_object(this_player(), "Aborted.\n");
         return;
     }
-    /* Remove newlines */
     text = replace_string(text, "\n", " ");
     text = replace_string(text, "  ", " ");
     mgr = this_player()->query_name();
@@ -652,34 +461,21 @@ private void end_policy_suggest(string text, string name, int type)
     managers -= ({lower_case(mgr)});
     AUTO_MAILER->auto_mail(implode(managers, ","),
       mgr, _office->shop_very_short()+ " policy suggestion",
-      "", "Please note that there is a new policy, "+ name+ 
+      "", "Please note that there is a new policy, "+ name+
       ", on which I would like you to vote.\n", 0, 0);
     _office->add_policy_suggest(name, text, mgr, type);
 }
-/* end_policy_suggest() */
-
-
-/** @ignore yes */
 void event_death(object k, object *o, object k2, string r, string k3)
 {
     _office->event_death(k, o, k2, r, k3);
 }
-/* event_death() */
-
-
-/** @ignore yes */
 void event_enter(object ob, string message, object from)
 {
     _office->event_enter(ob, message, from);
 }
-/* event_enter() */
-
-
-/** @ignore yes */
 private void send_memo(string ans, string subject, string text)
 {
     string *managers;
-
     ans = lower_case(ans);
     if (strlen(ans) < 1 || (ans[0] != 'y' && ans[0] != 'n'))
     {
@@ -694,7 +490,7 @@ private void send_memo(string ans, string subject, string text)
       this_player()->query_name() != _office->query_creator())
         managers += ({lower_case(this_player()->query_name())});
     managers += ({_office->query_creator()});
-    if ( ans[0] == 'n' ) 
+    if ( ans[0] == 'n' )
         managers -= ({lower_case(this_player()->query_name())});
     if (!sizeof(managers))
     {
@@ -707,23 +503,12 @@ private void send_memo(string ans, string subject, string text)
       this_player()->query_name(), _office->shop_very_short()+
       " manager memo" + subject, "", text, 0, 0);
 }
-/* send_memo() */
-
-
-/** @ignore yes */
 protected void set_long(string long_desc)
 {
     long_desc += "Managers can use their own \"office\" commands "
     "from in here.  There is a management policy notice on the wall.\n";
     ::set_long( long_desc );
 }
-/* set_long() */
-
-/**
- * Set the path of the main office.
- * @example set_office( PATH+ "office" );
- * @param path The full path & filename.
- */
 protected void set_office(string path)
 {
     _office = path;
@@ -731,20 +516,12 @@ protected void set_office(string path)
     _shop_front = _office->query_shop_front();
     _counter = _office->query_counter();
     _storeroom = _office->query_storeroom();
-
-    /******************************
-     * Add the shop's policy notice
-     *****************************/
     _notice = clone_object(SHOP_NOTICE);
     _notice->set_office(_office);
     _notice->set_type(1);
     add_hidden_object(_notice);
 }
-/* set_office() */
-
-/** @ignore yes */
 private void write_memo(string text)
 {
     this_player()->do_edit(0, (: end_memo($1,$(text)) :));
 }
-/* write_memo() */

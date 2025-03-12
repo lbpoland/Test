@@ -1,12 +1,6 @@
 #include "path.h"
-/*
- * Example room for using vessels.
- */
-
 inherit "/std/room";
-
 object wine_bottle, glass, cup;
-
 void setup() {
    set_short("room of vessel and liquid examples");
    add_property( "determinate", "the " );
@@ -24,8 +18,8 @@ void setup() {
                   "Try pouring from one object to another, drinking, etc.  "
                   "Try mixing equal parts of wine and Klatchian coffee.  "
                   "Use the \"stat\" command to check on the volumes (eg, "
-                  "\"stat bottle\", \"stat all in cup\").  If you want " 
-                  "to start over with a fresh vessel, dest it and " 
+                  "\"stat bottle\", \"stat all in cup\").  If you want "
+                  "to start over with a fresh vessel, dest it and "
                   "\"call reset() here\".\n"
             }) );
    add_item( "note2",
@@ -79,42 +73,22 @@ void setup() {
             }) );
    add_exit( "back", LEARNING +"search", "path" );
    add_exit( "exit", ENTRANCE, "path" );
-   /* The "commented functions" and "keywords" properties are specific for 
-    * rooms in the learning domain and is used to make it possible to search
-    * for subjects. 
-    * See /d/learning/handlers/search.c for the way this is done.
-    */
-   add_property( "commented functions", 
+   add_property( "commented functions",
                 ({ "make_bottle", "add_eat_effect", "set_medium_alias",
                    "set_max_weight", "set_max_volume" }) );
-   add_property( "keywords", 
+   add_property( "keywords",
                 ({ "bottle", "vessel", "liquid" }) );
-} /* setup() */
-
+}
 void reset() {
    call_out( "check_vessels", 3 );
-} /* reset() */
-
+}
 void check_vessels() {
    object wine, coffee;
-   
-   /* each of these if's check if the vessel has been dest'ed or moved out of 
-    * the room
-    */
    if ( !wine_bottle || ( environment( wine_bottle ) != this_object() ) ) {
-      /* The bottle is gone, make a new one
-       */
       wine_bottle = clone_object( "/obj/bottle" );
-      /* For backwards compatibility, make_bottle() expects the
-       * volume to be cubic centimeters (or at least that's the way
-       * it worked out).
-       */
       wine_bottle->make_bottle( "green", 600 );
       wine_bottle->move( this_object(), "Jeremy walks into the room and "
                         "leaves $N before walking out again." );
-      /* I only fill the bottle when a new one is cloned, to avoid
-       * confusing people.
-       */
       wine = clone_object( "/obj/reagents/generic_liquid.ob" );
       wine->set_name( "wine" );
       wine->set_short( "red wine" );
@@ -122,8 +96,6 @@ void check_vessels() {
       wine->set_medium_alias( "RedWine" );
       wine->add_adjective( "red" );
       wine->add_eat_effect( "/std/effects/ingested/drunk", 325 );
-      /* This will completely fill the bottle
-       */
       wine->set_amount( 2400 );
       wine->move( wine_bottle );
    }
@@ -134,7 +106,6 @@ void check_vessels() {
       glass->set_long( "This is a fine crystal wine glass.\n" );
       glass->set_weight( 4 );
       glass->set_max_weight( 8 );
-      // Make it hold about half a cup
       glass->set_max_volume( 480 );
       glass->add_adjective( ({ "crystal", "wine" }));
       glass->move( this_object(), "Jeremy walks into the room and "
@@ -164,5 +135,4 @@ void check_vessels() {
       coffee->set_amount( 960 );
       coffee->move( cup );
    }
-} /* check_vessels() */
-
+}

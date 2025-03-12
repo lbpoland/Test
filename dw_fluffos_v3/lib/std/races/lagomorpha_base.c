@@ -1,18 +1,11 @@
-/* This is the base race inherit for lagomorpha, that is rabbits,
- * hares and pikas.
- * Danbala, 2003
- */
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "a generic lagomorph animal.  It shouldn't be used since "
       "this is just a base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 40, 0,
          "left eye", "right eye", "left ear", "right ear", "skull" }),
       "left eye", "eye", ({ "head", 1, 0 }),
@@ -45,25 +38,21 @@ void create() {
       "tail", "tail", ({ 0, 25, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "teeth", "tooth", "tail", "skin" });
    unrottable = ({ "skull", "teeth", "tooth" });
    set_skin( "fur" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
+}
 string *query_target_zones() {
   return ({ "head", "head", "neck",
-              "chest", "back", "back", "back", "lower back", 
+              "chest", "back", "back", "back", "lower back",
               "left front leg", "left front leg", "left front paw",
               "stomach", "stomach", "tail",
               "right front leg", "right front leg", "right front paw",
               "left rear leg", "left rear leg", "left rear paw",
               "right rear leg", "right rear leg", "right rear paw"});
-} /* query_target_zones() */
-
+}
 string map_target_zone(string zone) {
   switch(zone) {
   case "chest":
@@ -81,4 +70,4 @@ string map_target_zone(string zone) {
   default:
     return zone;
   }
-} /* map_target_zone() */
+}

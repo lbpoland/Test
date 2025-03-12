@@ -1,49 +1,11 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: armoury.c,v 1.34 2002/11/10 02:17:42 ceres Exp $
- */
-/**
- * Keeps track of all the standard armours, weapons and clothing.
- *
- * @see /include/armoury.h
- * @index armour
- * @index weapon
- * @index scabard
- * @index clothing
- * @index clothes
- * @index jewellery
- * @index misc
- * @index plants
- * @author Furball
- * @changes Many many, by many people
- * @changes 4/1/97 Ceres
- * The discworld armoury was rewritten by Ceres on 4/1/97 to handle
- * subdirectories within the standard dirs.
- * @changes 5/2/2001 Pinkfish
- * Changed to allow the various domains to have their own armoury
- * subdirectories that can be found and specified with a flag to the
- * creation sequences.
- * @changes 23 Apr 2001 Ceres
- * Removed the recycling. It was a lot of overhead for little benefit.
- * @changes 24 Aug 2001 Siel
- * added /obj/misc/, /obj/plants/ and /obj/furnitures/ to the request list
- */
 #include <move_failures.h>
 #include <armoury.h>
-
-/* two week timeout */
 #define MAX_RECYCLE 6
-
-
 inherit "/std/room/basic_room";
-
 #define DEFAULT_RECYCLE_AREA "default"
 #define SAVE "/save/armoury"
 #define TYPES ({"armours", "clothes", "weapons", "plants", "foods", "scabbards", "jewelleries", "misc" })
-
 private nosave int _total_requests;
-
 private mapping _smalls;
 private mapping _armour_list;
 private mapping _weapon_list;
@@ -55,21 +17,15 @@ private mapping _misc_list;
 private mapping _plant_list;
 private mapping _areas;
 private mapping forbidden;
-
 private void rehash_all();
 int rehash(string place);
 string* walk_directory (string);
-
-/** @ignore yes */
 void save_me() {
    unguarded( (: save_object(SAVE, 3) :));
-} /* save_me() */
-
-/** @ignore yes */
+}
 void load_me() {
    unguarded( (: restore_object(SAVE, 1) :));
-} /* load_me() */
-
+}
 void setup() {
    set_short( "" + mud_name() + " Armoury" );
    add_property( "determinate", "the " );
@@ -85,41 +41,23 @@ void setup() {
    _areas = ([ ]);
    _armour_list = _weapon_list = _clothing_list = _plant_list = _misc_list =
       _jewellery_list = _scabbard_list = _food_list = ([ ]);
-   // If it is in the boot sequence
    load_me();
    rehash_all();
-} /* setup() */
-
-/**
- * This returns the list of small objects available for the area.  These
- * are things that can be fgound in gutters and so on.
- * @param area the area of the recycling
- * @return the array of small objects
- */
+}
 object *query_smalls(string area) {
    if (!area) {
       area = DEFAULT_RECYCLE_AREA;
    }
    return _smalls[area];
 }
-
-/**
- * Returns the list of domain armoury items.
- * @param domain the domain/area to get the items from.
- * @return the area sub-mapping.
- */
 mapping query_area(string domain) {
   if (_areas[domain]) {
       return _areas[domain];
   }
-
   return ([ ]);
-} /* query_area() */
-
+}
 int request(string, int, string);
 int forbid(string);
-
-/** @ignore yes */
 void init() {
    string comm;
    ::init();
@@ -138,22 +76,11 @@ void init() {
                      "misc", "scabbards", "food", })) {
       add_command(comm, "", (:call_other(this_object(), $(comm)):));
    }
-} /* init() */
-
-/* Internal Functions */
-
-// create a list of armours/whatever.  base_dir is the dir to look in,
-// extensions is the file extensions to look for.  The base_dir will be
-// recursed to find all files in sub-dirs as well.
-/** @ignore yes */
+}
 mapping make_list(string base_dir, string *extensions) {
   string *dirs, dir, extension, file_name;
-//   mixed *tmp, *file;
   mapping list;
-
   dirs = walk_directory (base_dir);
-
-  // make a mapping of names to filenames
   list = ([ ]);
   foreach(dir in dirs) {
     foreach(extension in extensions) {
@@ -165,73 +92,29 @@ mapping make_list(string base_dir, string *extensions) {
       }
     }
   }
-
   return list;
-} /* make_list() */
-
-
-/** @ignore yes */
+}
 int clean_up(int i) { return 0; }
-
-// External functions
-
-/**
- * This will choose a small item from the specific area.
- * @param area the are to check in
- * @return the small object to choose
- */
 object choose_small_item(string area) {
   object ob;
-
   if(!area)
     area = DEFAULT_RECYCLE_AREA;
-
   if(!_smalls || !_smalls[area] || !arrayp(_smalls[area]) || !_smalls[area][0])
     return 0;
-
   ob = clone_object(_smalls[area][0]);
   _smalls[area] = _smalls[area][1..];
   return ob;
 }
-
-/**
- * General item retreival function.  It returns a new item
- * it handles any sort of item.  The percentage is the
- * percentage condition in which it is returned.
- * The "word" parameter is the name of the requested item, essentially
- * the filename without directory and with "_"'s changed to " "'s. The
- * "percent" parameter is used as measure of how good it
- * is compared to a fully functional one. So a 50% dagger is only 50% as
- * good as a 100% one.
- * <p>
- * The file armoury.h defines the ARMOURY variable.  You need to include
- * this into your file to use it.  You should include this file and
- * uyse ythis define rather than the full path to the armoury, as
- * otherwise your code could stuff up :)
- * @param word the name of the item to retreive
- * @param percent the percentage condition to be in
- * @param area the area to choose the item in
- * @see /include/armoury.h
- * @return the requested object, or 0 on failure
- * @example
- * // get a slightly worn long sword and give it to the npc.
- * ARMOURY->request_item("long sword", 85)->move(npc);
- * @example
- * // Get a random condition armour.
- * armour = ARMOURY->request_item("leather jacket", random(100));
- */
 object request_item(string word, int percent, string area) {
   int add_area;
   object thing;
   string filename;
-
   if(!word) {
     return 0;
   }
   if (!area) {
     area = DEFAULT_RECYCLE_AREA;
   }
-
   if (_areas[area] &&
       _areas[area][word]) {
     filename = _areas[area][word];
@@ -260,53 +143,36 @@ object request_item(string word, int percent, string area) {
     }
     return 0;
   }
-
   if(file_size( filename ) > 0)
     thing = clone_object(filename);
-
   if(!thing) {
     printf( "Cannot find item \"%s\".\n", word );
     log_file( "ARMOURY", "Cannot find %s (%s)\n", word,
               file_name( previous_object() ) );
     return 0;
   }
-
   _total_requests++;
-
   if(!_smalls[area])
     _smalls[area] = ({ });
-
-  // If there's less than 20 items in the smalls list and this item meets
-  // all the criteria then add it.
   if(sizeof(_smalls[area]) < 20 &&
-     thing->query_weight() < roll_MdN(5, 20) && // must be small
-     thing->query_value() < random(4000) && // not too valuable
-     !thing->query_liquid() && // must not be a liquid
+     thing->query_weight() < roll_MdN(5, 20) &&
+     thing->query_value() < random(4000) &&
+     !thing->query_liquid() &&
      !sizeof((mapping)thing->query_value_info()) &&
-     strsrch(filename, "_pt") == -1 && // not in pt
-     strsrch(filename, "_dev") == -1 && // not in dev
-     !thing->query_property("no recycling")) { // must be recyclable
+     strsrch(filename, "_pt") == -1 &&
+     strsrch(filename, "_dev") == -1 &&
+     !thing->query_property("no recycling")) {
     _smalls[area] += ({ filename });
   }
-
   if (add_area)
     thing->add_property(ARMOURY_RECYCLING_AREA_PROP, area);
-
   thing->set_percentage( percent );
   return thing;
-} /* request_item() */
-
-/**
- * This method tries to find a match for the object if it has moved between
- * directories.
- * @param path the old path
- * @return the new path
- */
+}
 string remap_file_path(string path) {
    string* bits;
    mapping list;
    string new_fname;
-
    bits = explode(path, "/");
    if (bits[0] != "obj") {
       return path;
@@ -337,25 +203,17 @@ string remap_file_path(string path) {
       list = _plant_list;
       break;
    }
-
    if (list) {
       new_fname = list[replace_string(explode(bits[<1], ".")[0], "_", " ")];
       if (new_fname) {
          return new_fname;
       }
    }
-
    return path;
-} /* remap_file_path() */
-
-// Action functions
-
-// Update the list of known items
-/** @ignore yes */
+}
 int rehash(string thing) {
   string special;
   int found;
-
   switch (thing) {
   case "armours" :
      _armour_list=make_list("/obj/armours/", ({".arm", ".c"}));
@@ -384,7 +242,6 @@ int rehash(string thing) {
      _plant_list = make_list( "/obj/plants/", ({ ".ob", ".food", ".c" }));
      break;
   default :
-    // Rehash the domains...
     if (file_size("/d/" + thing + "/items") == -2) {
       _areas[thing] = make_list( "/d/" + thing + "/items/",
                                   ({ ".arm", ".c", ".clo", ".wep", ".sca",
@@ -401,46 +258,25 @@ int rehash(string thing) {
        return 0;
     }
   }
-
   save_me();
-
   write("Rehash of " + thing + " complete.\n");
   return 1;
 }
-
-/**
- * This method rehashes a specific directory of things.  At the moment we
- * fudge this a little.
- * @param dir the directory to rehash
- * @return 1 if it found something to rehash
- */
 int rehash_specific_dir(string dir) {
    return rehash(explode(dir, "/")[1]);
 }
-
-/**
- * This will only be called in the bootup sequence -- yea right! I've made it
- * work a little more slowly.
- */
 private void rehash_all() {
   string thing;
   int i;
-
   foreach(thing in TYPES + "/secure/master"->query_domains()) {
     i += 5;
-
     call_out("rehash", i, thing);
   }
-} /* rehash_all() */
-
-/** @ignore yes */
+}
 string *query_types() { return TYPES + keys(_areas); }
-
-/** @ignore yes */
 mapping query_items(string type, string filter) {
   mapping items;
   string item;
-
   switch(type) {
   case "armours":
     items = _armour_list;
@@ -475,7 +311,6 @@ mapping query_items(string type, string filter) {
     else
       return 0;
   }
-
   items = copy (items);
   if (sizeof (filter)) {
     foreach(item in keys(items))
@@ -484,14 +319,9 @@ mapping query_items(string type, string filter) {
   }
   return items;
 }
-
-// Return an item for someone
-/** @ignore yes */
 int request( string word, int percentage, string area ) {
   object thing;
-
   thing = request_item( word, percentage, area );
-
   if ( !thing ) {
     add_failed_mess(word + " not found.\n");
     return 0;
@@ -503,18 +333,14 @@ int request( string word, int percentage, string area ) {
     write( (string)thing->a_short() +
           " has been placed in your inventory.\n" );
   return 1;
-} /* request() */
-
-/** @ignore yes */
+}
 mixed stats() {
   string tmp;
   mixed *ret;
-
   ret = ({ });
   foreach(tmp in keys(_areas)) {
     ret += ({ tmp, sizeof(_areas[tmp]) });
   }
-  
   return ::stats() + ({
     ({ "item requests", _total_requests, }),
       ({ "armours", sizeof(_armour_list) }),
@@ -526,18 +352,13 @@ mixed stats() {
       ({ "misc", sizeof(_misc_list) }),
       ({ "plants", sizeof(_plant_list) }),
       ret });
-} /* stats() */
-
-/** @ignore yes */
+}
 string* walk_directory (string dir) {
   string *tmp, *dirs = ({ }), *tmp2;
   mixed *file;
-
   tmp = get_dir(dir, -1);
-
   if (sizeof (tmp))
     dirs += ({dir});
-
   foreach(file in tmp) {
     if(file[1] == -2) {
       tmp2 = walk_directory (dir + file [0] + "/");
@@ -545,6 +366,5 @@ string* walk_directory (string dir) {
         dirs += tmp2;
     }
   }
-
   return dirs;
 }

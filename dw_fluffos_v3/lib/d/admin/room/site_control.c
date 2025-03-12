@@ -1,19 +1,12 @@
 #include "path.h"
-/* domain administration room */
 #include "access.h"
 inherit "/std/room/basic_room";
 #define MASTER "/secure/master"
-
 int do_banish(string);
-int do_access(); /* Show the current access list. */
+int do_access();
 int do_suspend(string);
 int do_unsuspend(string);
-
-
 void setup() {
-//  string *doms, com;
-//  int i;
-  
   set_light(100);
   set_short("site-access control room");
   add_property("determinate", "the ");
@@ -28,18 +21,14 @@ void setup() {
 "  access    :  Show the current access of various sites.\n"+
 "  suspend   :  Suspend someones access.\n"+
 "  unsuspend :  Unsuspend someones access.\n");
-
   seteuid("Admin");
-
   add_exit("north", ROOM+"domain_control", "corridor");
-} /* setup() */
-
+}
 #if efun_defined(add_action)
 #define NUM
 #else
 #define NUM 1
 #endif
-
 void init() {
   ::init();
   if (!interactive(previous_object(NUM))) return 0;
@@ -48,17 +37,14 @@ void init() {
   add_command("access", "", (:do_access():));
   add_command("suspend", "<string'person'>", (:do_suspend($4[0]):));
   add_command("unsuspend", "<string'person'>", (:do_unsuspend($4[0]):));
-} /* init() */
-
+}
 int print_access(string bit, mapping bing, int depth, int cols) {
   mixed *bits;
   int i;
-
   if (this_player() != this_player(1))
     return 0;
   bits = m_indices(bing);
   if (depth == 4) {
-/* Do the ident printing... */
     for (i=0;i<sizeof(bits);i++)
       switch (bing[bits[i]][0]) {
         case NO_NEW :
@@ -79,11 +65,9 @@ int print_access(string bit, mapping bing, int depth, int cols) {
   for (i=0;i<sizeof(bits);i++)
     print_access(bit+"."+bits[i], bing[bits[i]], depth+1, cols);
   return 1;
-} /* print_access() */
-
+}
 int do_access() {
   mixed bing;
-
   if (this_player() != this_player(1))
     return 0;
   bing = (mixed)"/secure/bastards"->query_all_access();
@@ -91,16 +75,13 @@ int do_access() {
     notify_fail("No access control defined.\n");
     return 0;
   }
-
   write("Current access list:\n");
   print_access("", bing, 0, (int)this_player()->query_cols());
   return 1;
-} /* do_access() */
-
+}
 int do_banish(string str) {
   string ip, ident, reason;
   int level;
-
   if (this_player() != this_player(1))
     return 0;
   if (!"/secure/master"->high_programmer(geteuid(previous_object())))
@@ -112,19 +93,16 @@ int do_banish(string str) {
     return 0;
   if (sscanf(str, "%s %s %d %s", ip, ident, level, reason) != 4)
     return 0;
-
   if (!"/secure/bastards"->change_access(explode(ip, "."), ident, level,
                                          reason))
     return 0;
   write("Access permisions changed.\n");
   return 1;
-} /* do_banish() */
-
+}
 int do_suspend(string str) {
   string reason;
   string name;
   int tim;
-
   if (this_player() != this_player(1))
     return 0;
   if (!"/secure/master"->query_lord(geteuid(previous_object())))
@@ -138,8 +116,7 @@ int do_suspend(string str) {
     return 0;
   write(name+" suspended until "+ctime(time()+tim*60*60)+"\n");
   return 1;
-} /* do_suspend() */
-
+}
 int do_unsuspend(string str) {
   if (this_player() != this_player(1))
     return 0;
@@ -150,4 +127,4 @@ int do_unsuspend(string str) {
     return 0;
   write(str+" unsuspended.\n");
   return 1;
-} /* do_unsuspend() */
+}

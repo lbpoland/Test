@@ -1,12 +1,8 @@
 #include "path.h"
 #include <armoury.h>
-
 inherit "/std/shops/print_shop";
-
 nosave object goatberger;
-
 int is_office_open(object *obs);
-
 void setup() {
    set_light(70);
    set_room_size(5);
@@ -18,7 +14,6 @@ void setup() {
 "The soft squooshy carpet covers the floor "
 "in a soft cuddly way, licking up against the walls of the room.  "
 "The room gives the impression of opulence by its starkness.\n");
-
    add_item("impressive table",
 ({ "long", "The table is almost bare except for a blotting pad and a nice "
 "set of gold plated quills.  It is a deep shiny maroon colour "
@@ -141,19 +136,14 @@ void setup() {
 "With joy and happiness\n"
 "In my dreams at night\n"
  }) );
-
-   /* Make this just the office. */
    set_no_collection(1);
    set_open_func((: is_office_open($1) :));
    set_default_language("common");
    add_translation_cost("djelian", 130);
    set_save_dir("/d/am/save/printing/");
-
    add_exit("east", PATH + "print_shop_foyer", "door");
-
    add_property("place", "Pumpkin");
-} /* setup() */
-
+}
 void reset() {
    if (!goatberger) {
       goatberger = clone_object("/obj/monster");
@@ -174,12 +164,11 @@ void reset() {
       goatberger->move(this_object(), "$N arrives from the west.\n");
       goatberger->return_to_default_position(0);
    }
-} /* reset() */
-
+}
 int is_office_open(object *obs) {
    if (!goatberger) {
       add_failed_mess("There is no one here to serve you.\n", obs);
       return 0;
    }
    return 1;
-} /* is_office_open() */
+}

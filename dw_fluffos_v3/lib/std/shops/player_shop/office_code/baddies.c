@@ -1,28 +1,9 @@
-/******************************************************************************
- * This file contains banning-related functions
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Ban this person from the shop.
- * This person will be banned for a specific period, and will not be allowed
- * back in the shop within this period.  People can be banned by managers, or
- * automatically for attacking employees.
- * @param word person to ban
- * @param reason reason for the ban
- * @param banner person implementing the ban
- */
 private void add_baddie(string word, string reason, string banner)
 {
    object ob;
-
    word = lower_case(word);
    if (query_baddie(word))
    {
-      /*
-       * Added this bit after discovering someone had been banned 75
-       * times for killing Gretta @ Tarnach's- all at the same time.
-       */
       if (_baddies[word][BAD_TIME] == time() ||
          reason == _baddies[word][BAD_REASON]) return;
       remove_baddie( word );
@@ -40,8 +21,6 @@ private void add_baddie(string word, string reason, string banner)
    fire_them(_proprietor, word, reason);
    remove_applicant(word);
    if (!(ob = find_player(word))) return;
-
-   /* If this person is in the shop front, move them outside. */
    if (environment(ob) == find_object(_shop_front))
    {
       tell_room(_shop_front, ob->query_short()+ " drifts out of the door, "
@@ -54,13 +33,6 @@ private void add_baddie(string word, string reason, string banner)
       ob->move(_shop_front->query_outside());
    }
 }
-/* add_baddie() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Ban a person from the shop.
- */
 int do_ban(mixed *args)
 {
    if (!test_player(lower_case(args[0])))
@@ -80,13 +52,6 @@ int do_ban(mixed *args)
      " for "+ args[1]+ ".\n");
    return 1;
 }
-/* do_ban() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Remove the ban on a person.
- */
 int do_unban(string person)
 {
    if (!query_baddie(person))
@@ -97,21 +62,13 @@ int do_unban(string person)
    remove_baddie(person);
    shop_log(GENERAL, this_player()->query_name(),
      "removed the ban on "+ cap_name(person), PAID);
-   tell_object(this_player(), "You remove the ban on "+ 
+   tell_object(this_player(), "You remove the ban on "+
      cap_name(person)+ ".\n" );
    return 1;
 }
-/* do_unban() */
-
-/**
- * @ignore yes 
- * Remove this person from the list of people banned from the shop.
- * @param word the person to unban
- */
 private void remove_baddie(string word)
 {
    if (!query_baddie(word)) return;
    map_delete(_baddies, word);
    save_me();
 }
-/* remove_baddie() */

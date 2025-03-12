@@ -1,39 +1,23 @@
-/** Inherit for one-armed bandits.
- * Refined from the original object by Jobe.
- * Wirble, June 4th 2002
- */
-
 #include <money.h>
-
-
 int do_slot();
 int do_pull_lever();
 int do_read_dial();
-
 int set_coin_type( string coin );
 int set_chances( int c1, int c2, int c3, int c4, int c5 );
 int set_prizes( int p1, int p2, int p3, int p4, int p5, int jackpot );
-
 int* query_prizes();
 int* query_chances();
 string query_coin_type();
-
 void rollem( object player );
 string my_short();
-
 private string *animal = ({"albatross", "frog", "hippo", "turtle", "cabbage"});
-
 private string *adject = ({"A crazy", "A dancing", "A sad", "A floopy", "A bemused",
     "A sarcastic", "A quizzical", "A startled", "A friendly", "A mindless"});
-
 private string _coin = "Ankh-Morpork pence", _coin_short = "pence",
     _coin_pl = "Ankh-Morpork pence";
 private int _busy = 0;
 private int* _chances = ({1,1,1,1,1});
 private int* _prizes = ({2,2,2,2,2,3});
-
-
-/** @ignore */
 void init(){
     this_player()->add_command( "slot", this_object(),
         _coin_short + " into <direct:object>", (: do_slot() :) );
@@ -41,14 +25,7 @@ void init(){
         "lever on <direct:object>", (: do_pull_lever() :) );
     this_player()->add_command( "read", this_object(),
         "dial on <direct:object>", (: do_read_dial() :) );
-} /*void init() */
-
-
-/** This sets the type of coin the bandit accepts.  It has to be of valid
- * type as registed in the money handler.
- * @param coin the name of the coin
- * @return 1 on success, otherwise 0
- */
+}
 int set_coin_type( string coin ) {
     if( member_array( coin, MONEY_HAND->query_valid_types() ) == -1 )
         return 0;
@@ -56,42 +33,14 @@ int set_coin_type( string coin ) {
     _coin_short = MONEY_HAND->query_aliases_for( coin )[0];
     _coin_pl = MONEY_HAND->query_main_plural_for( coin );
     return 1;
-} /* int set_coin_type() */
-
-
-/** Sets the chances for winning.  Each value represents the chance for one
- * type of picture to show up.
- *
- * 5, 4, 3, 2, 1 would mean: 33.3% chance for pic 1, 26.6% for pic 2,
- * 20% for pic 3, 13.3% for pic 4 and 6.6% for pic 5.
- * To win, all three images must be the same pic. To win the jackpot, there has
- * to be another match of 10% per image.
- * @param c1 Chance for albatross
- * @param c2 Chance for frog
- * @param c3 Chance for hippo
- * @param c4 Chance for turtle
- * @param c5 Chance for cabbage
- * @return 1 on success, otherwise 0
- */
+}
 int set_chances( int c1, int c2, int c3, int c4, int c5 ) {
     if( !( c1 > 0 && c2 > 0 && c3 > 0 && c4 > 0 && c5 > 0 ) )
         return 0;
     _chances = ({ c1, ( c1 + c2 ), ( c1 + c2 + c3 ), ( c1 + c2 + c3 + c4 ),
         ( c1 + c2 + c3 + c4 + c5 ) });
     return 1;
-} /* int set_chances() */
-
-
-/** Number of coins (as per defined type) won by scoring a triple or the
- * jackpot. Minimum 2.
- * @param p1 Number of coins for 3x albatross
- * @param p2 Number of coins for 3x frog
- * @param p3 Number of coins for 3x hippo
- * @param p4 Number of coins for 3x turtle
- * @param p5 Number of coins for 3x cabbage
- * @param jackpot Number of coins for jackpot (higher than any of the others)
- * @return 1 on success, otherwise 0
- */
+}
 int set_prizes( int p1, int p2, int p3, int p4, int p5, int jackpot ) {
     if( !( p1 > 1 && p2 > 1 && p3 > 1 && p4 > 1 && p5 > 1 && jackpot > 1 ) ||
         ( jackpot <= p1 || jackpot <= p2 || jackpot <= p3 ||
@@ -99,10 +48,7 @@ int set_prizes( int p1, int p2, int p3, int p4, int p5, int jackpot ) {
         return 0;
     _prizes = ({p1, p2, p3, p4, p5, jackpot});
     return 1;
-} /* int set_prizes() */
-
-
-/** @ignore */
+}
 int do_slot() {
     if( member_array( _coin, this_player()->query_money_array() ) == -1 ) {
         this_player()->add_failed_mess( this_object(),
@@ -125,10 +71,7 @@ int do_slot() {
     this_player()->add_succeeded_mess( this_object(),
         "$N insert$s " + add_a( _coin_short ) + " into $D.\n", ({ }) );
     return 1;
-} /* int do_slot() */
-
-
-/** @ignore */
+}
 int do_pull_lever() {
     if( _busy == 0 ) {
         this_player()->add_failed_mess( this_object(),
@@ -150,16 +93,12 @@ int do_pull_lever() {
     call_out( "rollem", 0, this_player() );
     _busy = 2;
     return 1;
-} /* int do_pull_lever() */
-
-
-/** @ignore */
+}
 void rollem( object player ) {
     int a1, a2, a3, c;
     int adj1 = random( 10 ),
         adj2 = random( 10 ),
         adj3 = random( 10 );
-
     c = random( _chances[4] );
     if( c < _chances[0] )
         a1 = 0;
@@ -171,7 +110,6 @@ void rollem( object player ) {
         a1 = 3;
     else
         a1 = 4;
-
     c = random( _chances[4] );
     if( c < _chances[0] )
         a2 = 0;
@@ -183,7 +121,6 @@ void rollem( object player ) {
         a2 = 3;
     else
         a2 = 4;
-
     c = random( _chances[4] );
     if( c < _chances[0] )
         a3 = 0;
@@ -195,7 +132,6 @@ void rollem( object player ) {
         a3 = 3;
     else
         a3 = 4;
-
     tell_object( player,
         "The windows now show these pictures :\n\n"
          "        " + adject[ adj1 ] + " " + animal[ a1 ] +
@@ -224,7 +160,6 @@ void rollem( object player ) {
             _busy = 0;
             return;
         }
-
         tell_object( player,
             "Congratulations!  You scored a triple " + animal[ a1 ] + "!\n" );
         player->adjust_money( _prizes[ a1 ], _coin );
@@ -243,13 +178,7 @@ void rollem( object player ) {
         "You didn't win.  Why not have another go and attempt to recoup your "
         "losses?\n" );
     _busy = 0;
-}/*void rollem() */
-
-
-/** Returns the chances for each image in the order: albatross, frog, hippo,
- * turtle, cabbage.
- * @return an array with the chances
- */
+}
 int* query_chances() {
     int* tmp = ({ });
     tmp += ({ _chances[0] });
@@ -258,33 +187,16 @@ int* query_chances() {
     tmp += ({ _chances[3] - _chances[2] });
     tmp += ({ _chances[4] - _chances[3] });
     return tmp;
-} /* int* query_chances() */
-
-
-/** This function returns the number of coins for each image.  The elements are
- * in the order: albatross, frog, hippo, turtle, cabbage, jackpot.
- * @return the array of numbers
- */
+}
 int* query_prizes() {
     return _prizes;
-} /* int* query_prizes() */
-
-
-/** Returns the coin-type for use with the bandit.
- * @return the name of the coin
- */
+}
 string query_coin_type() {
     return _coin;
-} /* string query_coin_type() */
-
-
-/** @ignore */
+}
 string my_short() {
     return this_object()->the_short();
-} /* string my_short() */
-
-
-/** @ignore */
+}
 int do_read_dial() {
     string tmp =
         "Stake        : 1 " + _coin_pl + "\n"
@@ -297,6 +209,4 @@ int do_read_dial() {
     this_player()->add_succeeded_mess( this_object(),
         ({tmp, "$N read$s the dial on $D.\n"}), ({ }) );
     return 1;
-} /* int do_read_dial() */
-
-
+}

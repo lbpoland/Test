@@ -1,16 +1,4 @@
-/**
- * An inherit to use in the terrain stuff to deal with distance messages
- * when they are needed.
- * @author Pinkfish
- * @started Mon Apr  1 12:40:00 PST 2002
- */
 #include <terrain_map.h>
-
-/**
- * This method returns a string displaying how long the specified
- * distance is.
- * @param dist the distance
- */
 private string query_distance_str_int(int dist, int show_one) {
    if (dist < 3) {
       if (dist > 1) {
@@ -57,21 +45,9 @@ private string query_distance_str_int(int dist, int show_one) {
       }
    }
 }
-
-/**
- * This method returns a string displaying how long the specified
- * distance is.
- * @param dist the distance
- */
 string query_distance_str(int dist) {
    return query_distance_str_int(dist, 1);
 }
-
-/**
- * This method returns a string displaying how long the specified
- * distance is, without any ones.
- * @param dist the distance
- */
 string query_distance_str_no_ones(int dist) {
    return query_distance_str_int(dist, 0);
 }

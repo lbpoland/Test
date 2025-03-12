@@ -1,13 +1,3 @@
-/******************************************************************************
- * This file contains policy-related functions
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Update policies in force.
- * Add policy if doesn't exist, or remove it if it does.
- * @param policy the policy to update
- */
 private void add_policy(string policy)
 {
    load_policies();
@@ -15,8 +5,8 @@ private void add_policy(string policy)
    if (!_policies[policy])
    {
       _policies += ([policy:({"",0})]);
-      _policies[policy][0] = _new_policies[policy][POLICY_TEXT];      
-      _policies[policy][1] = _new_policies[policy][POLICY_TYPE];      
+      _policies[policy][0] = _new_policies[policy][POLICY_TEXT];
+      _policies[policy][1] = _new_policies[policy][POLICY_TYPE];
       PLAYER_SHOP->auto_mail(_new_policies[policy][POLICY_MGR], _proprietor,
         "Policy proposition - "+ policy, "", "Your proposition has been "
         "accepted by majority vote and is now policy.\n" );
@@ -35,15 +25,6 @@ private void add_policy(string policy)
    save_policies();
    save_new_policies();
 }
-/* add_policy() */
-
-/**
- * @ignore yes 
- * Add a new policy suggestion.
- * @param name the name of the policy
- * @param text the body text of the policy
- * @param mgr the manager proposing the policy
- */
 void add_policy_suggest(string name, string text, string mgr, int type)
 {
    if (previous_object() && previous_object() != find_object(_mgr_office))
@@ -63,19 +44,10 @@ void add_policy_suggest(string name, string text, string mgr, int type)
    do_policy_vote(mgr, name, "y");
    clear_policies();
    save_new_policies();
-} 
-/* add_policy_suggest() */
-
-/**
- * @ignore yes 
- * Add a vote
- * @param mgr the voting manager
- * @param policy the policy being voted upon
- */
+}
 private int do_policy_vote(string mgr, string policy, string decision)
 {
    int managers;
-
    load_new_policies();
    if (!m_sizeof(_new_policies) || !_new_policies[policy])
    {
@@ -108,20 +80,7 @@ private int do_policy_vote(string mgr, string policy, string decision)
       remove_policy(policy);
    return 1;
 }
-/* do_policy_vote() */
-
-/**
- * @ignore yes
- * Query the shop's main policy - used for the notice.
- * @return the main policy of the shop
- */
 string get_stock_policy() { return copy(_stock_policy); }
-
-/**
- * @ignore yes 
- * Policy update has been unsuccessful.
- * @param the policy that was rejected
- */
 private void remove_policy(string policy)
 {
    load_new_policies();
@@ -132,4 +91,3 @@ private void remove_policy(string policy)
    map_delete(_new_policies, policy);
    save_new_policies();
 }
-/* remove_policy() */

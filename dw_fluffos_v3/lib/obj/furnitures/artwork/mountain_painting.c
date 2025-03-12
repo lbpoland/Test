@@ -1,8 +1,4 @@
-// Una
-// For use in Cwc
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
     set_name( "painting" );
     set_short( "painting of a misty mountain range" );
@@ -21,4 +17,4 @@ void setup() {
                              "sitting" : "sits",
                              "dangling" : "dangles",
                              "standing" : "stands" ]));
-} /* setup() */
+}

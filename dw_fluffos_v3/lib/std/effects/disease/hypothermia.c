@@ -1,55 +1,19 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: hypothermia.c,v 1.2 1999/04/02 16:47:24 taffyd Exp $
- * $Log: hypothermia.c,v $
- * Revision 1.2  1999/04/02 16:47:24  taffyd
- * Made it so you could have your own custom level of freezing. (defaults to 100).
- *
- * Revision 1.1  1998/01/06 04:08:27  ceres
- * Initial revision
- * 
-*/
-/**
- * This is the effect skelton docs.  This effect
- * has a classification of "disease.hypothermia".
- * <p>
- * Describe the arguments in here.
- * @classification disease.hypothermia
- * @see help::effects
- */
 #include <effect.h>
-
-/** @ignore yes */
 string query_classification() { return "disease.hypothermia"; }
-
-/** @ignore yes */
 int beginning( object player, int index, int id ) {
-
-    if ( !index ) 
+    if ( !index )
         index = 100;
-
    tell_object( player, "You feel a bit chilly.\n" );
    player->submit_ee( "change_index", ({ 60, 60 }), EE_CONTINUOUS );
    player->submit_ee( "stat_adjusts", ({ 90, 90 }), EE_CONTINUOUS );
-
    return index;
-
-} /* beginning() */
-
-/** @ignore yes */
+}
 int merge_effect( object player, int index ) { return index; }
-
-/** @ignore yes */
 void end( object player ) {
-
    tell_object( player, "You feel a lot warmer now.\n" );
-
-} /* end() */
-
+}
 void change_index( object player, int index, int id ) {
   int *enums, pwet;
-  
    if ( !environment( player ) )
       return;
    if ( !environment( player )->query_property( "freezer" ) ) {
@@ -83,10 +47,9 @@ void change_index( object player, int index, int id ) {
                player );
          break;
       case 2 :
-        enums = (int *)player->effects_matching("body.wetness"); 
+        enums = (int *)player->effects_matching("body.wetness");
          if ( sizeof( enums ) )
            pwet = (int)player->arg_of( enums[ 0 ] );
-         
          if ( (int)pwet > 25 ) {
             player->dest_hide_shadow();
             tell_object( player, "You dislodge a lump of ice, which falls "+
@@ -102,11 +65,8 @@ void change_index( object player, int index, int id ) {
          tell_object( player, "You're getting really cold in here.\n" );
    }
    player->set_arg_of( (int)player->sid_to_enum( id ), index );
-
-} /* change_index() */
-
+}
 void stat_adjusts( object player ) {
-
    switch ( random( 3 ) ) {
       case 0 :
          tell_object( player, "You feel your strength being drained by the "+
@@ -126,5 +86,4 @@ void stat_adjusts( object player ) {
             player->adjust_int( 1 );
          }
    }
-
-} /* stat_adjusts() */
+}

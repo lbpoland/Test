@@ -1,18 +1,3 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: pinkfish $
- * $Id: newspaper_office.c,v 1.52 2003/05/23 22:26:02 wirble Exp pinkfish $
- *
- *
- */
-/**
- * An office from which a player run newspaper can be run.
- * @author Obilix
- * @changed Pinkfish Fri Apr 27 12:08:29 PDT 2001
- * Turned into an inherit and made to use a newspaper handler for
- * distributing the actual text.
- */
-
 #include <mail.h>
 #include <money.h>
 #include <move_failures.h>
@@ -21,34 +6,28 @@
 #include <nroff.h>
 #include <board.h>
 #include <housing.h>
-
 #define NEWSPAPER_POSTPONE_FLAG 1
 #define NEWSPAPER_LOCK_FLAG 2
-
 class our_article {
    class article art;
    int flags;
    int length;
    int suggested_payment;
 }
-
 class reporter {
    int date_added;
    int num_articles;
    int total_payed;
 }
-
 class category_data {
    int cost_per_add;
    int cost_per_ten_chars;
    int open;
 }
-
 class payee_data {
    int paid;
    string message;
 }
-
 private mapping _reporters;
 private string* _editors;
 private string* _setters;
@@ -67,7 +46,6 @@ private nosave string _save_dir;
 private nosave string _paper_name;
 private string _bank_branch;
 private nosave string _proxy;
-
 int show_article(class our_article art, int source);
 string* query_all_reporters();
 string* query_all_setters();
@@ -96,7 +74,6 @@ string query_bank_branch();
 mixed query_property(string);
 string query_owner();
 int is_owner(string word);
-
 void create()
 {
    _reporters = ([ ]);
@@ -108,26 +85,17 @@ void create()
    _setters = ({ });
    _sponsors = ({ });
    _next_article_num = 2;
-}                               /* setup() */
-
-/**
- * Saves the data in the file.
- */
+}
 protected void save_me()
 {
    if (_save_dir && !_proxy) {
       unguarded( (: save_object(_save_dir + "main") :) );
    }
-}                               /* save_me() */
-
-/**
- * Loads the data in the file.
- */
+}
 protected void load_me()
 {
    class article fluff;
    int i;
-
 printf("%O %O\n", _save_dir, _proxy);
    if (_save_dir && !_proxy) {
       unguarded( (: restore_object(_save_dir + "main", 1) :) );
@@ -158,32 +126,20 @@ printf("%O %O\n", _save_dir, _proxy);
          }
       }
    }
-}                               /* save_me() */
-
+}
 private int a_type(int data) {
    return data & NEWSPAPER_ARTICLE_TYPE_MASK;
 }
 private int a_flags(int data) {
    return data & ~NEWSPAPER_ARTICLE_TYPE_MASK;
 }
-
-/**
- * This method sets the directory we are to use for all the
- * temporary files and data.  The actual pubished data will be stored
- * by the newspaper handler.
- * @param dir the directory to put stuff in
- */
 void set_save_directory(string dir) {
    if (dir[<1] != '/') {
       dir += "/";
    }
    _save_dir = dir;
    load_me();
-} /* set_save_directory() */
-
-/**
- * This method saves an article.
- */
+}
 void save_article_text(class our_article art, string text) {
    if (a_type(art->art->type) != NEWSPAPER_ARTICLE_TYPE_HTML &&
        a_type(art->art->type) != NEWSPAPER_ARTICLE_TYPE_PLAIN) {
@@ -193,14 +149,9 @@ void save_article_text(class our_article art, string text) {
        write_file(_save_dir + $(art->art->file_name), save_variable(({ $(art), $(text) })), 1) :) );
    unguarded( (: rm(_save_dir + $(art->art->file_name) + ".proc" ) :) );
    unguarded( (: rm(_save_dir + $(art->art->file_name) + ".nroff.o" ) :) );
-} /* save_article_text() */
-
-/**
- * THis method updates any information about the article if needed.
- */
+}
 private void update_article_info(class our_article art, string text) {
    int fsize;
-
    fsize = strlen(text);
    art->length = fsize;
    if (fsize < 0) {
@@ -211,60 +162,38 @@ private void update_article_info(class our_article art, string text) {
    }
    fsize = fsize / 100;
    art->suggested_payment = fsize;
-} /* update_article_info() */
-
-/**
- * This method loads the text of an article.
- */
+}
 string load_article_text(class our_article art) {
    mixed* bits;
    string str;
-
-
    str = unguarded( (: read_file(_save_dir + $(art->art->file_name)) :) );
    if (str) {
       bits = restore_variable(str);
       return bits[1];
    }
    return "Error loading the article.";
-} /* load_article_text() */
-
-/**
- * This method is used by the web, it loads the article by the file name.
- */
+}
 string load_article_text_by_file(string fname) {
    int i;
-
    for (i = 0; i < sizeof(_articles); i++) {
       if (_articles[i]->art->file_name == fname) {
          return load_article_text(_articles[i]);
       }
    }
    return "Lost the article.\n";
-} /* load_article_text_by_file() */
-
-/**
- * This method is used by the web, it loads the article by the file name.
- */
+}
 void save_article_text_by_file(string fname, string text) {
    int i;
-
    for (i = 0; i < sizeof(_articles); i++) {
       if (_articles[i]->art->file_name == fname) {
-         //_articles[i]->art->length = strlen(text);
          update_article_info(_articles[i], text);
          return save_article_text(_articles[i], text);
       }
    }
     return ;
-} /* load_article_text_by_file() */
-
-/**
- * This method is used by the web, it loads the article by the file name.
- */
+}
 void set_article_title_by_file(string fname, string title) {
    int i;
-
    for (i = 0; i < sizeof(_articles); i++) {
       if (_articles[i]->art->file_name == fname) {
          _articles[i]->art->title = title;
@@ -273,25 +202,14 @@ void set_article_title_by_file(string fname, string title) {
       }
    }
     return ;
-} /* load_article_text_by_file() */
-
-/**
- * This method deletes any bitsof the article off the disk.
- * @param article the article to delete
- */
+}
 void delete_article(class our_article article) {
    unguarded( (: rm(_save_dir + $(article->art->file_name)) :) );
    unguarded( (: rm(_save_dir + $(article->art->file_name) + ".proc" ) :) );
    unguarded( (: rm(_save_dir + $(article->art->file_name) + ".nroff.o" ) :) );
-} /* delete_article() */
-
-/**
- * This method returns the index of the article in the article array.
- * @return the article index
- */
+}
 int query_article_index(string match) {
    int index;
-
    match = lower_case(match);
    if (strlen(match) && (match[0] >= '0' && match[0] <= '9')) {
       sscanf(match, "%d", index);
@@ -309,34 +227,20 @@ int query_article_index(string match) {
       return index;
    }
    return -1;
-} /* query_article_index() */
-
+}
 class our_article* query_articles() {
    return _articles;
 }
-
-/**
- * This method finds an article based on a string.
- * @return the article
- */
 class our_article query_article(string match) {
    int index;
-
    index = query_article_index(match);
    if (index == -1) {
       return 0;
    }
    return _articles[index];
-} /* query_article() */
-
-/**
- * This method tries to find a category based on some fuzzy matching.
- * @param category the category to lookup
- * @return the fixed up category name
- */
+}
 string query_category(string category) {
    string name;
-
    category = lower_case(category);
    foreach (name in keys(_category)) {
       if (lower_case(name) == category ||
@@ -345,46 +249,21 @@ string query_category(string category) {
       }
    }
    return 0;
-} /* query_category() */
-
-/**
- * The file name of the log file for events.
- * @return the log file name
- */
+}
 string query_log_file_name() {
    return _save_dir + "event.log";
-} /* query_log_file_name() */
-
-/**
- * The file name of the log file for article events.
- * @return the article log file name
- */
+}
 string query_article_log_file_name() {
    return _save_dir + "aritcle.log";
-} /* query_article_log_file_name() */
-
-/**
- * This method returns the current edition of the newspaper./
- * @return the current edition of the newspaper
- */
+}
 int query_current_edition()
 {
    return NEWSPAPER_HANDLER->query_current_edition_num(query_paper_name());
 }
-
-/**
- * This method returns the name of the paper.
- * @return the name of the paper
- */
 string query_paper_name()
 {
    return _paper_name;
 }
-
-/**
- * This method returns the name of the paper with a 'the' in front.
- * @return the name of the paper
- */
 string query_the_paper_name()
 {
    if (lower_case(_paper_name[0..3]) == "the") {
@@ -392,20 +271,10 @@ string query_the_paper_name()
    }
    return "the " + _paper_name;
 }
-
-/**
- * This method sets the name of the paper.
- * @param name the new name of the paper
- */
 string set_paper_name(string name)
 {
    _paper_name = name;
 }
-
-/**
- * This returns the next number to use for an article.
- * @return the next article number
- */
 string query_next_article_file_name()
 {
    while (file_size(_save_dir + _next_article_num + ".txt") != -1) {
@@ -413,27 +282,13 @@ string query_next_article_file_name()
    }
    return (_next_article_num++) + ".txt";
 }
-
-/**
- * This method returns the bank branch to use for depositing money for
- * editions.
- * @return the bank branch to use
- */
 string query_bank_branch()
 {
    return _bank_branch;
 }
-
-/**
- * This method sets the bank branch to use for depositing money when
- * editions are made.
- * @param bank the bank branch to use
- */
 void set_bank_branch(string bank) {
    _bank_branch = bank;
-} /* set_bank_branch() */
-
-/** @ignore yes */
+}
 int do_apply()
 {
    if (_proxy) {
@@ -448,14 +303,11 @@ int do_apply()
    this_player()->do_edit(0, "mail_application");
    add_succeeded_mess(({ "", "$N start$s writing an application.\n" }));
    return 1;
-}                               /* do_apply */
-
-/** @ignore yes */
+}
 int mail_application(string text)
 {
    string word;
    string *eds;
-
    if (!text) {
       tell_object(this_player(), "You decide not to apply just yet.\n");
       return 0;
@@ -479,9 +331,7 @@ int mail_application(string text)
              this_player()->the_short() + " finishes " + this_player()->query_possessive() +
              " application for a job at " + query_the_paper_name() + ".\n", this_player());
    return 1;
-}                               /* mail_application */
-
-/** @ignore yes */
+}
 int part_two(string str, string author, int html)
 {
    if (!sizeof(str)) {
@@ -500,9 +350,7 @@ int part_two(string str, string author, int html)
    }
    this_player()->do_edit(0, "write_it", this_object(), 0, ({ str, author, html }));
    return 1;
-}                               /* part_two() */
-
-/** @ignore yes */
+}
 int do_submit(string str, string author, int html)
 {
    if (_proxy) {
@@ -513,7 +361,6 @@ int do_submit(string str, string author, int html)
                       "submissions.\n");
       return 0;
    }
-
    if (!str) {
       add_failed_mess("Please enter the name of the article you wish "
                        "to submit.  A short but descriptive name would be good, and it will "
@@ -526,9 +373,7 @@ int do_submit(string str, string author, int html)
    add_succeeded_mess(({ "", "$N start$s writing an article.\n" }));
    part_two(str, author, html);
    return 1;
-}                               /* do_submit */
-
-/** @ignore yes */
+}
 varargs int write_it(string article,
                      mixed *stuff,
                      class our_article cur_art)
@@ -538,11 +383,9 @@ varargs int write_it(string article,
    string title;
    string author;
    int html;
-
    title = stuff[0];
    author = stuff[1];
    html = stuff[2];
-
    if (!article) {
       tell_object(this_player(), "You decide not to submit your story after all.\n");
       tell_room(this_object(), this_player()->the_short() +
@@ -566,7 +409,6 @@ varargs int write_it(string article,
       update_article_info(cur_art, article);
       cur_art->flags = 0;
    }
-
    _articles += ({ cur_art });
    save_article_text(cur_art, article);
    save_me();
@@ -579,13 +421,10 @@ varargs int write_it(string article,
    tell_room(this_object(), this_player()->the_short() +
               " submits an article to the newspaper.\n",
              this_player());
-}                               /* write_it() */
-
-/** @ignore yes */
+}
 int do_retrieve(string edn, int source)
 {
    class our_article article;
-
    if (_proxy) {
       return _proxy->do_retrieve(edn, source);
    }
@@ -609,9 +448,7 @@ int do_retrieve(string edn, int source)
    }
    show_article(article, source);
    return 1;
-}                               /* do_retrieve */
-
-/** @ignore yes */
+}
 int show_article(class our_article article, int source)
 {
    string text;
@@ -619,7 +456,6 @@ int show_article(class our_article article, int source)
    int i;
    mixed* stuff;
    class advert data;
-
    switch (a_type(article->art->type)) {
    case NEWSPAPER_ARTICLE_TYPE_SECTION :
       text = "%^BOLD%^" + article->art->title + "%^RESET%^\n\n";
@@ -648,11 +484,9 @@ int show_article(class our_article article, int source)
       break;
    case NEWSPAPER_ARTICLE_TYPE_HTML :
       if (!source) {
-         // Do evil banana things.
          text = unguarded( (: NROFF_HAND->cat_file(_save_dir +
                               $(article->art->file_name) + ".nroff", 1) :) );
          if (!text) {
-            // Make the html output.
             text = unguarded( (: read_file(_save_dir +
                                            $(article->art->file_name)) :) );
             if (text) {
@@ -681,13 +515,10 @@ int show_article(class our_article article, int source)
    this_player()->more_string("The article you requested reads as follows:\n" +
                    text + "\n");
    return 1;
-}                               /* show_article */
-
-/** @ignore yes */
+}
 int do_logs(int article_log)
 {
    string logfile;
-
    if (_proxy) {
       return _proxy->do_logs(article_log);
    }
@@ -703,16 +534,13 @@ int do_logs(int article_log)
    this_player()->more_string("The log contains:\n" + logfile + "\n");
    add_succeeded_mess("");
    return 1;
-}                               /* do_logs() */
-
-/** @ignore yes */
+}
 int do_articles(int scroll)
 {
    string str;
    class our_article article;
    int pos;
    int editor;
-
    if (_proxy) {
       return _proxy->do_articles(scroll);
    }
@@ -762,15 +590,12 @@ int do_articles(int scroll)
       write(str);
    }
    return 1;
-}                               /* do_logs() */
-
-/** @ignore yes */
+}
 int do_resign()
 {
    object *inv;
    object ob;
    string person;
-
    if (_proxy) {
       return _proxy->do_resign();
    }
@@ -798,14 +623,11 @@ int do_resign()
                          "saddened as a result.\n",
                          "$N $V from " + query_the_paper_name() + ".\n" }));
    return 1;
-}                               /* do_resign() */
-
-/** @ignore yes */
+}
 int do_delete(string str)
 {
    class our_article article;
    int i;
-
    if (_proxy) {
       return _proxy->do_delete(str);
    }
@@ -814,13 +636,11 @@ int do_delete(string str)
       add_failed_mess("There is no article referenced by " + str + ".\n");
       return 0;
    }
-
    if (!is_editor(this_player()->query_name()) &&
        this_player()->query_name() != lower_case(article->art->author)) {
       add_failed_mess("You cannot delete this article.\n");
       return 0;
    }
-
    delete_article(article);
    for (i = 0; i < sizeof(_articles); i++) {
       if (_articles[i] == article) {
@@ -828,7 +648,6 @@ int do_delete(string str)
       }
    }
    save_me();
-
    log_file(query_article_log_file_name(),
                     "On " + ctime(time()) + " " + this_player()->query_short() +
                     " deleted the article " + article->art->title + ".\n");
@@ -836,14 +655,11 @@ int do_delete(string str)
                          "$N $V an article from "
                          "the current edition.\n" }));
    return 1;
-}                               /* do_delete */
-
-/** @ignore yes */
+}
 int do_hire(string person, int setter)
 {
    string bing;
    object thatguy;
-
    if (_proxy) {
       return _proxy->do_hire(person, setter);
    }
@@ -886,13 +702,10 @@ int do_hire(string person, int setter)
                       " is now employed by " +
                       query_the_paper_name() + " as a " + bing + ".\n");
    return 1;
-}                               /* do_hire() */
-
-/** @ignore yes */
+}
 int do_dismiss(string person)
 {
    object thatguy;
-
    if (_proxy) {
       return _proxy->do_dismiss(person);
    }
@@ -917,9 +730,7 @@ int do_dismiss(string person)
                       " is no longer employed by " +
                       query_the_paper_name() + ".\n");
    return 1;
-}                               /* do_dismiss() */
-
-/** @ignore yes */
+}
 int do_sponsor_add(string person)
 {
    if (_proxy) {
@@ -931,19 +742,15 @@ int do_sponsor_add(string person)
                       query_the_paper_name() + "!\n");
       return 0;
    }
-
    if (!PLAYER_HANDLER->test_user(person)) {
       add_failed_mess("I am sorry, but " + person + " does not exist.\n");
       return 0;
    }
-
    add_sponsor(person);
    add_succeeded_mess(capitalize(person) +
                       " is now a sponsor of " + query_the_paper_name() + ".\n");
    return 1;
-}                               /* do_sponsor_add() */
-
-/** @ignore yes */
+}
 int do_sponsor_remove(string person)
 {
    if (_proxy) {
@@ -955,19 +762,15 @@ int do_sponsor_remove(string person)
                       query_the_paper_name() + "!\n");
       return 0;
    }
-
    remove_sponsor(person);
    add_succeeded_mess(capitalize(person) +
                       " is not a sponsor of " +
                       query_the_paper_name() + " anymore.\n");
    return 1;
-}                               /* do_sponsor_remove() */
-
-/** @ignore yes */
+}
 int do_promote(string person)
 {
    object thatguy;
-
    if (_proxy) {
       return _proxy->do_promote(person);
    }
@@ -995,13 +798,10 @@ int do_promote(string person)
    add_succeeded_mess(capitalize(person) +
                       " is now an editor of " + query_the_paper_name() + ".\n");
    return 1;
-}                               /* do_promote() */
-
-/** @ignore yes */
+}
 int do_demote(string person, int editor)
 {
    object thatguy;
-
    if (_proxy) {
       return _proxy->do_demote(person, editor);
    }
@@ -1037,14 +837,9 @@ int do_demote(string person, int editor)
    add_succeeded_mess(capitalize(person) +
                       " is no longer an editor of " + query_the_paper_name() + ".\n");
    return 1;
-}                               /* do_demote */
-
-/**
- * This is the status that everyone can see, not just the employees.
- */
+}
 int do_everyone_status() {
    string ret;
-
    if (_proxy) {
       return _proxy->do_everyone_status();
    }
@@ -1063,18 +858,14 @@ int do_everyone_status() {
           (sizeof(query_all_setters())?
           query_multiple_short(sort_array(query_all_editors() - ({ query_owner() }), 0)):"no one") +
           "\n";
-
    write("$P$Status$P$" + ret);
    return 1;
-} /* do_everyone_status() */
-
-/** @ignore yes */
+}
 int do_status()
 {
    string ret;
    int i;
    int last_num;
-
    if (_proxy) {
       return _proxy->do_status();
    }
@@ -1097,9 +888,7 @@ int do_status()
           (sizeof(query_all_setters())?
           query_multiple_short(sort_array(query_all_sponsors(), 0)):"no one") +
           "\n";
-
    ret += "\n$I$0=Sale Statistics:\n";
-   // Show the sale stats.
    last_num = NEWSPAPER_HANDLER->query_last_edition_num(_paper_name);
    for (i = last_num - 5; i <= last_num; i++) {
       if (i >= 1) {
@@ -1109,20 +898,15 @@ int do_status()
       }
    }
    ret += "\n";
-
    ret += "Using Bank  : " + _bank_branch + "\n";
-
    write("$P$Status$P$" + ret);
    return 1;
-}                               /* do_reporters() */
-
-/** @ignore yes */
+}
 int do_claim()
 {
    object badge;
    object *deepinv;
    object *inv;
-
    if (_proxy) {
       return _proxy->do_claim();
    }
@@ -1152,12 +936,9 @@ int do_claim()
                          "$N $V a set of credentials.\n" }));
    return 1;
 }
-
-/** @ignore yes */
 int do_publish(string headline)
 {
    class our_article* bing;
-
    if (_proxy) {
       return _proxy->do_publish(headline);
    }
@@ -1171,11 +952,7 @@ int do_publish(string headline)
    add_succeeded_mess("");
    input_to("really_publish", 0, headline);
    return 1;
-}                               /* do_publish() */
-
-/**
- * This method figures out the total profit from the paper.
- */
+}
 int query_total_profit(int num_articles) {
    int last_pub;
    int amount;
@@ -1184,7 +961,6 @@ int query_total_profit(int num_articles) {
    class advert data;
    class our_article bing;
    string text;
-
    if (num_articles == -1) {
       num_articles = 0;
       foreach (bing in _articles) {
@@ -1196,20 +972,13 @@ int query_total_profit(int num_articles) {
          }
       }
    }
-
    foreach (data in _adverts) {
       adds += data->value;
    }
-
    edition = NEWSPAPER_HANDLER->query_last_edition_num(_paper_name);
    last_pub = NEWSPAPER_HANDLER->query_edition_date(_paper_name, edition);
-   // Work out the amount based on how many much money they were sold for.
    amount = NEWSPAPER_HANDLER->query_edition_num_sold(_paper_name, edition) * 100;
-   // First we scale it based on the number of articles.  Ignore number of
-   // articles.
-   //amount = (amount * num_articles * 400) / 14;
    amount = amount * 400 + adds;
-   // Next we decrease it based on the time since the last edition.
    if ((time() - last_pub) < 42 * 24 * 60 * 60) {
       return amount;
    }
@@ -1217,9 +986,7 @@ int query_total_profit(int num_articles) {
    last_pub = last_pub / (24 * 60 * 60);
    amount = ( amount / 150 ) * (150 - last_pub);
    return amount + _owner_extra_cash;
-} /* query_total_profit() */
-
-/** @ignore yes */
+}
 void really_publish(string char, string headline)
 {
    int article_count;
@@ -1236,7 +1003,6 @@ void really_publish(string char, string headline)
    int i;
    int editor_bonus;
    int num_editors;
-
    place = query_property("place");
    char = lower_case(char);
    things = ({ });
@@ -1248,7 +1014,6 @@ void really_publish(string char, string headline)
       tell_object(this_player(), "Okay, publishing aborted.\n");
       return 0;
    }
-
    to_publish = ({ });
    text = ({ });
    foreach (bing in _articles) {
@@ -1260,7 +1025,6 @@ void really_publish(string char, string headline)
          }
       }
    }
-
    amount = query_total_profit(article_count);
    foreach (temp, data in _payees) {
       total += data->paid;
@@ -1268,15 +1032,11 @@ void really_publish(string char, string headline)
    num_editors = sizeof(query_all_editors() - ({ query_owner() }));
    editor_bonus = (amount * 5 / 100) / num_editors;
    total += (amount * 5 / 100) * num_editors;
-   //total += sizeof(query_all_editors() - ({ query_owner() })) *
-   //          amount * 5 / 100;
-
    if (amount < total) {
       add_failed_mess("You have allocated paying your reporters " + total +
                       " when you only have " + amount + " total profit.\n");
       return 0;
    }
-
    if (!NEWSPAPER_HANDLER->publish_paper(query_paper_name(),
                                          headline,
                                          to_publish,
@@ -1292,16 +1052,13 @@ void really_publish(string char, string headline)
    foreach (bing in _articles) {
       if (!(bing->flags & NEWSPAPER_POSTPONE_FLAG)) {
          stuff += bing->art->title + " by " + bing->art->shown_name + "\n";
-         // Delete it!
          delete_article(bing);
       }
    }
    _articles = filter(_articles, (: $1->flags & NEWSPAPER_POSTPONE_FLAG :));
-
    stuff += "\nTotal profit " +
             MONEY_HAND->money_value_string(amount, place) +
             ".\n";
-   // Split it up.
    BANK_HANDLER->adjust_account(query_owner(), query_bank_branch(),
                                 (amount - total));
    amount = editor_bonus;
@@ -1318,7 +1075,6 @@ void really_publish(string char, string headline)
          }
       }
    }
-
    stuff += "\nReporters paid:\n";
    foreach (temp, data in _payees) {
       BANK_HANDLER->adjust_account(temp, query_bank_branch(), data->paid);
@@ -1341,15 +1097,12 @@ void really_publish(string char, string headline)
                                 (data->message?data->message:"") );
       }
    }
-
-   // Send this mail to the editors and the owner.
    call_out((: AUTO_MAILER->auto_mail($1, $2, $3, $4, $5) :), i * 4,
                           implode(query_all_editors(), ","),
                           this_object()->query_short(),
                           "Published new edition.",
                           implode(query_all_editors(), ","),
                           stuff);
-
    log_file(query_log_file_name(),
                  "On " + ctime(time()) + " " + this_player()->query_short() +
                  " published an edition of " + query_the_paper_name() + ".\n");
@@ -1364,9 +1117,7 @@ void really_publish(string char, string headline)
                " is about to hit the streets!  You feel rather "
                "impressed with your efforts.\n\n" + stuff);
    return;
-}                               /* really_publish() */
-
-/** @ignore yes */
+}
 int do_summary() {
    int amount;
    int adds;
@@ -1383,12 +1134,10 @@ int do_summary() {
    int last_num;
    int num_editors;
    int editor_bonus;
-
    if (_proxy) {
       return _proxy->do_summary();
    }
    ret = "";
-   // Show the sale stats.
    last_num = NEWSPAPER_HANDLER->query_last_edition_num(_paper_name);
    for (i = last_num - 5; i <= last_num; i++) {
       if (i >= 1) {
@@ -1398,7 +1147,6 @@ int do_summary() {
       }
    }
    ret += "\n";
-
    place = query_property("place");
    foreach (bing in _articles) {
       if (!(bing->flags & NEWSPAPER_POSTPONE_FLAG)) {
@@ -1408,17 +1156,13 @@ int do_summary() {
          }
       }
    }
-
    ret += "Article count of " + article_count + "\n";
-
    if (!_adverts) {
       _adverts = ({ });
    }
-
    foreach (data in _adverts) {
       adds += data->value;
    }
-
    amount = query_total_profit(article_count);
    foreach (person, payee_data in _payees) {
       total += payee_data->paid;
@@ -1426,7 +1170,6 @@ int do_summary() {
    num_editors = sizeof(query_all_editors() - ({ query_owner() }));
    editor_bonus = (amount * 5 / 100) / num_editors;
    total += editor_bonus * num_editors;
-
    ret += "Using Bank  : " + _bank_branch + "\n";
    ret += "Total Profit: " +
          MONEY_HAND->money_value_string(amount, place) +
@@ -1440,7 +1183,6 @@ int do_summary() {
          ", " + MONEY_HAND->money_value_string(_owner_extra_cash, place) +
             " extra added by the owner":"") +
          ".\n\n";
-
    ret += "Owner/Editors:\n";
    ret += "   " + query_owner() + " " +
           MONEY_HAND->money_value_string((amount - total), place) +
@@ -1468,30 +1210,23 @@ int do_summary() {
    }
    write("$P$Profits$P$" + ret);
    return 1;
-} /* do_summary() */
-
-/** @ignore yes */
+}
 int do_deposit(string amt) {
    int amt_int;
    string place;
-
    if (_proxy) {
       return _proxy->do_deposit(amt);
    }
-
    if (this_player()->query_name() != query_owner()) {
       add_failed_mess("Only the owner can do this.\n");
       return 0;
    }
-
    place = query_property("place");
    amt_int = MONEY_HAND->value_from_string(amt, place);
    if (amt_int <= 0) {
       add_failed_mess("The amount " + amt + " is invalid.\n");
       return 0;
    }
-
-   // See if the owner has the right amount in the bank.
    if (BANK_HANDLER->query_account(this_player()->query_name(), query_bank_branch()) <
        amt_int) {
       add_failed_mess("You do not have " +
@@ -1499,23 +1234,18 @@ int do_deposit(string amt) {
                       " in " + query_bank_branch() + ".\n");
       return 0;
    }
-
    _owner_extra_cash += amt_int;
    save_me();
    BANK_HANDLER->adjust_account(this_player()->query_name(), _bank_branch, -amt_int);
-
    add_succeeded_mess(({ "$N deposit " +
                       MONEY_HAND->money_value_string(amt_int, place) +
                       " for extra cash to pay reporters.\n",
                       "$N deposits some extra cash for reporters.\n" }));
    return 1;
-} /* do_deposit() */
-
-/** @ignore yes */
+}
 int do_set_bank_branch(string branch)
 {
    string* accounts;
-
    if (_proxy) {
       return _proxy->do_set_bank_branch(branch);
    }
@@ -1527,13 +1257,10 @@ int do_set_bank_branch(string branch)
       return 0;
    }
    _bank_branch = branch;
-
    save_me();
    add_succeeded_mess("$N set$s the bank branch to " + branch + ".\n");
    return 1;
-} /* do_set_bank_branch() */
-
-/** @ignore yes */
+}
 int do_pay(string person,
            string amt)
 {
@@ -1543,7 +1270,6 @@ int do_pay(string person,
    int profit;
    int total;
    class payee_data data;
-
    if (_proxy) {
       return _proxy->do_pay(person, amt);
    }
@@ -1563,18 +1289,15 @@ int do_pay(string person,
                        query_the_paper_name() + "!\n");
       return 0;
    }
-
    if (person == query_owner()) {
       add_failed_mess("The owner gets paid anyway.\n");
       return 0;
    }
-
    profit = query_total_profit(-1);
    profit = profit * 95 / 100;
    foreach (fluff, data in _payees) {
       total += data->paid;
    }
-
    if (profit - total - amount < 0) {
       add_failed_mess("You are not making enough money to pay " +
                       person + " " +
@@ -1582,12 +1305,10 @@ int do_pay(string person,
                       ".\n");
       return 0;
    }
-
    if (!_payees[person]) {
       _payees[person] = new(class payee_data);
    }
    _payees[person]->paid = amount;
-
    if (_payees[person]->paid < 0) {
       add_succeeded_mess(({ "You can't pay anybody less than nothing!  "
                             "Amount owing reset to nothing.\n", "" }));
@@ -1605,12 +1326,9 @@ int do_pay(string person,
                          "total of " +
                      MONEY_HAND->money_value_string(_payees[person]->paid, place) +
                          " for this edition.\n", "" }));
-   // Do the payment when the issue is done.
    save_me();
    return 1;
-}                               /* do_pay() */
-
-/** @ignore yes */
+}
 int do_pay_tag(string person,
                string tag)
 {
@@ -1620,26 +1338,21 @@ int do_pay_tag(string person,
    if (tag == "none") {
       tag = 0;
    }
-
    if (!is_reporter(person)) {
       add_failed_mess("There is nobody by that name currently employed at " +
                        query_the_paper_name() + "!\n");
       return 0;
    }
-
    if (person == query_owner()) {
       add_failed_mess("The owner gets paid anyway.\n");
       return 0;
    }
-
    if (!_payees[person]) {
       add_failed_mess("You can only set a reason for someone who is "
                       "being paid.\n");
       return 0;
    }
-
    _payees[person]->message = tag;
-
    if (!tag) {
       add_succeeded_mess(({ "You remove the message from " +
                             capitalize(person) + ".\n", "" }));
@@ -1647,16 +1360,12 @@ int do_pay_tag(string person,
       add_succeeded_mess(({ "You set a message to " + capitalize(person) +
                             " of " + tag + ".\n", "" }));
    }
-   // Do the payment when the issue is done.
    save_me();
    return 1;
-}                               /* do_pay() */
-
-/** @ignore yes */
+}
 int do_title(string id, string title)
 {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_title(id, title);
    }
@@ -1671,19 +1380,15 @@ int do_title(string id, string title)
       add_failed_mess("You can only edit your own articles.\n");
       return 0;
    }
-
    art->art->title = title;
    save_me();
    add_succeeded_mess(({ "You set the title to " + title + ".\n",
                          "$N sets the title of an article.\n" }));
    return 1;
-}                               /* do_title() */
-
-/** @ignore yes */
+}
 int do_author(string id, string author)
 {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_author(id, author);
    }
@@ -1698,19 +1403,15 @@ int do_author(string id, string author)
       add_failed_mess("You can only edit your own articles.\n");
       return 0;
    }
-
    art->art->shown_name = author;
    save_me();
    add_succeeded_mess(({ "You set the author to " + author + ".\n",
                          "$N sets the author of an article.\n" }));
    return 1;
-}                               /* do_author() */
-
-/** @ignore yes */
+}
 int do_change(string id, string type)
 {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_change(id, type);
    }
@@ -1725,7 +1426,6 @@ int do_change(string id, string type)
       add_failed_mess("You can only edit your own articles.\n");
       return 0;
    }
-
    if (type == "html") {
       art->art->type = NEWSPAPER_ARTICLE_TYPE_HTML | a_flags(art->art->type);
    } else {
@@ -1737,13 +1437,10 @@ int do_change(string id, string type)
    add_succeeded_mess(({ "You set the article type to " + type + ".\n",
                          "$N sets the type of an article.\n" }));
    return 1;
-}                               /* do_author() */
-
-/** @ignore yes */
+}
 int do_change_xp(string id, string type)
 {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_change_xp(id, type);
    }
@@ -1756,7 +1453,6 @@ int do_change_xp(string id, string type)
       add_failed_mess("Only the editors can do this.\n");
       return 0;
    }
-
    if (type == "none") {
       art->art->type |= NEWSPAPER_ARTICLE_NO_XP_FLAG;
    } else {
@@ -1766,13 +1462,10 @@ int do_change_xp(string id, string type)
    add_succeeded_mess(({ "You set the article xp return to " + type + ".\n",
                          "$N sets the xp return of an article.\n" }));
    return 1;
-}                               /* do_author() */
-
-/** @ignore yes */
+}
 int do_change_colour(string id, string colour)
 {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_change_colour(id, colour);
    }
@@ -1787,7 +1480,6 @@ int do_change_colour(string id, string colour)
       add_failed_mess("You can only edit your own articles.\n");
       return 0;
    }
-
    if (colour != "none") {
       art->art->colour = upper_case(colour);
    } else {
@@ -1797,14 +1489,11 @@ int do_change_colour(string id, string colour)
    add_succeeded_mess(({ "You set the article colour to " + colour + ".\n",
                          "$N sets the colour of an article.\n" }));
    return 1;
-}                               /* do_author() */
-
-/** @ignore yes */
+}
 int do_editing(string id)
 {
    class our_article art;
    string contents;
-
    if (_proxy) {
       return _proxy->do_editing(id);
    }
@@ -1823,30 +1512,20 @@ int do_editing(string id)
       add_failed_mess("You can only edit your own articles.\n");
       return 0;
    }
-
    if (art->flags & NEWSPAPER_LOCK_FLAG) {
       add_failed_mess("This article is locked.\n");
       return 0;
    }
-
    contents = load_article_text(art);
    add_succeeded_mess("");
    this_player()->do_edit(contents, "finish_editing", this_object(), 0, art);
    return 1;
-}                               /* do_editing() */
-
-/**
- * This method moves an article up or down in the current article list.
- * @param index the index of the article to move
- * @param up_down move it up or down
- */
+}
 int move_article(int index, string up_down) {
    class our_article womble;
-
    if (index == -1) {
       return 0;
    }
-
    womble = _articles[index];
    if (up_down == "up") {
       if (index > 0) {
@@ -1869,12 +1548,9 @@ int move_article(int index, string up_down) {
    }
    return 1;
 }
-
-/** @ignore yes */
 int do_move(string article, string up_down) {
    int index;
    class our_article womble;
-
    if (_proxy) {
       return _proxy->do_move(article, up_down);
    }
@@ -1883,7 +1559,6 @@ int do_move(string article, string up_down) {
       add_failed_mess("Article reference " + index + " is out of bounds.\n");
       return 0;
    }
-
    womble = _articles[index];
    if (!move_article(index, up_down)) {
       add_failed_mess("Unable to move the article.\n");
@@ -1891,16 +1566,12 @@ int do_move(string article, string up_down) {
    }
    add_succeeded_mess(({ "You moved the article " + womble->art->title + " " +
                          up_down + ".\n", "" }));
-
    return 1;
 }
-
-/** @ignore yes */
 int do_move_pos(string article, string pos) {
    int index;
    int to_index;
    class our_article womble;
-
    if (_proxy) {
       return _proxy->do_move_pos(article, pos);
    }
@@ -1914,13 +1585,11 @@ int do_move_pos(string article, string pos) {
       add_failed_mess("Article reference " + pos + " is out of bounds.\n");
       return 0;
    }
-
    if (to_index == index) {
       add_failed_mess("You cannot move the article there, it is already "
                       "there.\n");
       return 0;
    }
-
    womble = _articles[index];
    if (index < to_index) {
       _articles = _articles[0..index - 1] + _articles[index + 1..to_index] +
@@ -1934,14 +1603,10 @@ int do_move_pos(string article, string pos) {
    save_me();
    add_succeeded_mess(({ "You moved the article " + womble->art->title +
                          " to " + pos + ".\n", "" }));
-
    return 1;
 }
-
-/** @ignore yes */
 int do_postpone(string id, string on_off) {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_postpone(id, on_off);
    }
@@ -1950,7 +1615,6 @@ int do_postpone(string id, string on_off) {
       add_failed_mess("The article reference " + id + " does not exist.\n");
       return 0;
    }
-
    if (on_off == "on") {
       art->flags |= NEWSPAPER_POSTPONE_FLAG;
       add_succeeded_mess(({ "You postpone the article " + art->art->title +
@@ -1964,12 +1628,9 @@ int do_postpone(string id, string on_off) {
    }
    save_me();
    return 1;
-} /* do_postpone() */
-
-/** @ignore yes */
+}
 int do_lock_article(string id, string on_off) {
    class our_article art;
-
    if (_proxy) {
       return _proxy->do_lock_article(id, on_off);
    }
@@ -1978,7 +1639,6 @@ int do_lock_article(string id, string on_off) {
       add_failed_mess("The article reference " + id + " does not exist.\n");
       return 0;
    }
-
    if (on_off == "on") {
       art->flags |= NEWSPAPER_LOCK_FLAG;
       add_succeeded_mess(({ "You lock the article " + art->art->title +
@@ -1992,15 +1652,12 @@ int do_lock_article(string id, string on_off) {
    }
    save_me();
    return 1;
-} /* do_lock() */
-
-/** @Ignore yes */
+}
 int do_category_list() {
    string ret;
    string place;
    string name;
    class category_data data;
-
    if (_proxy) {
       return _proxy->do_category_list();
    }
@@ -2008,7 +1665,6 @@ int do_category_list() {
       add_failed_mess("There are no categories.\n");
       return 0;
    }
-
    ret = "";
    place = query_property("place");
    foreach (name, data in _category) {
@@ -2034,9 +1690,7 @@ int do_category_list() {
    }
    write("$P$Category$P$" + ret);
    return 1;
-} /* do_category_list() */
-
-/** @Ignore yes */
+}
 int do_advert_list() {
    string ret;
    string place;
@@ -2044,7 +1698,6 @@ int do_advert_list() {
    int editor;
    int found;
    int pos;
-
    if (_proxy) {
       return _proxy->do_advert_list();
    }
@@ -2052,7 +1705,6 @@ int do_advert_list() {
       add_failed_mess("There are no adverts.\n");
       return 0;
    }
-
    ret = "";
    place = query_property("place");
    editor = is_editor(this_player()->query_name());
@@ -2079,12 +1731,9 @@ int do_advert_list() {
    }
    write("$P$Category$P$" + ret);
    return 1;
-} /* do_advert_list() */
-
-/** @ignore yes */
+}
 int do_advert_remove(int id) {
    class advert fluff;
-
    if (_proxy) {
       return _proxy->do_advert_remove(id);
    }
@@ -2092,24 +1741,19 @@ int do_advert_remove(int id) {
       add_failed_mess("There are no adverts.\n");
       return 0;
    }
-
    if (!is_editor(this_player()->query_name())) {
       add_failed_mess("You must be an editor to remove adverts.\n");
       return 0;
    }
-
    if (id < 1 || id > sizeof(_adverts)) {
       add_failed_mess("The id " + id + " is invalid.\n");
       return 0;
    }
-
    fluff = _adverts[id - 1];
    _adverts = _adverts[0..id-2] + _adverts[id..];
    add_succeeded_mess("$N remove$s an advert by " + fluff->author + ".\n");
    return 1;
-} /* do_advert_remove() */
-
-/** @Ignore yes */
+}
 int do_category_remove(string category) {
    if (_proxy) {
       return _proxy->do_category_remove(category);
@@ -2119,24 +1763,19 @@ int do_category_remove(string category) {
       add_failed_mess("You must have a category to delete it.\n");
       return 0;
    }
-
    if (sizeof(filter(_adverts, (: $1->category == $2 :), category))) {
       add_failed_mess("You have adverts in that category, you cannot "
                       "remove it.\n");
       return 0;
    }
-
    map_delete(_category, category);
    save_me();
    add_succeeded_mess(({ "You delete the category " + category + ".\n",
                           "" }));
    return 1;
-} /* do_category_remove() */
-
-/** @Ignore yes */
+}
 int do_category_add(string category) {
    string new_category;
-
    if (_proxy) {
       return _proxy->do_category_add(category);
    }
@@ -2145,7 +1784,6 @@ int do_category_add(string category) {
       add_failed_mess("You must have a category to delete it.\n");
       return 0;
    }
-
    _category[category] = new(class category_data,
                              open : 0,
                              cost_per_add : 40,
@@ -2154,9 +1792,7 @@ int do_category_add(string category) {
    add_succeeded_mess(({ "You add the category " + category + ".\n",
                           "" }));
    return 1;
-} /* do_category_add() */
-
-/** @Ignore yes */
+}
 int do_category_open(string category, string open) {
    if (_proxy) {
       return _proxy->do_category_open(category, open);
@@ -2166,19 +1802,15 @@ int do_category_open(string category, string open) {
       add_failed_mess("You must have a category to delete it.\n");
       return 0;
    }
-
    _category[category]->open = open == "open";
    save_me();
    add_succeeded_mess(({ "You " + open + " the category " + category + ".\n",
                           "" }));
    return 1;
-} /* do_category_open() */
-
-/** @Ignore yes */
+}
 int do_category_cost(string category, string cost) {
    int value;
    string place;
-
    if (_proxy) {
       return _proxy->do_category_cost(category, cost);
    }
@@ -2187,7 +1819,6 @@ int do_category_cost(string category, string cost) {
       add_failed_mess("You must change a cost for a category.\n");
       return 0;
    }
-
    place = query_property("place");
    if (lower_case(cost) == "none") {
       value = 0;
@@ -2199,7 +1830,6 @@ int do_category_cost(string category, string cost) {
          return 0;
       }
    }
-
    _category[category]->cost_per_add = value;
    save_me();
    add_succeeded_mess(({ "You set the cost per add in category " +
@@ -2208,13 +1838,10 @@ int do_category_cost(string category, string cost) {
                          ".\n",
                           "" }));
    return 1;
-} /* do_category_cost() */
-
-/** @Ignore yes */
+}
 int do_category_cost_per_ten_chars(string category, string cost) {
    int value;
    string place;
-
    if (_proxy) {
       return _proxy->do_category_cost_per_ten_chars(category, cost);
    }
@@ -2223,7 +1850,6 @@ int do_category_cost_per_ten_chars(string category, string cost) {
       add_failed_mess("You must change a cost for a category.\n");
       return 0;
    }
-
    place = query_property("place");
    if (lower_case(cost) == "none") {
       value = 0;
@@ -2235,7 +1861,6 @@ int do_category_cost_per_ten_chars(string category, string cost) {
          return 0;
       }
    }
-
    _category[category]->cost_per_ten_chars = value;
    save_me();
    add_succeeded_mess(({ "You set the cost per ten characters in category " +
@@ -2244,12 +1869,9 @@ int do_category_cost_per_ten_chars(string category, string cost) {
                          ".\n",
                           "" }));
    return 1;
-} /* do_category_cost_per_ten_chars() */
-
-/** @ignore yes */
+}
 int do_submit_section(string name) {
    class our_article cur_art;
-
    if (_proxy) {
       return _proxy->do_submit_section(name);
    }
@@ -2264,14 +1886,11 @@ int do_submit_section(string name) {
    cur_art->art->author = this_player()->query_name();
    cur_art->art->date_written = time();
    cur_art->art->type = NEWSPAPER_ARTICLE_TYPE_SECTION;
-
    _articles += ({ cur_art });
    save_me();
    add_succeeded_mess("$N $V a section.\n");
    return 1;
-} /* do_submit_section() */
-
-/** @Ignore yes */
+}
 int do_submit_add(string category) {
    if (_proxy) {
       return _proxy->do_submit_add(category);
@@ -2280,32 +1899,25 @@ int do_submit_add(string category) {
       add_failed_mess("The newspaper office is currently locked.\n");
       return 0;
    }
-
    category = query_category(category);
    if (!category) {
       add_failed_mess("You must specify an existing category to "
                       "submit an add in.\n");
       return 0;
    }
-
    if (!_category[category]->open) {
       add_failed_mess("The category must be open to submit an add "
                       "for it.\n");
       return 0;
    }
-
    add_succeeded_mess(({ "", "$N starts submiting an add to " +
                  this_object()->the_short() +
                       ".\n" }));
    write("Please submit the text of your add:\n");
    this_player()->do_edit(0, "finish_add", this_object(), 0, category);
-   //input_to("finish_add", 0, category)category;
    return 1;
-} /* do_submit_add() */
-
-/** @Ignore yes */
+}
 int do_lock(int locked) {
-
    if (_proxy) {
       return _proxy->do_lock(locked);
    }
@@ -2316,18 +1928,14 @@ int do_lock(int locked) {
       add_succeeded_mess("$N unlock$s " + this_object()->the_short() + ".\n");
    }
    return 1;
-} /* do_lock() */
-
-/** @ignore yes */
+}
 void finish_add(string str, string category) {
    int value;
    string place;
-
    if (!str || !strlen(str)) {
       write("Ok, Aborted writing an add.\n");
       return ;
    }
-
    if (is_sponsor(this_player()->query_name())) {
       write("You add in the category " + category + " with a text of:\n" +
              str + "\n\nThis will cost you nothing since you are a sponsor.\n"
@@ -2350,24 +1958,19 @@ void finish_add(string str, string category) {
          input_to("confirm_add", 0, str, category, value);
       }
    }
-} /* finish_add() */
-
-/** @ignore yes */
+}
 void confirm_add(string str, string text, string category, int value) {
    class advert add;
    string place;
    int found;
    class our_article bing;
-
    if (!str || !strlen(str)) {
       return 0;
    }
-
    if (lower_case(str)[0] != 'y') {
       write("Ok, aborting.\n");
       return ;
    }
-
    if (!is_sponsor(this_player()->query_name())) {
       place = query_property("place");
       if (this_player()->query_value_in(place) < value) {
@@ -2376,11 +1979,9 @@ void confirm_add(string str, string text, string category, int value) {
             " to pay for the add.\n");
          return ;
       }
-
       this_player()->pay_money(MONEY_HAND->create_money_array(value, place),
                                place);
    }
-
    add = new(class advert);
    add->author = this_player()->query_cap_name();
    add->text = text;
@@ -2407,9 +2008,7 @@ void confirm_add(string str, string text, string category, int value) {
    }
    save_me();
    write("Ok, your advertisement is added.\n");
-} /* confirm_add() */
-
-/** @ignore yes */
+}
 int finish_editing(string story, class our_article art)
 {
    if (!story) {
@@ -2420,33 +2019,22 @@ int finish_editing(string story, class our_article art)
    log_file(query_article_log_file_name(),
                  "On " + ctime(time()) + " " + this_player()->query_short() +
                  " edited the story " + art->art->title + ".\n");
-}                               /* finish_editing() */
-
-
-/** @ignore yes */
+}
 int do_transfer_ownership(string new_owner) {
    int value;
    string place;
-
    if (!is_owner(this_player()->query_name())) {
       add_failed_mess("You must be the owner to transfer the ownership.\n");
       return 0;
    }
-
    if (_proxy) {
       add_failed_mess("You must be in the main office to transfer ownership.\n");
       return 0;
    }
-
    if (!PLAYER_HANDLER->test_user(new_owner)) {
       add_failed_mess("You must transfer ownership to someone that exists.\n");
       return 0;
    }
-
-   //
-   // Find out how much the paper cost inthe first place to demand that as
-   // a fee.
-   //
    place = query_property("place");
    value = HOUSING->query_value(base_name(this_object()));
    if (this_player()->query_value_in(place) < value &&
@@ -2457,8 +2045,6 @@ int do_transfer_ownership(string new_owner) {
                       " to transfer the ownership, in hand or in the bank.\n");
       return 0;
    }
-
-
    write("It will cost you " + MONEY_HAND->money_value_string(value, place)  +
          " in fees to transfer ownership to " +
          new_owner + ".\nDo you want to do this? ");
@@ -2466,18 +2052,13 @@ int do_transfer_ownership(string new_owner) {
    add_succeeded_mess("");
    return 1;
 }
-
-/** @ignore yes */
 void check_transfer(string test, string new_owner, int value) {
    string place;
-
    test = lower_case(test);
    if (!strlen(test) || test[0] != 'y') {
       write("Aborted.\n");
       return 0;
    }
-
-   // Check the money again.
    place = query_property("place");
    if (this_player()->query_value_in(place) < value  &&
        BANK_HANDLER->query_account(this_player()->query_name(), query_bank_branch()) <
@@ -2487,8 +2068,6 @@ void check_transfer(string test, string new_owner, int value) {
                       " to transfer the ownership.\n");
       return 0;
    }
-
-   // Do it.
    if (this_player()->query_value_in(place) >= value ) {
       this_player()->pay_money(MONEY_HAND->create_money_array(value, place), place);
    } else {
@@ -2498,100 +2077,47 @@ void check_transfer(string test, string new_owner, int value) {
          query_owner() + " to " + new_owner + ".\n");
    HOUSING->set_owner(base_name(this_object()), new_owner);
 }
-
-/**
- * This method returns all the current reporters of the magazine.
- * @return all the current reporters
- */
 string* query_all_reporters()
 {
    return keys(_reporters);
 }
-
-/**
- * This method returns all the current setters of the magazine.
- * @return all the current setters
- */
 string* query_all_setters()
 {
    return copy(_setters);
 }
-
-/**
- * This method returns all the current sponsors of the magazine.
- * @return all the current sponsors
- */
 string* query_all_sponsors()
 {
    return copy(_sponsors);
 }
-
-/**
- * This method returns all the current editors of the magazine.
- * @return all the current editors
- */
 string* query_all_editors()
 {
    return _editors + ({ query_owner() });
 }
-
-/**
- * This method returns all the current payees of the magazine.
- * @return who is to be payed and how much
- */
 mapping query_all_payees()
 {
    return copy(_payees);
 }
-
-/**
- * This method returns the 'article' class bits of the articles.
- * @return all the articles.\
- */
 class article* query_all_articles() {
    return map(_articles, (: copy($1->art) :) );
-} /* query_all_articles() */
-
-/**
- * This method checks to see if the specified article is postponed
- * or not.
- * @param art the article to check
- * @return 1 if it is postponed, 0 if not
- */
+}
 int is_postponed(class article art) {
    class our_article rabbit;
-
    foreach (rabbit in _articles) {
       if (rabbit->art->file_name == art->file_name) {
          return rabbit->flags & NEWSPAPER_POSTPONE_FLAG;
       }
    }
    return 0;
-} /* is_postponned() */
-
-/**
- * This method checks to see if the specified article is locked
- * or not.
- * @param art the article to check
- * @return 1 if it is locked, 0 if not
- */
+}
 int is_locked(class article art) {
    class our_article rabbit;
-
    foreach (rabbit in _articles) {
       if (rabbit->art->file_name == art->file_name) {
          return rabbit->flags & NEWSPAPER_LOCK_FLAG;
       }
    }
    return 0;
-} /* is_locked() */
-
-/**
- * This method checks to see if the specified person is an reporter for
- * the paper or not.
- * @param word the person to check
- * @return 1 if they are a reporter
- */
+}
 int is_reporter(string word)
 {
    if (_proxy) {
@@ -2599,13 +2125,6 @@ int is_reporter(string word)
    }
    return classp(_reporters[word]);
 }
-
-/**
- * This method checks to see if the specified person is an setter for
- * the paper or not.
- * @param word the person to check
- * @return 1 if they are a setter
- */
 int is_setter(string word)
 {
    if (_proxy) {
@@ -2613,13 +2132,6 @@ int is_setter(string word)
    }
    return member_array(word, _setters) != -1;
 }
-
-/**
- * This method checks to see if the specified person is a sponsor for
- * the paper or not.
- * @param word the person to check
- * @return 1 if they are a sponsor
- */
 int is_sponsor(string word)
 {
    if (_proxy) {
@@ -2627,13 +2139,6 @@ int is_sponsor(string word)
    }
    return member_array(word, _sponsors) != -1;
 }
-
-/**
- * This method checks to see if the specified person is an editor for
- * the paper or not.
- * @param word the person to check
- * @return 1 if they are a editor
- */
 int is_editor(string word)
 {
    if (_proxy) {
@@ -2647,13 +2152,6 @@ int is_editor(string word)
    }
    return member_array(word, _editors) != -1;
 }
-
-/**
- * This method checks to see if the specified person is an owner of
- * the paper or not.
- * @param word the person to check
- * @return 1 if they are a owner
- */
 int is_owner(string word)
 {
    if (_proxy) {
@@ -2667,11 +2165,6 @@ int is_owner(string word)
    }
    return 0;
 }
-
-/**
- * This method adds a new reporter to the paper.
- * @param word the new reporter to add
- */
 void add_reporter(string word)
 {
    if (!_reporters[word]) {
@@ -2680,12 +2173,7 @@ void add_reporter(string word)
       update_commands(word);
       save_me();
    }
-}                               /* add_reporter() */
-
-/**
- * This method adds a new sponsor to the paper.
- * @param word the new sponsor to add
- */
+}
 void add_sponsor(string word)
 {
    if (!is_sponsor(word)) {
@@ -2693,12 +2181,7 @@ void add_sponsor(string word)
       update_commands(word);
       save_me();
    }
-}                               /* add_sponsor() */
-
-/**
- * This method adds a new setter to the paper.
- * @param word the new setter to add
- */
+}
 void add_setter(string word)
 {
    if (!is_setter(word)) {
@@ -2709,12 +2192,7 @@ void add_setter(string word)
       update_commands(word);
       save_me();
    }
-}                               /* add_setter() */
-
-/**
- * This method adds a new editor to the paper.
- * @param word the new editor to add
- */
+}
 void add_editor(string word)
 {
    if (!is_editor(word)) {
@@ -2725,12 +2203,7 @@ void add_editor(string word)
       update_commands(word);
       save_me();
    }
-}                               /* add_editor() */
-
-/**
- * This method removes a reporter from the paper.
- * @param word the reporter to remove
- */
+}
 void remove_reporter(string word)
 {
    if (!is_reporter(word)) {
@@ -2739,12 +2212,7 @@ void remove_reporter(string word)
    map_delete(_reporters, word);
    update_commands(word);
    save_me();
-}                               /* remove_reporter() */
-
-/**
- * This method removes a editor from the paper.
- * @param word the editor to remove
- */
+}
 void remove_editor(string word)
 {
    if (!is_editor(word)) {
@@ -2753,12 +2221,7 @@ void remove_editor(string word)
    _editors -= ({ word });
    update_commands(word);
    save_me();
-}                               /* remove_editor() */
-
-/**
- * This method removes a setter from the paper.
- * @param word the setter to remove
- */
+}
 void remove_setter(string word)
 {
    if (!is_setter(word)) {
@@ -2767,12 +2230,7 @@ void remove_setter(string word)
    _setters -= ({ word });
    update_commands(word);
    save_me();
-}                               /* remove_setter() */
-
-/*
- * This method removes a sponsor from the paper.
- * @param word the sponsor to remove
- */
+}
 void remove_sponsor(string word)
 {
    if (!is_sponsor(word)) {
@@ -2780,77 +2238,35 @@ void remove_sponsor(string word)
    }
    _sponsors -= ({ word });
    save_me();
-}                               /* remove_editor() */
-
-/**
- * This method moves the player in and out of the room to fix up their
- * commands.
- * @param word the player to move
- */
+}
 void update_commands(string word)
 {
    object player;
-
    player = find_player(word);
    if (player && environment(player) == this_object()) {
       player->move("/room/void");
       player->move(file_name(this_object()));
    }
-}                               /* update_commands() */
-
-/**
- * This method returns the current owner of the paper.
- * @return the owner of the paper
- */
+}
 string query_owner() {
    if (_proxy) {
       return _proxy->query_owner();
    }
    return _owner;
-} /* query_owner() */
-
-/**
- * This method sets the current owner of the paper.
- * @param person the new owner
- */
+}
 void set_owner(string person) {
    _owner = person;
    save_me();
-} /* set_owner() */
-
-/**
- * This method is called by the housing system when the ownership changes.
- * @param old_owner the old owner
- * @param new_owner the newowner
- */
+}
 void ownership_change(string old_owner, string new_owner) {
    set_owner(new_owner);
 }
-
-/**
- * This method sets up a proxy for the room.  A proxy means all the commands
- * are mirrored to the real location, so save files do not get messed up.
- * You set this if you have any extra rooms you want to be able to control
- * the paper.
- * @param proxy the proxy to set
- */
 void set_proxy(string proxy) {
    _proxy = proxy;
-} /* set_proxy() */
-
-/**
- * This method returns the proxy for this room.
- * @return the proxy for the room
- */
+}
 string query_proxy() {
    return _proxy;
-} /* query_proxy() */
-
-/**
- * This method is here to control access to a board if one is requested.
- * It allows only reporters to be able to see or write to it and it
- * allows editors to be able to eat messages from it.
- */
+}
 int board_access_check(int type, string board, object previous, string name) {
    switch (type) {
    case B_ACCESS_READ :
@@ -2858,16 +2274,12 @@ int board_access_check(int type, string board, object previous, string name) {
    case B_ACCESS_WRITE :
       return is_reporter(lower_case(name));
    case B_ACCESS_DELETE :
-      // Players can always delete their own notes, do not need to code
-      // for that.
       return is_editor(name);
    }
-} /* board_access_check() */
-
+}
 void init()
 {
    string person;
-
    person = this_player()->query_name();
    add_command("advert", "categories", (: do_category_list() :));
    add_command("advert", "list", (: do_advert_list() :));
@@ -2926,14 +2338,12 @@ void init()
    add_command("add", "setter <string'person'>", (: do_hire($4[0], 1) :));
    add_command("add", "editor <string'person'>", (: do_promote($4[0]) :));
    add_command("add", "sponsor <string'person'>", (: do_sponsor_add($4[0]) :));
-   //add_command("promote", "<string'person'>", (: do_promote($4[0]) :));
    add_command("remove", "editor <string'person'>", (: do_demote($4[0], 1) :));
    add_command("remove", "setter <string'person'>", (: do_demote($4[0], 0) :));
    add_command("remove", "reporter <string'person'>", (: do_dismiss($4[0]) :));
    add_command("remove", "sponsor <string'person'>", (: do_sponsor_remove($4[0]) :));
    add_command("log", "", (: do_logs(0) :));
    add_command("log", "article", (: do_logs(1) :));
-   //add_command("unmark", "<string'article'>", (: do_unmark($4[0]) :));
    add_command("pay", "bank branch <string'bank name'>",
                (: do_set_bank_branch($4[0]) :));
    add_command("pay", "<word'person'> <string'amount|none'>",
@@ -2961,14 +2371,10 @@ void init()
    add_command("category", "cost <string'category'> per ten characters <string'cost|none'>",
                (: do_category_cost_per_ten_chars($4[0], $4[1]) :));
    add_command("advert", "remove <number'id'>", (: do_advert_remove($4[0]) :));
-
    if (!is_owner(this_player()->query_name())) {
       return ;
    }
    add_command("transfer", "paper ownership to <string'name'>",
                (: do_transfer_ownership($4[0]) :));
-}                               /* init() */
-
+}
 class advert* query_ads() { return _adverts; }
-
-

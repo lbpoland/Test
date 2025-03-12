@@ -1,5 +1,4 @@
 void bing() {
 }
-
 void bing() {
 }

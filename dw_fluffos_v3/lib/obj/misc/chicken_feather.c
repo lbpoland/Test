@@ -1,14 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: chicken_feather.c,v 1.1 2001/09/27 11:33:39 siel Exp $
- *
- *
- */
-
-
 inherit "/std/object";
-
 void setup() {
  set_name("feather");
  set_short("chicken feather");
@@ -19,4 +9,3 @@ void setup() {
  set_weight(1);
  set_long("This is a feather that was plucked from a chicken.\n");
 }
-

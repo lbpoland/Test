@@ -1,11 +1,7 @@
-/* -*- LPC -*- */
 #include "path.h"
-
 inherit "/std/room";
-
 object teacher;
 object sign;
-
 void setup() {
    set_short( "foyer of the terrain school" );
    add_property( "determinate", "the " );
@@ -30,10 +26,10 @@ void setup() {
       "Crystal teardrops scatter the light of a dozen "
       "candles around the room, casting an easy, comfortable light by which "
       "you can see.", 1 );
-   add_item( "crystal teardrop", 
+   add_item( "crystal teardrop",
       "The candlelight makes it too hard to see "
       "the crystals clearly." );
-   add_item( "candle", 
+   add_item( "candle",
       "Nestled into the midst of the chandelier, the twelve "
       "candles provide all the light in this room.");
    add_item( "bench",
@@ -67,22 +63,15 @@ void setup() {
            "more interesting than their text.",
      }) );
    set_light( 60 );
-
    add_exit( "grassyfield", PATH "grassystep", "hidden" );
    add_exit( "desert", PATH "sandtent", "hidden" );
    add_exit( "mountaintop", PATH "mountaincabin", "hidden" );
    add_exit( "back", LEARNING +"search", "path" );
    add_exit( "exit", ENTRANCE, "path" );
-   /* The "commented functions" and "keywords" properties are specific for 
-    * rooms in the learning domain and is used to make it possible to search
-    * for subjects. 
-    * See /d/learning/handlers/search.c for the way this is done.
-    */
-   add_property( "commented functions", 
+   add_property( "commented functions",
                 ({  }) );
-   add_property( "keywords", 
+   add_property( "keywords",
                 ({ "terrain" }) );
-
    sign = add_sign(
       "A cardboard sign, with text scrawled messily across the front.\n",
       "Awye FRoM TH OFFICe",
@@ -90,8 +79,7 @@ void setup() {
       "sign",
       "common" );
    if (sign) sign->set_get();
-} /* setup() */
-
+}
 void init() {
    if ( !this_player() )
       return;
@@ -99,7 +87,7 @@ void init() {
       return;
    if (!teacher) {
       teacher = load_object( CHARS "terrain_teacher" );
-   } /* setup() */   if ( teacher ) {
+   }    if ( teacher ) {
       teacher->pupil_arrived( this_object() );
    }
-} /* init() */
+}

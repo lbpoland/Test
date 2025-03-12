@@ -1,30 +1,14 @@
-/**
-* Player-run shop employee badge.
-* This object is the badge claimable by employees of player-run shops.
-* It allows employees of a particular shop to chat to each other on a
-* deidcated channel.  It also sets a player-title, and shows which employees
-* are currently logged on.
-* This object should not be inherited by anything, but should be created
-* by the player_shop office.
-* @author Ringo
-* @started 1st August 1999
-*/
 #include <player_shop.h>
-
 inherit "/obj/armour";
-
 private int do_badge(string);
 private int do_chat(string);
 private int get_properties();
 private string cap_name(string);
-
-private string _office, 
+private string _office,
 _title,
 _channel,
 _owner;
-
 private int _echo;
-
 void setup()
 {
     set_name("badge");
@@ -56,22 +40,15 @@ void setup()
       _office->query_shop_name()+ ", "+ _office->query_place()+ ".\n");
     add_adjective(_channel);
 }
-/* setup() */
-
-
-/** @ignore yes */
-private string cap_name(string name) 
+private string cap_name(string name)
 {
     if (test_player(name))
         return PLAYER_HANDLER->query_cap_name(name);
     else return capitalize(name);
 }
-
-/** @ignore yes */
 void init()
 {
     object tp;
-
     if (!_office || !_owner)
     {
         if (!get_properties()) return;
@@ -93,10 +70,6 @@ void init()
     add_command(_channel, "<string'text'>", (: do_chat($4[0]) :));
     add_command(_channel+"@", "<string'text'>", (: do_chat("@"+$4[0]) :));
 }
-/* init() */
-
-
-/** @ignore yes */
 private int do_badge(string args)
 {
     if (!_office || !_owner)
@@ -115,9 +88,8 @@ private int do_badge(string args)
     {
         string result = "$P$"+ _channel+ " channel$P$\n";
         mixed *hist = HISTORY_HANDLER->query_chat_history(lower_case(_channel));
-
         tell_object(this_player(),
-          "You ask the badge for the last few chats on the "+ _channel+ 
+          "You ask the badge for the last few chats on the "+ _channel+
           " channel\n");
         if (!arrayp(hist) || !sizeof(hist))
         {
@@ -126,8 +98,8 @@ private int do_badge(string args)
               "or it is not being remembered.\n");
             return 1;
         }
-        result += implode(map(hist, (: "$I$5=$C$" + $1[0] + $1[1] + 
-              "%^RESET%^" :)), "\n" ); 
+        result += implode(map(hist, (: "$I$5=$C$" + $1[0] + $1[1] +
+              "%^RESET%^" :)), "\n" );
         tell_object(this_player(), result);
     }
     else if (args == "echo")
@@ -159,15 +131,10 @@ private int do_badge(string args)
     }
     return 1;
 }
-/* do_badge() */
-
-
-/** @ignore yes */
 private int do_chat(string wisp)
 {
     string sender;
     object *things, tp;
-
     add_succeeded_mess("");
     if (!_office || !_owner)
     {
@@ -206,7 +173,6 @@ private int do_chat(string wisp)
     }
     wisp = replace(wisp, sprintf("%c", 7), "!");
     things = children(BADGE);
-
     if (_echo)
     {
         things -= ({find_object(BADGE)});
@@ -233,14 +199,9 @@ private int do_chat(string wisp)
    }
    return 1;
 }
-/* do_chat() */
-
-
-/** @ignore yes */
 string extra_look(object thing)
 {
    object tp;
-   
    tp = this_player();
    if (!_office || !_owner)
    {
@@ -253,10 +214,6 @@ string extra_look(object thing)
    }
    return "You can get a list of commands by typing \"badge help\"\n";
 }
-/* extra_look() */
-
-
-/** @ignore yes */
 private int get_properties()
 {
    if (!query_property("office") || !query_property("owner"))
@@ -273,26 +230,17 @@ private int get_properties()
    _channel = _office->query_channel();
    return 1;
 }
-/* get_properties() */
-
-
-/** @ignore yes */
 string query_channel() { return copy(_channel); }
-
-
-/** @ignore yes */
 void receive(string channel, string sender, string text)
 {
    object owner = environment();
    string *ignoring, prev_ob;
-   
    if (!_office || !_owner)
    {
       if (!get_properties()) return;
    }
    prev_ob = base_name(previous_object());
    if (prev_ob != BADGE && prev_ob != _office->query_shop_front()
-      /* Remove this condition once Tarnach's changed over */
       && prev_ob != "/d/am/square/emporium/TARNACH/consumables")
    {
       LOG_ERROR("shop_badge.c", "receive("+channel+","+sender+","+text+")");
@@ -332,22 +280,17 @@ void receive(string channel, string sender, string text)
    {
       text = "["+ lower_case( _channel )+ "] "+ sender +": "+ text;
    }
-   
    tell_object(owner, owner->colour_event("shopchat", "%^CYAN%^") +
       "$I$5=$C$"+ text + "%^RESET%^\n");
    return;
 }
-/* receive() */
-
-
-/** @ignore yes */
 void set_props(string path, string owner)
 {
    if (!path || path == "")
    {
       return;
    }
-   if (previous_object() && previous_object() != find_object(path)) 
+   if (previous_object() && previous_object() != find_object(path))
    {
       LOG_ERROR("shop_badge.c", "set_props("+path+","+owner+")");
       return;
@@ -363,12 +306,8 @@ void set_props(string path, string owner)
    _channel = _office->query_channel();
    add_adjective( _channel );
 }
-/* set_props() */
-
-
-/** @ignore yes */
 void wear_remove_badge(object thing)
-{   
+{
    if (!_office || !_owner)
    {
       if (!get_properties()) return;
@@ -377,23 +316,16 @@ void wear_remove_badge(object thing)
    {
       int level;
       string start;
-
       if (!living(thing))
       {
          return;
       }
-
 if (thing->query_creator())
 {
 thing->add_property(_channel+ "_on", 1);
 return;
 }
-
       level = _office->query_employee(thing->query_name());
-      
-      /* Once Tarnach's transferred over replace following line with
-       * if ( !level )
-       */
       if (!level || level == -1)
       {
          if (_office->query_retired(thing->query_name()))
@@ -425,4 +357,3 @@ return;
       thing->remove_title(_title);
    }
 }
-/* wear_remove_badge() */

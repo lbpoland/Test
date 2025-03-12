@@ -1,7 +1,5 @@
 #include "path.h";
-
 inherit CITYROOM;
-
 void setup() {
   set_short("Rabbit Lane");
   set_long("This is the middle of Rabbit Lane\n");

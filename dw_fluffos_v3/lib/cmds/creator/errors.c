@@ -1,15 +1,8 @@
-/**
- * This is the new errors command to deal with the new error handler
- * code.
- * @author Pinkfish
- * @started Mon Apr 28 12:01:45 PDT 2003
- */
 inherit "/cmds/base";
 #include <error_handler.h>
 #include <db.h>
 #include <nroff.h>
 #include <player_handler.h>
-
 class user_data {
    class error_query query;
    class error_summary* errors;
@@ -18,17 +11,13 @@ class user_data {
    string direction;
    string report;
 }
-
 private mapping _user_query;
-
 void create() {
    _user_query = ([ ]);
 }
-
 int find_index(object person, int id) {
    int i;
    class error_summary* errors;
-
    if (!_user_query[person->query_name()]) {
       return 0;
    }
@@ -41,7 +30,6 @@ int find_index(object person, int id) {
    }
    return 0;
 }
-
 int max_index(object person) {
    if (!_user_query[person->query_name()]) {
       return 0;
@@ -49,27 +37,21 @@ int max_index(object person) {
    _user_query[person->query_name()]->last_touched = time();
    return sizeof(_user_query[person->query_name()]->errors);
 }
-
 int id_at(object person, int index) {
    if (!_user_query[person->query_name()] || index < 0 ||
        index >= sizeof(_user_query[person->query_name()]->errors)) {
       return 0;
    }
-
    _user_query[person->query_name()]->last_touched = time();
    return _user_query[person->query_name()]->errors[index]->id;
 }
-
 string menu_line(object person) {
    string ret;
-
-   // Figure out the nice little menu line.
    ret = "[" + (_user_query[person->query_name()]->pos + 1) + " of " +
           sizeof(_user_query[person->query_name()]->errors) + "] "
          "STFCOLHA-+PNGQ : ";
    return ret;
 }
-
 void finish_details(object person, int verbose,
                     int type, mixed data) {
    string ret;
@@ -79,20 +61,16 @@ void finish_details(object person, int verbose,
    class error_forward forward;
    class error_replies reply;
    class user_data user_data;
-
    if (type != DB_SUCCESS) {
       tell_object(person, "%^BOLD%^%^RED%^Error: " + data + "%^RESET%^\n");
       return ;
    }
-
    user_data = _user_query[person->query_name()];
-
    complete = data[0];
    details = complete->details;
    ret = "%^BOLD%^%^CYAN%^Bug #" + details->summary->id + "%^RESET%^ " +
          details->summary->status + " " + details->summary->type + " " +
          details->summary->category + "\n";
-
    ret += "%^BOLD%^Date Reported%^RESET%^     : " +
              ctime(details->summary->entry_date) + "\n";
    ret += "%^BOLD%^Assigned To%^RESET%^       : " +
@@ -102,17 +80,14 @@ void finish_details(object person, int verbose,
    if (verbose) {
       ret += "%^BOLD%^Directory%^RESET%^         : " + details->summary->directory + "\n";
    }
-
    if (details->summary->status == "FIXED" ||
        details->summary->status == "DENIED") {
       ret += "%^BOLD%^Fixed By%^RESET%^          : " + details->fixer +
              " (" + ctime(details->fix_date) + ")\n";
    }
-
    if (verbose) {
       if (sizeof(complete->forwards)) {
          ret += "%^BOLD%^Forwards%^RESET%^          :\n";
-         // Print out the forwards.
          foreach (forward in complete->forwards) {
             ret += "$I$5=     " + forward->forwarder + " from " +
                    forward->old_directory + " at " +
@@ -120,19 +95,15 @@ void finish_details(object person, int verbose,
          }
       }
    }
-
    ret += "$I$0=" + details->report;
    if (verbose) {
       ret += details->runtime;
    } else if (details->runtime && details->runtime != "") {
       ret += "[Runtime Available]\n";
    }
-
    user_data->report = details->report;
-
    if (verbose) {
       ret += "$I$3=   ";
-      // Show the error replies before the comments.
       foreach (reply in complete->replies) {
          ret += "%^BOLD%^Date Sent%^RESET%^   : " + ctime(reply->senddate)[4..15] +
                 "\n%^BOLD%^From%^RESET%^        : " + reply->sender +
@@ -159,18 +130,14 @@ void finish_details(object person, int verbose,
    person->set_finish_func("finish_more_details", this_object());
    tell_object(person, "$P$Bug #" + details->summary->id + "$P$" + ret);
 }
-
 int finish_more_details() {
    object ob;
-
    ob = this_player();
    write(menu_line(ob));
    input_to("menu_response");
 }
-
 int finish_forward(object person, int pos, string new_dir, int type, mixed mess) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (type != DB_SUCCESS) {
       tell_object(person, "Unable to forward bug #" +
@@ -184,14 +151,10 @@ int finish_forward(object person, int pos, string new_dir, int type, mixed mess)
       data->errors[data->pos]->directory = new_dir;
    }
 }
-
 void finish_change_status(object person, string status, int command,
                           string subject, int no_reply, int type, mixed mess) {
    class user_data data;
-
-
    data = _user_query[person->query_name()];
-
    if (type != DB_SUCCESS) {
       tell_object(person, "Database error: " + mess);
       if (!command) {
@@ -199,7 +162,6 @@ void finish_change_status(object person, string status, int command,
       }
       return ;
    }
-
    tell_object(person, "Updated status of bug #" + data->errors[data->pos]->id +
                " to " + status + (no_reply ?  " (no reply) " : "") +"\n");
    if (!command) {
@@ -208,12 +170,10 @@ void finish_change_status(object person, string status, int command,
       data->errors[data->pos]->status = status;
    }
 }
-
 void finish_status_message(object person, string status, int command,
                            string subject, string mess) {
    class user_data data;
    int pos;
-
    data = _user_query[person->query_name()];
    if (!mess) {
       tell_object(person, "Message aborted.\n");
@@ -222,7 +182,6 @@ void finish_status_message(object person, string status, int command,
       }
       return ;
    }
-
    if (status == "THANKS" || status == "TEMPORARY") {
       status = "FIXED";
    }
@@ -230,22 +189,19 @@ void finish_status_message(object person, string status, int command,
        status == "NOTPOSSIBLE") {
       status = "DENIED";
    }
-
    pos = strsrch("$report$", mess);
    if (pos == -1) {
       mess += "\n\n" + data->report;
    } else {
       mess = replace_string(mess, "$report$", data->report);
    }
-
    if (!command) {
       input_to("menu_response");
    }
-   // Do it.
    if (!ERROR_HANDLER->do_change_status(data->errors[data->pos]->id,
                         status, subject == 0, subject, person->query_name(),
                         mess,
-                        (: finish_change_status, person, status, command, 
+                        (: finish_change_status, person, status, command,
                                           subject, subject == 0 :))) {
       tell_object(person, "Unhappily an error occured.\n");
       if (!command) {
@@ -253,7 +209,6 @@ void finish_status_message(object person, string status, int command,
       }
    }
 }
-
 string query_subject_from_type(string type, class error_summary error) {
    switch (type) {
    case "THANKS" :
@@ -271,7 +226,6 @@ string query_subject_from_type(string type, class error_summary error) {
              type;
    }
 }
-
 string query_message_from_type(object person, string type,
                                class error_summary error) {
    switch (upper_case(type)) {
@@ -330,65 +284,53 @@ string query_message_from_type(object person, string type,
              person->query_cap_name();
    }
 }
-
 void finish_change_type(object person, string new_type, int type, mixed mess) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (type != DB_SUCCESS) {
       tell_object(person, "Sql Error: " + mess);
       tell_object(person, menu_line(person));
       return ;
    }
-
    tell_object(person, "Bug #" + data->errors[data->pos]->id +
                        " has a new type of " + new_type + "\n");
    tell_object(person, menu_line(person));
    data->errors[data->pos]->type = new_type;
 }
-
 void finish_change_category(object person, string new_category, int type, mixed mess) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (type != DB_SUCCESS) {
       tell_object(person, "Sql Error: " + mess);
       tell_object(person, menu_line(person));
       return ;
    }
-
    tell_object(person, "Bug #" + data->errors[data->pos]->id +
                        " has a new category of " + new_category + "\n");
    tell_object(person, menu_line(person));
    data->errors[data->pos]->type = new_category;
 }
-
 void finish_assign_bug(object person, string assigner, int type, mixed mess) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (type != DB_SUCCESS) {
       tell_object(person, "Sql Error: " + mess);
       tell_object(person, menu_line(person));
       return ;
    }
-
    tell_object(person, "Bug #" + data->errors[data->pos]->id +
                        " is assigned to " + assigner + "\n");
    tell_object(person, menu_line(person));
    data->errors[data->pos]->assigned_to = assigner;
 }
-
 void finish_adding_comment(object person, int type, mixed mess) {
    if (type != DB_SUCCESS) {
       tell_object(person, "SQL Error: " + mess);
       tell_object(person, menu_line(person));
    }
-
    tell_object(person, "Added a comment to the bug.\n");
    tell_object(person, menu_line(person));
 }
-
 void finish_comment(object person, int id, string comment) {
    if (!comment) {
       write("Aborted adding the comment.\n");
@@ -403,7 +345,6 @@ void finish_comment(object person, int id, string comment) {
       write(menu_line(person));
    }
 }
-
 int do_bug_details(object person, int id, int verbose) {
    if (!ERROR_HANDLER->do_query_bug_details(id, (: finish_details, person,
                                                    verbose :))) {
@@ -411,10 +352,8 @@ int do_bug_details(object person, int id, int verbose) {
    }
    return 1;
 }
-
 int do_forward(object person, string new_dir) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (!ERROR_HANDLER->do_forward(data->errors[data->pos]->id,
                 person->query_name(), new_dir,
@@ -424,7 +363,6 @@ int do_forward(object person, string new_dir) {
    }
    return 1;
 }
-
 int do_change_status(object person, string status, int command, string subject,
                      string mess) {
    if (mess == "custom") {
@@ -439,10 +377,8 @@ int do_change_status(object person, string status, int command, string subject,
       finish_status_message(person, status, command, subject, mess);
    }
 }
-
 int do_change_type(object person, string type) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (!ERROR_HANDLER->do_change_type(data->errors[data->pos]->id, type,
        (: finish_change_type, person, type :))) {
@@ -450,10 +386,8 @@ int do_change_type(object person, string type) {
    }
    return 1;
 }
-
 int do_change_category(object person, string category) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (!ERROR_HANDLER->do_change_category(data->errors[data->pos]->id, category,
        (: finish_change_category, person, category :))) {
@@ -461,10 +395,8 @@ int do_change_category(object person, string category) {
    }
    return 1;
 }
-
 int do_assign_bug(object person, string assigner) {
    class user_data data;
-
    data = _user_query[person->query_name()];
    if (!ERROR_HANDLER->do_assign_bug_to(data->errors[data->pos]->id, assigner,
        (: finish_assign_bug, person, assigner :))) {
@@ -472,18 +404,14 @@ int do_assign_bug(object person, string assigner) {
    }
    return 1;
 }
-
 int do_comment(object person) {
    class user_data data;
-
    data = _user_query[person->query_name()];
-   this_player()->do_edit("", (: finish_comment, person, 
+   this_player()->do_edit("", (: finish_comment, person,
                                    data->errors[data->pos]->id :));
 }
-
 int do_help(object player) {
    string str;
-
    str = NROFF_HAND->cat_file("/doc/creatornr/errors", 1);
    if (!str) {
       NROFF_HAND->create_nroff("/doc/creator/commands/errors", "/doc/creatornr/errors");
@@ -492,13 +420,11 @@ int do_help(object player) {
    player->set_finish_func("finish_more_details", this_object());
    tell_object(player, "$P$Error help$P$" + str);
 }
-
 int do_list_errors() {
    class user_data data;
    class error_summary error;
    string str;
    int i;
-
    data = _user_query[this_player()->query_name()];
    str = "";
    i = 1;
@@ -513,20 +439,16 @@ int do_list_errors() {
    this_player()->set_finish_func("finish_more_details", this_object());
    write("$P$Error list$P$" + str);
 }
-
 int show_current_bug(object player, int verbose) {
    class user_data data;
-
    data = _user_query[player->query_name()];
    if (verbose == -1) {
       verbose = player->query_verbose("errors");
    }
    return do_bug_details(player, data->errors[data->pos]->id, verbose);
 }
-
 string expand_short_type(string name) {
    string str;
-
    str = upper_case(name);
    switch (str) {
    case "F" :
@@ -557,31 +479,24 @@ string expand_short_type(string name) {
       return str;
    }
 }
-
 void finish_change_status_command(object player, int id, string status,
                         string messtype, int type, mixed data) {
    string mess;
    string subject;
    class error_summary error;
-
    if (type != DB_SUCCESS) {
       tell_object(player, "SQL error: " + data + "\n");
       return ;
    }
-
    if (!sizeof(data)) {
       tell_object(player, "No bug found with an id of #" + id + "\n");
       return ;
    }
-
    error = data[0];
-
    _user_query[player->query_name()] = new(class user_data);
    _user_query[player->query_name()]->errors = data;
    _user_query[player->query_name()]->pos = 0;
-
    status = expand_short_type(status);
-   // Now lets see if they asked for a standard reply or not.
    if (messtype) {
       messtype = expand_short_type(messtype);
       mess = query_message_from_type(player, messtype, error);
@@ -593,7 +508,6 @@ void finish_change_status_command(object player, int id, string status,
             tell_object(player, "The error type must be one of " +
                   query_multiple_short(ERROR_TYPE) + ".\n");
          } else {
-            // Allow the person to enter their own message.
             do_change_status(player, status, 1, subject, mess);
             return ;
          }
@@ -601,7 +515,6 @@ void finish_change_status_command(object player, int id, string status,
    } else {
       mess = query_message_from_type(player, status, error);
       subject = query_subject_from_type(status, error);
-      // Change the status.
       if (mess) {
          do_change_status(player, status, 1, subject, mess);
          return ;
@@ -614,11 +527,6 @@ void finish_change_status_command(object player, int id, string status,
    tell_object(player, "   r ->notreproducible, p -> notpossible, m -> notenoughinformation.\n");
    tell_object(player, "   t ->temporary.\n");
 }
-
-/**
- * This function does most of the work.  It handles the response from the
- * creator and does what it needs to with the error.
- */
 void menu_response(string str) {
    string* bits;
    class user_data data;
@@ -627,18 +535,10 @@ void menu_response(string str) {
    string mess;
    string subject;
    int id;
-
    bits = explode(str, " ");
    if (!sizeof(bits)) {
-/*
-      write("You need to specify something to do.\n");
-      write(menu_line(this_player()));
-      input_to("menu_response");
-      return ;
- */
       bits = ({ "n" });
    }
-
    data = _user_query[this_player()->query_name()];
    switch(lower_case(bits[0])) {
    case "v" :
@@ -650,7 +550,6 @@ void menu_response(string str) {
       break;
    case "+" :
    case "n" :
-      // next bug.
       if (data->pos < sizeof(data->errors) - 1) {
          data->pos++;
          print_menu_line = !show_current_bug(this_player(), -1);
@@ -661,7 +560,6 @@ void menu_response(string str) {
       break;
    case "-" :
    case "p" :
-      // previous bug.
       if (data->pos > 0) {
          data->pos--;
          print_menu_line = !show_current_bug(this_player(), -1);
@@ -671,7 +569,6 @@ void menu_response(string str) {
       }
       break;
    case "f" :
-      // Forward the bug somewhere.
       if (sizeof(bits) == 2) {
          if (do_forward(this_player(), bits[1])) {
             input_to("menu_response");
@@ -684,10 +581,8 @@ void menu_response(string str) {
       }
       break;
    case "s" :
-      // Change the status of the bug
       if (sizeof(bits) > 1) {
          bits[1] = expand_short_type(bits[1]);
-         // Now lets see if they asked for a standard reply or not.
          error = data->errors[data->pos];
          if (sizeof(bits) > 2) {
             bits[2] = expand_short_type(bits[2]);
@@ -702,7 +597,6 @@ void menu_response(string str) {
                         query_multiple_short(ERROR_TYPE) + ".\n");
                   print_menu_line = 1;
                } else {
-                  // Allow the person to enter their own message.
                   do_change_status(this_player(), bits[1], 0, subject, mess);
                   input_to("menu_response");
                }
@@ -710,7 +604,6 @@ void menu_response(string str) {
          } else {
             mess = query_message_from_type(this_player(), bits[1], error);
             subject = query_subject_from_type(bits[1], error);
-            // Change the status.
             if (mess) {
                do_change_status(this_player(), bits[1], 0, subject, mess);
                input_to("menu_response");
@@ -736,7 +629,6 @@ void menu_response(string str) {
       }
       break;
    case "t" :
-      // Change the type of the bug.
       if (sizeof(bits) > 1) {
          bits[1] = upper_case(bits[1]);
          if (member_array(bits[1], ERROR_TYPE) != -1) {
@@ -753,7 +645,6 @@ void menu_response(string str) {
       }
       break;
    case "o" :
-      // Change the category of the bug.
       if (sizeof(bits) > 1) {
          bits[1] = upper_case(bits[1]);
          if (member_array(bits[1], ERROR_CATEGORIES) != -1) {
@@ -770,14 +661,12 @@ void menu_response(string str) {
       }
       break;
    case "g" :
-      // goto a specific bug.
       if (sizeof(bits) > 0) {
          id = to_int(bits[1]);
          if (id <= sizeof(data->errors)) {
             data->pos = id - 1;
             show_current_bug(this_player(), -1);
          } else {
-            // See if we can find it.
             id = find_index(this_player(), id);
             if (id == -1) {
                write("Unable to find the bug #" + id + "\n");
@@ -791,7 +680,6 @@ void menu_response(string str) {
       }
       break;
    case "c" :
-      // comment on the bug.
       do_comment(this_player());
       break;
    case "i" :
@@ -828,13 +716,11 @@ void menu_response(string str) {
       input_to("menu_response");
    }
 }
-
 void finish_query(object player, int type, mixed data) {
    if (type != DB_SUCCESS) {
       tell_object(player, "Error: " + data + "\n");
       return ;
    }
-
    _user_query[player->query_name()] = new(class user_data);
    _user_query[player->query_name()]->errors = data;
    _user_query[player->query_name()]->pos = 0;
@@ -844,7 +730,6 @@ void finish_query(object player, int type, mixed data) {
    }
    show_current_bug(player, -1);
 }
-
 int setup_query(object player, class error_query query) {
    if (!ERROR_HANDLER->do_query_bug_summary(query, (: finish_query, player :))) {
       add_failed_mess("Unable to setup the query.\n");
@@ -852,10 +737,8 @@ int setup_query(object player, class error_query query) {
    }
    return 1;
 }
-
 int errors_change_status(int id, string status, string messtype) {
    class error_query query;
-
    query = new (class error_query);
    query->id = id;
    if (!ERROR_HANDLER->do_query_bug_summary(query,
@@ -867,10 +750,8 @@ int errors_change_status(int id, string status, string messtype) {
    write("Looking up bug #" + id + " to fix.\n");
    return 1;
 }
-
 int errors_this_dir(int recursive) {
    class error_query query;
-
    query = new (class error_query);
    query->dir = this_player()->query_path();
    query->recursive = recursive;
@@ -878,35 +759,28 @@ int errors_this_dir(int recursive) {
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_by_person(string person) {
    class error_query query;
-
    query = new (class error_query);
    query->reporter = lower_case(person);
    query->status = ({ ERROR_STATUS_OPEN, ERROR_STATUS_CONSIDERING,
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_assigned_to_person(string person) {
    class error_query query;
-
    query = new (class error_query);
    query->assigned_to = lower_case(person);
    query->status = ({ ERROR_STATUS_OPEN, ERROR_STATUS_CONSIDERING,
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_assigned_to_me() {
    return errors_assigned_to_person(this_player()->query_name());
 }
-
 int errors_in_dir(string str, int recursive) {
    class error_query query;
    string path;
-
    path = this_player()->get_path(str);
    query = new (class error_query);
    query->dir = path;
@@ -915,37 +789,30 @@ int errors_in_dir(string str, int recursive) {
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_with_id(int id) {
    class error_query query;
-
    query = new (class error_query);
    query->id = id;
    query->status = ({ ERROR_STATUS_OPEN, ERROR_STATUS_CONSIDERING,
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_for_file(string file) {
    class error_query query;
-
    query = new (class error_query);
    query->file_name = file;
    query->status = ({ ERROR_STATUS_OPEN, ERROR_STATUS_CONSIDERING,
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 int errors_in_this_room() {
    class error_query query;
-
    query = new (class error_query);
    query->file_name = file_name(environment(this_player()));
    query->status = ({ ERROR_STATUS_OPEN, ERROR_STATUS_CONSIDERING,
                       ERROR_STATUS_FIXING });
    return setup_query(this_player(), query);
 }
-
 mixed* query_patterns() {
    return ({ "", (: errors_this_dir(0) :),
              "status <number'bug id'> <word'status'>",

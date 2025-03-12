@@ -1,31 +1,13 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: ceres $
- * $Id: woodland.c,v 1.8 2003/04/16 23:12:26 ceres Exp ceres $
- */
 #define CREATOR "Ceres"
-/**
- * This is a standard woodland room.  It is a specialisation of /std/outside
- * providing various ready-made add_items for your woodland.
- * <p>
- * room_chats are also provided, if you don't wish to keep them simply use
- * room_chat to write your own or stop_room_chats to remove them.
- * <p>
- * The items and chats are seasonal adding richness to your woodland setting.
- * @author Ceres
- */
 #include <weather.h>
 #include <terrain_map.h>
-
 inherit TERRAIN_MAP_OUTSIDE_BASE;
-
 void create() {
   do_setup++;
   ::create();
   do_setup--;
   set_light(80);
   add_zone("woodland");
-  
   switch((string)WEATHER->query_season()) {
   case "spring":
     add_item("flower", ({"long", "Some pretty flowers.",
@@ -41,7 +23,6 @@ void create() {
              "shrubs.");
     add_item("shrub", "Dotted here and there among the carpet of flowers "+
              "are small shrubs, some thorny, all green.");
-
     room_chat(({120, 240, ({"Birds sing loudly announcing their presence.",
                             "Bees buzz busily from flower to flower.",
                             "A squirrel rushes up a nearby tree trunk.",
@@ -111,12 +92,9 @@ void create() {
     this_object()->reset();
   }
 }
-
 string query_terrain_map_colour() { return "%^GREEN%^"; }
-
 string extra_look() {
   string extra;
-
   extra = ::extra_look();
   switch((string)WEATHER->query_season()) {
   case "spring":
@@ -128,7 +106,6 @@ string extra_look() {
     return extra;
   }
 }
-
 mixed do_get_rock( string verb, object *dest ) {
   int rock_size;
   string rock_type;
@@ -147,7 +124,6 @@ mixed do_get_rock( string verb, object *dest ) {
   rock->dest_me();
   return 0;
 }
-
 mixed do_get_flower( string verb, object *dest ) {
   string flower_type;
   object flower;
@@ -156,7 +132,6 @@ mixed do_get_flower( string verb, object *dest ) {
   if ((int)query_property("noflowers"))
     return 0;
   flower = clone_object("/std/plant");
-  
   if(undefinedp(flower_type = (string)query_property("flower type")))
     flower_type = ({"forgetmenot", "violet"})[ random(2) ];
   flower->set_plant(flower_type);
@@ -164,41 +139,33 @@ mixed do_get_flower( string verb, object *dest ) {
   flower->set_plant_desc("A beautiful "+flower_type+" picked before its "+
                          "time.\n");
   flower->set_main_plural(flower_type + "s");
-  
   if (!(flower->move(this_player()))) return 1;
   flower->dest_me();
   return 0;
 }
-
 mixed do_get_berry( string verb, object *dest ) {
   object berry;
   string berry_type;
   if ((int)query_property("noflowers"))
     return 0;
-  
   berry_type = ({"blackberry", "raspberry", "blueberry", "strawberry",
                  "blackcurrant"})[random(5)];
-  
    berry = clone_object( "/obj/food" );
   berry->set_name(berry_type);
   berry->set_short(berry_type);
   berry->set_long("This is a lovely, plump "+berry_type+" it looks good "+
                   "enough to eat.\n");
   berry->add_alias("berry");
-  
   if (!(berry->move(this_player()))) return 1;
   berry->dest_me();
   return 0;
 }
-
 mixed do_get_leaf( string verb, object *dest ) {
   object leaf;
   string leaf_type;
   if ((int)query_property("noflowers"))
     return 0;
-  
   leaf_type = ({"maple", "oak", "sycamore", "ash", "silver birch"})[random(5)];
-  
   leaf = clone_object("/std/object");
   leaf->set_name("leaf");
   leaf->set_short(leaf_type+" leaf");
@@ -209,5 +176,3 @@ mixed do_get_leaf( string verb, object *dest ) {
   leaf->dest_me();
   return 0;
 }
-
-

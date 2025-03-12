@@ -1,5 +1,4 @@
 inherit "/obj/misc/trap";
-
 void setup() {
    set_name("trap");
    set_weight(1);
@@ -19,4 +18,4 @@ void setup() {
                  "A small needle sings out of the lock.\n" }),
              ({ "/std/effects/poisons/spider_venom", 30 }));
    set_value(20000);
-} /* setup() */
+}

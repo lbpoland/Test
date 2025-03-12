@@ -1,18 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: creator_file.c,v 1.1 1998/01/06 05:12:03 ceres Exp $
- * $Log: creator_file.c,v $
- * Revision 1.1  1998/01/06 05:12:03  ceres
- * Initial revision
- * 
-*/
-/*
- * I ain't touching THIS one.. *quiver* // Z
- */
 varargs mixed creator_file(string file, int author) {
   string *str;
-
   if (!file || !stringp(file)) return "NOONE";
   str = explode(file, "/") - ({ "" });
   if (sizeof(str)<2) return 0;
@@ -54,17 +41,14 @@ varargs mixed creator_file(string file, int author) {
          return 0;
      return str[1];
   }
-} /* creator_file() */
-
+}
 mixed author_file(mixed bing) {
   return creator_file(bing, 1);
-} /* author_file() */
-
+}
 mixed domain_file(mixed bing) {
   string str;
-
   str = creator_file(bing);
   if (!str) return str;
   if (str[0] >= 'A' && str[0] <= 'Z') return str;
   return "Creator";
-} /* domain_file() */
+}

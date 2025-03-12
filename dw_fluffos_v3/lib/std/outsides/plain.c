@@ -1,34 +1,14 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: ceres $
- * $Id: plain.c,v 1.7 2002/03/26 01:41:57 pinkfish Exp ceres $
- * 
- */
 #define CREATOR "Ceres"
-/**
- * This is a standard field room.  It is a specialisation of /std/outside
- * providing various ready-made add_items for your fields.
- * <p>
- * room_chats are also provided, if you don't wish to keep them simply use
- * room_chat to write your own or stop_room_chats to remove them.
- * <p>
- * The items and chats are seasonal adding richness to your field setting.
- * @author Ceres
- */
 #include <weather.h>
 #include <terrain_map.h>
-
 inherit TERRAIN_MAP_OUTSIDE_BASE;
-
 void create() {
   do_setup++;
   ::create();
   do_setup--;
-  
   set_light(80);
   set_climate("Aw");
   add_zone("plain");
-  
   switch((string)WEATHER->query_season()) {
   case "spring":
     add_item("flower", ({"long", "Some pretty flowers.",
@@ -41,7 +21,6 @@ void create() {
     add_item(({"floor", "ground", "earth"}),
              "The ground is mostly grassy "
              "with the occasional clump of wild flowers.");
-    
     room_chat(({120, 240, ({"Birds sing loudly announcing their presence.",
                               "Bees buzz busily from flower to flower.",
                               "A butterfly alights on a nearby flower.",
@@ -71,7 +50,6 @@ void create() {
     add_item(({"floor", "ground", "earth"}), "The ground is mostly grassy.");
     add_item("tree", "The occasional trees are gold and brown as their "
              "leaves die before winter.");
-    
     room_chat(({120, 240, ({"A squirrel rushes up a nearby tree trunk.",
                               "A bird of prey soars high overhead looking "
                               "for something to eat."})}));
@@ -92,13 +70,10 @@ void create() {
     this_object()->reset();
   }
 }
-
-/** @ignore yes */
 mixed do_get_rock( string verb, object *dest ) {
   int rock_size;
   string rock_type;
   object rock;
-
   if ( query_property( "rock object" ) )
     return ( rock = clone_object( (string)query_property( "rock object" ) ) );
   if ( undefinedp( rock_size = (int)query_property( "rock size" ) ) )
@@ -113,18 +88,14 @@ mixed do_get_rock( string verb, object *dest ) {
   rock->dest_me();
   return 0;
 }
-
-/** @ignore yes */
 mixed do_get_flower( string verb, object *dest ) {
   string flower_type;
   object flower;
-
   if ( query_property( "flower object" ) )
     return (flower = clone_object((string)query_property("flower object")));
   if ((int)query_property("noflowers"))
     return 0;
   flower = clone_object("/std/plant");
-  
   if(undefinedp(flower_type = (string)query_property("flower type")))
     flower_type = ({"forgetmenot", "buttercup", "daisy"})[ random(2) ];
   flower->set_plant(flower_type);
@@ -132,7 +103,6 @@ mixed do_get_flower( string verb, object *dest ) {
   flower->set_plant_desc("A beautiful "+flower_type+" picked before its "
                          "time.");
   flower->add_plural( pluralize( flower_type ) );
-  
   if (!(flower->move(this_player()))) return 1;
   flower->dest_me();
   return 0;

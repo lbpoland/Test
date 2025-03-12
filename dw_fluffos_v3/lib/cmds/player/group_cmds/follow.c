@@ -1,38 +1,27 @@
 #include <group_handler.h>
-
 inherit GROUP_SUBCOMMAND_INHERITABLE;
-
 int do_group_follow( object *who, string group, int unfollow );
-
 void create() {
    ::create();
    add_group_sub_command( "follow", "<indirect:living'member(s)'>",
       (: do_group_follow( $1, $6, 0 ) :) );
    add_group_sub_command( "unfollow", "<indirect:living'member(s)'>",
-      (: do_group_follow( $1, $6, 1 ) :) );      
+      (: do_group_follow( $1, $6, 1 ) :) );
    set_membership_required( "follow", 0, 1 );
    set_membership_required( "unfollow", 0, 1 );
-} /* create() */
-
-
+}
 int do_group_follow( object *who, string group, int unfollow ) {
-   
    int size;
    string fault_message;
    object *what_not, *follow, *already_following;
-
-   fault_message = "";   
+   fault_message = "";
    who -= ({ 0 });
-   
    if( member_array( this_player(), who ) != -1 ) {
       who -= ({ this_player() });
       fault_message += "You cannot follow yourself.  ";
    }
-   
    follow = ( who & GROUP->members_of( group ) );
-   
    what_not = who - follow;
-   
    switch( unfollow ) {
       case 1:
          already_following = filter( follow,
@@ -59,17 +48,13 @@ int do_group_follow( object *who, string group, int unfollow ) {
       default:
          printf( "Barf.\n" );
    }
-   
    size = sizeof( what_not );
-   
    if( size ) {
       fault_message += "$C$" + query_multiple_short( what_not, "the" ) +
          ( size > 1 ? " are not members of your group" :
          " is not a member of your group" ) + ".  ";
    }
-   
    fault_message += "\n";
-   
    if( sizeof( follow ) ) {
       GROUP->handle_group_follow( group, this_player(), follow,
          unfollow, 0 );
@@ -78,10 +63,7 @@ int do_group_follow( object *who, string group, int unfollow ) {
       tell_object( this_player(), fault_message );
       return 1;
    }
-   
-} /* do_group_follow() */
-
-
+}
 string query_help_string_for( string sub ) {
    switch( sub ) {
       case "follow":
@@ -93,8 +75,5 @@ string query_help_string_for( string sub ) {
             "group members.  Using \"all\" will only target "
             "all group members, not all people, in the room.\n";
    }
-
    return 0;
-   
-} /* query_help_string_for() */
-
+}

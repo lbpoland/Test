@@ -1,78 +1,23 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: graffbase.c,v 1.1 1998/01/15 01:37:46 ceres Exp $
- *
- * $Log: graffbase.c,v $
- * Revision 1.1  1998/01/15 01:37:46  ceres
- * Initial revision
- *
-*/
-/*
- * $Locker:  $
- * $Id: graffbase.c,v 1.1 1998/01/15 01:37:46 ceres Exp $
- *
- * $Log: graffbase.c,v $
- * Revision 1.1  1998/01/15 01:37:46  ceres
- * Initial revision
- *
-*/
-/*
- * $Locker:  $
- * $Id: graffbase.c,v 1.1 1998/01/15 01:37:46 ceres Exp $
- *
- * $Log: graffbase.c,v $
- * Revision 1.1  1998/01/15 01:37:46  ceres
- * Initial revision
- *
-*/
-/*
- * $Locker:  $
- * $Id: graffbase.c,v 1.1 1998/01/15 01:37:46 ceres Exp $
- *
- * $Log: graffbase.c,v $
- * Revision 1.1  1998/01/15 01:37:46  ceres
- * Initial revision
- *
-*/
-/* This is the temporary and hacked version of Taniwha's graffiti base code.
- * The original files can be found in /w/hobbes/misc/graffiti/
- * Based on /obj/misc/quill
- * Taniwha, 1997
- */
-
 #include <language.h>
-// Property to add to an object to allow scrawling
-
 #define GRAFFITI "graffiti"
-
 #define ETP environment(this_player())
 #define TO this_object()
-
-
 object writing_on;
 string type;
 object old;
 string olds;
-
-/* Functions to override in inheriting objects */
-string query_drawingwith(); // name of thing doing the drawing
-int do_check();  // do we have the "pen and paper"
-int done_check(); // Clean uo routine, break chalk etc
-
+string query_drawingwith();
+int do_check();
+int done_check();
 string query_drawingwith() { return "something"; }
-int do_check() { return 0; } // fail
+int do_check() { return 0; }
 int done_check() { return 0; }
-
-
 void init() {
  this_player()->add_command( "scrawl", this_object(), "with charcoal on wall");
  this_player()->add_command( "scrawl", this_object(), "on wall with charcoal");
-} /* init() */
-
+}
 int do_scrawl( object *things ) {
     string language;
-   /* if(!this_object()->do_check() ) return 0;*/
     if ( !ETP->query_property( GRAFFITI) ) {
         this_player()->add_failed_mess( this_object(), "You can't scrawl on "+
           "this wall.\n");
@@ -85,7 +30,6 @@ int do_scrawl( object *things ) {
           "scrawling on a wall with.\n",({writing_on}));
         return 0;
     }
-
     if(( old = present("graffiti",ETP)) && !interactive(old))
     {
         olds = old->query_property("graffiti");
@@ -102,16 +46,14 @@ int do_scrawl( object *things ) {
     writing_on = ETP;
     call_out( "begin_writing", 0, this_player() );
     return 1;
-} /* do_write() */
-
+}
 void begin_writing( object writer ) {
     if ( !writer ) {
         writing_on = 0;
         return;
     }
     writer->do_edit( 0, "end_writing" );
-} /* begin_writing() */
-
+}
 void end_writing( string words ) {
     string language;
     string extra;
@@ -144,9 +86,6 @@ void end_writing( string words ) {
         writing_on = 0;
         return;
     }
-    /*   
-       writing_on->add_read_mess( words, type, language, 0 );
-    */
     if(!stringp(olds)) olds = "";
     words = olds +"\n"+"%^MAGENTA%^Scrawled with rough charcoal, you "
              "read the words:%^RESET%^\n\n"+
@@ -157,7 +96,7 @@ void end_writing( string words ) {
         "graffiti over this wall.  You may be able to \"read\" it.\n";
     ETP->add_sign(
       extra,
-      words,	
+      words,
       "graffiti",
       ({"graffiti","scrawl"}),
       language
@@ -166,11 +105,10 @@ void end_writing( string words ) {
     old->add_property("determinate","some ");
     old->add_property("there","on the wall");
     if(old) old->add_property("graffiti",words);
-
     write( "As you finish scrawling on the wall, the piece of charcoal "
            "breaks.\n" );
     say( (string)this_player()->the_short() +" finishes scrawling "+
       "on the wall.\n" );
     this_object()->done_check();
     writing_on = 0;
-} /* end_writing() */
+}

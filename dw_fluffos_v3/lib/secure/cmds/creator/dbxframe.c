@@ -1,13 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: dbxframe.c,v 1.2 2000/10/16 20:02:19 turrican Exp $
- */
 inherit "/cmds/base";
-
 string print_vars(mixed *vars) {
   string *result = allocate(sizeof(vars));
   int i;
-
   for (i=0; i<sizeof(vars); i++) {
     if (mapp(vars[i]))
       result[i] = "([ ... ])";
@@ -30,14 +24,12 @@ string print_vars(mixed *vars) {
   }
   return implode(result, ", ");
 }
-
 int cmd(string str) {
   mapping frame;
   object ob;
   string who;
   int num;
   string file;
-
   if (!str || (sscanf(str, "%d", num) != 1 &&
                sscanf(str, "%s %d", who, num) != 2)) {
     write("dbxframe [<who>] <frame>\n");
@@ -65,7 +57,6 @@ int cmd(string str) {
   if (file[0] != '/') {
     file = "/" + file;
   }
-  
   printf("------%s:%i - %s(%s)\n", file, frame["line"],
          frame["function"],print_vars(frame["arguments"]));
   printf("locals: %s\n", print_vars(frame["locals"]));

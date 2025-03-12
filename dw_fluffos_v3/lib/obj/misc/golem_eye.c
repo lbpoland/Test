@@ -1,11 +1,4 @@
-/*
- * $Id$
- */
-
-/* Eye of a golem */
-
 inherit "/std/object";
-
 void setup() {
     set_name( "triangle" );
     set_short( "clay triangle" );
@@ -16,6 +9,4 @@ void setup() {
     set_weight( 5 );
     set_value( 0 );
     add_property( "no recycling", 1 );
-} /* void setup() */
-
-
+}

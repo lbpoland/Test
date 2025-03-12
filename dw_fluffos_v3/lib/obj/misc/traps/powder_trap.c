@@ -1,5 +1,4 @@
 inherit "/obj/misc/trap";
-
 void setup() {
    set_name("trap");
    set_weight(1);
@@ -21,4 +20,4 @@ void setup() {
                  "A cloud of powder puffs out of the lock.\n" }),
              ({ "/std/effects/disease/common_cold", 6000 }));
    set_value(10000);
-} /* setup() */
+}

@@ -1,17 +1,13 @@
 inherit "/obj/monster";
-
 #include <armoury.h>
 #include <weapon.h>
 #include <tasks.h>
 #include <combat.h>
-
 int told_attack, told_parry, ability;
 string *misc;
 object trainer, trainee;
-
 #define DODGE "fighting.combat.dodging.melee"
 #define PARRY "fighting.combat.parry.melee"
-
 #define PERSON_DODGE_FAILURE "As the dummy spins around, an arm swings towards you and hits you before you can dodge out of the way!\n"
 #define ROOM_DODGE_FAILURE " isn't fast enough to dodge a spinning arm!  Ouch!\n"
 #define PERSON_DODGE_SUCESS "As the dummy spins around, an arm swings towards you but you see it in time and dodge it.\n"
@@ -20,7 +16,6 @@ object trainer, trainee;
 #define ROOM_PARRY_FAILURE " isn't fast enough to avoid the training dummy! Ouch!\n"
 #define PERSON_PARRY_SUCCESS "As the dummy spins around, an arm swings towards you but you see it in time and block it.\n"
 #define ROOM_PARRY_SUCCESS " parries the training dummy.\n"
-
 #define MISC_MESSAGES ({ "Generally, heavier weapons are harder to attack and "\
   "parry with but their attacks are harder to parry.", \
   "Being burdened in combat, by carrying lots of things or wearing lots of " \
@@ -33,46 +28,36 @@ object trainer, trainee;
   "normally."})
 #define DIFF 15
 #define MOD 10
-
 int assault_dummy();
 mixed *callback(int stage, class attack att, mixed data);
 void failed_defense( object );
 void failed_attack( object );
 void tell_misc( object );
 void spin_arm( object, object );
-
 object query_trainer() {
   return trainer;
 }
-
 object reset_trainer() {
   trainer = 0;
 }
-
 object set_trainer( object thing ) {
   return trainer = thing;
 }
-
 object query_trainee() {
   return trainee;
 }
-
 object reset_trainee() {
   trainee = 0;
 }
-
 object set_trainee( object thing ) {
   return trainee = thing;
 }
-
 int query_skill_bonus( string words ) {
   return 10;
 }
-
 void setup() {
   set_name( "dummy" );
   add_adjective( ({ "wood", "wooden", "training" }) );
-  //  add_property( "determinate", "A" );
   set_short( "training dummy" );
   set_long( "A fighters dummy.  It is looking pretty worn from having "+
     "all the stuffing knocked out of it all day.\n");
@@ -90,16 +75,11 @@ void setup() {
   remove_ac( "unarmed" );
   add_skill_level( "other.health", 1000 );
   add_combat_action( 100, "spin_arm", (: spin_arm :) );
-
   ARMOURY->request_item( "dirty rags", 30 )->move( this_object() );
-
-} /* setup() */
-
-// Don't let the dummy attack;
+}
 int attack_this_time() {
   return 0;
 }
-
 void init() {
   if( this_player() ) {
     this_player()->add_command( "kill", this_object(), "{dummy}",
@@ -107,22 +87,18 @@ void init() {
     this_player()->add_command( "attack", this_object(), "{dummy}",
       (: assault_dummy() :) );
   }
-}/*init*/
-
+}
 int assault_dummy() {
   object *weapons, weapon;
   int i;
-
   if( trainer->query_fighting() ) {
     write( "You beat at and tear up " + this_object()->the_short() +
       " for a while until you get bored.\n" );
     say( this_player()->query_short() + " hacks at " +
       this_object()->the_short() + " for a while.\n", this_player() );
   }
-
   if( trainee && !interactive( trainee ) )
     reset_trainee();
-
   if( trainee ) {
     if( trainee->query_fighting() ) {
       if( trainee == this_player() ) {
@@ -135,69 +111,49 @@ int assault_dummy() {
       return notify_fail( "" );
     }
   }
-
   weapon = 0;
   ability = 0;
   told_attack = 0;
   told_parry = 0;
   misc = copy(MISC_MESSAGES);
   weapons = (object *)this_player()->query_weapons();
-
   if( sizeof( weapons ) > 1 ) {
     trainer->stop_them( previous_object(), this_object() );
     trainer->do_command( "say Just use one weapon, I get confused if you use "
       "more than one!" );
     return 1;
   }
-
   if( sizeof( weapons ) && !weapon )
     weapon = weapons[ 0 ];
-
   this_player()->attack_ob( this_object() );
   write( "You attack " + this_object()->the_short() + ".\n" );
   say( this_player()->the_short() + " attacks " + this_object()->a_short() +
     ".\n", this_player() );
   trainee = this_player();
-
   for( i = 0; i < sizeof( ( class combat_special )this_object()->
     query_specials() ); i++ ) {
       this_object()->remove_special( ( class combat_special )this_object()->
         query_specials()[i]->id );
   }
-
   this_object()->register_special( T_DEFENSIVE,
                                    E_AFTER_ATTACK,
                                    ({ this_object(), "callback" }),
                                    ({ 0, 0, weapon }) );
   return 1;
-}/*attack_dummy*/
-
+}
 int attack_by(object ob) {
   if(!sizeof(query_specials()))
     call_out("attack_dummy", 0);
   return ::attack_by(ob);
 }
-
 mixed *callback( int stage, class attack att, mixed data ) {
   int *rating, number, damage, last_damage;
   object dumdum, newbie, *weapons, weapon;
   string what, skill;
   mixed *attacks;
-  
   newbie = att->attacker;
   dumdum = att->opponent;
-
-  /*
-   * The data array is the list of information specific to a particular
-   * special for a particular player.
-   *
-   * data[0] == Times tried
-   * data[1] == Damage
-   * data[2] == Weapon
-   */
-
   weapons = (object *)this_player()->query_weapons();
-
   if( sizeof( weapons ) > 1 ) {
     trainer->stop_them( newbie, dumdum );
     trainer->do_command( "say Just use one weapon, I get confused if you use "
@@ -205,27 +161,21 @@ mixed *callback( int stage, class attack att, mixed data ) {
     debug_printf( "More than one weapon, removing special.\n" );
     return({ R_CONTINUE | R_REMOVE_ME, att, data });
   }
-
   if( sizeof( weapons ) && !weapon )
     weapon = weapons[ 0 ];
-
   if( weapon != data[2] ) {
     trainer->stop_them( newbie, dumdum );
     trainer->do_command( "say You've changed weapons!" );
     debug_printf( "Changed weapons, removing special.\n" );
     return({ R_CONTINUE | R_REMOVE_ME, att, data });
   }
-
   last_damage = data[1];
   damage = att->damage;
   data[1] = damage;
-
   if( !last_damage) {
     failed_attack(newbie);
   }
   if(last_damage || !random(4)) {
-    // This hands out skill advances very generously up to lvl 5 then it
-    // stops.
     if( weapon ) {
       attacks = weapon->query_attack_data();
       skill = attacks[random( sizeof( attacks ) / W_ARRAY_SIZE ) *
@@ -244,8 +194,6 @@ mixed *callback( int stage, class attack att, mixed data ) {
          "using " + weapon->a_short() + ".%^RESET%^\n" );
     }
   }
-
-  // Check if we have used up all our chances.
   if( data[0]++ > 15 ) {
     number = ( 2 * (ability + data[0]) ) / ( 2 * data[0] );
     if( weapon )
@@ -253,7 +201,6 @@ mixed *callback( int stage, class attack att, mixed data ) {
     else
       what = "whatever it was you were using";
     trainer->stop_them( newbie, dumdum );
-    
     trainer->do_command( "think" );
     switch ( number ) {
     case 0..1 :
@@ -266,7 +213,7 @@ mixed *callback( int stage, class attack att, mixed data ) {
         else
           trainer->do_command( "say Well, you're rather hopeless with " + what +
             ", really, but with practice you'll get better.");
-      }  
+      }
       break;
     case 2 .. 3 :
       if( skill == "unarmed" )
@@ -291,48 +238,36 @@ mixed *callback( int stage, class attack att, mixed data ) {
     trainee = 0;
     return({ R_CONTINUE | R_REMOVE_ME, att, data });
   }
-
   tell_misc(newbie);
   if( !damage) {
     return ({ R_CONTINUE, att, data });
   }
-  
-
   if( skill == "unarmed" ) {
     rating = (int *)"/cmds/guild-race/other/judge"->calc_rating( newbie );
   } else {
     rating = (int *)"/cmds/guild-race/other/judge"->calc_rating( weapon );
   }
-  // Ratings for unarmed.  I'm making them up!
   if( !rating[0] )
     rating [0] = random( 10 ) + 30;
   if( !rating[1] )
     rating [1] = random( 80 ) + 60;
-
   number = ( ( 40 * damage ) / rating[ 0 ] +
              ( 20 * damage ) / rating[ 1 ] ) / 5;
   debug_printf("%d", number);
   ability += number;
   if (number > 14)
     number = 14;
-    
   trainer->do_command( "say That's " + ({ "an atrocious", "an extremely poor",
     "a very poor", "a rather poor", "a poor", "a pretty poor", "quite a poor",
     "a reasonable", "quite a good", "a pretty good", "a good", "a rather "
     "good", "a very good", "an extremely good", "an excellent" })
     [ number ] + " attack." );
-
   return ({ R_CONTINUE, att, data });
 }
-
 void spin_arm( object newbie, object dumdum ) {
   int diff, which, failed;
-
-  //debug_printf( "specials %O\n", this_player()->query_specials() );
-
   if( environment( newbie ) != environment( this_object() ) )
      return;
-
   switch( ( ( class tactics )newbie->query_tactics() )->attitude ) {
   case "offensive":
     diff = DIFF + MOD;
@@ -343,7 +278,6 @@ void spin_arm( object newbie, object dumdum ) {
   default:
     diff = DIFF;
   }
-
   switch( newbie->query_combat_response() ) {
   case "dodge" :
     which = 1;
@@ -354,8 +288,6 @@ void spin_arm( object newbie, object dumdum ) {
   default:
     which = random( 2 );
   }
-
-  // Dodge
   if( which ) {
     switch( TASKER->perform_task( newbie, DODGE, diff, TM_FIXED ) ) {
       case FAIL :
@@ -378,7 +310,6 @@ void spin_arm( object newbie, object dumdum ) {
         break;
     }
   } else {
-    // Parry
     switch( TASKER->perform_task( newbie, PARRY, diff, TM_FIXED ) ) {
       case FAIL :
         if( newbie->query_skill( PARRY ) >= 5 ||
@@ -400,29 +331,22 @@ void spin_arm( object newbie, object dumdum ) {
         break;
     }
   }
-
   if( trainer && failed )
     failed_defense(newbie);
   return;
 }
-
 void tell_misc(object newbie) {
   int which;
-
   if(!sizeof(misc) || random(5))
     return;
-  
   which = random(sizeof(misc));
   trainer->do_command("say " + misc[which]);
   misc -= ({ misc[which] });
 }
-
 void failed_attack( object newbie ) {
   string attitude;
-
   if(told_attack)
     return;
-  
   attitude = (newbie->query_tactics())->attitude;
   if(attitude != "offensive" && attitude != "insane") {
     told_attack = 1;
@@ -431,15 +355,11 @@ void failed_attack( object newbie ) {
                          "offensive attitude.");
   }
 }
-
 void failed_defense( object newbie ) {
   string attitude;
-  
   if(told_parry)
     return;
-
   attitude = (newbie->query_tactics())->attitude;
-
   if(attitude != "defensive" && attitude != "wimp") {
     told_parry = 1;
     trainer->do_command( "say You can improve your chances of defending by "
@@ -447,7 +367,6 @@ void failed_defense( object newbie ) {
                          "attitude." );
   }
 }
-
 void adjust_hp() {
   return this_object()->query_max_hp();
 }

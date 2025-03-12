@@ -1,16 +1,13 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_weight( 800 );
    set_height( 50 );
    set_desc( "a four-legged ruminant.  It shouldn't be used since this is "
       "just a base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 100, 0,
          "left eye", "right eye", "nose", "skull", "tongue", "left ear",
          "right ear" }),
@@ -53,29 +50,24 @@ void create() {
       "right rear hoof", "hoof", ({ "right rear leg", 30, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "neck", "genitals", "teeth", "left front hoof",
       "right front hoof", "left rear hoof", "right rear hoof", "tooth",
       "skin" });
    unrottable = ({ "skull", "teeth", "tooth" });
    set_skin( "hide" );
-
    set_stats( ({ 0, 0, -4, 2, -6 }) );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
+}
 string *query_target_zones() {
   return ({ "head", "head", "neck",
-              "chest", "back", "back", "back", "lower back", 
+              "chest", "back", "back", "back", "lower back",
               "left front leg", "left front leg", "left front hoof",
               "stomach", "stomach", "tail",
               "right front leg", "right front leg", "right front hoof",
               "left rear leg", "left rear leg", "left rear hoof",
               "right rear leg", "right rear leg", "right rear hoof"});
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "chest":

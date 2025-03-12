@@ -1,8 +1,6 @@
 #include <mail.h>
 #include <board.h>
-
 inherit "/obj/misc/board";
-
 int do_store(int num, string str);
 int do_storeall(string str);
 int do_minimum(int num);
@@ -17,26 +15,19 @@ int do_unkillfile(string str);
 int do_transfer(int num, string str);
 int do_summary();
 int do_skip(string str, int move_on);
-
 int calc_new(object player, string board);
-
 void setup() {
   ::setup();
   add_alias("board master");
   action_pri = 3;
   reset_drop();
   set_get();
-} /* setup() */
-
-/*
- * Need to redefine this to add all the extra bits and wombles to it.
- */
+}
 string long(string str, int dark) {
   int i, irp;
   mixed *stuff;
   string ret;
   mapping news_rc;
-
   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
   ret = "A bulletin board ("+board_name+").\n";
   irp = (int)BOARD_HAND->query_minimum(board_name);
@@ -90,29 +81,23 @@ string long(string str, int dark) {
              stuff[i][B_SUBJECT]+" ("+
              stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
   return ret;
-} /* long() */
-
+}
 int calc_new(object who, string board) {
   mapping news_rc;
   mixed *stuff;
   int amt;
-
   news_rc = BOARD_HAND->query_newsrc(who->query_name());
   if ( !news_rc )
     news_rc = ([ ]);
-  
   stuff = (mixed *)BOARD_HAND->get_subjects(board);
   if ( !sizeof( stuff ) )
     return 0;
-  
   amt = sizeof( filter_array( stuff, (: ( $1[ B_TIME ] > $2 ) &&
               ( lower_case( $1[ B_NAME ] ) != $3 ) :), news_rc[ board ],
                               (string)who->query_name() ) );
   return amt;
 }
-
 void init() {
-   /* Add the standard board commands... */
    if (this_player()->query_creator()) {
       add_commands();
       add_command("store", "<number> <word>", (: do_store($4[0], $4[1]) :));
@@ -123,7 +108,7 @@ void init() {
       add_command("board", "<string>", (: do_board($4[0]) :));
       add_command("boards", "");
       add_command("killfile", "<string>", (: do_killfile($4[0]) :));
-      add_command("unkillfile", "<string>",(: do_unkillfile($4[0]) :)); 
+      add_command("unkillfile", "<string>",(: do_unkillfile($4[0]) :));
       add_command("listkillfile", "");
       add_command("security", "");
       add_command("sadd", "<word>", (: do_add($4[0]) :));
@@ -141,21 +126,15 @@ void init() {
       add_command("transfer", "<number> <string>",
                      (: do_transfer($4[0], $4[1]) :));
    }
-} /* init() */
-
+}
 int do_storeall(string file) {
   mixed *stuff;
   int i, j, amt, cnt=0;
   string *boards, their_name;
   mapping news_rc;
-
   seteuid( geteuid( this_player() ) );
   their_name = this_player()->query_name();
-  //if (!str || (sscanf(str, "%s", file) != 1)) 
-    //file = "/w/"+their_name+"/boards.txt";
-
   boards = (string *)BOARD_HAND->list_of_boards();
-  /* start from the begining and search for one with new notes. */
   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
    if ( !news_rc )
       news_rc = ([ ]);
@@ -183,7 +162,6 @@ int do_storeall(string file) {
        stuff[j][B_SUBJECT][0..(int)this_player()->
                                                  query_cols() - 10]+"\n\n"+
                          BOARD_HAND->get_message(boards[i], j)+"\n\n\n");
-
           if (cnt == 0)
              printf("Storing ");
           cnt++;
@@ -197,17 +175,15 @@ int do_storeall(string file) {
     BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
   }
   return 1;
-} /* do_storeall() */
-
+}
 int do_store(int which, string file) {
   mixed *stuff;
-
   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
   if (which < 1 || which > sizeof(stuff)) {
     add_failed_mess("Invalid note number.\n");
     return 0;
   }
-  which--; /* 1..n */
+  which--;
   file += ".note";
      seteuid( geteuid( this_player() ) );
   if (!write_file(file,stuff[which][B_SUBJECT]+"\n\n"+
@@ -217,19 +193,14 @@ int do_store(int which, string file) {
   }
   write("Ok.\n");
   return 1;
-} /* do_store() */
-
+}
 void set_board_name(string str) { board_name = str; }
 void set_datafile(string str) { board_name = str; }
-
-
 int do_next() {
   int start, i, j, k, found;
   string *boards;
-  
   if(calc_new(this_player(), board_name))
     return do_read_new();
-
   boards = (string *)BOARD_HAND->list_of_boards();
   if ((start = member_array(board_name, boards)) == -1)
     start = 0;
@@ -242,7 +213,6 @@ int do_next() {
       break;
     }
   }
-
   if(found) {
     board_name = boards[j];
     write("Okay, changed to board "+board_name+" with " + k +
@@ -250,14 +220,11 @@ int do_next() {
     return do_read_new();
   } else
     write("No boards with new messages.\n");
-  
   return 1;
-} /* next() */
-
+}
 int do_prev() {
   int i;
   string *boards;
-
   boards = (string *)BOARD_HAND->list_of_boards();
   if ((i = member_array(board_name, boards)) == -1)
     i = 0;
@@ -266,30 +233,23 @@ int do_prev() {
   board_name = boards[i];
   write("Okay, changed to board "+board_name+".\n");
   return 1;
-} /* prev() */
-
+}
 int do_killfile(string arg) {
     string *bits, board;
-
     bits = explode( arg, "," );
-
-    foreach ( board in bits ) {        
+    foreach ( board in bits ) {
         if ( sizeof( BOARD_HAND->get_subjects( board ) ) ) {
           BOARD_HAND->set_killfile(this_player()->query_name(),
                 lower_case( board ));
             tell_object( this_player(), "Board " + board  + " killed.\n" );
         }
-        else { 
-            tell_object( this_player(), "There is no such board " + 
-                board + ".\n" );  
+        else {
+            tell_object( this_player(), "There is no such board " +
+                board + ".\n" );
         }
     }
-    
     return 1;
-} /* do_kill_file() */
-
-
-
+}
 int do_unkillfile(string arg) {
   if (!BOARD_HAND->query_killfile(this_player()->query_name(),
                                   lower_case( arg ) )) {
@@ -301,22 +261,18 @@ int do_unkillfile(string arg) {
      write("Board "+arg+" unkilled.\n");
   }
   return 1;
-} /* ukfile() */
-
+}
 int do_listkillfile() {
    string *boards;
-
    boards = BOARD_HAND->list_killfile(this_player()->query_name());
    if ( sizeof( boards ) )
      write("You have the following boards killfiled: "+
            query_multiple_short( boards ) +".\n" );
    return 1;
-} /* lkfile() */
-
+}
 int do_board(string str) {
   int i;
   string *boards;
-
   boards = (string *)BOARD_HAND->list_of_boards();
   i = member_array(str, boards);
   if (i == -1) {
@@ -329,70 +285,59 @@ int do_board(string str) {
     write(" with " + i + " new notes.\n");
   else
     write(" with no new notes.\n");
-
   board_name = str;
   return 1;
-} /* board() */
-
+}
 int do_boards() {
    write( "The current boards are:\n\""+
          implode( (string *)BOARD_HAND->list_of_boards(), "\", \"" ) +
          "\".\n" );
   return 1;
-} /* boards() */
-
+}
 int do_security() {
    write( "The current people in this boards security array are:\n"+
         implode((string *)BOARD_HAND->query_security(board_name), ", ")+"\n");
   return 1;
-} /* do_security() */
-
+}
 int do_add(string name) {
   if (this_player() != this_player(1) ||
       !interactive(previous_object()))
     return 0;
   return (int)BOARD_HAND->add_allowed(board_name, name);
-} /* do_add() */
-
+}
 int do_remove(string name) {
   if (this_player() != this_player(1) ||
       !interactive(previous_object()))
     return 0;
   return (int)BOARD_HAND->remove_allowed(board_name, name);
-} /* do_remove() */
-
+}
 int do_timeout(int i) {
   if (this_player() != this_player(1) ||
       !interactive(previous_object()))
     return 0;
   return (int)BOARD_HAND->set_timeout(board_name, i);
-} /* do_timeout() */
-
+}
 int do_minimum(string i) {
   if (this_player() != this_player(1) ||
       !interactive(previous_object()))
     return 0;
   return (int)BOARD_HAND->set_minimum(board_name, i);
-} /* do_minimum() */
-
+}
 int do_maximum(int i) {
   if (this_player() != this_player(1) ||
       !interactive(previous_object()))
     return 0;
   return (int)BOARD_HAND->set_maximum(board_name, i);
-} /* do_maximum() */
-
+}
 int do_archive(string name) {
   if (!name)
     return 0;
   if (name != "none")
     return (int)BOARD_HAND->set_archive(board_name, name);
   return (int)BOARD_HAND->set_archive(board_name);
-} /* do_archive() */
-
+}
 varargs int move(object dest, string s1, string s2) {
   int ret;
-
   if (!objectp(dest))
     return ::move(dest, s1, s2);
   if (interactive(dest)) {
@@ -403,21 +348,17 @@ varargs int move(object dest, string s1, string s2) {
     return 0;
   }
   return ::move(dest, s1, s2);
-} /* move() */
-
+}
 mixed query_static_auto_load() {
   return board_name;
-} /* query_static_auto_load() */
-
+}
 void init_static_arg(mixed board) {
   if (stringp(board))
     board_name = board;
-} /* init_static_auto_load() */
-
+}
 int do_summary() {
    int i, no, amt;
    string *boards;
-
    boards = (string *)BOARD_HAND->list_of_boards();
    for ( i = sizeof( boards ) - 1; i > -1; i-- )
       if ( !BOARD_HAND->query_killfile(this_player()->query_name(),
@@ -432,8 +373,7 @@ int do_summary() {
    if ( !no )
       add_failed_mess( "No boards with new messages.\n" );
    return no;
-} /* do_summary() */
-
+}
 int do_new() {
    int i, amt;
    string *boards;
@@ -451,23 +391,18 @@ int do_new() {
       }
    add_failed_mess( "No boards with new messages.\n" );
    return 0;
-} /* do_new() */
-
-/* Skip does the same as a new, but marks the board as read. */
+}
 int do_skip(string str, int move_on) {
   mapping news_rc;
   mixed *otherstuff;
   int i, j, k, start, found;
   string *boards;
-  
   if(!str) {
     str = board_name;
   }
-
   boards = (string *)BOARD_HAND->list_of_boards();
   if(member_array(str, boards) == -1)
     return notify_fail("No such board " + str + ".\n");
-
   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
    if ( !news_rc )
       news_rc = ([ ]);
@@ -477,9 +412,7 @@ int do_skip(string str, int move_on) {
     BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
   }
   printf("Marked all of "+str+" as read.\n");
-
   if(move_on) {
-    // Needed coz skipping a large number of messages can be a little costly.
     reset_eval_cost();
     if ((start = member_array(board_name, boards)) == -1)
       start = 0;
@@ -492,7 +425,6 @@ int do_skip(string str, int move_on) {
         break;
       }
     }
-    
     if(found) {
       board_name = boards[j];
       write("Okay, changed to board "+board_name+" with " + k +
@@ -501,23 +433,19 @@ int do_skip(string str, int move_on) {
       write("No boards with new messages.\n");
   }
   return 1;
-} /* do_skip() */
-
+}
 int do_arts() {
   int i;
   mixed *otherstuff;
-
   otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
   for (i=0;i<sizeof(otherstuff);i++)
     printf("%2d# %-20s %d\n", i, otherstuff[i][B_NAME], otherstuff[i][B_NUM]);
   return 1;
-} /* do_arts() */
-
+}
 int do_transfer(int num, string str) {
   string mess;
   string *boards;
   mixed *otherstuff;
-
   boards = (string *)BOARD_HAND->query_boards();
   otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
   if (member_array(str, boards) == -1) {
@@ -540,4 +468,4 @@ int do_transfer(int num, string str) {
   add_failed_mess("Unable to transfer note "+num+" to the board '"+
                       board_name+", no security privilages?\n");
   return 0;
-} /* do_transfer() */
+}

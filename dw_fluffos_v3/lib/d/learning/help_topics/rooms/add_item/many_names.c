@@ -1,11 +1,8 @@
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_short( "'add_item' room telling about simple items with many names" );
    set_light( 100 );
-
    set_long( "This is the room telling about making simple items with many "
             "names.  To help as examples it's been filled with several items "
             "including a small note, candles and some chairs.  Look at the "
@@ -40,17 +37,14 @@ void setup() {
             "Oh, one last thing when listing things in this manner as a rule "
             "of thumb, put the best description first.\n" );
    add_item( "candle", "Very nice." );
-   /* Warning, look at the note to see why this is not a good example */
    add_item( ({ "corridor", "long hallway" }), "It is long." );
    add_item( "chair", "This chair looks about ready to fall over", 1 );
    add_item( "chairs", "The chairs look ready to fall over", 1 );
-
    add_item( "item", "You don't see any since noone coded one yet!" );
    add_item( "reference", "Like one that you would find in a theusaures." );
    add_item( "room", "It is a big room." );
-
    add_exit( "east", PATH +"verbs", "path");
    add_exit( "west", PATH +"intro", "path");
    add_exit( "start", MAIN, "path" );
    add_exit( "exit", LEARNING +"search", "path" );
-} /* setup() */
+}

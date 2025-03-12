@@ -1,5 +1,4 @@
 inherit "/std/room/furniture/surface";
-
 void setup() {
   set_name("stove");
   set_short("small stove");
@@ -12,4 +11,4 @@ void setup() {
   set_weight(495);
   set_max_weight(45);
   set_value(8000);
-} /* setup() */
+}

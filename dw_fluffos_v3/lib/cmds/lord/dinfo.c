@@ -1,30 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: dinfo.c,v 1.4 2000/08/19 21:38:27 ceres Exp $
- * $Log: dinfo.c,v $
- * Revision 1.4  2000/08/19 21:38:27  ceres
- * Fixed to use player_handler instead of finger
- *
- * Revision 1.3  2000/06/22 23:33:15  ceres
- * Modified to use query_domains()
- *
- * Revision 1.2  1999/10/12 03:25:46  jeremy
- * Added sort parameters.  Also added "Now" to show those currently
- * logged on.
- *
- * Revision 1.1  1998/01/06 05:29:21  ceres
- * Initial revision
- * 
-*/
-
 #include <player_handler.h>
-
 string master;
-
 string dinfo( string name, int cols, string option );
 string get_last_log( int last_log_on );
-
 mixed cmd(string name, string option) {
   if (!name) {
     return notify_fail("You must give a domain.\n");
@@ -33,14 +10,11 @@ mixed cmd(string name, string option) {
                                    option), "Domain Info");
   return 1;
 }
-
 string dinfo( string name, int cols, string option ) {
   string ret, *members;
   int i;
-
   if(member_array(name, "/secure/master"->query_domains()) == -1)
     return "No such domain: " + name + "\n";
-  
   master = "/d/"+name+"/master";
   write(master+"\n");
   members = master->query_members();
@@ -60,7 +34,6 @@ string dinfo( string name, int cols, string option ) {
     break;
   }
   ret = "The current members of this domain are:";
-  
   for (i=0;i<sizeof(members);i++) {
     ret += sprintf("\n%-12s: Last login: %s\n",
                    capitalize(members[i]),
@@ -73,24 +46,18 @@ string dinfo( string name, int cols, string option ) {
   }
   return ret;
 }
-
 void dest_me() {
   destruct(this_object());
 }
-
 void clean_up() {
   dest_me();
 }
-
 void reset() {
   dest_me();
 }
-
 string get_last_log(int last_log_on) {
     string retval;
     int tmp_time, sec, min, hour, day;
-
-/* Should be a nice number.... */
     tmp_time = time()-last_log_on;
     if (!tmp_time) {
       sec = min = hour = day = 0;
@@ -106,10 +73,8 @@ string get_last_log(int last_log_on) {
         retval = "%^GREEN%^"+retval+"%^RESET%^";
     } else
       retval = "%^GREEN%^Today%^RESET%^";
-    
     return retval;
 }
-
 mixed query_patterns() {
   return ({
     "<string'domain'>", (: cmd($4[0], " ") :),

@@ -1,11 +1,8 @@
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_short("add_item room #9, verb patterns ");
    set_light(100);
-
    set_long("add_item room #9, verb patterns\n"
             +"Outdated! see man add_command for patterns\n "
             +"As you guessed I am still holding out on you.  There is, "
@@ -15,7 +12,6 @@ void setup() {
             +"the verb must come first.  ie VERB PATTERN.  The default "
             +"pattern we have been using to date is %D.  We can change the "
             +"pattern!\nReference sheet.\nLarge pool.\nNote.\n");
-   
    add_item("reference sheet",
             "Pattern: Is the add_command pattern( parse_command): \n"
             +"Example string = \" 'get' / 'take' %i \" \n"
@@ -36,7 +32,6 @@ void setup() {
             +"Currently %s and %w behave a bit erradically... \n"
             +"If you put 'text' before and after them it might help.\n"
             +"Hope this helps!\n" );
-   
    add_item("note", ({ "long", "It can be read.",
       "read", "Here is the code for the pool:\n"
       +"  add_item(\"large pool\", ({  \n"
@@ -52,21 +47,17 @@ void setup() {
       +"use %d and %I in a few rooms.  I have also changed the succeed "
       +"mess, otherwise it would say: \"You jump into / in a large pool.\"  "
       +"Not good huh? *smile* Oh well on to the next room!\n" }));
-   
-   
    add_item( "large pool", ({
       "long", "It looks like you can jump into it!",
       "jump", ({ this_object(), "do_jump", " [into|in] <direct:object>" })
    }) );
-   
    add_exit( "east", PATH +"func_arguments", "path");
    add_exit( "west", PATH +"verb_success", "path");
    add_exit( "start", MAIN, "path" );
    add_exit( "exit", LEARNING +"search", "path" );
-} /* setup() */
-
+}
 int do_jump() {
    this_player()->add_succeeded_mess(previous_object(),
                                      "$N $V into a pool!\n",  ({}));
    return 1;
-} /* do_jump() */
+}

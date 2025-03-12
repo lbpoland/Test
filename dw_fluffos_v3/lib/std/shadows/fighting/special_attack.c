@@ -1,41 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: special_attack.c,v 1.7 2000/03/28 21:18:50 ceres Exp $
- * $Log: special_attack.c,v $
- * Revision 1.7  2000/03/28 21:18:50  ceres
- * Can't remember
- *
- * Revision 1.6  2000/03/01 20:09:02  ceres
- * Added debugging informs
- *
- * Revision 1.5  1999/10/28 02:10:10  ceres
- * God knows
- *
- * Revision 1.4  1998/09/07 01:51:42  ceres
- * Minor tweaks.
- *
- * Revision 1.3  1998/03/28 06:17:18  ceres
- * modified advance rate
- *
- * Revision 1.2  1998/01/07 21:53:35  sin
- * Fixed_the_code_to_detect_whether_the_weapon_is_appropriate.
- *
- * Revision 1.1  1998/01/06 04:36:31  ceres
- * Initial revision
- * 
-*/
 #include <tasks.h>
-
 #define QUEST_MAX 570
 #define INFORM
-
 inherit "/std/effect_shadow";
-
 string *data;
-
 void set_data( string *words ) { data = words; }
-
 mapping special_attack( object target ) {
    int i, damage, skill;
    object *args;
@@ -70,9 +38,6 @@ mapping special_attack( object target ) {
       return 0;
    }
    for ( i = 0; i < sizeof( attacks ); i += 4 ) {
-      /* This checks to see if the weapon attack type (attacks[i + 2])
-       * is the same as the attack type we need (data[1]), or that
-       * the attack type is the same up to the first '-' */
       if (attacks[i + 2] == data[1] ||
             attacks[i + 2][0..sizeof(data[1])] == data[1] + "-")
         damage += attacks[ i ];
@@ -89,7 +54,6 @@ mapping special_attack( object target ) {
 #endif
      return 0;
    }
-   
    skill = (int)player->query_skill_bonus( "fighting.combat.melee."+
          data[ 0 ] );
    switch( (int)TASKER->perform_task(player, "fighting.combat.melee."+data[0],
@@ -127,6 +91,5 @@ mapping special_attack( object target ) {
    set_arg( 0 );
    remove_this_effect();
    return ([ args[ 1 ] : ({ damage }) + data ]);
-} /* special_attack() */
-
+}
 int tasking_done() { return 1; }

@@ -1,24 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: snoop.c,v 1.4 1998/08/21 11:26:08 pinkfish Exp $
- * $Log: snoop.c,v $
- * Revision 1.4  1998/08/21 11:26:08  pinkfish
- * Erm, realy change the snoop log location :)
- *
- * Revision 1.3  1998/08/21 11:23:41  pinkfish
- * Move the snoop log into the admin dir.
- *
- * Revision 1.2  1998/05/05 14:09:15  pinkfish
- * Fix up qsnoop.
- *
- * Revision 1.1  1998/01/06 05:12:03  ceres
- * Initial revision
- * 
-*/
 int valid_snoop(object snooper, object snoopee, object pobj) {
   string verb;
-
   verb = this_player()->query_current_verb();
   if (snooper == snoopee) {
     tell_object(snooper, "You can't snoop yourself.\n");
@@ -73,11 +54,9 @@ int valid_snoop(object snooper, object snoopee, object pobj) {
   user_event( snooper->query_cap_name()+" starts " + verb + "ing "+
               snoopee->query_name(), "snoop");
   return 1;
-} /* valid_snoop() */
-
+}
 void snoop_reason(string str) {
   object snooper;
-
   snooper = this_player();
   if (this_player(1) != this_player()) {
     write("Can't force people...\n");
@@ -102,4 +81,4 @@ void snoop_reason(string str) {
     write("Snoop suceeded,\n");
   else
     write("Snoop failed.\n");
-} /* snoop_reason() */
+}

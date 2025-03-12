@@ -6,10 +6,8 @@ class item_data {
     string ob;
 }
 void dest_me() { destruct( this_object() ); }
-
 class item_data item;
 mapping data = ([ ]);
-
 mixed data_return_0() {
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
@@ -310,7 +308,6 @@ mixed data_return_0() {
   item->ob = "/obj/food/fruits/jelly_orange.food";
   data["jelly orange"] = item;
 }
-
 mixed data_return() {
   data_return_0();
   return data;

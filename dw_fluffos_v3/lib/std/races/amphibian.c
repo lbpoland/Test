@@ -1,15 +1,12 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "your standard amphibian" );
    set_height( 40 );
    set_weight( 600 );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 40, 0,
          "skull", "left eye", "right eye" }),
       "skull", "skull", ({ "head", 15, 0, "brain" }),
@@ -30,15 +27,11 @@ void create() {
       "left back leg", "leg", ({ 0, 200, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull" });
    unrottable = ({ "skull" });
    set_skin( "skin" );
-
    set_stats( ({ -4, 10, -4, -4, -6 }) );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
+}
 int lives_in_water() { return 1; }

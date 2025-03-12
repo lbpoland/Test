@@ -1,21 +1,15 @@
-// Gototh 11/04/98
-
 inherit "/cmds/base";
-
 varargs int cmd(string num) {
   object player, *players;
   int division, i, max, slot;
   mapping stuff;
-
   division = to_int(num);
   if(!division) {
     division = 50;
   }
-
   stuff = ([ ]);
   players = users();
   max = 0;
-
   foreach( player in players )  {
     if ( !player->query_creator() )  {
       slot = player->query_level() / division;
@@ -24,7 +18,6 @@ varargs int cmd(string num) {
     }
     else players -= ({ player });
   }
-
   write("%^ORANGE%^Player level distribution:%^RESET%^\n");
   for ( i = 0; i < max; i++ )  {
     if ( stuff[i] )  {

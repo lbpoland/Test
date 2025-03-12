@@ -1,12 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: upd_ate.c,v 1.4 1999/12/09 07:17:32 pinkfish Exp $
- */
-
 #include <creator.h>
-
 inherit "/cmds/base";
-
 protected int do_update(object *ov) {
    string pname;
    object *invent;
@@ -18,12 +11,10 @@ protected int do_update(object *ov) {
    mixed static_arg;
    mixed dynamic_arg;
    int i;
-   
-   rsv = load_object("room/void");  /* RSV = Room Slash Void */
-   if (!rsv) { /* Die in horror */
+   rsv = load_object("room/void");
+   if (!rsv) {
       return notify_fail("The void is lost!\n");
    }
- 
    foreach (ob in ov) {
       if (!ob) {
          continue;
@@ -34,7 +25,6 @@ protected int do_update(object *ov) {
       }
       env = environment(ob);
       invent = all_inventory(ob);
-
       for (i = 0; i < sizeof(invent); i++) {
          if (userp(invent[i]) ||
              invent[i]->query_property("unique")) {
@@ -43,9 +33,8 @@ protected int do_update(object *ov) {
              invent = delete(invent, i--, 1);
          }
       }
-  
       pname = file_name(ob);
-      if (sscanf(pname, "%s#%*d", pname) != 2) { /* a room ? */
+      if (sscanf(pname, "%s#%*d", pname) != 2) {
          static_arg = ob->query_static_auto_load();
          dynamic_arg = ob->query_dynamic_auto_load();
          ob->dest_me();
@@ -78,7 +67,6 @@ protected int do_update(object *ov) {
          if (loaded) {
             destruct(loaded);
          }
-  
          dup = clone_object(pname);
          if (dup && ob) {
              ob->dest_me();
@@ -97,26 +85,22 @@ protected int do_update(object *ov) {
             }
          }
       }
-      
       if (!ob) {
          printf("I seem to have lost your object.\n");
          return 1;
       }
-  
       for (i = 0; i < sizeof(invent); i++) {
          if (invent[i]) {
             invent[i]->move(ob);
          }
       }
-        
       if (env) {
          ob->move(env);
       }
       printf("Updated %s.\n", WIZ_PRESENT->desc_f_object(ob));
    }
    return 1;
-} /* do_update() */
-
+}
 mixed cmd(string str) {
    string tring;
    string* filenames;
@@ -125,10 +109,9 @@ mixed cmd(string str) {
    object* val;
    object* obs;
    int loop;
- 
    notify_fail("No such object.\n");
    tring = str;
-   if (!str || str == "here") { 
+   if (!str || str == "here") {
       str = file_name(environment(this_player()));
       if (str == "/room/void") {
          notify_fail("The Surgeon General warns you that it is hazardous to "
@@ -173,4 +156,4 @@ mixed cmd(string str) {
    } else {
       return do_update(obs);
    }
-} /* cmd() */
+}

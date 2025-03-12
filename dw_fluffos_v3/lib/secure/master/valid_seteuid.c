@@ -1,11 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: valid_seteuid.c,v 1.4 2000/06/19 04:28:27 ceres Exp $
- */
 int valid_euid(string str) {
   string *domains;
-
   switch (str) {
   case "all":
   case "Handlers":
@@ -25,10 +19,8 @@ int valid_euid(string str) {
     return 0;
   }
 }
-
 int valid_seteuid(object ob, string euid) {
   string crea;
-
   if (euid == "tmp") {
       return 1;
   }
@@ -39,4 +31,4 @@ int valid_seteuid(object ob, string euid) {
       return 1;
   }
   return (euid == crea) || !euid;
-} /* valid_seteuid() */
+}

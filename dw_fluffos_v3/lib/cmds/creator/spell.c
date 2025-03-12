@@ -1,6 +1,5 @@
 inherit "/cmds/base";
 #include <network.h>
-
 void finish_lookup(object player, string word, int result, mixed* results) {
    if (result == NETWORK_SUCCESS) {
       if (!sizeof(results)) {
@@ -13,15 +12,13 @@ void finish_lookup(object player, string word, int result, mixed* results) {
    } else {
       tell_object(player, "Error matching " + word + ": " + result);
    }
-} /* finish_lookup() */
-
+}
 int cmd(string word) {
    NETWORK_DICTIONARY_HANDLER->spell_word(word, 0,
                         (: finish_lookup($(this_player()), $1, $2, $3) :));
    add_succeeded_mess("$N look$s up a word.\n");
    return 1;
-} /* cmd() */
-
+}
 mixed* query_patterns() {
    return ({ "<word>", (: cmd($4[0]) :) });
-} /* query_patterns() */
+}

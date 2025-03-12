@@ -1,10 +1,4 @@
 inherit "/obj/misc/trap";
-
-// Note: This trap is not suitable to be sold for players to add to their
-// doors since it requires a hold in the floor and so would have to be
-// custom installed!
-// Ceres (no, I did not write it!)
-
 void setup() {
    set_name("trap");
    set_weight(1);
@@ -28,4 +22,4 @@ void setup() {
                "feet and shatters both of their legs!\n" }),
              ({ "/std/effects/disease/broken_leg", ({ "left", "right"}) }));
    set_value(1000000);
-} /* setup() */
+}

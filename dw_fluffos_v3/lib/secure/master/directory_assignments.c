@@ -1,27 +1,11 @@
-/**
- * This is the file which handles assigning creators to specific
- * directories for bug control.
- * @author Pinkfish
- * @started Tue Mar  4 13:40:44 PST 2003
- */
 #include <player_handler.h>
 #include <error_handler.h>
-
 private mapping _directory_assignments = ([ ]);
-
 int query_leader(string name);
-
-/**
- * Finds the person assigned to the specific directory.  It will climb
- * up the directory tree looking for who to assign the directory too.
- * @param dir the directory to find assignments in
- * @return the array of people assigned to the directory
- */
 string* query_assigned_to_directory(string dir) {
    string *bits;
    string str;
    int i;
-
    bits = explode(dir, "/") - ({ "" });
    switch (bits[0]) {
    case "w" :
@@ -44,17 +28,9 @@ string* query_assigned_to_directory(string dir) {
       return ({ });
    }
 }
-
-/**
- * This method allows a specific person to be assigned to the given
- * directory.
- * @param dir the directory to assign someone too
- * @param people the people who are assigned to the directory
- */
 int assign_people_to_directory(string dir, string* people) {
    string* new_people;
    string* dirs;
-
    if ( !sizeof( filter( previous_object( -1 ), (: interactive( $1 ) :) ) ) ) {
       user_event( "inform", this_player()->query_name() +
             " illegally attempted to call assign_person_to_directory( "+ dir +
@@ -79,7 +55,6 @@ int assign_people_to_directory(string dir, string* people) {
          if (!_directory_assignments) {
             _directory_assignments = ([ ]);
          }
-         // Set back to nothing.
          if (sizeof(people) == 1 && people[0] == ERROR_ASSIGNED_NO_ONE) {
             people = ({ });
          }
@@ -100,12 +75,6 @@ int assign_people_to_directory(string dir, string* people) {
    debug_printf("Bad pumpkins. %O %O\n", new_people, people);
    return 0;
 }
-
-/**
- * This method returns all the current assignments from directory to the
- * people who are looking after them.
- * @return the directory assignment mapping
- */
 mapping query_directory_assignments() {
    if (!_directory_assignments) {
       return ([ ]);

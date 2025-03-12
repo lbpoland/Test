@@ -1,7 +1,4 @@
-// Rue 1.2000
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
   set_name( "chair" );
   set_short( "overstuffed chintz chair" );
@@ -16,4 +13,4 @@ void setup() {
   ]));
   set_weight(400);
   set_value(6000);
-} /* setup() */
+}

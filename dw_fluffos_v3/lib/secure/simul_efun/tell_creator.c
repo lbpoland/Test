@@ -1,15 +1,3 @@
-/*  -*- LPC -*-  
- * $Id: tell_creator.c,v 1.6 1999/05/12 12:02:32 turrican Exp $
- */
-/**
- * This method writes a message to a creator, it's mainly meant 
- * for debug messages where sending a message to a specific 
- * creator is smarter than sending it to players, who will only get confused.
- *
- * @param cre the name or object to send the message to
- * @param fmt the format string
- * @param args the arguments to the sprintf
- */
 varargs void tell_creator(mixed cre, string fmt, mixed args ...) {
   if (stringp(cre)) {
 #if efun_defined(find_player)
@@ -25,5 +13,4 @@ varargs void tell_creator(mixed cre, string fmt, mixed args ...) {
       tell_object(cre, fmt);
     }
   }
-} /* tell_creator()*/
-
+}

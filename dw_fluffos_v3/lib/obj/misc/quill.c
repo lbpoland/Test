@@ -1,19 +1,8 @@
-/*
- * Ink/dipping can be added once vessels/liquids is finished.
- * Writing size can be added once that's worked out.
- *
- * Added 'copy' command - Jeremy, 10-Dec-95
- */
-
 #include <language.h>
-
 inherit "/obj/weapon";
-
 int do_scribble( object *things, string mess);
-
 object writing_on;
 string type;
-
 void setup() {
    set_name( "quill" );
    set_long( "This is a nice, long, feathery quill.  You could \"write\" "
@@ -26,8 +15,7 @@ void setup() {
    add_attack( "stab", 90, ({ 10, 2, 10 }), "pierce", "sharp", 0 );
    add_property( "paper writer", 1 );
    type = "ink";
-} /* setup() */
-
+}
 void init() {
    add_command( "write", "on <indirect:object> with <direct:object>" );
    add_command( "write", "with <direct:object> on <indirect:object>" );
@@ -35,16 +23,9 @@ void init() {
    add_command( "scribble",
                 "<string'message'> on <indirect:object> with <direct:object>",
                 (: do_scribble($1, $4[0]) :));
-/*
-   this_player()->add_command( "copy", this_object(),
-                              ({"<indirect:object> 'to' <indirect:object> 'with' <direct:object>",
-                                "<indirect:object> 'to' <indirect:object> 'with' <direct:object> 'in' <word>"}));
- */
-} /* init() */
-
+}
 int do_scribble( object *things, string mess) {
    string language;
-
    if ( query_wielded() != this_player() ) {
       this_player()->add_failed_mess( this_object(), "You need to be "+
             "holding $D to $V with it.\n", ({ }) );
@@ -56,7 +37,6 @@ int do_scribble( object *things, string mess) {
                       "in the room with $D.\n");
       return 0;
    }
-
    if ( sizeof( things ) > 1 ) {
       add_failed_mess("You can only $V on one object at once with $D.\n");
       return 0;
@@ -72,21 +52,17 @@ int do_scribble( object *things, string mess) {
             "written.\n", things );
       return 0;
    }
-
    if (things[0]->is_current_page_torn_out()) {
       add_failed_mess( "The page of " + things[0]->the_short() +
             " you were writing on appears to have been torn out.\n" );
       return 0;
    }
-
    things[0]->add_read_mess( mess, type, language, 0 );
    add_succeeded_mess("$N $V something on $I.\n", things);
    return 1;
-} /* do_scribble() */
-
+}
 int do_write( object *things ) {
    string language;
-
    if ( query_wielded() != this_player() ) {
       this_player()->add_failed_mess( this_object(), "You need to be "+
             "holding $D to $V with it.\n", ({ }) );
@@ -98,7 +74,6 @@ int do_write( object *things ) {
                       "in the room with $D.\n");
       return 0;
    }
-
    if ( sizeof( things ) > 1 ) {
       add_failed_mess("You can only $V on one object at once with $D.\n");
       return 0;
@@ -122,19 +97,16 @@ int do_write( object *things ) {
    writing_on = things[ 0 ];
    call_out( "begin_writing", 0, this_player() );
    return 1;
-} /* do_write() */
-
+}
 void begin_writing( object writer ) {
    if ( !writer ) {
       writing_on = 0;
       return;
    }
    writer->do_edit( 0, "end_writing" );
-} /* begin_writing() */
-
+}
 void end_writing( string words ) {
    string language;
-
    if ( !words || ( words == "" ) ) {
       write( "You don't write anything on "+
             (string)writing_on->the_short() +".\n" );
@@ -174,19 +146,16 @@ void end_writing( string words ) {
       writing_on = 0;
       return;
    }
-
    writing_on->add_read_mess( words, type, language, 0 );
    write( "You finish writing on "+
          (string)writing_on->the_short() +".\n" );
    say( (string)this_player()->the_short() +" finishes writing "+
          "on "+ (string)writing_on->a_short() +".\n" );
    writing_on = 0;
-} /* end_writing() */
-
+}
 int do_sign(object* things) {
    object ob;
    string language;
-
    if ( query_wielded() != this_player() ) {
       add_failed_mess( "You need to be "+
             "holding $D to $V with it.\n", ({ }) );
@@ -198,7 +167,6 @@ int do_sign(object* things) {
                       "in the room with $D.\n");
       return 0;
    }
-
    if ( sizeof( things ) > 1 ) {
       add_failed_mess("You can only $V on one object at once with $D.\n");
       return 0;
@@ -207,31 +175,21 @@ int do_sign(object* things) {
       add_failed_mess("You cannot $V on $I with $D.\n", things );
       return 0;
    }
-   
    language = (string)this_player()->query_current_language();
    if ( !LANGUAGE_HAND->query_language_written( language ) ) {
       add_failed_mess("You cannot $V $I with $D when you're not "
             "using a language that can be written.\n", things );
       return 0;
    }
-
    things[ 0 ]->add_read_mess(this_player()->short(0, 1), "cursive, "
         "signed by", language, 0);
    add_succeeded_mess("$N $V $I with $D.\n", things);
    return 1;
-} /* do_sign() */
-
+}
 int do_copy( mixed *in_dir, string direct, string indirect, mixed *args ) {
-    // This will need a lot of checks.  For now it is just a "proof of
-    // concept".
     mixed src_mess, mess;
     string lang, cur_lang;
     int i, c, siz, perr;
-
-    //printf("-------- in_dir\n%O\n------- args\n%O\n", in_dir, args);
-    // This is to keep the parser from matching "quill in <word>" on
-    // a second attempt when the language checks fail.  Maybe this won't
-    // be necessary some day.
     if ( !present(direct, this_player()) ) return 0;
     if ( query_wielded() != this_player() ) {
         this_player()->add_failed_mess( this_object(), "You need to be "
@@ -240,7 +198,6 @@ int do_copy( mixed *in_dir, string direct, string indirect, mixed *args ) {
     }
     if ((sizeof(in_dir) != 2) ||
         (sizeof(in_dir[0]) != 1) || (sizeof(in_dir[1]) != 1)) {
-        //write("You can only copy to/from one object at a time.\n");
         this_player()->add_failed_mess(this_object(),
                                        "You can only $V to/from one object "
                                        "at a time.\n", ({ }));
@@ -280,7 +237,6 @@ int do_copy( mixed *in_dir, string direct, string indirect, mixed *args ) {
                                        in_dir[0]);
         return 0;
     }
-    // Copy each read_mess
     for (i = 0; i < sizeof(src_mess); i++) {
         mess = src_mess[i][0];
         lang = src_mess[i][2];
@@ -289,8 +245,6 @@ int do_copy( mixed *in_dir, string direct, string indirect, mixed *args ) {
             mess = "A series of unintelligible scribbles.";
             lang = "common";
         } else if (!this_player()->query_language(lang) && stringp(mess)) {
-            // Introduce a few copying errors, based on intelligence
-            // and dexterity
             perr = this_player()->query_int() + this_player()->query_dex()
               - 20;
             for (c = random(perr); c < sizeof(mess); c += random(perr)+1) {
@@ -303,8 +257,6 @@ int do_copy( mixed *in_dir, string direct, string indirect, mixed *args ) {
         } else if ( stringp(cur_lang) ) {
             lang = cur_lang;
         }
-        //printf("%O\n", src_mess[i]);
-        //printf("--------\n%O\n", in_dir);
         in_dir[1][0]->add_read_mess(mess, type, lang, siz);
     }
     this_player()->add_succeeded_mess(this_object(),

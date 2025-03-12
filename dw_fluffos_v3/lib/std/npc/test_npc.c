@@ -1,11 +1,8 @@
 #include <npc/goals.h>
 #include <npc/plan.h>
-
 inherit "/std/npc/npc_intelligent";
-
 void setup() {
    string goal;
-
    set_name("fluff");
    set_short("bit of fluff");
    set_long("A small bit of fluff.");
@@ -17,4 +14,4 @@ void setup() {
    load_chat(100, ({ 1, "'Scruff!",
                      1, "'Chickens?",
 			}));
-} /* setup() */
+}

@@ -1,26 +1,21 @@
 #include <clothing.h>
 #include <weapon.h>
-
 #define COST 5
 #define SKILL "other.evaluating.armour"
 #define LEARN_LEVEL 2
 #define TEACH_LEVEL 10
-
 inherit "/cmds/guild_base";
-
 void create() {
   ::create();
   set_nroff_file("vurdere");
   set_command_name("vurdere");
   add_teach_skill(SKILL, 10, 2);
-} /* create() */
-
+}
 mixed *calc_ac( object ob ) {
   int j;
   string i;
   mapping ac;
   mixed *ret, bit;
-  
   ac = (mapping)ob->query_armour_class();
   ret = ({ });
   foreach ( i in keys( ac ) ) {
@@ -34,8 +29,8 @@ mixed *calc_ac( object ob ) {
     }
     j++;
     if ( intp( bit ) ) {
-      ret[ j ][ 1 ] += bit / 2; /* average */
-      ret[ j ][ 2 ] += bit; /* maximun */
+      ret[ j ][ 1 ] += bit / 2;
+      ret[ j ][ 2 ] += bit;
     } else
       switch ( sizeof( bit ) ) {
       case 1 :
@@ -58,8 +53,7 @@ mixed *calc_ac( object ob ) {
       }
   }
   return ret;
-} /* calc_ac() */
-
+}
 int calc_sausage( int sausage, int lvl ) {
   int tmp;
   tmp = 99 - (lvl * 99) / 200;
@@ -67,12 +61,10 @@ int calc_sausage( int sausage, int lvl ) {
     tmp = 0;
   return random( sausage ) * tmp / 100 - random( sausage ) * tmp / 100 +
     sausage;
-} /* calc_sausage() */
-
+}
 string check_string( int val, int bon ) {
   int dist;
   string s;
-
   dist = (350 - bon) / 10;
   if( dist > (val < 0 ? -val : val) )
     return " is the same as ";
@@ -91,20 +83,16 @@ string check_string( int val, int bon ) {
   if( val < 40 )
     return " is much " + s;
   return " is amazingly " + s;
-} /* check_string() */
-
+}
 int cmd_against( object*from, object *to ) {
   int i, j, k, l, arm_lvl;
   object *ok, *fail;
   mixed *rat, *to_ac, *zip;
-
   arm_lvl = (int)this_player()->query_skill_bonus( SKILL );
-
   if(sizeof(from) + sizeof(to) > 10) {
     add_failed_mess("You cannot compare that many items at once.\n");
     return 0;
   }
-
   i = (COST*(sizeof(from)+sizeof(to)));
   if(this_player()->query_specific_gp("other") < i) {
     add_failed_mess("You cannot concentrate enough to compare these "
@@ -112,7 +100,6 @@ int cmd_against( object*from, object *to ) {
     return 0;
   }
   this_player()->adjust_gp( -i);
-
   to_ac = ({ });
   fail = ({ });
   for( i = 0; i < sizeof( to ); i++ ) {
@@ -150,7 +137,6 @@ int cmd_against( object*from, object *to ) {
                                  arm_lvl ) +
                    to_ac[ j ]->short() + " at protecting from " +
                    to_ac[ j + 1 ][ k ] + ".\n" );
-          
           } else {
             write( capitalize( (string)from[ i ]->short() ) +
                    check_string( (rat[ l + 1 ][ 0 ] + rat[ l + 1 ][ 1 ] +
@@ -162,7 +148,6 @@ int cmd_against( object*from, object *to ) {
                    to_ac[ j ]->short() + " at protecting from " +
                    to_ac[ j + 1 ][ k ] + ".\n" );
           }
-          
           zip += ({ to_ac[ j + 1 ][ k ] });
         }
         for( k = 0; k < sizeof( rat ); k += 2 ) {
@@ -193,14 +178,12 @@ int cmd_against( object*from, object *to ) {
          query_multiple_short( uniq_array( ok + to ) ) + ".\n" );
   }
   return 1;
-} /* cmd_against() */
-
+}
 int cmd_normal( object* from ) {
   int i, j;
   object *ok, *fail;
   mixed *rat, bing;
   string type, *types, *zones;
-
   ok = ({ });
   fail = ({ });
   for( i = 0; i < sizeof( from ); i++ ) {
@@ -227,7 +210,6 @@ int cmd_normal( object* from ) {
                                        " is excellent", })[ bing ] +
                                        " at stopping " + rat[ j ] +
                                        " attacks.\n" );
-
         ok += ({ from[ i ] });
       }
       if(!arrayp(from[i]->query_type())) {
@@ -243,7 +225,6 @@ int cmd_normal( object* from ) {
           zones += CLOTHING_HANDLER->query_zone_names(type);
         }
       }
-
       if(!sizeof(zones)) {
       	write(from[i]->the_short() +
               " does not protect any parts of your body.\n");
@@ -256,7 +237,6 @@ int cmd_normal( object* from ) {
     fail += ({ from[ i ] });
   }
    from = uniq_array( from );
-
   if( !sizeof( ok ) ) {
     notify_fail( "You failed to vurdere " + query_multiple_short( from ) +
                  ".\n" );
@@ -266,8 +246,7 @@ int cmd_normal( object* from ) {
   say( this_player()->query_cap_name() + " peers carefully at " +
        query_multiple_short( ok ) + ".\n" );
   return 1;
-} /* cmd() */
-
+}
 int teach( object ob ) {
   if( this_player()->query_skill( SKILL ) < TEACH_LEVEL )
     return -1;
@@ -275,11 +254,10 @@ int teach( object ob ) {
     return -2;
   ob->add_known_command( "vurdere" );
   return 1;
-} /* teach() */
-
+}
 mixed* query_patterns() {
    return ({ "<indirect:object:me'from'> against <indirect:object:me'to'>",
                 (: cmd_against($1[0], $1[1]) :),
              "<indirect:object:me'normal'>",
                 (: cmd_normal($1) :) });
-} /* query_patterns() */
+}

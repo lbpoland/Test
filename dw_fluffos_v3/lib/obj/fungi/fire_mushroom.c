@@ -1,5 +1,4 @@
 inherit "/obj/fungus";
-
 void setup() {
   set_adjs( "red stalked" );
   set_type( "mushroom" );
@@ -12,21 +11,17 @@ void setup() {
     "There is a flash at the base of the $type$ and with a small roar, it "+
         "rockets into the sky.\n"
   }) );
-} /* setup() */
-
+}
 void next_stage() {
   if ( stage == 8 )
     add_eat_effect( "/std/effects/ingested/basic_charging", 20 +
         random( 11 ) );
   ::next_stage();
-} /* next_stage() */
-
+}
 int query_charging_power() {
   int denominator, numerator, wholes;
   mapping eat_effects;
-
   eat_effects = query_eat_effects();
-  
   if ( !query_continuous() )
     return eat_effects[ "/std/effects/ingested/basic_charging" ] *
       (int)this_object()->query_weight();
@@ -38,4 +33,4 @@ int query_charging_power() {
   if ( random( denominator ) < numerator )
     wholes++;
   return wholes;
-} /* query_charging_power() */
+}

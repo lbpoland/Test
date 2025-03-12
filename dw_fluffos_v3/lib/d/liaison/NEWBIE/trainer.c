@@ -1,32 +1,22 @@
 #include <weapon.h>
 #include <armoury.h>
-
 inherit "/obj/monster";
-
 object *greeters = ({ });
-
 #define GREETINGS ({ \
    "Welcome to Combat Boot Camp, $name$.",\
    "This here course is set up to teach you the basics of fighting.",\
    "You can attack this here dummy and I'll tell ya how well ya done.",\
    "Arr!  You have the look of a fine fighter, $name$." \
 })
-
 void setup() {
-  //setup_nationality( "/std/nationality/morpork", "Ankh-Morpork" );
   set_language( "general" );
   basic_setup( "human", "warrior", 100 );
   set_gender( 1 );
-  
   ARMOURY->request_item("leather jerkin", 30)->move( this_object() );
   ARMOURY->request_item("leather breeches", 30)->move( this_object() );
-  ARMOURY->request_item("hard leather boots", 30)->move( this_object() ); 
-   
+  ARMOURY->request_item("hard leather boots", 30)->move( this_object() );
   init_equip();
-
-  
-} /* setup() */
-
+}
 void whichone(string name) {
   switch(name) {
   case "xrazzicaz":
@@ -57,21 +47,18 @@ void whichone(string name) {
               "job teaching after retirement.\n");
   }
 }
-
 int attack_by(object thing) {
   write(this_object()->the_short() + " glares at you before swiftly knocking "
     "you to the ground.\n");
   this_object()->stop_fight(thing);
   thing->stop_fight(this_object());
   return 0;
-} /* attack_by() */
-
+}
 int attack_ob(object thing) {
   this_object()->stop_fight(thing);
   thing->stop_fight(this_object());
   return 0;
-} /* attack_ob() */
-
+}
 void init() {
   if(!this_player()) {
     return;
@@ -92,15 +79,13 @@ void init() {
     greeters += ({this_player()});
     call_out("do_greeting", 1, this_player());
   }
-} /* init() */
-
+}
 void do_greeting() {
   string str;
-  
   if(!sizeof(greeters)) {
     return;
   }
-  greeters = filter(greeters, 
+  greeters = filter(greeters,
     (: $1 && environment($1) == environment(this_object()) &&
      $1->query_visible(this_object()) :));
   uniq_array(greeters);
@@ -109,8 +94,7 @@ void do_greeting() {
     do_command("'" + str);
   }
   greeters = ({ });
-} /* do_greeting() */
-
+}
 void stop_them( object attacker, object dummy ) {
   tell_object( attacker, one_short() +" stops you attacking "+
                (string)dummy->the_short() +".\n" );
@@ -119,4 +103,4 @@ void stop_them( object attacker, object dummy ) {
              (string)dummy->the_short() +".\n", attacker );
   attacker->stop_fight( dummy );
   dummy->stop_all_fight();
-} /* stop_them() */
+}

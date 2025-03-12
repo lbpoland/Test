@@ -1,11 +1,4 @@
-/*
-Davyd
-Item
-For General Item Stores
-*/
-
 inherit "/obj/misc/keyring";
-
 void setup(){
     set_name("keyring");
     set_short("small keyring");

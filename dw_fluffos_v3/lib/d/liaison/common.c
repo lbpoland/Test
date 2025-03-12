@@ -1,12 +1,10 @@
 #include <config.h>
-
 #define DOM_TITLE "Liaison Domain"
 #define LORD "wyvyrn"
 #define DOMAIN "liaison"
 #define BOSS_ROOM "/w/wyvyrn/rooms/office"
 inherit "/std/dom/cmn_mas";
 object board;
-
 void setup() {
    set_dom( DOMAIN );
    set_light( 100 );
@@ -96,7 +94,7 @@ void setup() {
    add_item("needle", "The needles are -unsurprisingly- sharp things "
             "currently embedded into the dolls, no doubt causing extreme "
             "pain.  Well, at least they would if the dolls were real. "
-            "Which they aren't.  Which is a good thing.");                  
+            "Which they aren't.  Which is a good thing.");
    add_item("rack", "The rack is a vicious looking instrument that allows "
             "the human [or non-human] body to be stretched to completely "
             "wrong proportions.  This is something that should be used "
@@ -133,8 +131,7 @@ void setup() {
    add_exit("corridor", "/d/liaison/cre_corridor", "door");
    add_exit("interview", "/d/liaison/utils/interview", "door");
    BOSS_ROOM->add_exit("common", "/d/"+DOMAIN+"/common", "door");
-} /* setup() */
-
+}
 void init() {
    this_player()->add_command( "add", this_object(), "<word> <word>" );
    this_player()->add_command( "add", this_object(), "<word>" );
@@ -142,63 +139,61 @@ void init() {
    this_player()->add_command( "remove", this_object(), "<word>" );
    this_player()->add_command( "list", this_object(), "" );
    this_player()->add_command( "list", this_object(), "<word>" );
-} /* init() */
-
-int do_add( object *indir, string indir_match, string dir_match, 
+}
+int do_add( object *indir, string indir_match, string dir_match,
            mixed *args, string pattern  ) {
    switch( pattern ) {
     case "<word> <word>":
-      if ( master()->query_lord( this_player()->query_name() ) || 
+      if ( master()->query_lord( this_player()->query_name() ) ||
            "/d/liaison/master"->query_deputy( this_player()->query_name() ) ) {
-         if ( "/d/liaison/master"->add_member_alias( args[ 0 ], 
+         if ( "/d/liaison/master"->add_member_alias( args[ 0 ],
                                                     args[ 1 ] ) ) {
-            this_player()->add_succeeded_mess( this_object(), 
+            this_player()->add_succeeded_mess( this_object(),
                 args[ 1 ] +" added as alias for "+ args[ 0 ] +".\n" );
             return 1;
          } else {
-            this_player()->add_failed_mess( this_object(), 
+            this_player()->add_failed_mess( this_object(),
                 "Something went wrong.\n" );
             return 0;
          }
       } else {
-         this_player()->add_failed_mess( this_object(), 
+         this_player()->add_failed_mess( this_object(),
                 "Only lords and deputies can add aliases to others.\n" );
          return 0;
       }
       break;
     case "<word>":
-      if ( "/d/liaison/master"->add_member_alias( this_player()->query_name(), 
+      if ( "/d/liaison/master"->add_member_alias( this_player()->query_name(),
                                                  args[ 0 ] ) ) {
-         this_player()->add_succeeded_mess( this_object(), 
+         this_player()->add_succeeded_mess( this_object(),
                 args[ 0 ] +" added as alias for $N.\n" );
          return 1;
       } else {
-         this_player()->add_failed_mess( this_object(), 
+         this_player()->add_failed_mess( this_object(),
                 "Couldn't add "+ args[ 0 ] +" as alias for $N.\n" );
          return 0;
       }
       break;
    }
-} /* do_add */
-
-int do_remove( object *indir, string indir_match, string dir_match, 
+}
+int do_remove( object *indir, string indir_match, string dir_match,
            mixed *args, string pattern  ) {
    switch( pattern ) {
     case "<word> <word>":
-      if ( master()->query_lord( this_player()->query_name() ) || 
+      if ( master()->query_lord( this_player()->query_name() ) ||
            "/d/liaison/master"->query_deputy( this_player()->query_name() ) ) {
-         if ( "/d/liaison/master"->delete_member_alias( args[ 0 ], 
+         if ( "/d/liaison/master"->delete_member_alias( args[ 0 ],
                                                        args[ 1 ] ) ) {
-            this_player()->add_succeeded_mess( this_object(), 
+            this_player()->add_succeeded_mess( this_object(),
                     args[ 1 ] +" removed as alias for "+ args[ 0 ] +".\n" );
             return 1;
          } else {
-            this_player()->add_failed_mess( this_object(), 
+            this_player()->add_failed_mess( this_object(),
                 "Something went wrong.\n" );
             return 0;
          }
       } else {
-         this_player()->add_failed_mess( this_object(), 
+         this_player()->add_failed_mess( this_object(),
                 "Only lords and deputies can remove aliases for others.\n" );
          return 0;
       }
@@ -206,23 +201,21 @@ int do_remove( object *indir, string indir_match, string dir_match,
     case "<word>":
       if ( "/d/liaison/master"->delete_member_alias(
                  this_player()->query_name(), args[ 0 ] ) ) {
-         this_player()->add_succeeded_mess( this_object(), 
+         this_player()->add_succeeded_mess( this_object(),
                  args[ 0 ] +" removed as alias for $N.\n" );
          return 1;
       } else {
-         this_player()->add_failed_mess( this_object(), 
+         this_player()->add_failed_mess( this_object(),
                  "Couldn't remove "+ args[ 0 ] +" as alias for $N.\n" );
          return 0;
       }
       break;
    }
-} /* do_remove */
-
-int do_list( object *indir, string indir_match, string dir_match, 
+}
+int do_list( object *indir, string indir_match, string dir_match,
            mixed *args, string pattern  ) {
    string *names, name;
    int i;
-   
    switch( pattern ) {
     case "<word>":
       name = args[ 0 ];
@@ -239,18 +232,17 @@ int do_list( object *indir, string indir_match, string dir_match,
          while ( i-- ) {
             names[ i ] = capitalize( names[ i ] );
          }
-         this_player()->add_succeeded_mess( this_object(), 
+         this_player()->add_succeeded_mess( this_object(),
                 "Aliases for "+ name +" are "+
                 query_multiple_short( names )+".\n" );
       } else {
-         this_player()->add_succeeded_mess( this_object(), 
+         this_player()->add_succeeded_mess( this_object(),
                 "Alias for "+ name +" is "+
                 capitalize( names[ 0 ] )+".\n" );
       }
    } else {
-      this_player()->add_succeeded_mess( this_object(), 
+      this_player()->add_succeeded_mess( this_object(),
              "No aliases known for "+ name +".\n" );
    }
    return 1;
-} /* do_list */
-
+}

@@ -1,12 +1,6 @@
 #include "path.h"
-/*
- * Example room for using /obj/surf_save and /obj/cont_save.
- */
-
 inherit "/std/room";
-
 object shelf, wardrobe;
-
 void setup() {
    set_short("room of shelf and wardrobe examples");
    add_property( "determinate", "the " );
@@ -27,24 +21,14 @@ void setup() {
    set_light( 100 );
    add_exit( "back", LEARNING +"search", "path" );
    add_exit( "exit", ENTRANCE, "path" );
-   /* The "commented functions" and "keywords" properties are specific for 
-    * rooms in the learning domain and is used to make it possible to search
-    * for subjects. 
-    * See /d/learning/handlers/search.c for the way this is done.
-    */
-   add_property( "commented functions", 
+   add_property( "commented functions",
                 ({ "check_euid", "set_save_file" }) );
-   add_property( "keywords", 
+   add_property( "keywords",
                 ({ "shelf", "wardrobe", "save" }) );
-} /* setup() */
-
+}
 void reset() {
    if (!shelf) {
-      /* The first parts of making a shelf it covered elsewhere, it's 
-       * basically a matter of cloning the object and make it look like 
-       * it should
-       */
-      shelf = clone_object("/obj/surf_save"); 
+      shelf = clone_object("/obj/surf_save");
       shelf->set_name( "shelf" );
       shelf->set_short( "oaken shelf" );
       shelf->add_adjective( "wooden" );
@@ -56,16 +40,8 @@ void reset() {
       shelf->set_weight( 2000 );
       shelf->set_max_weight( 2000 );
       shelf->reset_get();
-      /* This call will allow the shelf to write the  savefile in the same
-       * domain as the room is in, if you don't do this call, the savefile
-       * will have to be somewhere in /save/ 
-       */
-      shelf->check_euid(); 
-      /* This call tells the shelf what file should be used to save the stuff
-       * placed on it.
-       */
+      shelf->check_euid();
       shelf->set_save_file( SAVEPATH+"/oak_shelf" );
-      /* end by putting the shelf in the room */
       shelf->move( this_object() );
    }
    if (!wardrobe) {
@@ -80,16 +56,8 @@ void reset() {
       wardrobe->set_weight( 2000 );
       wardrobe->set_max_weight( 2000 );
       wardrobe->reset_get();
-      /* This call will allow the wardrobe to write the savefile in the same
-       * domain as the room is in, if you don't do this call, the savefile
-       * will have to be somewhere in /save/ 
-       */
       wardrobe->check_euid();
-      /* This call tells the wardrobe what file should be used to save the
-       * stuff placed in it.
-       */
       wardrobe->set_save_file( SAVEPATH+"/wardrobe" );
-      /* end by putting the wardrobe in the room */
       wardrobe->move( this_object() );
    }
-} /* reset() */
+}

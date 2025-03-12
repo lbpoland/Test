@@ -1,5 +1,4 @@
 inherit "/obj/fungus";
-
 void setup() {
   set_adjs( "checkered" );
   set_type( "mushroom" );
@@ -12,11 +11,10 @@ void setup() {
     "You hear a small voice say: Goodbye, cruel world!\nThe $type$ "+
         "falls over and disintegrates.\n"
   }) );
-} /* setup() */
-
+}
 void next_stage() {
   if ( stage == 8 )
     add_eat_effect( "/std/effects/ingested/hallucination", 150 +
         random( 150 ) );
   ::next_stage();
-} /* next_stage() */
+}

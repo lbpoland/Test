@@ -2,9 +2,7 @@
 #include "library.h"
 inherit "/std/object";
 #define MY_ROOM "/d/sur/Sto_Plains/n_caravan/picnic_area"
-
 object *demons, cauldron, coin;
-
 void setup() {
   set_weight(10);
   set_value(5);
@@ -16,13 +14,10 @@ void setup() {
            "out so that it can be played.  Perhaps if you blew into "+
            "it it might work.\n");
 }
-
 void init() {
   this_player()->add_command("blow", this_object());
 }
-
 int finish_quest();
-
 int do_blow(object *indir, string s1, string s2, string prep) {
   if (sizeof(indir)) {
     write("Blow "+short(0)+" "+prep+" "+indir->short(0)+"????\n");
@@ -33,13 +28,11 @@ int do_blow(object *indir, string s1, string s2, string prep) {
   add_succeeded_mess("$N $V $D and make$s a horrible noise.\n");
   return 1;
 }
-
 int finish_quest() {
   object *obs, *obs2, *obs3, ob, fish, frisbee, ladle;
   mixed *attrs;
   string failure;
   int i, j;
-
   write("The "+short(0)+" blows amazing loudly.\n");
   say(this_player()->one_short()+" blows the "+short(0)+
       " amazingly loudly.\n");
@@ -133,11 +126,9 @@ int finish_quest() {
         "cauldron to heat it up.\n");
   return 1;
 }
-
 void do_finish_it() {
   object *obs;
   int i, j;
-
   say("The soup is obviously hot now, and all the demons sit down "+
         "on their toadstools to enjoy the meal.  After finishing the "+
         "meal, they smile happily.  You hear one of the say on the "+
@@ -166,11 +157,9 @@ void do_finish_it() {
   }
   demons = 0;
 }
-
 mixed bingle_bit(object ob) {
   return (mixed)ob->query_property("feeding_frenzy");
 }
-
 int bongle_array(object ob) {
   return (int)ob->query_property("feeding_frenzy") != 0;
 }

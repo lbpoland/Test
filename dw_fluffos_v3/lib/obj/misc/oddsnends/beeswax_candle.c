@@ -1,13 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: beeswax_candle.c,v 1.1 2002/03/26 01:47:04 belle Exp $
- *
- *
- */
-
 inherit "/std/lightable";
-
 void setup() {
    set_name( "candle" );
    set_short( "beeswax candle" );

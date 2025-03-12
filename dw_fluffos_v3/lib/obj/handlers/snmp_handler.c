@@ -1,9 +1,7 @@
 #include "snmp.h"
-
 void create()
 {
 }
-
 buffer BufferiseInt(int p)
 {
   buffer buf1;
@@ -19,12 +17,10 @@ buffer BufferiseInt(int p)
   buf1[3]=p%256;
   return buf1;
 }
-
 buffer GetData(buffer MIB)
 {
   int i,j,k;
   object *tmp;
-  
   buffer mibreply,mibdata,tmpbuf;
   mibreply=allocate_buffer(4);
   tmpbuf=allocate_buffer(1);
@@ -44,7 +40,7 @@ buffer GetData(buffer MIB)
       mibreply+=tmpbuf;
       tmpbuf=BufferiseInt(j);
       mibreply+=tmpbuf;
-      mibreply[i+1]=sizeof(tmpbuf); 
+      mibreply[i+1]=sizeof(tmpbuf);
       break;
     case 102 :
       j=0;
@@ -75,4 +71,4 @@ buffer GetData(buffer MIB)
   mibreply[1]=sizeof(mibreply)-2;
   mibreply[3]=sizeof(MIB);
   return mibreply;
-}     
+}

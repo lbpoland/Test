@@ -1,10 +1,3 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: hospital.c,v 1.20 2000/01/30 06:26:43 terano Exp $
- *
-*/
-
 #include <armoury.h>
 #include <hospital.h>
 #include <living.h>
@@ -14,18 +7,15 @@
 #include <route.h>
 #include <wander.h>
 #include "path.h"
-
 #define MAX_HEAVIES 10
 #define DAY 8 * 60 * 60
-#define INTERVAL 20 * 60                 /* a divisor of DAY */
+#define INTERVAL 20 * 60
 #define MUD_TO_REAL 3
 #define BLOCK 5
 #define MAX_EMPTIES 12
 #define MAX_MOVERS 60
 #define SAVE_FILE SAVE +"hospital"
-
 inherit "/std/room/basic_room";
-
 nosave int alchemists, update, *alignments;
 mapping uniques;
 nosave int *al_data;
@@ -33,15 +23,11 @@ nosave string *city;
 nosave object *empties;
 nosave mapping blockages;
 nosave mixed *movers;
-
-// used for checking numbers of npcs
 nosave int am_npcs, last_check;
 int ok_to_clone();
-
 void get_weapon(object ob, string *items);
 void get_armour(object ob, string *items);
 void get_jewellery(object ob, string *items);
-
 void setup() {
    set_keep_room_loaded(1);
    update = time();
@@ -60,17 +46,11 @@ void setup() {
    movers = allocate( MAX_MOVERS );
    call_out( "check_movers", 10 );
    call_out( "housekeeping", INTERVAL );
-} /* setup() */
-
-
+}
 int *query_al_data() { return al_data; }
-
 mapping query_uniques() { return uniques; }
-
 object *query_empties() { return empties; }
-
 mapping query_blockages() { return blockages; }
-
 int query_blockage( string this, string other, int number ) {
    if ( undefinedp( blockages[ this ] ) ) {
       if ( random( 100 ) >= BLOCK )
@@ -78,26 +58,21 @@ int query_blockage( string this, string other, int number ) {
       blockages[ this ] = blockages[ other ] = number;
    }
    return blockages[ this ];
-} /* query_blockage() */
-
+}
 mixed *query_movers() { return movers; }
-
 void housekeeping() {
    object thing;
    update = time();
    foreach( thing in users() ) {
-/* ignore creators */
       if ( thing->query_creator() )
          continue;
-/* sample alignments */
       alignments[ random( sizeof( alignments ) ) ] =
             (int)thing->query_al();
    }
    al_data = 0;
    unguarded( (: save_object, SAVE_FILE :) );
    call_out( "housekeeping", INTERVAL );
-} /* housekeeping() */
-
+}
 int pick_al() {
    int one, *stats;
    if ( !al_data ) {
@@ -129,39 +104,26 @@ int pick_al() {
          al_data[ 2 ] = 25;
    }
    return al_data[ 0 ] + roll_MdN( al_data[ 1 ], al_data[ 2 ] );
-} /* pick_al() */
-
+}
 int make_unique( string word ) {
    if ( uniques[ word ] > time() )
       return 0;
-/* Don't let them reappear for three hours. */
     uniques[ word ] = time() + 1 * 60 * 60;
    unguarded( (: save_object, SAVE_FILE :) );
    return 1;
-} /* make_unique() */
-
+}
 void add_mover( object thing ) {
    int number;
-
-   /* Fact Gathering Done by Terano */
-   /* This generates WAY too much log traffic... the log wraps more then
-      once an hour - Turrican.
-   log_file("HOSPITAL_DATA", "Hospital: add_mover called with %O.\n", thing );
-   */
-
    number = MAX_MOVERS / 2 + random( MAX_MOVERS / 2 );
    if ( !pointerp( movers[ number ] ) )
       movers[ number ] = ({ thing });
    else
       movers[ number ] += ({ thing });
-} /* add_mover() */
-
+}
 object get_monster( string type ) {
    object thing;
    object ob;
-
    switch( type ) {
-/* First the zones that there are: */
       case "city" :
       case "pumpkin" :
          thing = get_monster( city[ random( sizeof( city ) ) ] );
@@ -170,7 +132,6 @@ object get_monster( string type ) {
          thing->add_move_zone( "Pumpkin" );
          add_mover( thing );
          return thing;
-/* Now the specific types of NPC: */
       case "dog":
          thing = clone_object( CHARS + "dog" );
          if ( random( 4 ) )
@@ -187,7 +148,6 @@ object get_monster( string type ) {
       case "child":
          thing = clone_object( CHARS + "child_human" );
          return thing;
-/* And now for all the nasty old ones... */
     case "cityguard":
       ob = clone_object(MONSTER);
       ob->add_property("monster type", type);
@@ -306,7 +266,7 @@ object get_monster( string type ) {
          1, ":oozes horrible white stuff.",
          1, ":makes a sort of scraping noise."
       }) );
-      ob->add_effect("/std/effects/npc/i_died", 
+      ob->add_effect("/std/effects/npc/i_died",
                       ({ HOSPITAL, "regen_after_death" }));
       ob->add_property("monster type", type);
       ob->add_property("animal type", type);
@@ -320,27 +280,22 @@ object get_monster( string type ) {
       ob->add_property( "monster type", "failure:"+ type );
       return ob;
   }
-} /* get_monster() */
-
+}
 void get_armour(object ob, string *items) {
   ARMOURY->request_armour(items[random(sizeof(items))], 50+random(50))->
     move(ob);
-} /* get_armour() */
-
+}
 void get_jewellery(object ob, string *items) {
   ARMOURY->request_armour(items[random(sizeof(items))], 20+random(80))->
     move(ob);
-} /* get_jewellery() */
-
+}
 void get_weapon(object ob, string *items) {
   ARMOURY->request_weapon(items[random(sizeof(items))], 50+random(50))->
     move(ob);
-} /* get_weapon() */
-
+}
 void regen_after_death(object player) {
   object ob, dest;
   string nam;
-
   if (!player)
     return ;
   nam = (string)player->query_property("monster type");
@@ -351,53 +306,39 @@ void regen_after_death(object player) {
     return;
   if(!ok_to_clone())
     return;
-  
   ob = get_monster( explode( nam, ":" )[ 0 ] );
   dest->add_monster(player, ob);
   call_out("do_move", 10, ({ ob, dest }) );
-} /* regen_after_death() */
-
+}
 void do_move(mixed *junk) {
   junk[0]->move(junk[1]);
-} /* do_move() */
-
+}
 string change_to_name(object ob) {
   return implode((string *)ob->query_adjectives(), " ")+
          (string)ob->query_name();
-} /* change_to_name() */
-
+}
 void do_run(object ob) {
   if (ob)
     ob -> run_away();
-} /* do_run() */
-
+}
 void fight_check(object ob, object ob1) {
   if (ob->query_property(previous_object()->query_name()))
     previous_object()->attack_ob(ob1);
-} /* fight_check() */
-
+}
 void do_grin_laugh(object ob) {
-  ob->add_respond_to_with(({ "@grin", ob->query_name() }), 
+  ob->add_respond_to_with(({ "@grin", ob->query_name() }),
                           "laugh man at $hname$");
-} /* do_grin_laugh() */
-
+}
 void add_empty( object thing ) {
    empties -= ({ 0 });
    empties += ({ thing });
    if ( sizeof( empties ) > MAX_EMPTIES )
       empties = shuffle( empties )[ 0 .. MAX_EMPTIES - 1 ];
-} /* add_empty() */
-
+}
 void move_monster( object thing ) {
    int i;
    string dest, direc, zone, *movez, *roomz;
    object place;
-
-   /* Fact Gathering Done by Terano */
-   /* See above comment - Turrican
-   log_file("HOSPITAL_DATA", "Hospital: move_monster called with %O.\n", thing );
-   */
-
    if ( !thing )
       return;
    if ( (int)thing->query_hp() < 0 )
@@ -458,15 +399,10 @@ void move_monster( object thing ) {
       if ( thing->do_command( direc ) )
          return;
    }
-} /* move_monster() */
-
+}
 void check_movers() {
    int when;
    object thing, *things;
-
-   /* Fact Gathering Done by Terano */
-
-
    things = movers[ 0 ];
    movers[ 0 .. MAX_MOVERS - 2 ] = movers[ 1 .. ];
    movers[ MAX_MOVERS - 1 ] = 0;
@@ -479,11 +415,7 @@ void check_movers() {
          call_out( "move_monster", when, thing );
       }
    }
-} /* check_movers() */
-
-
-// This function returns 1 if its ok to clone some more npcs and
-// false if not.
+}
 int ok_to_clone() {
   if(time() > last_check + 300) {
     last_check = time();
@@ -493,9 +425,6 @@ int ok_to_clone() {
   }
   return ( am_npcs < MAX_AM_LIVING );
 }
-
-
 int *query_npcs() {
   return ({ am_npcs, last_check });
 }
-

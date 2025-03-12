@@ -1,5 +1,4 @@
 inherit "/std/room";
-
 void setup() {
    set_short( "rock-walled tunnel" );
    set_light( 20 );
@@ -8,6 +7,5 @@ void setup() {
          "it has been deserted for a long time.\n" );
    add_item( ({ "rough-hewn rock wall", "rock" }), "The walls are rough, "+
          "where the tunnel was hewn out of the rock." );
-} /* setup() */
-
+}
 string query_exit_type( string word ) { return "corridor"; }

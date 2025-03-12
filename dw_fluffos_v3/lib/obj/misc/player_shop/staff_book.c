@@ -1,19 +1,6 @@
-/**
- * Player-run shop staff handbook object.
- * This object is claimable by staff of player-run shops.
- * It is intended to describe the duties & offer guidance to staff.
- * This object should not be inherited by anything, but is created by the
- * player_shop office.
- *
- * @author Ringo
- * @started 1st August 1999
- */
 #include <player_shop.h>
-
 inherit "/std/book";
-
 private string _office = "";
-
 void setup()
 {
    set_name( "book" );
@@ -26,17 +13,12 @@ void setup()
    set_no_pages( 12 );
    add_property( "no recycling", 1 );
 }
-/* setup() */
-
-/** @ignore yes */
-private string cap_name(string name) 
+private string cap_name(string name)
 {
    if (test_player(name))
       return PLAYER_HANDLER->query_cap_name(name);
    else return capitalize(name);
 }
-
-/** @ignore yes */
 void set_office( string office )
 {
    _office = office;
@@ -44,14 +26,13 @@ void set_office( string office )
    {
       add_property( "office", office );
    }
-   set_long( "This is a handbook for staff of "+ 
-     office->query_shop_name()+ ", " + office->query_place()+ 
+   set_long( "This is a handbook for staff of "+
+     office->query_shop_name()+ ", " + office->query_place()+
      ".  It covers all aspects of the job.\n"
      "You may <read book>, <open book to page #> and "
      "<turn a page of book>.\n" );
-
    set_open_page( 1 );
-   set_read_mess( "\n"     
+   set_read_mess( "\n"
      "                            TABLE OF CONTENTS                    Page 1\n"
      "                    .o0o.o0o.o0o.o0o.o0o.o0o.o0o.o0o.\n\n"
      "       Introduction............................................2-4\n"
@@ -63,7 +44,6 @@ void set_office( string office )
      "       Promotion and pay.......................................11\n"
      "       Termination of employment...............................12\n\n",
      "common", 100 );
-
    set_open_page( 2 );
    set_read_mess( "\n"
      "                               Introduction                      Page 2\n"
@@ -80,7 +60,6 @@ void set_office( string office )
      " will keep in stock and the average number that has recently been in\n"
      " stock; the stock itself is saved over a reboot.        (Continued...)",
      "common", 100 );
-
    set_open_page( 3 );
    set_read_mess( "\n"
      "                                                                 Page 3\n\n"
@@ -98,7 +77,6 @@ void set_office( string office )
      " Supervisors are also given access to the shop's log books which\n"
      " contain details of everything that happens.           (Continued...)",
      "common", 100 );
-
    set_open_page( 4 );
    set_read_mess( "\n"
      "                                                                 Page 4\n\n"
@@ -108,8 +86,7 @@ void set_office( string office )
      " player managers and supervisors.  Should such problems arise, please\n"
      " don't hesitate to contact myself or another creator.\n"
      " Enjoy your time with "+ _office->query_shop_name()+ ".\n "+
-     cap_name( _office->query_creator() )+ " (caretaker)\n", "common", 100 );  
-
+     cap_name( _office->query_creator() )+ " (caretaker)\n", "common", 100 );
    set_open_page( 5 );
    set_read_mess( "\n"
      "                                 The Job                         Page 5\n"
@@ -130,8 +107,7 @@ void set_office( string office )
      " shop's supervisors and managers can see what happened when they examine\n"
      " the logs.  Examples of the \"log\" command are given in the section\n"
      " dealing with the counter.\n",
-     "common", 100 );  
-
+     "common", 100 );
    set_open_page( 6 );
    set_read_mess( "\n"
      "                               The Office                          Page 6\n"
@@ -153,10 +129,9 @@ void set_office( string office )
      "        you \"claim\" it.\n"
      " promotion - Allows you to specify whether to be automatically promoted\n"
      "             or not.  If not, you will not be promoted once gaining the\n"
-     "             required points until you specify otherwise.\n" 
+     "             required points until you specify otherwise.\n"
      " resign - End your employment with the shop.             (Continued...)\n",
      "common", 100 );
-
    set_open_page( 7 );
    set_read_mess( "\n"
      "                                                                 Page 7\n\n"
@@ -177,7 +152,6 @@ void set_office( string office )
      " In addition, if there is no notice board in the shop, employees may use\n"
      " the \"memo\" command to send a mail to all the employees of the shop.\n",
      "common", 100 );
-
    set_open_page( 8 );
    set_read_mess( "\n"
      "                               The Counter                        Page 8\n"
@@ -203,7 +177,6 @@ void set_office( string office )
 	  " Please note that these are examples only, and you may be using a different\n"
 	  " currency.\n\n",
      "common", 100 );
-
    set_open_page( 9 );
    set_read_mess( "\n"
      "                               The Storeroom                      Page 9\n"
@@ -225,8 +198,6 @@ void set_office( string office )
      " decide things for you.  Be aware that it will not let you place an item\n"
      " in the wrong cabinet, or in a cabinet that is full.\n"
      " For more information, see \"syntax <command>\"\n\n", "common", 100 );
-     
-
     set_open_page( 10 );
     set_read_mess( "\n"
      "                              The Shopkeeper                     Page 10\n"
@@ -239,7 +210,6 @@ void set_office( string office )
      " plenty of the lowest denomination coins as, for religious reasons,\n"
      " they are incapable of handling the larger denominations of coinage.\n",
      "common", 100 );
-
    set_open_page( 11 );
    set_read_mess( "\n"
      "                              Promotion and pay                  Page 11\n"
@@ -261,9 +231,8 @@ void set_office( string office )
      " end of each month as long as those employees have been employed for\n"
      " the full month, and have not had their bonus suspended.\n"
      " It is up to each individual to claim their bonus during that month.\n"
-     " All unclaimed bonuses will be added to the next month's fund.\n", 
+     " All unclaimed bonuses will be added to the next month's fund.\n",
      "common", 100 );
-
    set_open_page( 12 );
    set_read_mess( "\n"
      "                         Termination of employment                Page 12\n"
@@ -284,12 +253,8 @@ void set_office( string office )
      " to the hiring and firing of employees will normally have been\n"
      " discussed by the managers beforehand and will usually have been\n"
      " preceded by a warning.\n", "common", 100 );
-
    set_open_page( 0 );
 }
-/* set_office() */
-
-
 void init ()
 {
    set_open_page( 0 );
@@ -310,4 +275,3 @@ void init ()
    }
    ::init();
 }
-/* init() */

@@ -1,36 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: haggle_handler.c,v 1.2 1998/04/23 14:01:25 pinkfish Exp $
- * $Log: haggle_handler.c,v $
- * Revision 1.2  1998/04/23 14:01:25  pinkfish
- * Added documentation.  And cleanedup a little.
- *
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
- */
-/**
- * This handler controls the npcs haggling the price of something with 
- * a player.  Currently it only handles sell barganing.
- * <p>
- * Factors of relevance:
- *    <ol>
- *  <li> merchants' guild rating
- *  <li> race of customer vs. shopkeeper
- * </ol>
- */
 #include <money.h>
- 
 mixed *accept_sayings, *bodged_sayings, *finalb_sayings,
     *finals_sayings, *insult_sayings, *offerb_sayings,
     *offers_sayings, *sodoff_sayings;
- 
 void create() {
   accept_sayings = ({
       ({ "grin", "Done!" }),
       "Accepted!",
-      "Fine...", 
+      "Fine...",
       ({ "smile", "Agreed!" }),
       ({ "mutter", "Okay..." }),
       "Taken!",
@@ -40,7 +16,7 @@ void create() {
       "My poor sick children will starve, but done!",
       "Finally!  I accept...",
       ({ "grimace", "Robbed again..." }),
-      "A pleasure to do business with you!", 
+      "A pleasure to do business with you!",
       ({ "scowl", "My spouse will have my hide, but accepted." }) });
   bodged_sayings = ({
       "I must have heard you wrong...",
@@ -86,7 +62,7 @@ void create() {
   offers_sayings = ({
       "$offer$ for such a fine item?  Hah!  No less than $asking$.",
       "$offer$ is an insult!  Try $asking$...",
-      "$offer$?!?  You would rob my poor starving children?  "+  
+      "$offer$?!?  You would rob my poor starving children?  "+
           "Even they would give $asking$ for this.",
       "Why, I'll take no less than $asking$.",
       ({ "cackle", "No less than $asking$." }),
@@ -96,7 +72,7 @@ void create() {
       ({ "boggle", "$offer$?  Are you mad?!?  How about $asking$?" }),
       "As scrap this would bring $offer$.  Try $asking$.",
       "May the fleas of a thousand camels molest you.  "+
-          "I want $asking$.", 
+          "I want $asking$.",
       "My mother you can get for $offer$, "+
           "this will cost you $asking$.",
       "May your chickens grow lips!  I want $asking$!",
@@ -118,79 +94,18 @@ void create() {
           "Leave my place!  Begone!" }),
       ({ "Begone!",
           "I have had enough abuse for one day.",
-          "Come back when you're richer..." }) });            
-} /* create() */
-
-/*
- * Factors of relevance:
- *    
- *  1. merchants' guild rating
- *  2. race of customer vs. shopkeeper
- */
-
-/**
- * This method determines the insult factor between the customer and the
- * shop keeper.
- * @param keeper the shop keeper
- * @param customer the customer in the shop
- */
+          "Come back when you're richer..." }) });
+}
 int insult_factor( object keeper, object customer ) {
   return 150;
-} /* insult_factor() */
-
-/**
- * This method determines the barganing factor between the customer and
- * the shop keeper.
- * @param keeper the shop keeper
- * @param customer the customer of the shop
- */
+}
 int bargain_factor( object keeper, object customer ) {
   return 50;
-} /* bargain_factor() */
-
-/**
- * This method does the actual haggle on a sell.
- * The logic is as follows:
- * <pre>
- * if offer > asking then
- *    give back a boggle response
- * else if offer == asking then
- *    sell the thing and give an accepted saying
- * else if offer * insult_factor > asking * 100 then
- *    adjustment = ( ( asking - offer ) * bargain_factor ) / 100
- *    asking -= adjustment
- *    return an adjustment message
- * else
- *    return an insulted message
- * endif
- * </pre>
- * The return from this function is an array of three elements, the
- * first is the a flag saying if the item was accepted or not, the
- * second is the current asking price and the last is the current
- * insult level.
- * <pre>
- * ({
- *    flag (0/1), // This is 0 if unable to sell, 1 if sold
- *    asking,     // the current asking price
- *    insults,    // the current insult level
- * })
- * </pre>
- * @param value the real value of the item
- * @param offer the offered value for the item
- * @param asking the current asking price
- * @param insults the current insult level
- * @param place the place for the money strings
- * @param keeper the shop keeper
- * @param customer the customer
- * @return the array as described above
- * @see insult_factor()
- * @see bargain_factor()
- */
-int *sell_haggle( int value, int offer, int asking, int insults, 
+}
+int *sell_haggle( int value, int offer, int asking, int insults,
     string place, object keeper, object customer ) {
   int adjustment, number;
-  string text;  
-
+  string text;
   if ( offer > asking ) {
     keeper->do_command( "boggle" );
     number = random( sizeof( bodged_sayings ) );
@@ -223,7 +138,7 @@ int *sell_haggle( int value, int offer, int asking, int insults,
     text = replace( text, "$asking$",
         (string)MONEY_HAND->money_value_string( asking, place ) );
     keeper->do_command( "'"+ text );
-    return ({ 0, asking, insults }); 
+    return ({ 0, asking, insults });
   }
   insults++;
   if ( insults < (int)keeper->query_property( "max insults" ) ) {
@@ -236,25 +151,4 @@ int *sell_haggle( int value, int offer, int asking, int insults,
   keeper->do_command( "'"+ sodoff_sayings[ 1 ] );
   keeper->do_command( "'"+ sodoff_sayings[ 2 ] );
   return ({ 0, 0, -1 });
-} /* sell_haggle() */
-/* 
-int *buy_haggle( int value, int offer, int asking, int insults,
-    string place, object keeper, object customer ) {
-  int adjustment, number;
-  string text;  
-  if ( asking < offer ) {
-    keeper->do_command( "boggle" );
-    number = random( sizeof( bodged_sayings ) );
-    keeper->do_command( "'"+ bodged_sayings[ number ] );
-    return ({ 0, asking, insults });
-  }
-  if ( asking == offer ) {
-    number = random( sizeof( accept_sayings ) );
-    if ( sizeof( accept_sayings[ number ] ) == 2 ) {
-      keeper->do_command( accept_sayings[ number ][ 0 ] );
-      keeper->do_command( "'"+ accept_sayings[ number ][ 1 ] );
-    } else
-      keeper->do_command( "'"+ accept_sayings[ number ] );
-    return ({ 1, asking, insults });
-  }
-  if ( ( asking * 100 ) < ( offer */
+}

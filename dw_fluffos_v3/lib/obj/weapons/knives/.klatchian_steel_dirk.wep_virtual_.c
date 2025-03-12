@@ -1,15 +1,11 @@
 #include <virtual.h>
-
 void dest_me() { destruct( this_object() ); }
-
 void create()
 {
   seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
-} /* create() */
-
+}
 object create_virtual_ob() {
    object clone;
-
   clone = (object)SERVER->create_virtual_object( "/obj/weapon.c", 1 );
   clone->add_property( VIRTUAL_NAME_PROP, "/obj/weapons/knives/klatchian_steel_dirk.wep#1" );
   call_other( clone, "set_name", "dirk"  );
@@ -28,4 +24,4 @@ object create_virtual_ob() {
   call_other( clone, "add_attack", "slash", 75, ({ 10, 5, 20 }), "sharp", "sharp"  );
   call_other( clone, "add_attack", "stab", 50, ({ 10, 2, 27 }), "pierce", "pierce" );
    return clone;
-} /* create_virtual_ob() */
+}

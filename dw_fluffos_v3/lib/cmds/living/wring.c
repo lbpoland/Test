@@ -1,18 +1,14 @@
 inherit "/cmds/base";
-
 int cmd(object *things)  {
    object *towels;
    int    *enums;
    int     wetness;
    int     success;
    string  str;
-
    towels = filter(things,
                    (: $1->id("towel")  ||  $1->query_property("dryer") :));
    things -= towels;
-
    str = "";
-
    if (sizeof(towels) == 1)  {
       enums = towels[0]->effects_matching("object.wet");
       if (sizeof(enums)) {
@@ -33,7 +29,6 @@ int cmd(object *things)  {
       str = "You can only wring out one thing at a time";
       success = 0;
    }
-
    if (sizeof(things))  {
       if (success) {
          str += ", but you can't wring out " +
@@ -45,12 +40,9 @@ int cmd(object *things)  {
    } else {
       str += ".\n";
    }
-
    write(str);
-
    return 1;
 }
-
 mixed *query_patterns()  {
    return ({ "[out] <indirect:object:me'towel'>", (: cmd($1) :) });
 }

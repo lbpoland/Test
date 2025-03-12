@@ -1,19 +1,6 @@
-/* 28 NOV 00 - Awful's swinging effect.  A very simple little
- * effect, useful for playground swings.
- * Allow for a simple "stop" swinging as well as being able to
- * "jump" from the swing in the traditional playground daredevil
- * method.
- */
-
-/*                        72 column spacing                           */
-
 #include <effect.h>
-
 #define SWINGS "/d/sur/Sto_Lat/hill_street/playground/playground04"
-
 string query_classification() { return "other.swinging"; }
-
-
 void beginning(object player, int arg) {
   int st, tt;
   player->submit_ee("swinging", ({15, 30}), EE_CONTINUOUS);
@@ -21,7 +8,6 @@ void beginning(object player, int arg) {
   tt = (int)player->expected_tt();
   st = (tt - 15);
   player->submit_ee("slowing", (st), EE_ONCE);
-
   if (tt < 61) {
     player->add_succeeded_mess(previous_object(), ({
       "You push off with your feet and start to swing back and "
@@ -31,9 +17,7 @@ void beginning(object player, int arg) {
     player->set_position("swinging back and forth");
     player->set_position_type("on");
   }
-} /* void beginning(object player, mixed arg) */
-
-
+}
 void merge_effect(object player, int old_arg, int new_arg) {
   int tt, st;
   tt = (int)player->expected_tt();
@@ -45,8 +29,6 @@ void merge_effect(object player, int old_arg, int new_arg) {
   st = (tt -15);
   player->submit_ee("slowing", (st), EE_ONCE);
 }
-
-
 void end(object player) {
   if(file_name(environment(player)) != SWINGS)
       return;
@@ -55,15 +37,12 @@ void end(object player) {
     " stops swinging.\n", player);
   player->set_position("sitting");
   player->set_position_type("in");
-} /* void end(object player) */
-
-
+}
 void swinging(object player) {
    if(file_name(environment(player)) != SWINGS){
       player->submit_ee(0, 0, EE_REMOVE);
       return;
    }
-   
   switch (random(3)) {
   case 1 :
     if (player->query_gender() == 2) {
@@ -103,9 +82,7 @@ void swinging(object player) {
       " swings back and forth.\n", player);
     tell_object(player, "You swing back and forth.\n");
   }
-} /* void swinging(object player) */
-
-
+}
 void slowing(object player) {
   if ( (int)player->expected_tt() < 20 ) {
     tell_object(player, "Your swinging is slowing down as you "
@@ -114,4 +91,4 @@ void slowing(object player) {
       " slows down a bit as "+player->query_pronoun()+" loses "
       "momentum.\n", player);
   }
-}  /* void slowing(object player) */
+}

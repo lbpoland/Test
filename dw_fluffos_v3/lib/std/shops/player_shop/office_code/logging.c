@@ -1,20 +1,10 @@
-/******************************************************************************
- * This file contains log handling functions
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Display the shop's logs.
- */
 int do_logs(mixed *args, string pattern)
 {
     string start, end, file, *files, words;
-
     add_succeeded_mess("");
     switch (pattern)
-    {   
+    {
     case LOG_BLANK :
-        /* Display available logs */
         files = get_dir(_savedir +"general.log*");
         words = "Available logs:\n\n";
         if (sizeof(files))
@@ -24,7 +14,7 @@ int do_logs(mixed *args, string pattern)
             sscanf(unguarded((: read_file, _savedir + files[i-1], 2, 1 :)),
               "%*s, %s:", start);
             sscanf(unguarded((: read_file, _savedir + files[i-1],
-                  file_length(_savedir + files[i-1]), 1 :)), 
+                  file_length(_savedir + files[i-1]), 1 :)),
               "%*s, %s: %*s", end );
             if (start == end)
                 words += sprintf("%2d: %s\n",
@@ -34,7 +24,7 @@ int do_logs(mixed *args, string pattern)
                   sizeof(files)-(i-2), start, end);
         }
         words += "\nUse \"logs <number>\" to read one of them, or \"logs ";
-        if ((_employees[this_player()->query_name()] && 
+        if ((_employees[this_player()->query_name()] &&
             _employees[this_player()->query_name()][EMP_POINTS] & MANAGER) ||
           this_player()->query_creator())
         {
@@ -48,7 +38,6 @@ int do_logs(mixed *args, string pattern)
         tell_object(this_player(),"$P$Logs$P$"+ words);
         break;
     case LOG_NUMBER :
-        /* Display specific log */
         files = get_dir(_savedir +"general.log*");
         if ((args[0] < 1) || (args[0] > sizeof(files)))
         {
@@ -65,7 +54,6 @@ int do_logs(mixed *args, string pattern)
         tell_object(this_player(),"$P$Log "+ args[0]+ "$P$"+ words);
         break;
     case LOG_CHART :
-        /* Display chart log */
         file = _savedir + "chart.log";
         if (file_size(file) > 0)
         {
@@ -79,7 +67,6 @@ int do_logs(mixed *args, string pattern)
         }
         break;
     case LOG_MGR :
-        /* Display special log */
         file = _savedir + args[0] + ".log";
         if (file_size( file ) > 0)
         {
@@ -96,58 +83,27 @@ int do_logs(mixed *args, string pattern)
     }
     return 1;
 }
-/* do_logs() */
-
-/**
- * @ignore yes 
- * Adds an entry to the employee's history.
- * This method is intended to log relevant personnel issues such as
- * applications, hirings, promotions etc.  The normal day-to-day
- * stuff is logged in the shop's logs themselves.
- * @param employee The employee.
- * @param note The note to log.
- */
 private void employee_log(string employee, string note)
 {
     load_history();
     if (!sizeof(_history)) _history = ([employee:({({}),({}),})]);
     else if (!_history[employee]) _history += ([employee:({({}),({}),})]);
-
     _history[employee][0] += ({time()});
     _history[employee][1] += ({note});
     save_hist();
-
     remove_call_out(_call_times);
     if (!sizeof(_times)) _times = ([employee:0]);
     else if (!_times[employee]) _times += ([ employee:0 ]);
-
-    _times[employee] = time();   // Update employee record
+    _times[employee] = time();
     _call_times = call_out((: save_times() :), PERS_DELAY);
 }
-/* employee_log() */
-
-/**
- * @ignore yes 
- * This function adds an entry to the logs & pays employees.
- * Logs record a full day's (3 DW days) activity, apart from the
- * chart, accounts & personnel logs which use log_file.<br>
- * @param logtype The type of log entry - see <player_shop.h>
- * @param word The employee making the entry.
- * @param words The log entry text.
- * @param paid Should the employee be paid for this entry
- */
 void shop_log(int logtype, string word, string words, int paid)
 {
     string date, month, colour;
-
     sscanf(amtime(time()), "%*s %*s %*s %s %*s", month);
     if (file_size(_savedir +"general.log") > 0)
     {
         date = ctime(time())[0 .. 9];
-
-        /*
-         * Are we on a new day yet?  If so, do the daily review.
-         */
         if (date != unguarded((: read_file,
               _savedir +"general.log", 1, 1 :))[0 .. 9])
         {
@@ -155,7 +111,6 @@ void shop_log(int logtype, string word, string words, int paid)
             summary = sprintf( "%sFor the period ending %s:%s\n",
               "%^BOLD%^", amtime(time()), "%^RESET%^" ),
             sign = "";
-
             _storeroom->force_load();
             call_out((: update_averages() :), 60);
             unguarded((: rename, _savedir +"general.log", logfile :));
@@ -182,10 +137,6 @@ void shop_log(int logtype, string word, string words, int paid)
             save_me();
             unguarded((: write_file, _savedir +"general.log",
                 date +"\n" + summary :));
-
-            /*
-             * Remove old logs.
-             */
             foreach (string file in get_dir(_savedir +"general.log-*"))
             {
                 sscanf(file, "%*s-%s", date);
@@ -194,10 +145,6 @@ void shop_log(int logtype, string word, string words, int paid)
             }
         }
     }
-
-    /*
-     * Are we in a new month yet?  If so do the monthly review.
-     */
     if (month != _last_month && !_call_review)
     {
         if (member_array(month, ({"Offle", "February", "March",
@@ -209,10 +156,6 @@ void shop_log(int logtype, string word, string words, int paid)
             _call_review = call_out((: monthly_review() :), 60);
         }
     }
-
-    /*
-     * Only pay employees if clocked in & this is a paid action
-     */
     if (_employees[word])
     {
         if (!(_employees[word][EMP_POINTS] & NPC))
@@ -236,10 +179,6 @@ void shop_log(int logtype, string word, string words, int paid)
         set_emp_time(word);
         save_emps();
     }
-
-    /*
-     * Write entry to the appropriate log.
-     */
     switch (logtype)
     {
     case PURCHASE :
@@ -273,4 +212,3 @@ void shop_log(int logtype, string word, string words, int paid)
     unguarded((: write_file, _savedir +"general.log", colour + amtime(time())+
         ": "+ cap_name(word) +"%^RESET%^ - "+ words +"\n" :));
 }
-/* shop_log() */

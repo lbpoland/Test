@@ -1,22 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: rm.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: rm.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
-/* rm command, trial out by Turrican for a commands daemon. */
-
 inherit "/cmds/base";
-
 mixed cmd(string str) {
   int fsize, loop;
   string *filenames;
- 
   seteuid(geteuid(this_player()));
-
   if (!str) {
     notify_fail("Usage: rm file [file ...]\n");
     return 0;

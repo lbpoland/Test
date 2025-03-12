@@ -1,19 +1,8 @@
-/**
- * This is an inheritable file to deal with the more dynamic nature of
- * craft skills.  So we can add in new ones without disturbing the balance
- * everything.
- * @author Pinkfish
- * @started Thu Nov 11 18:51:01 PST 1999
- */
 #include <skills.h>
-
 private string *_craft_skill_tree;
-
 void add_craft_skill(string name);
-
 void create() {
    _craft_skill_tree = ({ });
-
    add_craft_skill("crafts.smithing.gold");
    add_craft_skill("crafts.smithing.silver");
    add_craft_skill("crafts.smithing.black.tool");
@@ -61,12 +50,10 @@ void create() {
    add_craft_skill("crafts.arts.printing");
    add_craft_skill("crafts.arts.sculpture");
    add_craft_skill("crafts.points");
-} /* create() */
-
+}
 private mixed *add_craft_skill_int(string *bits,
                                    mixed *arr) {
    int pos;
-
    pos = member_array(bits[0], arr);
    if (pos == -1) {
       pos = sizeof(arr);
@@ -77,19 +64,12 @@ private mixed *add_craft_skill_int(string *bits,
                                                  arr[pos + SKILL_BIT]);
    }
    return arr;
-} /* add_craft_skill_int() */
-
+}
 private void add_craft_skill(string name) {
    string *bits;
-
    bits = explode(name, ".");
    _craft_skill_tree = add_craft_skill_int(bits, _craft_skill_tree);
-} /* add_craft_skill() */
-
-/**
- * This method returns the craft skill tree.
- * @return the crafts skill tree.
- */
+}
 mixed *query_crafts_skill_tree() {
    return _craft_skill_tree;
-} /* query_crafts_skill_tree() */
+}

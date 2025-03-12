@@ -1,8 +1,6 @@
 #include <dirs.h>
 #include <terrain.h>
-
 inherit "/std/object";
-
 void setup() {
    set_name( "shovel" );
    set_short( "ceremonial shovel" );
@@ -10,16 +8,14 @@ void setup() {
    set_long( "This is a small ceremonial shovel, carried by those "+
          "responsible for the care, upkeep and expansion of "+
          "dungeons.\n" );
-} /* setup() */
-
+}
 void init() {
    if ( this_player()->query_creator() ) {
       add_action( "do_add", "add" );
       add_action( "do_remove", "remove" );
       add_action( "do_visit", "visit" );
    }
-} /* init() */
-
+}
 int do_add( string words ) {
    int i, distance, level, *new_co_ord, *old_co_ord, *vector;
    string direc, file, terrain, type;
@@ -83,13 +79,11 @@ int do_add( string words ) {
    room = (object)TERRAIN_MAP->find_location( terrain, old_co_ord );
    things->move( room );
    return 1;
-} /* do_add() */
-
+}
 int do_remove() {
    write( "This function has not been written yet.\n" );
    return 1;
-} /* do_remove() */
-
+}
 int do_visit( string words ) {
    int x, y, z;
    string terrain;
@@ -107,4 +101,4 @@ int do_visit( string words ) {
          "freshly broken earth, and $N appear$s.", "With a squelch, "+
          "$N vanish$s." );
    return 1;
-} /* do_visit() */
+}

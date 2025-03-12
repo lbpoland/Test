@@ -1,13 +1,8 @@
-/****** This room is made my Mithal, learn and enjoy  ***/
-
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_short("add_item room #3, verbs ");
    set_light(100);
-
    set_long("add_item room #3, verbs \n"
             "As you know, things can be read, kicked, etc... in DiscWorld.  "
             "Therefore we need to make our items respond to actions.  The "
@@ -16,8 +11,6 @@ void setup() {
             "provides many facilities to do this which are much better to "
             "write, easier to understand, and have less chance of 'bugging' "
             "out on you.\nA large oak.\nA note.\n\n");
-   
-   
    add_item("note", ({ "long", "It can be read.",
       "read", "As you can see, this note can be read, "
       "this is our first introduction to verbs.  "
@@ -34,8 +27,6 @@ void setup() {
       "\"You <verb> <indefinate artical> <item>.\"  Similarly everyone "
       "else in the room sees:  \"Fred reads a note.\"\n\nA description of "
       "the tree can be found in treenote.\n" }));
-   
-
    add_item("treenote", ({ "long", "Read it nim wit!",
       "read", "Here is the add_item for the oak:\n"
       " add_item( ({\"large oak tree\",\"large oak\"}) , ({  \n"
@@ -48,7 +39,6 @@ void setup() {
       "Some times you can interfere with item commands or soul commands "
       "by installing these actions. But, the interference would be more "
       "if you used add_action!.\n" }));
-   
    add_item( ({ "large oak tree", "large oak" }) , ({
       "long", "It looks like it can be climbed and cut.",
       "climb", "You get half way up, and climb back down.\n",
@@ -58,4 +48,3 @@ void setup() {
    add_exit( "start", MAIN, "path" );
    add_exit( "exit", LEARNING +"search", "path" );
 }
-

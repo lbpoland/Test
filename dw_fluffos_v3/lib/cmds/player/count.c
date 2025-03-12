@@ -1,11 +1,7 @@
 #include <money.h>
-
 inherit "/cmds/base";
-
 #define MAX_COUNT_SIZE 50
-
 int is_not_in_other_player(object thing);
-
 int cmd(object *things, int brief)  {
    string  list;
    string *aliases;
@@ -20,7 +16,6 @@ int cmd(object *things, int brief)  {
    object tmp_ob;
    int     i;
    int     total;
-
    if (this_player()->
        check_dark(environment(this_player())->query_light()) < 0) {
       add_failed_mess("It's too dark to count anything.\n");
@@ -28,17 +23,14 @@ int cmd(object *things, int brief)  {
    }
    if(sizeof(things) > MAX_COUNT_SIZE)
      return add_failed_mess("You cannot count that many things!\n");
-
    things = filter(things, (: !is_not_in_other_player($1) :));
    if (!sizeof(things))  {
       write("You can't count things carried by other people.\n");
       return 1;
    }
-
    money = 0;
    total = 0;
    list = "";
-
    foreach (thing in things)  {
       aliases = thing->query_alias();
       if (aliases  &&  member_array(MONEY_ALIAS, aliases) > -1)  {
@@ -63,7 +55,6 @@ int cmd(object *things, int brief)  {
       }
       money->dest_me();
    }
-
    continuous = filter(things, (: $1->query_continuous() :));
    if (sizeof(continuous))  {
       sack = clone_object("/std/container");
@@ -105,7 +96,6 @@ int cmd(object *things, int brief)  {
      foreach (thing in collective) {
        total += thing->query_amount();
      }
-      
      if(sizeof(things)) {
        list += implode(map(collective,
                            (: $1->query_amount() + " " +
@@ -126,7 +116,6 @@ int cmd(object *things, int brief)  {
      }
      sack->dest_me();
    }
-
    room_items = filter(things, (: strsrch(file_name($1),
                                           "/std/room/basic/item") > -1 :));
    if (sizeof(room_items))  {
@@ -170,7 +159,6 @@ int cmd(object *things, int brief)  {
    }
    if (sizeof(things))  {
       list += query_multiple_short(things, "one");
-
 if (this_player() == find_player("presto"))
 tell_creator("presto", "list == %s\n", list);
       stuff = this_player()->reform_message(list, ({}));
@@ -185,7 +173,6 @@ printf("test message: %O\n", this_player()->evaluate_message(stuff));
    } else {
       message = list;
    }
-
    if (brief) {
       write("You count " + total + " items.\n");
    } else {
@@ -194,18 +181,14 @@ printf("test message: %O\n", this_player()->evaluate_message(stuff));
    }
    return 1;
 }
-
 int is_not_in_other_player(object env)  {
    while ((env = environment(env))  &&  !living(env))
       ;
-
    if (env  &&  env != this_player())
       return 1;
    else
       return 0;
 }
-
-
 mixed *query_patterns()  {
    return ({ "<indirect:object:me-here'things [in <container>]'>",
              (: cmd($1, 0) :),

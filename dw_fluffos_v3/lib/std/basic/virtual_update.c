@@ -1,26 +1,11 @@
-/**
- * This is the inherit used to update virtual objects from their base files
- * if something changes.  This will call the method init_static_arg with
- * any updated data.
- * @author Dragonkin
- * @changes Pinkfish Fri Apr  6 13:53:28 PDT 2001
- * Turned into an inherit
- */
 #include <virtual.h>
-
 mixed query_property(string name);
 void add_property(string name, mixed prop);
 void init_static_arg(mapping data);
-
-/**
- * This method turns the current object into a missing item
- * receipt.
- */
 void replace_me()
 {
    object receipt;
    mixed als;
-
    receipt = clone_object("/obj/misc/al_receipt");
    receipt->set_name("receipt");
    receipt->set_object(file_name(this_object()));
@@ -39,18 +24,11 @@ void replace_me()
    receipt->set_weight(1);
    destruct(this_object());
 }
-
-/**
- * THis method should be called in the inheritable to deal with virtual
- * objects.  It will check to see if the data has changed and update the
- * object to reflect any of the changes.
- */
 void init_virtual_object()
 {
    mapping stat_temp;
    string virt_name;
    string new_name;
-
    virt_name = query_property(VIRTUAL_NAME_PROP);
    if (virt_name) {
       if (file_size(virt_name) == -1) {
@@ -75,5 +53,4 @@ void init_virtual_object()
          }
       }
    }
-
-}                               /* init_virtual_object() */
+}

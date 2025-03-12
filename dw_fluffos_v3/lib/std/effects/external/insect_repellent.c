@@ -1,17 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: insect_repellent.c,v 1.1 2001/11/16 09:09:10 siel Exp $
- *
- *
- */
-
 #include "effect.h"
-
 string query_classification() {
   return "herb.insect.repellent";
 }
-
 int beginning(object them, int power, int id) {
   if (power <= 0) {
     them->submit_ee(0, 1, EE_REMOVE);
@@ -22,7 +12,6 @@ int beginning(object them, int power, int id) {
   them->submit_ee("smell", ({30, 60}), EE_CONTINUOUS);
   return power;
 }
-
 int merge_effect(object them, int power, int adjust) {
   power += adjust;
   if (power <= 0) {
@@ -32,7 +21,6 @@ int merge_effect(object them, int power, int adjust) {
   them->submit_ee(0, -1, EE_REMOVE);
   return power;
 }
-
 void start_mess(object them, int power, int id) {
   string start_mess;
   switch (power) {
@@ -49,11 +37,9 @@ void start_mess(object them, int power, int id) {
   }
   tell_object(them, start_mess+"\n");
 }
-
 void smell(object them, int power, int id) {
   string self_mess, other_mess;
   object env;
-
   if (--power <= 0) {
     tell_object(them, "The herbal odour around you fades away.\n");
     them->remove_property("insect");

@@ -1,21 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: ear_muffs.c,v 1.17 2003/06/05 00:37:41 pinkfish Exp $
- *
- * Command to allow the earmuffing of channels that a person doesn't wish to
- * hear.
- *
- */
 #define TP this_player()
 #include <player.h>
 #include <newbiehelpers.h>
 inherit "/cmds/base";
-
 private string *_normal_types;
 private string *_cre_types;
 private string _player_format;
-
 void create() {
    ::create();
    _normal_types = ({ "shout", "newbie", "cryer", "remote-soul",
@@ -26,31 +15,27 @@ void create() {
          "dwcre", "dwchat", "remote-spam", "newbiehelpers",
                      "verbose-logon"});
    _player_format = "{" + implode(_normal_types, "|") + "}";
-} /* create() */
-
+}
 int check_earmuffs() {
   string *on;
   string *types;
-
   on = TP->query_property(PLAYER_EARMUFF_PROP);
   if (!on) {
     on = ({ });
   }
-
   types = _normal_types;
   if (TP->query_creator()) {
     types += _cre_types + TP->channel_list();
   } else if (NEWBIEHELPERS_HANDLER->query_can_chat(TP)) {
     types += ({"newbiehelpers"});
   }
-
   if (TP->query_earmuffs()) {
     if (TP->query_earmuffs() == PLAYER_ALLOW_FRIENDS_EARMUFF) {
       printf("Your earmuffs are set to allow friends through.\n");
     } else {
       printf("Your earmuffs are on.\n");
     }
-  } else { 
+  } else {
     printf("Your earmuffs are off.\n");
   }
   if (!sizeof(on)) {
@@ -66,24 +51,20 @@ int check_earmuffs() {
     }
   }
   return 1;
-} /* check_earmuffs() */
-
+}
 int do_earmuff_control(string str) {
   string *types;
   string *on;
-
   types = _normal_types;
   if (TP->query_creator()) {
     types += _cre_types + TP->channel_list();
   } else if (NEWBIEHELPERS_HANDLER->query_can_chat(TP)) {
     types += ({"newbiehelpers"});
   }
-
   on = TP->query_property(PLAYER_EARMUFF_PROP);
   if (!on) {
     on = ({ });
   }
-
   switch (str) {
     case "on" :
       if (!TP->query_earmuffs()) {
@@ -116,25 +97,19 @@ int do_earmuff_control(string str) {
       on = ({ });
       break;
   }
-
   TP->add_property(PLAYER_EARMUFF_PROP, on);
-
   return 1;
-} /* do_earmuff_control() */
-
+}
 int do_earmuff(string str, string onOff) {
   string *types, *on, *off;
-
   types = _normal_types;
   if (TP->query_creator()) {
     types += _cre_types;
   }
-
   on = (string *)TP->query_property(PLAYER_EARMUFF_PROP);
   if (!on) {
     on = ({ });
   }
-
   off = ({ });
   switch (onOff) {
     case "on" :
@@ -160,15 +135,12 @@ int do_earmuff(string str, string onOff) {
   on -= off;
   TP->add_property(PLAYER_EARMUFF_PROP, on);
   return 1;
-} /* do_earmuff() */
-
+}
 mixed *query_patterns() {
   string cre_format;
-  
   if (this_player()->query_creator()) {
     cre_format = "{" + implode(_normal_types +
                      _cre_types + this_player()->channel_list(), "|") + "}";
-    
     return ({ "", (: check_earmuffs() :),
                 "{on|off|all|none|allowfriends}",
                 (: do_earmuff_control($4[0]) :),

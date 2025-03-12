@@ -1,24 +1,13 @@
-/**
- * This is called off of the monster to set up a race and
- * profession...   Race should be first then profession..
- * @author Pinkfish
- * @started Sometime in 1991
- */
-
 #include "race.h"
-
 inherit "/std/basic/print_object";
-
 private mapping _races;
 private mapping _guilds;
 private mapping _race_obs;
 private mapping _guild_obs;
-
 void create() {
   string tmp;
-  
   _races = ([
-      0                  : "/std/races/human", /* first the null race */
+      0                  : "/std/races/human",
       "ape"              : "/std/races/ape",
       "arachnid"         : "/std/races/arachnid",
       "baboon"           : "/std/races/baboon",
@@ -113,7 +102,7 @@ void create() {
       "stone palm"       : "/std/races/stone_palm",
       "strange"          : "/std/races/strange",
       "swamp dragon"     : "/std/races/swamp_dragon",
-      "toad"             : "/std/races/toad", 
+      "toad"             : "/std/races/toad",
       "tortoise"         : "/std/races/tortoise",
       "tree"             : "/std/races/tree",
       "troll"            : "/std/races/troll",
@@ -144,37 +133,19 @@ void create() {
       "monk"             : "/std/guilds/monk",
       "assassin"         : "/std/guilds/assassin",
     ]);
-
     _race_obs = ([ ]);
-    // Cache the loaded race & guild objects.
     foreach(tmp in values(_races))
       _race_obs[tmp] = load_object(tmp);
-
     _guild_obs = ([ ]);
     foreach(tmp in values(_guilds))
       catch(_guild_obs[tmp] = load_object(tmp));
-
 }
-
-/**
- * This method checks to see if the specified race is valid or not.
- * @param race the race to check for validity
- * @return 1 if it exists, 0 if it does not
- */ 
 int query_valid_race( string race ) {
     return !undefinedp(_races[race]);
-} /* query_valid_race() */
-
-/**
- * This method sets the level of the npc with the specified attributes.
- * @param lvl the level to set the npc at
- * @param race the race to set the npc with
- * @param guild the guild to set the npc with
- */
+}
 void set_level( int lvl, string race, string guild ) {
     object ob;
     string race_ob, guild_ob;
-
     if (_races[race]) {
         race_ob = _races[race];
     } else {
@@ -188,98 +159,54 @@ void set_level( int lvl, string race, string guild ) {
     ob = previous_object();
     ob->set_no_check(1);
     ob->set_race_ob(race_ob);
-    /* Done in /global/guild-race
-       race_ob->start_player(ob);
-    */
     race_ob->set_level(ob, lvl);
     ob->set_guild_ob(guild_ob);
-    /* Done in /global/guild-race
-       guild_ob->start_player(ob);
-    */
     guild_ob->set_level(ob, lvl, guild);
     ob->race_guild_commands();
-} /* set_level() */
-
+}
 private int add_race( string name, mixed ob ) {
     if (_races[name]) {
         return 0;
     }
     _races[name] = ob;
     return 1;
-} /* add_race() */
-
+}
 private int remove_race( string name ) {
     if (!_races[name]) {
         return 0;
     }
     _races[name] = 0;
     return 1;
-} /* remove_race() */
-
-/**
- * This method returns all the current races in the race object.  It is a
- * mapping with matches between the name of the race and race object.
- * @return the race mapping
- */ 
+}
 mapping query_races() {
     return copy(_races);
-} /* query_racs() */
-
-/**
- * This method returns the path associated with the specified race.
- * @param race_name the name of the race
- * @return the path of the race
- */
+}
 string query_race_path( string race_name ) {
     return _races[race_name];
-} /* query_race_path() */
-
+}
 private int add_guild( string name, mixed ob ) {
     if (_guilds[name]) {
         return 0;
     }
     _guilds[name] = ob;
     return 1;
-} /* add_guild() */
-
+}
 private int remove_guild( string name ) {
     if (!_guilds[name]) {
         return 0;
     }
     _guilds[name] = 0;
     return 1;
-} /* remove_guild() */
-
-/**
- * This method returns all the current guilds in the race object.  It is a
- * mapping with matches between the name of the guild and guild object.
- * @return the race mapping
- */ 
+}
 mapping query_guilds() {
     return copy(_guilds);
-} /* query_guilds() */
-
-/**
- * This method returns the path associated with the specified guild.
- * @param guild_name the name of the guild
- * @return the path of the guild
- */
+}
 string query_guild_path(string guild_name) {
     return _guilds[guild_name];
-} /* query_guild_path() */
-
-/**
- * This method is called from inside the npc to do the heartbeat on the
- * guild and race objects.
- * @param race the race to do a heart beat on
- * @param guild the guild to do a heart beat on
- * @param race_ob the object to use for the race
- * @param guild_ob the object to use for the guild
- */ 
+}
 void monster_heart_beat(string race,  string guild, mixed race_ob,
                         mixed guild_ob) {
   object tmp;
-  
   if(stringp(race_ob)) {
     if(!_race_obs[race_ob])
       _race_obs[race_ob] = find_object(race_ob);
@@ -288,7 +215,6 @@ void monster_heart_beat(string race,  string guild, mixed race_ob,
     tmp = race_ob;
   if(tmp)
     tmp->player_heart_beat( race, previous_object() );
-
   if(stringp(guild_ob)) {
     if(!_guild_obs)
       _guild_obs = ([ ]);
@@ -298,7 +224,6 @@ void monster_heart_beat(string race,  string guild, mixed race_ob,
     tmp = _guild_obs[guild_ob];
   } else if(objectp(guild_ob))
     tmp = guild_ob;
-
   if(tmp)
     tmp->player_heart_beat(guild, previous_object());
-} /* monster_heart_beat() */
+}

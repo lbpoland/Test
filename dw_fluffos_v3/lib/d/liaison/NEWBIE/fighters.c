@@ -1,13 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: fighters.c,v 1.5 2003/02/19 06:54:24 ceres Exp $
- *
-*/
-
 #include "path.h"
 inherit PATH + "inside";
-
 void setup() {
    set_short( "Warriors' gazebo" );
    set_light( 75 );
@@ -20,9 +12,7 @@ void setup() {
              "A small notice pinned to the wall with a sword states that this "
              "is not the place where you actually join the guild.  The rest "
              "of the note is too torn to read.\n" );
-
    set_zone( "Newbie" );
-
    add_item( ({ "armour" }),
              "There are many items around the room, but their function is "
              "beyond you for the most part." );
@@ -30,7 +20,6 @@ void setup() {
              "This notice was probably pinned to the wall during combat "
              "practice, and is therefore more or less unreadable after the "
              "battering it got during the session.\n" );
-
    add_sign( "This sign seems to cower in the corner of the room "
              "unsure of it's place here.\n", "In this deadly guild, "
              "the fine art of killing and berserking is taught.  Learn how "
@@ -39,10 +28,7 @@ void setup() {
              "a strong stomach, and have the ability to kill without batting "
              "an eye.  Remember to always keep your guild motto with you: 'If "
              "It Moves Kill It.  If It Doesn't Move, Wait For It To Move, "
-             "Then Kill It.'", 0, 0, "general" ); 
-
-/* Make it so you cannot godmother out of here */
+             "Then Kill It.'", 0, 0, "general" );
    add_property("no godmother", 1);
-
    add_exit( "garden", PATH +"guilds_foyer", "gate" );
-} /* setup() */
+}

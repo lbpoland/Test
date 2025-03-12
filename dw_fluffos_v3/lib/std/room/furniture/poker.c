@@ -1,14 +1,8 @@
-// Pinkfish
-// Started Wed May 30 21:37:15 PDT 2001
-
 inherit "/std/room/furniture/games/card_base";
 inherit "/std/room/furniture/games/multiplayer_base";
 inherit "/std/room/furniture/commercial";
-
 #include <money.h>
 #include <room/card_base.h>
-
-// The hand types.
 #define HAND_TYPE_HIGH_CARD  1
 #define HAND_TYPE_PAIR       2
 #define HAND_TYPE_TWO_PAIR   3
@@ -18,7 +12,6 @@ inherit "/std/room/furniture/commercial";
 #define HAND_TYPE_FULL_HOUSE 7
 #define HAND_TYPE_FOUR       8
 #define HAND_TYPE_STRAIGHT_FLUSH 9
-
 #define POKER_STATE_ANTE      0
 #define POKER_STATE_PAID_ANTE 1
 #define POKER_STATE_DEALT     2
@@ -28,9 +21,7 @@ inherit "/std/room/furniture/commercial";
 #define POKER_STATE_FINAL_BET 6
 #define POKER_STATE_FOLDED    7
 #define POKER_STATE_END       8
-
 #define TIE -1
-
 class hand_type {
    int hand_type;
    class playing_card* kickers;
@@ -38,21 +29,13 @@ class hand_type {
    class playing_card duplicate_2;
    class playing_card high_card;
 }
-
 class player_data {
    class playing_card* hand;
    class hand_type hand_type;
    int bet;
    int state;
 }
-
 #define BOARD_TAG "poker"
-
-//
-// This gives an estimated return on the payment.  For example 50%
-// return would mean you get back approximately 50% of your money on
-// average
-//
 private int _return;
 private int _ante_amount;
 private int _ante_house;
@@ -69,13 +52,10 @@ private int _max_draw_rounds;
 private class playing_card* _deck;
 private class playing_card* _discard;
 private mapping _player_stats;
-
 int query_hand_value(class playing_card* cards);
 class hand_type query_hand_type(class playing_card* hand);
-
 void create() {
    multiplayer_base::create();
-
    set_minimum_needed(2);
    add_help_file("poker");
    _ante_house = 400;
@@ -85,16 +65,12 @@ void create() {
    _max_draw_rounds = 1;
    _player_stats = ([ ]);
    set_shop_use_types(({ "poker" }));
-
    commercial::create();
-
    set_commercial_type("gambling");
    set_commercial_name("poker");
-} /* create() */
-
+}
 string query_hand_type_string(class hand_type bing) {
    string ret;
-
    switch (bing->hand_type) {
    case HAND_TYPE_FULL_HOUSE :
       ret = "Full house";
@@ -128,13 +104,7 @@ string query_hand_type_string(class hand_type bing) {
       break;
    }
    return ret;
-} /* query_hand_type_string() */
-
-/**
- * This method shows the current status of the cards.
- * @param id the id to show the status for
- * @return the status of the cards
- */
+}
 string query_card_status(string id) {
    string id_bing;
    string ret;
@@ -143,7 +113,6 @@ string query_card_status(string id) {
    string* womble;
    string place;
    int left;
-
    ret = "";
    not_playing = ({ });
    womble = query_player_ids();
@@ -170,7 +139,7 @@ string query_card_status(string id) {
                   }
                }
                if (data->bet) {
-                  ret += "  Current bet " + 
+                  ret += "  Current bet " +
                          MONEY_HAND->money_value_string(data->bet, place);
                   ret += "\n";
                } else {
@@ -184,7 +153,6 @@ string query_card_status(string id) {
          not_playing += ({ id_bing });
       }
    }
-
    if (sizeof(not_playing) > 1) {
       ret += query_multiple_short(map(not_playing, (: capitalize($1) :))) +
                                   " are not playing.\n";
@@ -236,27 +204,19 @@ string query_card_status(string id) {
          }
       }
    }
-
    return ret;
 }
-   
-/** @ignore yes */
 string long(string str, int dark) {
    if (dark) {
       return ::long() +
              "It is too dark to make out the pieces on the board.\n";
    }
    return ::long() + query_card_status(find_player_id_of_person(this_player()));
-} /* long() */
-
-/**
- * See if the round has completed.
- */
+}
 int check_end_round() {
    int bet;
    string id;
    class player_data data;
-
    foreach (id in query_started_player_ids()) {
       data = query_player_data(id);
       if (data->state != POKER_STATE_FOLDED) {
@@ -269,28 +229,21 @@ int check_end_round() {
          }
       }
    }
-
    if (bet) {
       call_out("complete_round", 2);
       _poker_phase = POKER_STATE_END;
       return 1;
    }
-} /* check_end_round() */
-
-/**
- * This method bounces to the next person to bid.
- */
+}
 void next_person_turn() {
    class player_data data;
    string start_id;
-
    start_id = query_current_player();
    do {
       increment_current_player();
       data = query_player_data(query_current_player());
    } while (data->state == POKER_STATE_FOLDED &&
             query_current_player() != start_id);
-   // Only one person left...
    if (query_current_player() == start_id) {
       printf("Force end of game.\n");
       call_out("complete_round", 2, 1);
@@ -298,15 +251,10 @@ void next_person_turn() {
    } else {
       call_out("tell_current_player", 0, "%^BOLD%^Your turn!%^RESET%^\n");
    }
-} /* next_person_turn() */
-
-/**
- * This deals cards to everyone.
- */
+}
 void deal_cards() {
    string id;
    class player_data data;
-
    _deck = make_deck(1, 0);
    _deck = shuffle_deck(_deck);
    foreach (id in query_currently_playing_ids()) {
@@ -337,16 +285,11 @@ void deal_cards() {
    next_person_turn();
    tell_all_players(query_player_cap_name(query_current_player()) +
                     " goes first.\n");
-   //call_out("tell_current_player", 0, "%^BOLD%^Your turn!%^RESET%^\n");
-   //tell_current_player("%^BOLD%^Your turn!%^RESET%^\n");
    _current_bet = 0;
-} /* deal_cards() */
-
-/** @ignore yes */
+}
 int start_game() {
    class player_data data;
    string id;
-
    randomise_player_numbers();
    if (!::start_game()) {
       return 0;
@@ -365,46 +308,28 @@ int start_game() {
    _discard = ({ });
    tell_all_players("%^BOLD%^Place your ante to start playing.%^RESET%^\n");
    return 1;
-} /* start_game() */
-
-/**
- * Checks to see if all the people playing have put in their first
- * bets.
- */
+}
 void check_for_finish_ante() {
    string id;
    class player_data data;
    object ob;
-
    foreach (id in query_currently_playing_ids()) {
       data = query_player_data(id);
       ob = query_player_object(id);
       if (ob && !interactive(ob)) {
-         // Set them to folded.
          data->state = POKER_STATE_FOLDED;
       }
       if (ob && interactive(ob) && data->state == POKER_STATE_ANTE) {
          return ;
       }
    }
-
    _poker_phase = POKER_STATE_BET;
-   // Move to the next state!
    call_out("deal_cards", 2);
-} /* check_for_finish_ante() */
-
-/**
- * This figures out if the card is higher than the other one or not.
- * @param card_new the new card o checxl
- * @param card_old the old card to check againt
- * @return 1 if the new card is higher, 0 if the old card is higher
- */
+}
 int is_card_higher(class playing_card card_new, class playing_card card_old) {
    if (card_new->number == card_old->number) {
-      // Then it is based on suits.
       return 0;
    }
-
    if (card_new->number == CARD_NUMBER_ACE) {
       return 1;
    }
@@ -415,11 +340,7 @@ int is_card_higher(class playing_card card_new, class playing_card card_old) {
       return 1;
    }
    return 0;
-} /* is_card_higher() */
-
-/**
- * This method returns the basic type of the hand.
- */
+}
 class hand_type query_hand_type(class playing_card* hand) {
    int high_num;
    int num;
@@ -429,9 +350,7 @@ class hand_type query_hand_type(class playing_card* hand) {
    class playing_card* tmp_hand;
    class hand_type ret_type;
    class playing_card tmp_card;
-
    ret_type = new(class hand_type);
-
    high_num = 0;
    for (i = 1; i < sizeof(hand); i++) {
       if (is_card_higher(hand[i], hand[high_num])) {
@@ -440,9 +359,6 @@ class hand_type query_hand_type(class playing_card* hand) {
    }
    ret_type->hand_type = HAND_TYPE_HIGH_CARD;
    ret_type->high_card = hand[high_num];
-   //
-   // First check for x of a kind.
-   //
    high_num = 1;
    for (i = 0; i < sizeof(hand) - 1; i++) {
       num = 1;
@@ -456,10 +372,8 @@ class hand_type query_hand_type(class playing_card* hand) {
          id = hand[i]->number;
       }
    }
-
    tmp_hand = hand;
    if (high_num > 1) {
-      // Remove the found cards from the list.
       for (i = 0; i < sizeof(tmp_hand); i++) {
          if (tmp_hand[i]->number == id) {
             ret_type->duplicate_1 = tmp_hand[i];
@@ -468,16 +382,7 @@ class hand_type query_hand_type(class playing_card* hand) {
          }
       }
    }
-
-
-   //
-   // If you have more than one of a certain numbered card you cannot
-   // have any of the other bits.
-   //
    if (high_num == 2) {
-      //
-      // Could be two pair.
-      //
       high_num = 1;
       for (i = 0; i < sizeof(tmp_hand) - 1; i++) {
          num = 1;
@@ -493,7 +398,6 @@ class hand_type query_hand_type(class playing_card* hand) {
       }
       if (high_num == 2) {
          ret_type->hand_type = HAND_TYPE_TWO_PAIR;
-         // Remove the found cards from the list.
          for (i = 0; i < sizeof(tmp_hand); i++) {
             if (tmp_hand[i]->number == id) {
                ret_type->duplicate_2 = tmp_hand[i];
@@ -518,9 +422,6 @@ class hand_type query_hand_type(class playing_card* hand) {
       }
       return ret_type;
    } else if (high_num == 3) {
-      //
-      // Could be a full house.
-      //
       if (tmp_hand[0]->number == tmp_hand[1]->number) {
          ret_type->hand_type = HAND_TYPE_FULL_HOUSE;
          ret_type->duplicate_2 = tmp_hand[0];
@@ -535,10 +436,6 @@ class hand_type query_hand_type(class playing_card* hand) {
       ret_type->high_card = tmp_hand[0];
       return ret_type;
    }
-
-   //
-   // Check for a flush.
-   //
    for (i = 0; i < sizeof(hand) - 1; i++) {
       if (hand[i + 1]->suit != hand[0]->suit) {
          break;
@@ -547,7 +444,6 @@ class hand_type query_hand_type(class playing_card* hand) {
    if (i == sizeof(hand) - 1) {
       ret_type->hand_type = HAND_TYPE_FLUSH;
       ret_type->kickers = sort_cards(hand, 3);
-      // Find the high card.
       high_num = 0;
       for (i = 1; i < sizeof(hand); i++) {
          if (is_card_higher(hand[i], hand[high_num])) {
@@ -556,18 +452,12 @@ class hand_type query_hand_type(class playing_card* hand) {
       }
       ret_type->high_card = hand[high_num];
    }
-
-   //
-   // Check for a straight.
-   //
    tmp_hand = sort_array(hand, (: ((class playing_card)$1)->number -
                                   ((class playing_card)$2)->number :));
    if (tmp_hand[0]->number == CARD_NUMBER_ACE) {
       if (tmp_hand[1]->number == 2) {
-         // Skip the ace at the start.
          j = 1;
       } else {
-         // Move the ace to the end.
          j = 0;
          tmp_hand = tmp_hand[1..] + ({ tmp_hand[0] });
       }
@@ -591,21 +481,14 @@ class hand_type query_hand_type(class playing_card* hand) {
          ret_type->high_card = tmp_hand[<1];
       }
    }
-
    if (ret_type->hand_type == HAND_TYPE_HIGH_CARD) {
       ret_type->kickers = sort_cards(hand, 3);
    }
-
    return ret_type;
-} /* query_hand_type() */
-
-/**
- * This figures out which hand is greator than the other.
- */
+}
 int is_greator_hand(class hand_type new_hand,
                     class hand_type old_hand) {
    int i;
-
    if (new_hand->hand_type > old_hand->hand_type) {
       return 1;
    }
@@ -613,7 +496,6 @@ int is_greator_hand(class hand_type new_hand,
       return 0;
    }
    if (new_hand->hand_type == old_hand->hand_type) {
-      // Try and work out ties...
       switch (new_hand->hand_type) {
       case HAND_TYPE_HIGH_CARD :
          if (is_card_higher(new_hand->high_card,
@@ -747,7 +629,6 @@ int is_greator_hand(class hand_type new_hand,
          break;
       case HAND_TYPE_STRAIGHT :
       case HAND_TYPE_STRAIGHT_FLUSH :
-         // Use the high card as the kicker.
          if (is_card_higher(new_hand->high_card,
                             old_hand->high_card)) {
             return 1;
@@ -760,12 +641,10 @@ int is_greator_hand(class hand_type new_hand,
       }
    }
    return TIE;
-} /* is_greator_hand() */
-
+}
 void test_hand_type() {
    class playing_card* other_tmp_hand;
    class playing_card* tmp_hand;
-
    other_tmp_hand = ({ new(class playing_card, suit: CARD_SUIT_HEARTS, number : 11),
                  new(class playing_card, suit: CARD_SUIT_HEARTS, number : 11),
                  new(class playing_card, suit: CARD_SUIT_HEARTS, number : 12),
@@ -782,11 +661,7 @@ printf("%O\n", sizeof(query_hand_type(tmp_hand)->kickers));
 printf("%O\n", sizeof(query_hand_type(other_tmp_hand)->kickers));
 write("Result: " + is_greator_hand(query_hand_type(tmp_hand),
       query_hand_type(other_tmp_hand)) + "\n");
-} 
-
-/**
- * This method completes the round.
- */
+}
 void complete_round(int force_end) {
    string stuff;
    object ob;
@@ -800,13 +675,10 @@ void complete_round(int force_end) {
    int discard;
    int result;
    int num;
-
    if (_finished) {
       return 0;
    }
-
    place = query_money_place();
-
    stuff = "";
    winner = ({ });
    foreach (id in query_started_player_ids()) {
@@ -840,11 +712,9 @@ void complete_round(int force_end) {
                                      this_player()->query_cols()) + "\n";
       }
    }
-
    if (num == 1) {
       stuff = "All but one person folded so the cards are not revealed.\n";
    }
-
    if (discard) {
       foreach (id in query_started_player_ids()) {
          data = query_player_data(id);
@@ -861,11 +731,10 @@ void complete_round(int force_end) {
       }
    } else {
       if (_house_cut) {
-         stuff += "House takes " + 
+         stuff += "House takes " +
             MONEY_HAND->money_value_string((_pot * _house_cut) / 100, place) +
                   ".\n";
         adjust_float((_pot * _house_cut) / 100);
-        //_revenue += (_pot * _house_cut) / 100;
         _pot -= (_pot * _house_cut) / 100;
       }
       if (sizeof(winner) > 1) {
@@ -875,7 +744,7 @@ void complete_round(int force_end) {
                   MONEY_HAND->money_value_string(_pot / sizeof(winner), place) +
                   ".\n";
          paid = _pot / sizeof(winner);
-         foreach (id in winner) { 
+         foreach (id in winner) {
             ob = query_player_object(id);
             if (ob) {
                ob->adjust_money(MONEY_HAND->create_money_array(paid, place), place);
@@ -884,7 +753,6 @@ void complete_round(int force_end) {
                stuff += "Unable to find " + id + " to pay them, money "
                                "going to the house.\n";
                adjust_float(paid);
-               //_revenue += paid;
             }
          }
       } else {
@@ -897,26 +765,17 @@ void complete_round(int force_end) {
          ob->adjust_money(MONEY_HAND->create_money_array(_pot, place), place);
          _player_stats[ob->query_name()] += _pot;
       }
-
-      // Do the dealer.
       tell_all_players("The players reveal their cards as:\n" +
                        stuff);
       tell_room(environment(), "The game ends with " + query_multiple_short(winner) +
                                " as the winner.\n");
-
       finish_game(query_multiple_short(winner));
       _finished = 1;
    }
-} /* complete_round() */
-
-/**
- * This method checks to see if everyone has discarded and ready for the
- * next round.
- */
+}
 void finish_discard() {
    string id;
    class player_data data;
-
    foreach (id in query_started_player_ids()) {
       data = query_player_data(id);
       if (data->state != POKER_STATE_AFTER_DISCARD &&
@@ -924,9 +783,7 @@ void finish_discard() {
          return 0;
       }
    }
-
    _draw_round++;
-
    foreach (id in query_started_player_ids()) {
       data = query_player_data(id);
       if (data->state == POKER_STATE_AFTER_DISCARD) {
@@ -943,37 +800,27 @@ void finish_discard() {
             "Discard round completed.  Now onto the " +
             (_draw_round >= _max_draw_rounds?"final ":"") + "betting round.\n");
    next_person_turn();
-   //call_out("tell_current_player", 0, "%^BOLD%^Your turn!%^RESET%^\n");
-} /* finish_discard() */
-
-/**
- * Places your bet.
- */
+}
 int do_ante() {
    string place;
    string id;
    int amount;
    class player_data data;
-
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    id = find_player_id_of_person(this_player());
    if (!id) {
       add_failed_mess("You are not playing.\n");
       return 0;
    }
-
    data = query_player_data(id);
    if (data->state != POKER_STATE_ANTE) {
       add_failed_mess("You have already put in your ante.\n");
       return 0;
    }
-
    place = query_money_place();
-
    amount = _ante_house + _ante_amount;
    if (this_player()->query_value_in(place) < amount) {
       add_failed_mess("You do not have the needed " +
@@ -981,61 +828,45 @@ int do_ante() {
                       " to meet the ante.\n");
       return 0;
    }
-
    _player_stats[this_player()->query_name()] -= amount;
    this_player()->pay_money(MONEY_HAND->create_money_array(amount, place),
                             place);
-
    adjust_float(_ante_house);
-   //_revenue += _ante_house;
    _pot += _ante_amount;
    data->state = POKER_STATE_PAID_ANTE;
    environment()->event_save(this_object());
-
-   // This is for the starting bet.
    check_for_finish_ante();
-
    add_succeeded_mess("$N $V " +
                       MONEY_HAND->money_value_string(amount, place) +
                       " on $D.\n");
    return 1;
-} /* do_ante() */
-
-/**
- * This hits you for another card.
- */
+}
 int do_discard(string throw_away) {
    int i;
    string id;
    class player_data data;
    string* bits;
    int* new_bits;
-
    throw_away = lower_case(throw_away);
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    id = find_player_id_of_person(this_player());
    if (!id) {
       add_failed_mess("You are not playing.\n");
       return 0;
    }
-
    data = query_player_data(id);
    if (!sizeof(data->hand)) {
       add_failed_mess("You cannot discard before you have been dealt "
                       "cards.\n");
       return 0;
    }
-
    if (data->state != POKER_STATE_DISCARD) {
       add_failed_mess("You are not in the discard phase.\n");
       return 0;
    }
-
    if (throw_away && throw_away != "none") {
       throw_away = lower_case(replace_string(throw_away, " ", ""));
       bits = explode(throw_away, ",");
@@ -1045,7 +876,6 @@ int do_discard(string throw_away) {
                          "card ids.\n");
          return 0;
       }
-      // Figure out the cards to throw.
       new_bits = map(bits, (: $1[0] - 'a' :));
       if (sizeof(filter(new_bits, (: $1 < 0 || $1 >= 5 :))) > 0) {
          add_failed_mess("Some of the card references " + throw_away +
@@ -1053,7 +883,6 @@ int do_discard(string throw_away) {
                          "card ids.\n");
          return 0;
       }
-
       for (i = 0; i < sizeof(new_bits); i++) {
          if (member_array(new_bits[i],
                           new_bits[0..i-1] + new_bits[i+1..]) != -1) {
@@ -1062,7 +891,6 @@ int do_discard(string throw_away) {
             return 0;
          }
       }
-
       new_bits = sort_array(new_bits, (: $2 - $1 :));
       for (i = 0; i < sizeof(new_bits); i++) {
          _discard += ({ data->hand[new_bits[i]] });
@@ -1093,71 +921,55 @@ int do_discard(string throw_away) {
       data->state = POKER_STATE_AFTER_DISCARD;
       add_succeeded_mess("$N do$es not discard any cards on $D.\n");
    }
-
    finish_discard();
-
    return 1;
-} /* do_discard() */
-
+}
 int do_check() {
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    if (_poker_phase != POKER_STATE_BET &&
        _poker_phase != POKER_STATE_FINAL_BET) {
       add_failed_mess("Not a betting phase.\n");
       return 0;
    }
-
    if (!is_current_player(this_player())) {
       add_failed_mess("Not your turn to bet.\n");
       return 0;
    }
-
    if (_current_bet) {
       add_failed_mess("You cannot check since betting has started.\n");
       return 0;
    }
-
    add_succeeded_mess("$N check$s on $D.\n");
    next_person_turn();
    return 1;
-} /* do_stand() */
-
+}
 int do_call() {
    class player_data data;
    int amt;
    string place;
-
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    if (_poker_phase != POKER_STATE_BET &&
        _poker_phase != POKER_STATE_FINAL_BET) {
       add_failed_mess("Not a betting phase.\n");
       return 0;
    }
-
    if (!is_current_player(this_player())) {
       add_failed_mess("Not your turn to bet.\n");
       return 0;
    }
-
    if (!_current_bet) {
       add_failed_mess("No one has bet anything for you to call.\n");
       return 0;
    }
-
    place = query_money_place();
    data = query_player_data(query_current_player());
    if (_current_bet && data->bet == _current_bet) {
-      // They are called.
       call_out("complete_round", 2);
       if (_poker_phase == POKER_STATE_ANTE) {
          _poker_phase = POKER_STATE_DISCARD;
@@ -1181,38 +993,31 @@ int do_call() {
          next_person_turn();
       }
    }
-
    add_succeeded_mess("$N call$s the bet by adding " +
                       MONEY_HAND->money_value_string(amt, place) +
                       " to the pot for a total bet of " +
                       MONEY_HAND->money_value_string(_current_bet, place) +
                       " on $D.\n");
    return 1;
-} /* do_call() */
-
+}
 int do_raise(string amount) {
    class player_data data;
    string place;
    int amt;
    int raise_amt;
-
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    if (_poker_phase != POKER_STATE_BET &&
        _poker_phase != POKER_STATE_FINAL_BET) {
       add_failed_mess("Not a betting phase.\n");
       return 0;
    }
-
    if (!is_current_player(this_player())) {
       add_failed_mess("Not your turn to bet.\n");
       return 0;
    }
-
    place = query_money_place();
    amt = MONEY_HAND->value_from_string(amount, place);
    raise_amt = amt;
@@ -1221,7 +1026,6 @@ int do_raise(string amount) {
                       "money amount.\n");
       return 0;
    }
-
    if (amt < _min_bet) {
       add_failed_mess("The minimum bet is " +
                       MONEY_HAND->money_value_string(_min_bet, place) +
@@ -1234,7 +1038,6 @@ int do_raise(string amount) {
                       ".\n");
       return 0;
    }
-
    data = query_player_data(query_current_player());
    amt = _current_bet + amt - data->bet;
    if (this_player()->query_value_in(place) < amt) {
@@ -1249,7 +1052,6 @@ int do_raise(string amount) {
    _current_bet = data->bet + amt;
    data->bet = _current_bet;
    _pot += amt;
-
    add_succeeded_mess("$N raise$s the bet by " +
                       MONEY_HAND->money_value_string(raise_amt, place) +
                       " to " +
@@ -1257,31 +1059,25 @@ int do_raise(string amount) {
                       " on $D.\n");
    next_person_turn();
    return 1;
-} /* do_raise() */
-
+}
 int do_bet(string amount) {
    class player_data data;
    string place;
    int amt;
    int raise_amt;
-
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    if (_poker_phase != POKER_STATE_BET &&
        _poker_phase != POKER_STATE_FINAL_BET) {
       add_failed_mess("Not a betting phase.\n");
       return 0;
    }
-
    if (!is_current_player(this_player())) {
       add_failed_mess("Not your turn to bet.\n");
       return 0;
    }
-
    place = query_money_place();
    amt = MONEY_HAND->value_from_string(amount, place);
    if (!amt) {
@@ -1289,21 +1085,17 @@ int do_bet(string amount) {
                       "money amount.\n");
       return 0;
    }
-
    if (amt == _current_bet) {
       return do_call();
    }
-
    if (amt < _current_bet) {
       add_failed_mess("You have to bet higher than the current bet of " +
                       MONEY_HAND->money_value_string(_current_bet, place) +
                       " money amount.\n");
       return 0;
    }
-
    amt = amt - _current_bet;
    raise_amt = amt;
-
    if (amt < _min_bet) {
       add_failed_mess("The minimum bet is " +
                       MONEY_HAND->money_value_string(_min_bet, place) +
@@ -1316,7 +1108,6 @@ int do_bet(string amount) {
                       ".\n");
       return 0;
    }
-
    data = query_player_data(query_current_player());
    amt = _current_bet + amt - data->bet;
    if (this_player()->query_value_in(place) < amt) {
@@ -1331,7 +1122,6 @@ int do_bet(string amount) {
    _current_bet = data->bet + amt;
    data->bet = _current_bet;
    _pot += amt;
-
    add_succeeded_mess("$N raise$s the bet by " +
                       MONEY_HAND->money_value_string(raise_amt, place) +
                       " to " +
@@ -1339,29 +1129,22 @@ int do_bet(string amount) {
                       " on $D.\n");
    next_person_turn();
    return 1;
-} /* do_raise() */
-
+}
 int do_fold() {
    class player_data data;
    string id;
    int not_folded;
-
-   // Get another card.
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    if (!is_current_player(this_player())) {
       add_failed_mess("Not your turn to bet.\n");
       return 0;
    }
-
    data = query_player_data(query_current_player());
    data->state = POKER_STATE_FOLDED;
-
    add_succeeded_mess("$N fold$s on $D.\n");
-   // Figure out if there is only one non-folded player left.
    foreach (id in query_started_player_ids()) {
       data = query_player_data(id);
       if (data->state != POKER_STATE_FOLDED) {
@@ -1375,68 +1158,46 @@ int do_fold() {
       next_person_turn();
    }
    return 1;
-} /* do_fold() */
-
-/**
- * Starts a nice furry game.
- */
+}
 int do_start() {
    int old_pot;
-
    if (!is_open_for("poker", this_player()->query_name())) {
       add_failed_mess("The poker table is not open.\n");
       return 0;
    }
-
-   //
-   // There must eb enough money in the float for everyone to bid the max amo
-   // amount and win with a poker.
-   //
    if (!is_playing(this_player())) {
       add_failed_mess("You must be playing the game to start it.\n");
       return 0;
    }
-
    old_pot = _pot;
    if (!start_game()) {
       add_failed_mess("You need at least two people to play poker.\n");
       return 0;
    }
-
    adjust_float(old_pot);
-   //_revenue += old_pot;
    add_succeeded_mess("$N $V a game on $D.\n");
    return 1;
-} /* do_start() */
-
-/**
- * If it is finished early...  Oh dear.
- */
+}
 int do_finish() {
    string person;
-
    if (!is_game_started()) {
       add_failed_mess("The game has not started.\n");
       return 0;
    }
-
    person = find_player_id_of_person(this_player());
    if (!person) {
       add_failed_mess("You must actually be playing to finish the game.\n");
       return 0;
    }
-
    finish_game(0);
    reset_game();
    return 1;
-} /* do_finish() */
-
+}
 string query_main_status(int hint) {
    string place;
    string ret;
    string name;
    int amt;
-
    place = query_money_place();
    ret = "$I$0=Poker table:\n"
           "$I$6=   Maximum bet: " +
@@ -1457,17 +1218,10 @@ string query_main_status(int hint) {
                      MONEY_HAND->money_value_string(amt, place));
    }
    return ret + "\n";
-} /* query_main_status() */
-
-/**
- * This method sets the ante amounts.
- * @param str the amount string
- * @param max_bet if it a max or min bet to set
- */
+}
 int do_set_ante(string str, int ante_game) {
    string place;
    int value;
-
    if (!is_allowed(this_player()->query_name())) {
       add_failed_mess("You are not allowed to change the paramaters of "
                    "$D.\n");
@@ -1492,19 +1246,11 @@ int do_set_ante(string str, int ante_game) {
       add_succeeded_mess("$N set$s the ante amount for the house to " +
           MONEY_HAND->money_value_string(value, place) + " on $D.\n");
    }
-
    return 1;
-} /* do_set_ante() */
-
-/**
- * This method sets the ante amounts.
- * @param str the amount string
- * @param max_bet if it a max or min bet to set
- */
+}
 int do_set_bet(string str, int max_bet) {
    string place;
    int value;
-
    if (!is_allowed(this_player()->query_name())) {
       add_failed_mess("You are not allowed to change the paramaters of "
                    "$D.\n");
@@ -1525,16 +1271,9 @@ int do_set_bet(string str, int max_bet) {
       add_succeeded_mess("$N set$s the minimum bet to " +
           MONEY_HAND->money_value_string(value, place) + " on $D.\n");
    }
-
    return 1;
-} /* do_set_bet() */
-
-/**
- * This method sets the cut
- * @param percent the cut percentage
- */
+}
 int do_set_cut(int percent) {
-
    if (!is_allowed(this_player()->query_name())) {
       add_failed_mess("You are not allowed to change the paramaters of "
                    "$D.\n");
@@ -1548,20 +1287,11 @@ int do_set_cut(int percent) {
       add_failed_mess("You cannot set the cut to greator than 100%.\n");
       return 0;
    }
-
    _house_cut = percent;
-
    add_succeeded_mess("$N set$s the cut to " + percent + "% on $D.\n");
    return 1;
-} /* do_set_cut() */
-
-/**
- * This method sets the maximum number of draw rounds.
- * @param percent the cut percentage
- * @param draw the maximum number of draw rounds
- */
+}
 int do_set_draw(int draw) {
-
    if (!is_allowed(this_player()->query_name())) {
       add_failed_mess("You are not allowed to change the paramaters of "
                    "$D.\n");
@@ -1575,21 +1305,13 @@ int do_set_draw(int draw) {
       add_failed_mess("You cannot set the draw to greator than 5.\n");
       return 0;
    }
-
    _max_draw_rounds = draw;
-
    add_succeeded_mess("$N set$s the number of draw rounds to " + draw + " on $D.\n");
    return 1;
-} /* do_set_draw() */
-
-/**
- * This method shows the current set of house rules.  This will contain
- * any modifiable bits.
- */
+}
 int do_rules() {
    string ret;
    string place;
-
    place = query_money_place();
    ret = "The rules for this table are:\n";
    ret += "$I$6=   Maximum amount that can be raised " +
@@ -1603,16 +1325,14 @@ int do_rules() {
           "\n$I$6=   House Ante      : " +
               MONEY_HAND->money_value_string(_ante_house, place);
    write("$P$Rules$P$" + ret);
-} /* do_rules() */
-
+}
 int do_reset() {
    if (::do_reset()) {
       _player_stats = ([ ]);
       add_succeeded_mess("$N clear$s the player stats.\n");
       return 1;
    }
-} /* do_reset() */
-
+}
 void init() {
    multiplayer_base::init();
    commercial::init();
@@ -1638,7 +1358,6 @@ void init() {
                (: do_rules() :));
    add_command("rules", "{for|on|of} <direct:object>",
                (: do_rules() :));
-
    if (environment()->is_allowed(this_player()->query_name())) {
       add_command("set", "draw <number'rounds'> on <direct:object>",
                   (: do_set_draw($4[0]) :));
@@ -1653,15 +1372,12 @@ void init() {
       add_command("set", "maximum bet <string'amount'> on <direct:object>",
                   (: do_set_bet($4[0], 1) :));
    }
-} /* init() */
-
+}
 void resign_person(string id) {
    class player_data data;
    int not_folded;
-
    data = query_player_data(id);
    if (data && data->state != POKER_STATE_FOLDED) {
-      // Make them fold.
       tell_all_players(query_player_cap_name(id) +
                        " resigns and folds.\n");
       data->state = POKER_STATE_FOLDED;
@@ -1676,7 +1392,6 @@ void resign_person(string id) {
          _poker_phase = POKER_STATE_END;
       }
    } else {
-      // Check and see if the round finished.
       switch (_poker_phase) {
       case POKER_STATE_ANTE :
          check_for_finish_ante();
@@ -1689,31 +1404,24 @@ void resign_person(string id) {
          break;
       }
    }
-} /* resign_person() */
-
+}
 void event_exit(object ob, string mess, object to) {
    string id;
-
    if (userp(ob) && to != environment()) {
       id = find_player_id_of_person(ob);
       if (id) {
          resign_person(id);
       }
    }
-} /* event_exit() */
-
+}
 void multiplayer_someone_resigns(string id, string name) {
    resign_person(id);
-} /* multiplayer_someone_resigns() */
-
-/** @ignore yes */
+}
 mapping query_dynamic_auto_load() {
    mapping map;
-
    map = commercial::query_dynamic_auto_load();
    multiplayer_base::query_dynamic_auto_load(map);
    add_auto_load_value(map, BOARD_TAG, "return", _return);
-   //add_auto_load_value(map, BOARD_TAG, "revenue", _revenue);
    add_auto_load_value(map, BOARD_TAG, "ante amount", _ante_amount);
    add_auto_load_value(map, BOARD_TAG, "house cut", _house_cut);
    add_auto_load_value(map, BOARD_TAG, "ante house", _ante_house);
@@ -1728,15 +1436,11 @@ mapping query_dynamic_auto_load() {
    add_auto_load_value(map, BOARD_TAG, "discard", _discard);
    add_auto_load_value(map, BOARD_TAG, "player stats", _player_stats);
    return map;
-} /* query_dynamic_auto_load() */
-
-/** @ignore yes */
+}
 void init_dynamic_arg(mapping map, object player) {
    commercial::init_dynamic_arg(map, player);
    multiplayer_base::init_dynamic_arg(map, player);
-
    _return = query_auto_load_value(map, BOARD_TAG, "return");
-   //_revenue = query_auto_load_value(map, BOARD_TAG, "revenue");
    _ante_amount = query_auto_load_value(map, BOARD_TAG, "ante amount");
    _ante_house = query_auto_load_value(map, BOARD_TAG, "ante house");
    _house_cut = query_auto_load_value(map, BOARD_TAG, "house cut");
@@ -1753,4 +1457,4 @@ void init_dynamic_arg(mapping map, object player) {
    if (!_player_stats) {
       _player_stats = ([ ]);
    }
-} /* init_dynamic_arg() */
+}

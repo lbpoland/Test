@@ -1,14 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: death_ward.c,v 1.1 1998/01/06 04:40:23 ceres Exp $
- * $Log: death_ward.c,v $
- * Revision 1.1  1998/01/06 04:40:23  ceres
- * Initial revision
- * 
-*/
 inherit "/std/effect_shadow";
-
 void event_death( object thing, object *killers, object killer,
       string room_mess, string killer_mess ) {
    int damage;
@@ -33,4 +23,4 @@ void event_death( object thing, object *killers, object killer,
          twit->attack_by( player );
    }
    remove_this_effect();
-} /* event_death() */
+}

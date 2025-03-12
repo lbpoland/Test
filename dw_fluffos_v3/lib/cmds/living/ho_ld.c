@@ -1,90 +1,35 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: ho_ld.c,v 1.12 2002/08/16 00:11:52 presto Exp $
- * $Log: ho_ld.c,v $
- * Revision 1.12  2002/08/16 00:11:52  presto
- * Changed to allow you to switch from one hand to the other, or between
- * one hand and two hands without unholding first
- *
- * Revision 1.11  2002/08/03 19:25:36  ceres
- * New combat system version
- *
- * Revision 1.9  2001/03/13 05:04:22  pinkfish
- * Fix up holding if you are already holding one of the items.
- *
- * Revision 1.8  2001/03/09 01:50:43  pinkfish
- * Fix up some problems in hold.
- *
- * Revision 1.7  2001/03/07 22:02:49  pinkfish
- * *** empty log message ***
- *
- * Revision 1.6  2001/03/07 21:59:30  terano
- *  Forcibly unlocked by pinkfish
- *
- * Revision 1.5  2000/03/10 23:27:18  gruper
- * I *hope* I fixed an index out of bounds bug,
- * but who knows - maybe I broke it even worse :)
- *
- * Revision 1.4  1999/07/07 23:24:52  pinkfish
- * Fix up some problems with hold that caused it not to work with things
- * that fiddled with the number of limbs available.
- *
- * Revision 1.3  1999/06/04 00:59:35  pinkfish
- * Fix up hold to unhold from multiple hands.
- *
- * Revision 1.2  1998/10/08 09:52:49  pinkfish
- * Fixed up to work correctly with things that do not wish to be unheld.
- *
- * Revision 1.1  1998/01/06 05:28:43  ceres
- * Initial revision
- * 
-*/
-/* Command to hold weapons. This _should_ be fairly simple, however it is */
-/* complicated by dealing with 1. a variable number of limbs and 2. printing */
-/* out all the appropriate holding/unholding/failing/suceeding messages. */
-
 inherit "/cmds/base";
-
 #define TP this_player()
-
 int cmd(object * obs,
         string str)
 {
-   int num_limbs;               // this players limb count
-   int avail;                   // limbs available
-   int old_avail;               // old limbs available, used for sanity checking
-   int reqd;                    // limbs required
-   int i;                       // general counter
-   int pos;                     // which limb position
-   int success;                 // did we succeed
-   int *used;                   // limbs used by set_hold or set_unhold
-   int *already_used;           // limbs used by already held weapons
-   int *limbs_used;             // limb positions used by already held objects
-
+   int num_limbs;
+   int avail;
+   int old_avail;
+   int reqd;
+   int i;
+   int pos;
+   int success;
+   int *used;
+   int *already_used;
+   int *limbs_used;
    object ob;
    object weapon;
-   object *using;               // limbs currently in use
-   object *fails;               // weapons we failed to hold
-   object *unfails;             // weapons we failed to unhold
-   object *holds;               // weapons we sucessfully held
-   object *unholds;             // weapons we successfully unheld
-   object *already;             // weapons already held
-   object *no_change;           // objects that we are already holding the way
-                                //   we requested
-
-   string *limbs;               // limb names;
-   string *hhands;              // hands we successfully held weapons in
-   string *uhands;              // hands we successfully unheld weapons from
-
-   // calc how many hands will be needed
+   object *using;
+   object *fails;
+   object *unfails;
+   object *holds;
+   object *unholds;
+   object *already;
+   object *no_change;
+   string *limbs;
+   string *hhands;
+   string *uhands;
    limbs = TP->query_limbs();
    num_limbs = sizeof(limbs);
    avail = TP->query_free_limbs();
    no_change = ({ });
-
    already = filter(obs, (: $1->query_holder() :));
-
    if (sizeof(already) > 0) {
       using = this_player()->query_holding();
       foreach (ob in already)  {
@@ -120,10 +65,7 @@ int cmd(object * obs,
    } else {
       already_used = ({ });
    }
-
    fails = holds = unholds = hhands = uhands = unfails = ({ });
-
-   // deal with specific hands first
    if (str && obs[0]) {
       pos = member_array(str, limbs);
       if (pos == -1) {
@@ -134,14 +76,10 @@ int cmd(object * obs,
          return notify_fail("Incorrect limb type, must be one of " +
                             query_multiple_short(limbs) + ".\n");
       }
-
       using = TP->query_holding();
-
-      // clear the appropriate hand
       if (sizeof(unfails) == 0  &&  using[pos]) {
          used = TP->set_unhold(using[pos]);
          if (sizeof(used) == 0) {
-            /* This means we cannot hold the object for sure. */
             unfails += ({ using[pos] });
             uhands += ({ limbs[pos] });
          } else {
@@ -151,12 +89,9 @@ int cmd(object * obs,
             unholds += ({ using[pos] });
          }
       }
-
-      // Put it down if we are already holding it in another hand
       if ((i = member_array(obs[0], using - unholds)) != -1)  {
          used = TP->set_unhold(obs[0]);
          if (sizeof(used) == 0) {
-            /* This means we cannot hold the object for sure. */
             unfails += ({ obs[0] });
             uhands += ({ limbs[i] });
          } else {
@@ -166,9 +101,7 @@ int cmd(object * obs,
             unholds += ({ obs[0] });
          }
       }
-
       if (sizeof(unfails) == 0) {
-         // hold in the appropriate hand
          used = TP->set_hold(obs[0], pos, 1);
          if (sizeof(used) == 0) {
             fails += ({ obs[0] });
@@ -180,23 +113,15 @@ int cmd(object * obs,
             success = 1;
          }
       }
-
-   } else {                     // now deal with normal holding
-
+   } else {
       foreach(ob in obs) {
          reqd += ob->query_no_limbs();
       }
-
       if (reqd > num_limbs) {
          add_failed_mess("You do not have enough limbs to hold $I.\n", obs);
          return 0;
       }
-
       old_avail = -1;
-      // if necessary put down items until the required hands are available
-      // No need for a while, if it canont be done.  It cannot be done.
-      // If nothign was able to be put down after one sweep through, we are
-      // out of luck.
       while ((avail < reqd) && (avail < num_limbs)) {
          if ((reqd > num_limbs - sizeof(unfails)) || (old_avail == avail)) {
             if (sizeof(unfails)) {
@@ -233,22 +158,17 @@ int cmd(object * obs,
             }
          }
       }
-
       if (!sizeof(unfails)) {
-         // now try holding the new items
          foreach(ob in obs) {
             using = TP->query_holding();
             pos = 0;
-
             if (!ob->query_no_limbs() || avail < ob->query_no_limbs()) {
                fails += ({ ob });
                break;
             }
-            // hold the new items
             while ((using[pos]) && (pos < num_limbs)) {
                pos++;
             }
-
             used = TP->set_hold(ob, pos, ob->query_no_limbs());
             if (used == ({ })) {
                fails += ({ ob });
@@ -263,8 +183,6 @@ int cmd(object * obs,
          }
       }
    }
-
-   // printout all the different sodding message types
    if (sizeof(unfails)) {
       tell_object(TP,
                   "You fail to put down " + query_multiple_short(unfails) +
@@ -273,7 +191,6 @@ int cmd(object * obs,
           query_multiple_short(unholds) + " from " + TP->query_possessive() +
           " " + query_multiple_short(uhands) + ".\n");
    }
-
    if (sizeof(unholds)) {
       tell_object(TP, "You put down " + query_multiple_short(unholds) +
                   " from your " + query_multiple_short(uhands) + ".\n");
@@ -281,7 +198,6 @@ int cmd(object * obs,
           " from " + TP->query_possessive() + " " +
           query_multiple_short(uhands) + ".\n");
    }
-
    if (sizeof(holds)) {
       tell_object(TP,
                   "You hold " + query_multiple_short(holds) + " in your " +
@@ -290,21 +206,18 @@ int cmd(object * obs,
           TP->query_possessive() + " " + query_multiple_short(hhands) +
           ".\n");
    }
-   // don't print the failed to hold messages if we managed to hold stuff.
    if (!success && sizeof(fails)) {
       tell_object(TP,
                   "You fail to hold " + query_multiple_short(fails) + ".\n");
       say(TP->one_short() + " fails to hold " + query_multiple_short(fails) +
           ".\n");
    }
-
    return 1;
-}                               /* cmd() */
-
+}
 mixed *query_patterns()
 {
    return ({ "<indirect:object:me>", (: cmd($1, 0) :),
              "<indirect:object:me> in [my] {" +
              implode(this_player()->query_limbs(), "|") + "}",
              (: cmd($1, implode($4[1..], " ")) :) });
-}                               /* query_patterns() */
+}

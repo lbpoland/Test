@@ -1,22 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: locate.c,v 1.21 2003/07/13 09:13:33 pinkfish Exp $
- * 
-*/
 inherit "/cmds/base";
-
 #define TP this_player()
-
-/**
- * This method zips down inside the container looking for the match.
- */
 object *look_in_container(object fluff,
                           string word) {
    object frog;
    object *obs;
    object *things;
-
    things = match_objects_for_existence(word, ({ fluff }));
    obs = all_inventory(fluff);
    foreach (frog in obs) {
@@ -24,10 +12,8 @@ object *look_in_container(object fluff,
          things += look_in_container(frog, word);
       }
    }
-
    return things;
-} /* look_in_container() */
-
+}
 mixed cmd( string word ) {
    int i;
    int base_num;
@@ -35,7 +21,6 @@ mixed cmd( string word ) {
    object thing;
    object *things;
    object *extra_things;
-
    debug_printf("%s", word);
    if (environment(TP)) {
       switch(TP->check_dark(environment(TP)->query_light())) {
@@ -57,27 +42,20 @@ mixed cmd( string word ) {
         break;
       }
    }
-
    things = match_objects_for_existence( word, ({ environment( TP ) }) );
    things = filter(things, (: environment($1) == environment(TP) ||
                              environment($1) == TP :));
    extra_things = look_in_container(this_player(), word) - things;
-
-
    base_num = sizeof(things);
-   
    things += extra_things;
-
    if ( !sizeof( things ) ) {
       return notify_fail( "There is nothing here matching \""+ word +"\".\n" );
    }
-
    if ( sizeof( things ) == 1 ) {
      if ( things[0] == TP ) {
        write("You are here! :)\n");
        return 1;
      }
-
      list = "$C$"+ (string)things[ 0 ]->the_short();
      if ( (object)things[ 0 ]->query_wielded() == TP ) {
        list += " (held in " + query_multiple_short(TP->query_holding_limbs(things[0])) + ")";
@@ -102,7 +80,6 @@ mixed cmd( string word ) {
      write( list );
      return 1;
    }
-   
    list = "";
    foreach ( thing in things ) {
       i++;
@@ -120,7 +97,6 @@ mixed cmd( string word ) {
       }
       if ( (object)thing->query_wielded() == TP ) {
          list += " (held in " + query_multiple_short(TP->query_holding_limbs(thing)) + ")";
-         //list += " (wielded)";
       }
       if ( (object)thing->query_worn_by() == TP ) {
          list += " (worn)";
@@ -142,8 +118,7 @@ mixed cmd( string word ) {
    }
    write( "$P$Locate$P$"+ list );
    return 1;
-} /* cmd() */
-
+}
 mixed *query_patterns() {
    return ({ "<string'object name'>", (: cmd($4[0]) :) });
-} /* query_patterns() */
+}

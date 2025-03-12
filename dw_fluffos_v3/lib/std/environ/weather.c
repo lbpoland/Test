@@ -1,18 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: weather.c,v 1.2 2000/06/27 00:25:57 pinkfish Exp $
- * $Log: weather.c,v $
- * Revision 1.2  2000/06/27 00:25:57  pinkfish
- * Fix up the mended drum reference.
- *
- * Revision 1.1  1998/01/06 04:23:53  ceres
- * Initial revision
- * 
-*/
 #include <config.h>
 inherit "std/object";
- 
 #include "climate.h"
 #define FILE_NAME "/save/environ/weather"
 #define HOME "/obj/handlers/weather_room"
@@ -20,28 +7,14 @@ inherit "std/object";
 #define YEAR 60
 #define DAY 60
 #define SPEED 40
- 
-/*
- * hmmmmm. ok well cloud cover...
- *                   wind speed...
- * hmmm. what would be a nice way of doing that? and climate...
- *
- * well we could do something like having the cloud cover sort of follow the low
- * or we could change the low scheme. I dont belive in global patterns, ie the
- * whole mud having the same weather. but nearby rooms should have very similar
- * weather.
- */
- 
 mixed *coldarr,
       *cloudarr,
       *rainarr;
- 
 int timeofyear,
     mooncycle,
     moonoff,
     timeofday,
     intensity;
- 
 int distance(mixed *co_ord1,mixed *co_ord);
 int cloud_index(object env);
 int rain_index(object env);
@@ -49,7 +22,6 @@ int temperature_index(object env);
 string cloud_string(object env);
 string rain_string(object env);
 string temperature_string(object env);
- 
 void setup() {
   set_name("weather");
   set_short("weather controller extrodinare");
@@ -57,42 +29,36 @@ void setup() {
   cloudarr = ({ ({ 0,0 }), ({ 50,50 }), ({ -50,-50 }) });
   rainarr = ({ ({ 0,0 }), ({ 50,50 }), ({ -50,-50 }) });
   coldarr = ({ ({ 0,0 }), ({ 50,50 }), ({ -50,-50 }) });
- 
   intensity = 100;
   restore_object(FILE_NAME);
   call_out("update_low",SPEED);
   move("bing");
 }
- 
-/* have this move here to get it to my weather room ;) */
 move(arg) {
   ::move(HOME);
 }
- 
 mixed *query_cold() { return coldarr; }
 mixed *query_rain() { return rainarr; }
 mixed *query_cloud() { return cloudarr; }
 int query_moon() { return mooncycle; }
 string query_moon_string(object env) {
   int bing;
- 
   bing = timeofday - (DAY/4) -
          (distance((mixed *)env->query_co_ord(), ({ 0, 0, 0, }))/100);
   if (bing<0) bing += DAY;
   if ((moonoff+(DAY/2)<bing) && (bing<DAY-moonoff))
-    return 0; /* the moon is not up... */
+    return 0;
   return ({ "full moon",
             "waning three quarter moon",
             "waning half moon",
             "waning quarter moon",
-            "waning cresent moon", /* from here */
+            "waning cresent moon",
             "new moon",
-            "waxing cresent moon", /* to here you cannot see at night... ! */
+            "waxing cresent moon",
             "waxing quarter moon",
             "waxing half moon",
             "waxing three quarter moon" })[mooncycle];
 }
- 
 int distance(mixed *co_ord1, mixed *co_ord2) {
   int off;
   if (!pointerp(co_ord1) || !pointerp(co_ord2))
@@ -107,18 +73,15 @@ int distance(mixed *co_ord1, mixed *co_ord2) {
     off += co_ord2[1] - co_ord1[1];
   return off;
 }
- 
 int query_season() { return timeofyear/15; }
 int query_time_of_year() { return timeofyear; }
 int query_time_of_day() { return timeofday; }
 int query_day(object env) {
   int bing, bit;
- 
   if (!env) {
     load_object(CONFIG_START_LOCATION);
     env = find_object(CONFIG_START_LOCATION);
   }
-/* make it change... but not very quickly... */
   bing = timeofday - (DAY/4) -
          (distance((mixed *)env->query_co_ord(), ({ 0, 0, 0, }))/100);
   if (bing<0) bing += DAY;
@@ -129,17 +92,8 @@ int query_day(object env) {
     return bit;
   return -(bing - bit);
 }
- 
-/*
- * returns a percentage of light.... 100 being full sunlight...
- * down
- */
 int query_darkness(object env) {
   int bing, per, i;
- 
-/* so thats the day.... we should make the light fade towards night
- * though.... Hmmm.
- */
   per = -cloud_index(env);
   if (per <-100)
     per = -100;
@@ -160,14 +114,12 @@ int query_darkness(object env) {
   i = mooncycle -5;
   if (i<0)
     i = -i;
-  return 30+(per+100)*14*i/200; /* lit up by the light of the moon... tell them about it? */
+  return 30+(per+100)*14*i/200;
 }
- 
 string weather_string(object env) {
   return temperature_string(env)+" with "+cloud_string(env)+
          rain_string(env);
 }
- 
 int query_raining(object env) {
   int cloud,rain;
   if (temperature_index(env)/(100/7)<2) {
@@ -181,10 +133,8 @@ int query_raining(object env) {
   }
   return 0;
 }
- 
 int query_hailing(object env) {
   int cloud, rain;
- 
   if (temperature_index(env)/(100/7)==2) {
     cloud = cloud_index(env);
     if (cloud <=0)
@@ -196,7 +146,6 @@ int query_hailing(object env) {
   }
   return 0;
 }
- 
 int query_snowing(object env) {
   int cloud,rain;
   if ((temperature_index(env)/(100/7))>=3) {
@@ -210,11 +159,9 @@ int query_snowing(object env) {
   }
   return 0;
 }
- 
 string rain_string(object env) {
   int cloud, rain, temp;
   string tempstr1,tempstr2;
- 
   cloud = cloud_index(env);
   rain = rain_index(env);
   if (cloud<=0) return "";
@@ -244,7 +191,6 @@ string rain_string(object env) {
                       "heavy",
                       "very heavy" }) [cloud]+tempstr2);
 }
- 
 string temperature_string(object env) {
   int inten;
   inten = temperature_index(env);
@@ -253,53 +199,49 @@ string temperature_string(object env) {
     inten = 10;
   if (inten<-10)
     inten = -10;
-  return ({ "Its one of those baking eggs on the pavement days", /* -10 */
-            "So hot that the sun feels like its right next door", /* -9 */
-            "Damn hot", /* -8 */
-            "Very hot", /* -7 */
-            "Hot", /* -6 */
-            "Hot", /* -5 */
-            "Reasonably hot", /* -4 */
-            "Very warm", /* -3 */
-            "Warm", /* -2 */
-            "Pleasantly warm", /* -1 */
-            "Average temerature", /* 0 */
-            "A little chilly", /* 1 */
-            "A slight nip in the air", /* 2 */
-            "Chilly", /* 3 */
-            "Very chilly", /* 4 */
-            "Cold", /* 5 */
-            "Cold", /* 6 */
-            "Very cold", /* 7 */
-            "Damn cold", /* 8 */
-            "Incredibly cold", /* 9 */
-            "Freezing cold" })[inten+10]; /* 10 */
+  return ({ "Its one of those baking eggs on the pavement days",
+            "So hot that the sun feels like its right next door",
+            "Damn hot",
+            "Very hot",
+            "Hot",
+            "Hot",
+            "Reasonably hot",
+            "Very warm",
+            "Warm",
+            "Pleasantly warm",
+            "Average temerature",
+            "A little chilly",
+            "A slight nip in the air",
+            "Chilly",
+            "Very chilly",
+            "Cold",
+            "Cold",
+            "Very cold",
+            "Damn cold",
+            "Incredibly cold",
+            "Freezing cold" })[inten+10];
 }
- 
 string cloud_string(object env) {
   int off;
- 
   off = cloud_index(env) / 20;
   if (off>5) off = 5;
   if (off<-5) off = -5;
-  return ({ "a beatifully clear sky", /* -5 */
-            "a few high level sirius clouds", /* -4 */
-            "scattered puffy clouds", /* -3 */
-            "very thin complete cloud cover", /* -2 */
-            "light cloud cover", /* -1 */
-            "medium cloud cover", /* 0 */
-            "dense cloud cover", /* 1 */
-            "packed cloud cover", /* 2 */
-            "packed cloud cover", /* 3 */
-            "heavy black clouds", /* 4 */
-            "thick heavy clouds", /* 5 */
+  return ({ "a beatifully clear sky",
+            "a few high level sirius clouds",
+            "scattered puffy clouds",
+            "very thin complete cloud cover",
+            "light cloud cover",
+            "medium cloud cover",
+            "dense cloud cover",
+            "packed cloud cover",
+            "packed cloud cover",
+            "heavy black clouds",
+            "thick heavy clouds",
          })[off+5];
 }
- 
 int temperature_index(object env) {
   int off,i;
   mixed clim, *co_ord;
- 
   for (i=0;i<sizeof(coldarr);i++)
     off += (distance((mixed *)env->query_co_ord(), coldarr[i]) % (MAX_DIST*2));
   off = off / sizeof(coldarr);
@@ -313,12 +255,10 @@ int temperature_index(object env) {
     co_ord = ({ 0, 0, 0 });
   return (off + (timeofyear - (YEAR/2)) + (timeofday - (DAY/2)) + co_ord[2]);
 }
- 
 int cloud_index(object env) {
   int off;
   mixed *clim;
   int i;
- 
   for (i=0;i<sizeof(cloudarr);i++)
     off += (distance((mixed *)env->query_co_ord(), cloudarr[i]) % (MAX_DIST*2));
   off = off / sizeof(cloudarr);
@@ -329,12 +269,10 @@ int cloud_index(object env) {
   off = 0-off;
   return (off + (timeofyear - (YEAR/2)));
 }
- 
 int rain_index(object env) {
   int off;
   mixed *clim;
   int i;
- 
   for (i=0;i<sizeof(rainarr);i++)
     off += (distance((mixed *)env->query_co_ord(), rainarr[i]) % (MAX_DIST*2));
   off = off / sizeof(rainarr);
@@ -345,10 +283,8 @@ int rain_index(object env) {
   off = 0-off;
   return off;
 }
- 
 void update_low() {
   int i;
- 
   timeofday++;
   if (timeofday>DAY) {
     timeofday = 0;
@@ -387,7 +323,6 @@ void update_low() {
     intensity=300;
   call_out("update_low",SPEED);
 }
- 
 void dest_me() {
   save_object(FILE_NAME);
   ::dest_me();

@@ -1,23 +1,17 @@
 #include <terrain_map.h>
-
 inherit TERRAIN_MAP_AIR_BASE;
-
 void setup() {
    set_long("Flying up high in the air.");
    set_short("air room");
 }
-
 void terrain_setup() {
    int* coords;
    int* ground_coords;
    string ground_room;
    string ground_base_str;
-
    coords = query_terrain_coords();
-
    ground_room = query_terrain_handler()->query_ground_room(coords[0], coords[1]);
    ground_coords = ground_room->query_terrain_coords();
-
    switch (coords[2] - ground_coords[2]) {
    case 0..100 :
       ground_base_str = ground_room->query_long();
@@ -30,17 +24,13 @@ void terrain_setup() {
       set_long("High up in the sky.");
       break;
    }
-
 }
-
 void event_enter(object ob) {
-   // Flying or floating.
    if (ob->query_property("flying")) {
       return ;
    }
    call_out("plumet_down", 2, ob);
 }
-
 void plumet_down(object ob) {
    int* coords;
    int* ground_coords;
@@ -50,7 +40,6 @@ void plumet_down(object ob) {
    int damage;
    int dist;
    object room;
-
    if (environment(ob) != this_object() || ob->query_property("flying")) {
       return ;
    }
@@ -66,12 +55,10 @@ void plumet_down(object ob) {
                    "ground.\n");
       }
    }
-   // Hit the ground :)
    room = query_terrain_handler()->load_room_at(coords[0], coords[1], ground_coords[2]);
    tell_object(ob, "%^BOLD%^%^RED%^You find it hard to float and make a quick trip " +
                    query_terrain_handler()->query_distance_str(dist) +
                    " downwards.%^RESET%^\n");
-   // Figure out the damage.
    ob->move_with_look(room, "$N plumets down out of the sky.",
                   "$N plumets down out of the sky.");
    damage = 2 * dist;
@@ -79,19 +66,15 @@ void plumet_down(object ob) {
    ob->adjust_hp(damage, this_object(), this_object());
    tell_object(ob, "%^BOLD%^%^RED%^Ouch, that hurt.%^RESET%^\n");
 }
-
 string query_death_message() {
    return "from forgetting they cannot fly";
 }
-
 int query_theft_command() {
    return 1;
 }
-
 int can_enter_from(string key, string direc) {
    return 0;
 }
-
 int can_exit_to(string key, string direc) {
    return 0;
 }

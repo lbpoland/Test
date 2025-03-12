@@ -1,14 +1,6 @@
-/**
- * This is a base to make up randomised decks of cards.
- * @author Pinkfish
- * @started Thu Dec  7 07:34:10 PST 2000
- */
 #include <room/card_base.h>
-
 #define CARD_NUM_MAX CARD_NUMBER_KING
-
 int is_card_red(class playing_card card);
-
 class playing_card* make_deck(int number_of_decks,
                               int number_of_jokers) {
    class playing_card* deck;
@@ -16,7 +8,6 @@ class playing_card* make_deck(int number_of_decks,
    int i;
    int suit;
    int num;
-
    deck = ({ });
    for (i = 0; i < number_of_decks; i++) {
       for (suit = CARD_SUIT_HEARTS; suit <= CARD_SUIT_SPADES; suit++) {
@@ -34,18 +25,11 @@ class playing_card* make_deck(int number_of_decks,
       deck += ({ card });
    }
    return deck;
-} /* make_deck() */
-
-/**
- * This method scrabled the deck and shuffles it.
- * @param deck the deck to shuffle
- * @return a shuffled deck
- */
+}
 class playing_card* shuffle_deck(class playing_card* deck) {
    class playing_card* new_deck;
    int pos;
    int i;
-
    for (i = 0; i < 2; i++) {
       new_deck = ({ });
       while (sizeof(deck)) {
@@ -56,13 +40,7 @@ class playing_card* shuffle_deck(class playing_card* deck) {
       deck = new_deck;
    }
    return deck;
-} /* shuffle_deck() */
-
-/**
- * This method returns the suit letter associated with the card.
- * @param suit the suit to get the letter of
- * @return the letter of the suit
- */
+}
 string query_suit_letter(int suit) {
    switch (suit) {
    case CARD_SUIT_SPADES :
@@ -80,16 +58,10 @@ string query_suit_letter(int suit) {
    case CARD_SUIT_JOKER :
       return "J";
    }
-} /* query_suit_letter() */
-
-/**
- * This method returns the three character string for the card.
- * @return the three character string for the card
- */
+}
 string query_card_string(class playing_card card) {
    string ret;
    string colour;
-
    if (card->suit == CARD_SUIT_JOKER) {
       return "*J*";
    }
@@ -99,7 +71,6 @@ string query_card_string(class playing_card card) {
    } else {
       colour = "%^BOLD%^";
    }
-
    if (card->number > 10 || card->number == CARD_NUMBER_ACE) {
       switch (card->number) {
       case CARD_NUMBER_JACK :
@@ -119,43 +90,18 @@ string query_card_string(class playing_card card) {
       ret = sprintf("%s%-2d%s", colour, card->number, ret);
    }
    return ret + "%^RESET%^";
-} /* query_card_string() */
-
-/**
- * This method determines if the card colour is red.
- * @param card the card to check
- * @return 1 if it is, 0 if not
- */
+}
 int is_card_red(class playing_card card) {
    return card->suit == CARD_SUIT_HEARTS || card->suit == CARD_SUIT_DIAMONDS;
-} /* is_card_red() */
-
-/**
- * This method determines if the card colour is black.
- * @param card the card to check
- * @return 1 if it is, 0 if not
- */
+}
 int is_card_black(class playing_card card) {
    return card->suit == CARD_SUIT_SPADES || card->suit == CARD_SUIT_CLUBS;
-} /* is_card_black() */
-
-/**
- * This method checks to see if the card is a joker.
- * @param card the card to check
- * @return 1 if it is, 0 if not
- */
+}
 int is_card_joker(class playing_card card) {
    return card->suit == CARD_SUIT_JOKER;
-} /* is_card_joker() */
-
-/**
- * This method makes a array for a 3x3 card.
- * @param card the card to make 3x3
- * @return the three line array
- */
+}
 string* query_card_three(class playing_card card) {
    string* lines;
-
    if (is_card_red(card)) {
       lines = allocate(3, "%^BOLD%^%^RED%^");
    } else {
@@ -184,7 +130,6 @@ string* query_card_three(class playing_card card) {
       lines[2] += "* K%^RESET%^";
       return lines;
    }
-
    if (card->number <= 10 && card->number != CARD_NUMBER_ACE) {
       if (card->number == 10) {
          lines[1] += " 10%^RESET%^";
@@ -208,16 +153,9 @@ string* query_card_three(class playing_card card) {
       }
    }
    return lines;
-} /* query_card_three() */
-
-/**
- * This method makes a array for a 2x2 card.
- * @param card the card to make 2x2
- * @return the two line array
- */
+}
 string* query_card_two(class playing_card card) {
    string* lines;
-
    lines = allocate(2);
    switch (card->suit) {
    case CARD_SUIT_HEARTS :
@@ -237,7 +175,6 @@ string* query_card_two(class playing_card card) {
       lines[1] = "*O";
       return lines;
    }
-
    if (card->number <= 10 && card->number != CARD_NUMBER_ACE) {
       lines[1] = sprintf("%2d", card->number);
    } else {
@@ -257,14 +194,7 @@ string* query_card_two(class playing_card card) {
       }
    }
    return lines;
-} /* query_card_three() */
-
-/**
- * This method returns a string showing the hand.
- * @param hand the hand to show
- * @param three 1 for a 3x3, 0 for a 2x2
- * @return a string representation of the hand
- */
+}
 string query_hand_string(class playing_card* hand, int flags, int cols) {
    string hand_str;
    int i;
@@ -278,7 +208,6 @@ string query_hand_string(class playing_card* hand, int flags, int cols) {
    string start_space;
    string end_space;
    mixed card_str;
-
    if (!sizeof(hand)) {
       return "No cards\n";
    }
@@ -292,7 +221,6 @@ string query_hand_string(class playing_card* hand, int flags, int cols) {
          top = "+--+";
          width = 4;
       }
-
       start = "|";
       end = "|";
       start_space = " ";
@@ -311,7 +239,6 @@ string query_hand_string(class playing_card* hand, int flags, int cols) {
          width = 2;
       }
    }
-
    start_pos = 0;
    if (flags & CARD_HAND_THREE) {
       card_str = map(hand, (: query_card_three :));
@@ -320,12 +247,8 @@ string query_hand_string(class playing_card* hand, int flags, int cols) {
    } else {
       card_str = map(hand, (: query_card_two :));
    }
-
    while (start_pos < sizeof(hand)) {
       if (top) {
-         //
-         // Make the top of the card.
-         //
          line = "";
          for (i = 0; i + start_pos < sizeof(hand) && (i + 1) * width < cols; i++) {
             line += top;
@@ -342,21 +265,17 @@ string query_hand_string(class playing_card* hand, int flags, int cols) {
          }
       }
       hand_str += "\n" + line;
-
       for (j = 0; j < sizeof(card_str[0]); j++) {
          for (i = 0; i + start_pos < sizeof(card_str) && (i + 1) * width < cols; i++) {
             hand_str += start + (card_str[i + start_pos][j]) + end;
          }
          hand_str += "\n";
       }
-
       hand_str += line;
       start_pos += cols / width;
    }
-
    return hand_str;
-} /* query_hand_string() */
-
+}
 private int compare_cards(class playing_card card1, class playing_card card2,
                           int flags) {
    if (card1->suit == card2->suit ||
@@ -373,15 +292,8 @@ private int compare_cards(class playing_card card1, class playing_card card2,
       return card1->number - card2->number;
    }
    return card1->suit - card2->suit;
-} /* compare_cards() */
-
-/**
- * This method sorts the cards into useful clumps.
- * @param deck the deck to sort
- * @param flags 1 = ace high, 2 = only numbers
- * @return the sorted deck
- */
+}
 class playing_card* sort_cards(class playing_card* deck, int flags) {
    return sort_array(deck,
                 (: compare_cards($1, $2, $(flags)) :));
-} /* sort_cards() */
+}

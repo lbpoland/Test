@@ -1,8 +1,6 @@
 #include "path.h"
 inherit "/std/room/basic_room";
-
 object board;
-
 void reset() {
   if(!board) {
     board = clone_object("obj/misc/board");
@@ -10,7 +8,6 @@ void reset() {
     board->move(this_object());
   }
 }
-
 void setup() {
   set_light(80);
   set_short("Mud Development Office");
@@ -29,7 +26,6 @@ void setup() {
   add_exit("northeast", ROOM+"cloner_control", "door");
    add_exit( "southeast", ROOM +"terrain", "door" );
 }
-
 void dest_me() {
   if (board)
     board->dest_me();

@@ -1,13 +1,10 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "a general, unspecified bird.  This should not be used since "
       "it is a base race" );
-
    bits = ({
       "head", 0, ({ 0, 150, 0,
          "left eye", "right eye", "beak", "skull" }),
@@ -48,7 +45,6 @@ void create() {
       "right leg", "leg", ({ 0, 100, 0, "right claw" }),
       "right claw", "claw", ({ "right leg", 25, 0 })
    });
-
    inedible = ({ "beak", "skull", "body feather", "left wing feather",
       "right wing feather", "tail feather", "left claw", "right claw",
       "wishbone" });
@@ -58,22 +54,18 @@ void create() {
    pluckable = ({ "body feather", "left wing feather", "right wing feather",
       "tail feather" });
    set_skin( "feathers" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
-
+}
 string *query_target_zones() {
   return ({ "head", "head", "neck",
               "breast", "breast", "breast", "breast", "back",
               "left wing", "left wing", "left wing", "left wing",
               "right wing", "right wing", "right wing", "right wing",
               "stomach", "stomach", "stomach",
-              "left leg", "left leg", "left claw", 
+              "left leg", "left leg", "left claw",
               "right leg", "right leg", "right claw" });
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "chest":

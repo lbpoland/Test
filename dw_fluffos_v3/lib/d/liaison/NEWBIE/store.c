@@ -1,19 +1,15 @@
 #include "path.h"
 #include <armoury.h>
-
 inherit "/std/shops/storeroom";
-
 nosave string *weapons = ({"dagger", "knife", "small knife", "short sword",
    "foil", "rapier", "cudgel", "crowbar", "knobbly mace","long sword",
    "chain", "morning star", "axe", "two-handed axe"});
-
 nosave string *armours = ({"hard leather cap", "heavy cotton breeches",
-   "ringmail", "leather breeches", "bone helm", 
+   "ringmail", "leather breeches", "bone helm",
    "brass breastplate", "leather breastplate", "bone mail",
    "bone shield", "medium wooden shield", "small metal shield",
    "hard leather boots", "metal clad boots", "leather gloves",
    "metal gauntlets", "metal helm", "iron breastplate"});
-
 nosave string *clothes = ({"brown linen shirt", "white linen skirt",
    "white linen tunic", "black cotton dress", "white cotton robe",
    "black leather shoes", "soft leather shoes", "grey worsted trousers",
@@ -21,21 +17,17 @@ nosave string *clothes = ({"brown linen shirt", "white linen skirt",
    "socks", "black leather shoes", "soft leather shoes", "green cloak",
    "red-brown tunic", "nightshirt", "thermal underwear", "lacy underwear",
    "jester costume", "wide brimmed hat", "soft leather gloves"});
-
 void setup() {
   set_short( "storeroom" );
   add_property( "determinate", "the " );
   set_long( "This is a storeroom.\n" );
   set_light( 100 );
-} /* setup() */
-
+}
 void reset() { call_out( "restock", 0 ); }
-
 void restock() {
   int i, size;
   object thing;
   object new_item;
-
   i = sizeof( match_objects_for_existence( "buckets", this_object() ) );
   for ( ; i < 3; i ++ ) {
     thing = clone_object( "/obj/vessel" );
@@ -58,30 +50,24 @@ void restock() {
       thing->move( this_object() );
     }
   }
-
   i = sizeof( match_objects_for_existence( "torches", this_object() ) );
   for ( ; i < 6; i++ ) {
     new_item = ( ARMOURY->request_item("torch", 100) );
     if (new_item) new_item->move( this_object() );
   }
-  
-  
   for(i=0; i<30; i++) {
     new_item = ( ARMOURY->request_weapon( weapons[random(sizeof(weapons))],
                    95 ) );
     if (new_item) new_item->move( this_object() );
   }
-
   for(i=0; i<25; i++) {
     new_item = ( ARMOURY->request_armour( armours[random(sizeof(armours))],
                    95 ) );
     if (new_item) new_item->move( this_object() );
   }
-  
   for(i=0; i<30; i++) {
     new_item = ( ARMOURY->request_clothing( clothes[random(sizeof(clothes))],
                    95 ) );
     if (new_item) new_item->move( this_object() );
-  }     
-} /* restock() */
-
+  }
+}

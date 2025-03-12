@@ -1,13 +1,9 @@
 #include <top_ten_tables.h>
-
 inherit "/std/object";
-
 string generate_list( mixed *args );
 string generate_table_message();
-
 nosave string table_name;
 nosave string language = "morporkian";
-
 void setup() {
    table_name = 0;
    set_name( "table" );
@@ -18,27 +14,20 @@ void setup() {
    reset_get();
    add_property( "there", "in one corner" );
    add_property( "survive fire", 1 );
-   //You have 5 seconds to change the language to something else.
    call_out( "setup_read_mess", 5 );
    call_out("dest_me", 30);
-} /* setup() */
-
+}
 string query_table_name() { return table_name; }
-
 void set_table_name( string word ) { table_name = word; }
-
 void set_language( string lang ) {
   language = lang;
 }
-
 void setup_read_mess() {
    add_read_mess((: generate_table_message() :), 0, language, 0);
 }
-
 string generate_table_message() {
    string long;
    mixed *args;
-
    long = "\nHigh Score Table: ";
    args = (mixed *)TOP_TEN_HANDLER->query_ordered_table( table_name );
    if ( !table_name ) {
@@ -55,11 +44,10 @@ string generate_table_message() {
    }
    return sprintf( "%|*s\n", table_name ? 40 : 50, long ) +
           sprintf( "%|*s\n", table_name ? 40 : 50, "Sorted by rating" ) +
-          sprintf( "%|*s\n\n", table_name ? 40 : 50, 
+          sprintf( "%|*s\n\n", table_name ? 40 : 50,
                    "-=- " + ctime(time()) + " -=-" ) +
           generate_list(args) + "\n";
 }
-
 string convert_age( int number ) {
    if ( number > 86400 )
       return ( number / 86400 ) +"D";
@@ -68,12 +56,10 @@ string convert_age( int number ) {
    if ( number > 60 )
       return ( number / 60 ) +"m";
    return number +"s";
-} /* convert_age() */
-
+}
 string generate_list( mixed *args ) {
    int i, number, sum;
    string format, list;
-
    if ( table_name )
       format = "  %2d. %-13s: level %4d  %5s";
    else
@@ -90,7 +76,5 @@ string generate_list( mixed *args ) {
          sum += args[i][TOP_TEN_RATING];
       }
    }
-   //list += "\nA rating of " + sum / (number - 2) +
-           //" would put you firmly in the middle.\n";
    return list;
-} /* generate_list() */
+}

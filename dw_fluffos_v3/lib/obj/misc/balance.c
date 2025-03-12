@@ -1,21 +1,4 @@
-/*
-** The way this used to be, if the player trying to work the quest 
-** suddenly buggered off in the middle of it, the quest related 
-** weights would still be there, but if another player came along and 
-** moved one of the weights, the quest related one would vanish. This 
-** has puzzled players, and cased at least one bug report.  I've changed 
-** it so that the quest related weight hangs around until a player resets 
-** the weights or actually starts the quest using the figure command. 
-**
-** Also removed some code that has been commented out for two years, and 
-** some other bits that were redundant because of this piece of unused 
-** code. And did some general Spring Cleaning. It seems to be working fine, 
-** but feel free to revert it if it breaks horribly.  --Tilly  
-*/ 
-
-
 #include <library.h>
-
 #define DEFAULT_PANS ([ \
   "left" : ([ ]), \
   "middle" : ([ \
@@ -25,15 +8,10 @@
   "large" : ({ "3", 27 }), \
   "very large" : ({ "9", 81 }) ]), \
   "right" : ([ ]) ])
-
 inherit "/std/object";
-
 private nosave int balance;
 private nosave string *doing;
 private nosave mapping pans;
-
-
-/* Start of function prototypes */
 void setup();
 void init();
 string *query_doing();
@@ -48,9 +26,6 @@ int figure_it_out();
 int move_a_specific_weight( string weight_size, string pan_to );
 int move_a_weight( string weight_size, string pan_from, string pan_to );
 void it_is_balanced( object person );
-/* End of function prototypes */
-
-
 void setup() {
   set_name( "balance" );
   set_short( "weighing balance" );
@@ -60,9 +35,7 @@ void setup() {
   reset_get();
   doing = ({ });
   pans = DEFAULT_PANS;
-} /* setup() */
-
-
+}
 void init() {
   add_command("weigh", "<indirect:object:me'thing(s)'> on <direct:object>",
     (:this_object()->weigh_something($1):));
@@ -71,21 +44,15 @@ void init() {
   add_command("move",
           "<string'size'> weight to <string'position'> pan",
           (:this_object()->move_a_specific_weight($4[0], $4[1]):));
-} /* init() */
-
-
+}
 string *query_doing() { return doing; }
-
 mapping query_pans() { return pans; }
-
-
 string long( string words, int dark ) {
   int i, j;
   string long;
   string *bits;
   string *places;
   string *weights;
-
   if (!words) {
     words = "balance";
   }
@@ -134,16 +101,13 @@ string long( string words, int dark ) {
       return long;
   }
   return "You're not quite sure what you're looking at.\n";
-} /* long() */
-
-
+}
 string pans_look() {
   int i;
   int j;
   string pans_status;
   string *places;
   string *weights;
-
   pans_status = "";
   places = m_indices( pans );
   for ( i = 0; i < sizeof( places ); i++ ) {
@@ -169,9 +133,7 @@ string pans_look() {
       break;
   }
   return pans_status;
-} /* pans_look() */
-
-
+}
 void recalculate_balance() {
   int i;
   int j;
@@ -179,7 +141,6 @@ void recalculate_balance() {
   string *places;
   string *weights;
   mapping pan_weights;
-
   pan_weights = ([ ]);
   places = m_indices( pans );
   for ( i = 0; i < sizeof( places ); i++ ) {
@@ -230,9 +191,7 @@ void recalculate_balance() {
         "right pan ends up hanging lowest.\n" );
       break;
   }
-} /* recalculate_balance() */
-
-
+}
 int reset_weights() {
   pans = DEFAULT_PANS;
   if (sizeof(doing)) {
@@ -241,13 +200,10 @@ int reset_weights() {
   add_succeeded_mess("$N $V the weights on $D.\n");
   recalculate_balance();
   return 1;
-} /* reset_weights() */
-
-
+}
 string weight_string( int weight ) {
   int wholes;
   int ninths;
-
   wholes = weight / 9;
   ninths = weight % 9;
   if ( wholes && ninths ) {
@@ -257,15 +213,12 @@ string weight_string( int weight ) {
     return wholes + " lb";
   }
   return ninths + "/9 lb";
-} /* weight_string() */
-
-
+}
 int weigh_something( object* obs ) {
   int i;
   int info;
   int weight;
   object person;
-
   if ( sizeof( doing ) ) {
     person = find_player( doing[ 0 ] );
     if ( person == this_player() ) {
@@ -317,13 +270,10 @@ int weigh_something( object* obs ) {
   }
   add_succeeded_mess(({ "", "$N $V $I on $D.\n" }), obs);
   return 1;
-} /* weigh_something() */
-
-
+}
 int figure_it_out() {
   int info;
   object person;
-
   if ( sizeof( doing ) ) {
     person = find_player( doing[ 0 ] );
     if ( person == this_player() ) {
@@ -357,13 +307,10 @@ int figure_it_out() {
   pans[ "left" ][ doing[ 1 ] ] = ({ "?", 1 + random( 121 ) });
   recalculate_balance();
   return 1;
-} /* figure_it_out() */
-
-
+}
 int move_a_specific_weight( string weight_size, string pan_to ) {
   object person;
   string pan_from;
-
   if ( sizeof( doing ) ) {
     person = find_player( doing[ 0 ] );
     if ( !person ) {
@@ -382,7 +329,6 @@ int move_a_specific_weight( string weight_size, string pan_to ) {
       }
     }
   }
-
   if ( !pans[ pan_to ] ) {
     add_failed_mess( "There is a left pan, a middle pan and a right pan, "
       "but no " + pan_to + " pan.\n" );
@@ -395,11 +341,8 @@ int move_a_specific_weight( string weight_size, string pan_to ) {
   }
   add_failed_mess("Unable to find the " + weight_size + " weight.\n");
   return 0;
-} /* move_a_specific_weight() */
-
-
+}
 int move_a_weight( string weight_size, string pan_from, string pan_to ) {
-
   if ( pan_from == pan_to ) {
     add_failed_mess( "The " + weight_size + " weight is already in the "
       + pan_to + " pan.\n" );
@@ -424,12 +367,9 @@ int move_a_weight( string weight_size, string pan_from, string pan_to ) {
     call_out( "it_is_balanced", 0, this_player() );
   }
   return 1;
-} /* move_a_weight() */
-
-
+}
 void it_is_balanced( object person ) {
   int info;
-
   tell_object( person, "You feel a small surge of self-esteem to have found "
     "that the "+ doing[ 1 ] +" weight weighs "
     + weight_string( pans[ "left" ][ doing[ 1 ] ][ 1 ] ) +".\n" );
@@ -453,12 +393,6 @@ void it_is_balanced( object person ) {
     case 3 :
       tell_object( person, "You're now adept at using the balance and "
         "can use it to weigh anything.\n" );
-/* Quest!
- * Name: balance quest
- * Title: Expert Balancer
- * Story: discovered how to weigh things using powers of three
- * Level: 3
- */
       if ( interactive( person ) ) {
         if ( !LIBRARY->query_quest_done( (string)person->query_name(),
           "balance quest" ) ) {
@@ -469,7 +403,7 @@ void it_is_balanced( object person ) {
       break;
     case 4:
       info--;
-      break; //if people want to keep moving the weights, let them.
+      break;
     default :
       tell_object( person, "Something has gone wrong with the balance.  "
         "Please contact Wodan about it.\n" );
@@ -483,4 +417,4 @@ void it_is_balanced( object person ) {
     "and returns all of the weights to the middle pan.\n", person );
   doing = ({ });
   pans = DEFAULT_PANS;
-} /* it_is_balanced() */
+}

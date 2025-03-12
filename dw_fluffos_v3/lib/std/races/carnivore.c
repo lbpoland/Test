@@ -1,15 +1,12 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_weight( 700 );
    set_height( 50 );
    set_desc( "your standard carnivore.  This should not be used as it is a "
       "base race" );
-
    bits = ({
       "head", "head", ({ 0, 40, 0,
          "left eye", "right eye", "nose", "skull", "left ear", "right ear",
@@ -53,27 +50,22 @@ void create() {
       "tail", "tail", ({ 0, 18, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "claw", "tail", "teeth", "tooth", "skin" });
    unrottable = ({ "skull", "claw", "teeth", "tooth" });
    set_skin( "pelt" );
-
    set_stats( ({ 6, 10, -2, 6, -4 }) );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
+}
 string *query_target_zones() {
   return ({ "head", "head", "neck",
-              "chest", "back", "back", "back", "lower back", 
+              "chest", "back", "back", "back", "lower back",
               "left front leg", "left front leg", "left front paw",
               "stomach", "stomach", "tail",
               "right front leg", "right front leg", "right front paw",
               "left rear leg", "left rear leg", "left rear paw",
               "right rear leg", "right rear leg", "right rear paw"});
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "chest":

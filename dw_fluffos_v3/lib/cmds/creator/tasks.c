@@ -1,22 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: tasks.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: tasks.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
 #include <skills.h>
-
 #define SAVE_FILES "/save/tasks/"
-
 inherit "/cmds/base";
-
 mapping awards;
-
 void create() { seteuid( "Root" ); }
-
 void main_menu( string word ) {
    int i, j, *numbers;
    string text, *words;
@@ -108,9 +94,8 @@ void main_menu( string word ) {
    }
    printf( "Choose one of Q, L, C or H (for help) : " );
    input_to( "main_menu" );
-} /* main_menu() */
-
+}
 int cmd() {
    main_menu( "L" );
    return 1;
-} /* cmd() */
+}

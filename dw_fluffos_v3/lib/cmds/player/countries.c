@@ -1,12 +1,4 @@
-/***
- * Five minute hack of a command to display where people
- * are logged on from.
- *    --Tape
- ***/
- 
 #define COUNTRIES_NO_SHOW_PROP "don't show on countries list"
-
-// the common countries mapping is used as a sort of cache
 mapping common_countries = ([
    "N/A" : ({ 0, "An unresolved address" }),
    "com" : ({ 0, "Commercial" }),
@@ -15,7 +7,6 @@ mapping common_countries = ([
    "uk" : ({ 0, "United Kingdom" }),
    "au" : ({ 0, "Australia" })
    ]);
-
 mapping all_countries = ([
    "ad" : ({ 0, "Andorra", }),
    "ae" : ({ 0, "United Arab Emirates" }),
@@ -134,7 +125,7 @@ mapping all_countries = ([
    "kr" : ({ 0, "Korea (South)" }),
    "kw" : ({ 0, "Kuwait" }),
    "ky" : ({ 0, "Cayman Islands" }),
-   "kz" : ({ 0, "Kazakhstan" }),   
+   "kz" : ({ 0, "Kazakhstan" }),
    "la" : ({ 0, "Laos" }),
    "lb" : ({ 0, "Lebanon" }),
    "lc" : ({ 0, "Saint Lucia" }),
@@ -268,117 +259,72 @@ mapping all_countries = ([
    "arpa" : ({ 0, "Old Style Arpanet" }),
    "nato" : ({ 0, "NATO Field" })
    ]);
-
 int cmd();
 int handle_no_show( int hide );
 string resolve_domain_suffix( object player );
-
 int cmd() {
-
    int left, right, size;
    float percentage;
    object person, *users;
    string suffix, message, country;
    mixed *unsorted, *sorted, *data;
    mapping countries;
-   
-   // get a copy of the common countries
    countries = copy( common_countries );
-   
-   // filter only those users who want to be displayed and are visible
    users = filter( users(), (: $1->query_visible( this_player() ) &&
       !$1->query_property( COUNTRIES_NO_SHOW_PROP ) :) );
-   
    if( !size = sizeof( users ) ) {
       return notify_fail( "No visible players.\n" );
    }
-   
-   // go through them
    foreach( person in users ) {
-   
-      // figure out what their domain suffix is
       suffix = resolve_domain_suffix( person );
-      
-      // if it's not on the list of common countries
       if( undefinedp( countries[ suffix ] ) ) {
-         // if it's not on the list of all countries
          if( undefinedp( all_countries[ suffix ] ) ) {
             countries[ "N/A" ][ 0 ] ++;
             continue;
          } else {
-            // add it to the common countries for next time
             common_countries += ([ suffix : all_countries[ suffix ] ]);
             countries += ([ suffix : copy( all_countries[ suffix ] ) ]);
          }
       }
-
       countries[ suffix ][ 0 ] ++;
    }
-   
    unsorted = ({ });
-
    size -= countries[ "N/A" ][ 0 ];
    map_delete( countries, "N/A" );
-      
-   // go through the countries and sort them in descending order
    foreach( country, data in countries ) {
-      // if this country had zero entries (no one logging on from there)
       if( !data[ 0 ] ) {
-         // remove it from the common countries list for next time
          map_delete( common_countries, country );
-         // go to the next country
          continue;
       } else {
          data[ 1 ] += " (%^BOLD%^" + upper_case( country ) + "%^RESET%^)";
          unsorted += ({ data });
       }
    }
-
    sorted = sort_array( unsorted, -1 );
-   
    message = "\nA total of %^BOLD%^" + query_num( size ) +
       "%^RESET%^ visible " + ( size != 1 ? "users" : "user" ) +
       " with resolvable addresses logged on:\n";
-
    left = this_player()->query_cols() / 3 * 2;
    left -= 3;
    right = this_player()->query_cols() - left;
-
-   // make it look pretty
    foreach( data in sorted ) {
       percentage = data[ 0 ] * 100.0 / size;
       message += sprintf( "   %-=*'.'s%*-=s\n",
       left, data[ 1 ],
       right, "  " + to_int( percentage + 0.5 ) + "%" );
    }
-
-   // stuff it through the user's more prompt
    this_player()->more_string( message );
-   
    return 1;
-   
-} /* cmd() */
-
-
+}
 string resolve_domain_suffix( object player ) {
-   
    string addy, *host;
-   
    addy = query_ip_name( player );
-   
    if( !addy ) {
       return 0;
    }
-   
    host = explode( lower_case( addy ), "." );
-   
-   // tell_creator( this_player(), "%O\n", host );   
-
    return host[ sizeof( host ) - 1 ];
-   
-} /* resolve_domain_suffix() */
-
-
+}
 int handle_no_show( int hide ) {
    switch( hide ) {
       case 1:
@@ -401,16 +347,13 @@ int handle_no_show( int hide ) {
          tell_object( this_player(), "You will now be shown on the "
             "countries list.\n" );
          return 1;
-      default: 
+      default:
          return notify_fail( "This shouldn't happen.\n" );
    }
-} /* handle_no_show() */
-
-
+}
 mixed *query_patterns() {
    return ({ "", (: cmd() :),
              "hide", (: handle_no_show( 1 ) :),
              "show", (: handle_no_show( 0 ) :)
           });
-} /* query_patterns() */
-
+}

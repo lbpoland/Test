@@ -6,7 +6,3 @@
 #define OBJ_FUNCS  "VirtualObject.h"
 #define ARM_FUNCS  "VirtualArmour.h"
 #define MON_FUNCS  "VritualMonster.h"
-/* These function must #define CLONEFILE */
-
-
-

@@ -1,28 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: ceres $
- * $Id: ftpd.c,v 1.12 2003/03/21 02:28:03 ceres Exp ceres $
- * 
-*/
-/* 
- * FTP daemon, complete rewrite using classes.
- * By Turrican@Discworld, 21-4-96.
- */
-
 #include <network.h>
-
 inherit SERVER;
-
 #include <ftp.h>
 #include <localtime.h>
 #include <player_handler.h>
-
 #define DELAY_LOG_FLUSH 5
-
 private nosave mapping socket_info, data_sockets;
 private nosave mapping _log_file_info = ([ ]);
 private nosave int _log_file_flush_id;
-
 protected void create() {
   server::create();
   seteuid("Root");
@@ -34,23 +18,17 @@ protected void create() {
     call_out("setup_ftp", 2);
   else
     destruct(this_object());
-} /* create() */
-
-/**
- * This method flushes out all the buffered stuff for the log files.
- */
+}
 private void flush_log_files() {
   string fname;
   string data;
-  
   _log_file_flush_id = 0;
   foreach (fname, data in _log_file_info) {
       map_delete(_log_file_info, fname);
       unguarded((: write_file, fname, data :));
    }
    _log_file_info = ([ ]);
-} /* flush_log_files() */
-
+}
 void log_write(string name, string fmt, mixed *args ...) {
     if (!_log_file_flush_id) {
      _log_file_flush_id = call_out((: flush_log_files :), DELAY_LOG_FLUSH);
@@ -64,22 +42,17 @@ void log_write(string name, string fmt, mixed *args ...) {
     _log_file_info[name] += fmt;
   }
 }
-
 protected void setup_ftp() {
   int x;
-
   if ((x = eventCreateSocket(FTP_PORT)) < 0) {
     if (this_object()) destruct(this_object());
     return;
   }
   call_out("check_connections", 5*60);
-} /* setup_ftp() */
-
-/* returns an array of users connected to ftpd */
+}
 string *query_connections() {
   class session *vals, val;
   string *list;
-
   list = ({ });
   vals = (class session *)values(socket_info);
   foreach (val in vals) {
@@ -92,43 +65,33 @@ string *query_connections() {
     }
   }
   return list;
-} /* query_connections() */
-
+}
 protected string ls(string path, int mask) {
    string *files, tmp, tmp2, creator, domain;
    int i, j, s, current_time;
    mixed *xfiles, *stats;
-   
 #ifdef DEBUG
     TP(sprintf("ls(%s,%d)\n",path,mask));
 #endif
-   /* If the path is a directory, get contents uynless MASK_D is set */
    if (!(mask & MASK_D) && file_size(path) == -2) {
       if (path[ <1 ] == '/')
          path += "*";
       else
-         path += "/*";
-   }
-   
-   /* begin narrow columnar "nlst" */
+         path += "
    if (!(MASK_L & mask)) {
       files = get_dir(path);
-      /* can only happen if permissions are messed up at account level */
       if (!files)
          return "";
       if (!(MASK_A & mask))
          files -= ({ ".", ".." });
       if (!(i = sizeof( files )))
          return "";
-      /* no wild cards...must have been the exact pathname to a file */
       if (strsrch(path, '*') == -1 && strsrch(path, '?') == -1) {
          return files[0] + "\n";
       }
-      /* remove globber at end of path, leave a trailing slash */
       j = strsrch(path, '/', -1);
       path = path[0..j];
       while (i--) {
-         /* scan next level down for files */
          tmp = sprintf("%s%s/", path, files[i]);
          if (MASK_F & mask) {
             if (strsrch(tmp, "/./") != -1 || strsrch(tmp, "/../") != -1) {
@@ -146,20 +109,13 @@ protected string ls(string path, int mask) {
       else
          return implode(files, "\n") + "\n";
    }
-   
-   /* don't recurse */
    if (!(MASK_R & mask)) {
-      /* begin long "list" */
       xfiles = get_dir(path, -1);
       if (!(mask & MASK_A))
          xfiles = filter_array(xfiles, "check_dots", this_object());
       if (!xfiles || !(s = sizeof( xfiles )))
          return "total 0\n";
       files = allocate(s);
-      
-      /* the Unix-like file permissions are mainly for effect...hopefully it
-       * isn't too much, since anything more would likely be too cpu intensive
-       * and cause it to max eval... */
       creator = (string)master()->author_file(path);
       if (!creator) {
          creator = "Root";
@@ -173,24 +129,19 @@ protected string ls(string path, int mask) {
          path = path[0..i];
       current_time = time();
       for (i = 0; i < s; i++) {
-         /* process timestamp */
-         tmp2 = ctime((xfiles[i])[2]); /* get last modified timestamp */
+         tmp2 = ctime((xfiles[i])[2]);
          if ((xfiles[i])[2] + (6 * 30 * 24 * 60 * 60) < current_time ||
              (xfiles[i])[2] - (60 * 60) > current_time ) {
-            /* MMM DD  YYYY */
             tmp = sprintf("%s  %s", tmp2[4..9], tmp2[20..23]);
          } else {
-            /* MMM DD hh:mm */
             tmp = tmp2[4..15];
          }
-         j = (xfiles[i])[1];   /* get filesize */
+         j = (xfiles[i])[1];
          if (j == -2) {
-            /* directory */
             files[i] = sprintf("drwxrwxr-x   0 %-8s %-8s        0 %12s %s",
                                creator, domain, tmp,
                                (xfiles[i])[0]+((MASK_F & mask)?"/":""));
          } else {
-            /* file */
             stats = stat(path + (xfiles[i])[0]);
             files[i] = sprintf("-rw%crw-r--   1 %-8s %-8s %8d %12s %s",
                                sizeof(stats) > 1 && stats[2] ? 'x' : '-',
@@ -201,7 +152,6 @@ protected string ls(string path, int mask) {
       }
       return sprintf("total %i\n",s)+implode(files, "\n")+"\n";
    }
-   /* begin long recursive "list" WARNING! still experimental */
    if( path[<1 .. <1] != "*" )
       return ls( path, (mask & ~MASK_R) );
    path = path[ 0 .. <3 ];
@@ -210,14 +160,7 @@ protected string ls(string path, int mask) {
    while( sizeof( files ) ) {
       reset_eval_cost();
       if( files[ 0 ] == "" )
-         tmp += ls( path + "/*", (mask & ~MASK_R) );
-      else
-         tmp += "\n" +files[ 0 ][ 1 .. <1 ] + ":\n" +
-                ls( path + files[ 0 ] + "/*", (mask & ~MASK_R) );
-      xfiles = get_dir( path + files[ 0 ] + "/*", -1 );
-      if( xfiles && ( s = sizeof( xfiles ) ) ) {
-         for (i = 0; i < s; i++) {
-            j = (xfiles[i])[1];   /* get filesize */
+         tmp += ls( path + "
             if ((j == -2) && (xfiles[i][0] != ".") && (xfiles[i][0] != "..")) {
                files += ({ files[ 0 ] +"/"+ xfiles[i][0] });
             }
@@ -226,14 +169,12 @@ protected string ls(string path, int mask) {
       files = files[ 1 .. <1 ];
    }
    return tmp;
-} /* ls() */
-
+}
 protected void data_conn(int fd, string mess, string name, int type) {
    int new_fd, ret, data_mode;
    string data_mode_name, addr;
    class session sess = (class session)socket_info[fd];
    class dataconn t;
-   
   if (type == STRING || (type == FILE && sess->type == STRING)) {
     data_mode_name = "ASCII";
     data_mode = STREAM;
@@ -241,7 +182,6 @@ protected void data_conn(int fd, string mess, string name, int type) {
     data_mode_name = "BINARY";
     data_mode = STREAM_BINARY;
   }
-
   t = new(class dataconn);
   t->path = name;
   t->data = (type == STRING ? replace_string(mess, "\n", "\r\n") : mess);
@@ -249,7 +189,6 @@ protected void data_conn(int fd, string mess, string name, int type) {
   t->parent_fd = fd;
   t->type = type;
   t->len = (type == STRING ? strlen(mess) : file_size(mess));
-
   if (sess->pasv_fd != -1) {
     if (sess->pasv_cb) {
       TP("Accepting after delay...\n");
@@ -270,28 +209,23 @@ protected void data_conn(int fd, string mess, string name, int type) {
     }
   } else {
     sess->use_default = 1;
-  
     if (sess->data_fd != -1) {
       eventWrite(fd, "425 Can't open data connection.\r\n");
       return;
     }
     new_fd = socket_create(data_mode, "data_read_callback",
                            "data_close_callback");
-
     if (new_fd < 0) {
       eventWrite(fd, "425 Can't create data socket.\r\n");
       return;
     }
-
     if (!sess->data_addr) {
       eventWrite(fd, "425 Can't open data connection.\r\n");
       socket_close(new_fd);
       return;
     }
-
     sscanf(socket_address(fd, 1), "%s %*d", addr);
     addr = sprintf("%s %d", addr, (FTP_PORT - 1));
-
     TP(sprintf("socket_bind(%d, 0, %s)\n", new_fd, addr));
     if ((ret = socket_bind(new_fd, 0, addr)) < 0) {
       eventWrite(fd, sprintf("425 Can't build data connection: %s.\r\n",
@@ -300,7 +234,6 @@ protected void data_conn(int fd, string mess, string name, int type) {
       return;
     }
   }
-
   data_sockets[new_fd] = t;
   sess->data_fd = new_fd;
   if (sess->pasv_fd == -1 &&
@@ -320,14 +253,12 @@ protected void data_conn(int fd, string mess, string name, int type) {
                          "(%d bytes).\r\n", data_mode_name, name, t->len));
   if (sess->pasv_fd != -1)
     data_write_callback(new_fd);
-} /* data_conn() */
-
+}
 protected void read_connection(int fd, string path, int append) {
   int new_fd, ret, data_mode;
   string data_mode_name, opath, addr;
   class dataconn t;
   class session sess = (class session)socket_info[fd];
-
   if (sess->type == BINARY) {
     data_mode_name = "BINARY";
     data_mode = STREAM_BINARY;
@@ -335,21 +266,18 @@ protected void read_connection(int fd, string path, int append) {
     data_mode_name = "ASCII";
     data_mode = STREAM;
   }
-
   opath = path;
   if (append != 1) {
     path = path + ".ftptmp";
     if (file_size(path) > -1)
       catch(rm(path));
   }
-
   t = new(class dataconn);
   t->path = path;
   t->parent_fd = fd;
   t->pos = (!append?0:(file_size(opath)==-1?0:file_size(opath)));
   t->type = DOWNLOAD;
   t->append = append;
-
   if (sess->pasv_fd != -1) {
     if (sess->pasv_cb) {
       new_fd = socket_accept(sess->pasv_fd, "data_read_callback",
@@ -372,18 +300,14 @@ protected void read_connection(int fd, string path, int append) {
       eventWrite(fd, "425 Can't open data connection.\r\n");
       return;
     }
-
     new_fd = socket_create(data_mode, "data_read_callback",
                            "data_close_callback");
-
     if (new_fd < 0) {
       eventWrite(fd, "425 Can't create data socket.\r\n");
       return;
     }
-
     sscanf(socket_address(fd, 1), "%s %*d", addr);
     addr = sprintf("%s %d", addr, (FTP_PORT - 1));
-
     TP(sprintf("socket_bind(%d, 0, %s)\n", new_fd, addr));
     if ((ret = socket_bind(new_fd, 0, addr)) < 0) {
       eventWrite(fd, sprintf("425 Can't build data connection: %s.\r\n",
@@ -392,7 +316,6 @@ protected void read_connection(int fd, string path, int append) {
       return;
     }
   }
-    
   data_sockets[new_fd] = t;
   sess->data_fd = new_fd;
   if (sess->pasv_fd == -1 &&
@@ -410,69 +333,52 @@ protected void read_connection(int fd, string path, int append) {
   }
   eventWrite(fd, sprintf("150 Opening %s mode data connection for %s.\r\n",
                          data_mode_name, opath));
-} /* read_connection() */
-
+}
 protected void passive(class session sess) {
   int new_fd, ret, data_mode;
   string addr;
-
   if (sess->pasv_fd != -1) {
-    /* Already in passive mode... */
     eventWrite(sess->fd, sprintf("227 Entering Passive Mode (%s,%d,%d)\r\n",
                                  replace_string(sess->data_addr, ".", ","),
                                  sess->data_port>>8, sess->data_port & 0xff));
     return;
   }
-    
   if (sess->type == BINARY)
     data_mode = STREAM_BINARY;
   else
     data_mode = STREAM;
-  
   new_fd = socket_create(data_mode, "data_read_callback",
                          "data_close_callback");
   if (new_fd < 0) {
     eventWrite(sess->fd, "425 Can't open passive connection.\r\n");
     return;
   }
-
-  /* A second argument of 0 to socket_bind() means 'pick any port you
-     like, we don't care'. Unfortunately, there's no way to get
-     the port number back... */
-
   sscanf(socket_address(sess->fd, 1), "%s %*d", addr);
   addr = sprintf("%s %d", addr, 0);
-
   TP(sprintf("socket_bind(%d, 0, %s)\n", new_fd, addr));
   if ((ret = socket_bind(new_fd, 0, addr)) < 0) {
     eventWrite(sess->fd, "425 Can't open passive connection.\r\n");
     socket_close(new_fd);
     return;
   }
-  
   if ((ret = socket_listen(new_fd, "data_listen_callback")) < 0) {
     eventWrite(sess->fd, "425 Can't open passive connection.\r\n");
     socket_close(new_fd);
     return;
   }
-
   data_sockets[new_fd] = new(class dataconn, parent_fd : sess->fd);
   sess->pasv_fd = new_fd;
-  /* This doesn't work... It returns all zeroes. */
   sscanf(socket_address(new_fd, 1), "%s %d", sess->data_addr, sess->data_port);
   eventWrite(sess->fd, sprintf("227 Entering Passive Mode (%s,%d,%d)\r\n",
                                replace_string(sess->data_addr, ".", ","),
                                sess->data_port>>8, sess->data_port & 0xff));
-} /* passive() */
-
+}
 protected void data_listen_callback(int fd) {
   class dataconn dc = (class dataconn)data_sockets[fd];
   class session sess;
   int new_fd;
   string data_mode_name;
-  
   if (!classp(dc)) {
-    /* Hm. No longer around. Oh well. */
     socket_close(fd);
     return;
   }
@@ -488,7 +394,6 @@ protected void data_listen_callback(int fd) {
       data_mode_name = "BINARY";
     else
       data_mode_name = "ASCII";
-
     new_fd = socket_accept(fd, "data_read_callback", "data_write_callback");
     if (new_fd < 0) {
       eventWrite(sess->fd, "425 Can't open data connection.\r\n");
@@ -516,37 +421,30 @@ protected void data_listen_callback(int fd) {
     sess->pasv_cb = 1;
     return;
   }
-  /* We delay accepting the connection until later. */
 }
-
 protected void data_read_callback(int fd, mixed mess) {
   int pfd;
   class dataconn dcon = (class dataconn)data_sockets[fd];
   class session sess;
-
   if (dcon->type != DOWNLOAD)
     return;
   pfd = dcon->parent_fd;
   if (undefinedp((sess = (class session)socket_info[pfd])))
-    return; /* not a data connection, or was orphaned */
+    return;
   sess->last_data = time();
-
   if (stringp(mess))
     mess = replace_string(mess, "\r", "");
-
 #ifdef DEBUG_RECEIVE
-   TP("received from " + dcon->pos + " size " + 
+   TP("received from " + dcon->pos + " size " +
       (stringp(mess)?strlen(mess):sizeof(mess)) + ".\n");
 #endif
   write_buffer(dcon->path, dcon->pos, mess);
   dcon->pos += (stringp(mess)?strlen(mess):sizeof(mess));
-} /* data_read_callback() */
-
+}
 void data_close_callback(int fd) {
   int pfd;
   class session sess;
   class dataconn dcon = (class dataconn)data_sockets[fd];
-
   if (!classp(dcon)) {
     map_delete(data_sockets, fd);
     return;
@@ -572,11 +470,7 @@ void data_close_callback(int fd) {
     map_delete(data_sockets, fd);
     return;
   }
-  /*
-   * only close data connections here
-   */
   sess = (class session)socket_info[pfd];
-   
   sess->data_fd = -1;
   sess->pasv_fd = -1;
   sess->offset = 0;
@@ -584,25 +478,20 @@ void data_close_callback(int fd) {
 #ifdef DEBUG_RECEIVE
   TP("dcc() complete, exiting.\n");
 #endif
-} /* data_close_callback() */
-
+}
 protected void data_write_callback(int fd) {
   int pfd, pos, ret_val;
   mixed tmp;
   class dataconn dcon = (class dataconn)data_sockets[fd];
   class session sess;
-
   if (dcon->type == DOWNLOAD)
     return;
-
   pos = dcon->pos;
-
   pfd = dcon->parent_fd;
   if (undefinedp(socket_info[pfd]))
-    return; /* not a data connection, or was orphaned */
+    return;
   sess = (class session)socket_info[pfd];
   sess->last_data = time();
-
   if (pos > dcon->len || dcon->len == 0) {
     TP("pos > len\n");
     eventWrite(pfd, "226 Transfer complete.\r\n");
@@ -616,11 +505,9 @@ protected void data_write_callback(int fd) {
 #endif
     return;
   }
-
 #ifdef DEBUG_SEND
   TP("Entering dwc(), pos: " + pos + " length should be: " + BLOCK_SIZE + ".\n");
 #endif
-
   if (dcon->type == STRING) {
 #ifdef DEBUG_SEND
     TP("type == STRING\n");
@@ -656,13 +543,11 @@ protected void data_write_callback(int fd) {
       if (catch(tmp = read_buffer(dcon->data, pos, BLOCK_SIZE)))
         eventWrite(pfd, "551 Error on input file.\r\n");
     }
-
     while ((ret_val = socket_write(fd, tmp)) == EESUCCESS) {
 #ifdef DEBUG_SEND
       TP("sent from " + pos + " to " + (pos + BLOCK_SIZE) + ".\n");
       TP("ret_val was: " + ret_val + ".\n");
 #endif
-
       pos += BLOCK_SIZE;
       dcon->pos = pos;
       if (pos >= dcon->len) {
@@ -693,50 +578,36 @@ protected void data_write_callback(int fd) {
   TP("ret_val was: " + ret_val + ".\n");
   TP("leaving dwc(), pos: " + pos + ".\n");
 #endif
-
   if (ret_val == EEWOULDBLOCK) {
-    /* it would block, so it's up to us to try again */
 #ifdef DEBUG_SEND
     TP("Adding call_out\n");
 #endif
     call_out("data_write_callback", 1, fd);
   } else if (ret_val == EECALLBACK) {
-    /* Buffer full, wait untill we are called back again. Do increase the
-     * position, since the previous block WAS sent.
-     * We are now flow controlled. */
     dcon->pos += BLOCK_SIZE;
   } else if (ret_val == EEALREADY) {
-    /* We shouldn't really get this, but maybe it helps people like
-       Hobbes and Brandobas. The driver will call us again. */
     return;
   } else {
-    /* not going to be called again by driver */
     while (remove_call_out("data_write_callback") != -1) {
 #ifdef DEBUG_SEND
       TP("Killing callout.\n");
 #endif
     }
   }
-} /* data_write_callback() */
-
+}
 protected void logout(int fd) {
   class session sess = (class session)socket_info[fd];
   string name;
-
   name = sess->user_name;
   user_event( "inform", sprintf("%s logged out of ftpd", "name"), "ftp");
-
 #ifdef LOG_CONNECT
   log_write(LOG_FILENAME,
            sprintf("%s logged out at %s.\n", name, ctime(time())));
 #endif
-
   sess->user_name = sess->logged_in = sess->cwd = 0;
-} /* logout() */
-
+}
 protected void eventNewConnection(int fd) {
   class session t;
-
   server::eventNewConnection(fd);
   t = new(class session);
   t->fd = fd;
@@ -751,13 +622,11 @@ protected void eventNewConnection(int fd) {
   eventWrite(fd, sprintf("220 %s FTP server ready.  "
                          "Please login as yourself.\r\n", mud_name()));
 }
-
 protected void parse_comm(int fd, string str) {
   string *bits, tmp, cmd, rest, rest2;
   mixed *misc;
   int port, i, mask;
   class session sess;
-   
   if (strsrch(lower_case(str), "pass") == -1) {
     i = 0;
     TP("Parsing " + str + ".\n");
@@ -770,7 +639,6 @@ protected void parse_comm(int fd, string str) {
     rest = "";
   sess = (class session)socket_info[fd];
   sess->last_data = time();
-   
   switch (lower_case(bits[0])) {
   case "port":
     bits = explode(rest, ",");
@@ -914,39 +782,7 @@ protected void parse_comm(int fd, string str) {
       if (!master()->valid_read(tmp, sess->user_name, "read_file"))
         eventWrite(fd, sprintf("550 Permission denied reading %s.\r\n",
                                rest));
-      else if(tmp != "/" && tmp == "//*" &&
-              !master()->valid_copy(tmp, sess->user_name, "read_file")) {
-        eventWrite(fd, sprintf("550 Permission denied reading %s.\r\n",
-                               rest));
-      } else {
-#ifdef LOG_FILE
-        log_write(LOG_FILENAME, sprintf("%s RETR %s at %s.\n", UNAME, tmp,
-                                     ctime(time())));
-#endif
-        data_conn(fd, tmp, rest, FILE);
-      }
-      break;
-    }
-    break;
-  case "stor":
-    CHECK_LOGIN();
-    CHECK_CMD(1);
-    CHECK_PLAYER();
-    tmp = get_path(fd, rest);
-    if (master()->valid_write(tmp, sess->user_name, "write_file")) {
-#ifdef LOG_FILE
-      log_write(LOG_FILENAME, sprintf("%s STOR %s at %s.\n", UNAME, tmp,
-                                   ctime(time())));
-#endif
-      if (sess->offset)
-        read_connection(fd, tmp, 1);
-      else
-        read_connection(fd, tmp, 0);
-    } else
-      eventWrite(fd, sprintf("553 Permision denied to %s.\r\n", rest));
-    break;
-  case "dele":
-    /* delete a file */
+      else if(tmp != "/" && tmp == "/
     CHECK_LOGIN();
     CHECK_CMD(1);
     CHECK_PLAYER();
@@ -971,7 +807,6 @@ protected void parse_comm(int fd, string str) {
     break;
   case "mkd":
   case "xmkd":
-    /* make a dir */
     CHECK_LOGIN();
     CHECK_CMD(1);
     CHECK_PLAYER();
@@ -990,7 +825,6 @@ protected void parse_comm(int fd, string str) {
     break;
   case "rmd":
   case "xrmd":
-    /* remove a dir */
     CHECK_LOGIN();
     CHECK_CMD(1);
     CHECK_PLAYER();
@@ -1019,7 +853,6 @@ protected void parse_comm(int fd, string str) {
       eventWrite(fd, sprintf("550 Permission denied to %s.\r\n", rest));
     break;
   case "appe":
-    /* append... */
     CHECK_LOGIN();
     CHECK_CMD(1);
     CHECK_PLAYER();
@@ -1032,7 +865,7 @@ protected void parse_comm(int fd, string str) {
       read_connection(fd, tmp, 1);
     } else
       eventWrite(fd, sprintf("553 Permision denied to %s.\r\n", rest));
-    break;    
+    break;
   case "help":
     if (sizeof(bits) > 1) {
       tmp = lower_case(bits[1]);
@@ -1085,12 +918,10 @@ protected void parse_comm(int fd, string str) {
                            sess->idle));
         break;
       }
-         
       if (!sscanf(rest2, "%d", i)) {
         eventWrite(fd, "550 SITE IDLE command failed.\r\n");
         break;
       }
-         
       i = (i<300?300:(i>7200?7200:i));
       sess->idle = i;
       eventWrite(fd, sprintf("200 Maximum IDLE time set to %d seconds\r\n", i));
@@ -1100,7 +931,6 @@ protected void parse_comm(int fd, string str) {
                  sprintf("200 Local TIME is %s.\r\n", ctime(time())[4..15]));
       break;
     case "upd":
-      /* remote updating of files */
       CHECK_CMD(2);
       tmp = get_path(fd, rest2);
       do_update(tmp, fd);
@@ -1156,7 +986,6 @@ protected void parse_comm(int fd, string str) {
     }
     break;
   case "mdtm":
-    /* Supposed to return modified time in the format: YYYYMMDDHHMMSS */
     CHECK_LOGIN();
     CHECK_CMD(1);
     tmp = get_path(fd, rest);
@@ -1167,7 +996,6 @@ protected void parse_comm(int fd, string str) {
         eventWrite(fd, sprintf("550 %s does not exist.\r\n", rest));
       else {
         mixed *tm;
-            
         tm = localtime(stat(tmp)[1]+localtime(0)[LT_GMTOFF]);
         eventWrite(fd, sprintf("213 %d%02d%02d%02d%02d%02d\r\n",
                                tm[LT_YEAR], tm[LT_MON]+1, tm[LT_MDAY],
@@ -1244,7 +1072,6 @@ protected void parse_comm(int fd, string str) {
   case "list":
     mask |= MASK_L;
     mask |= MASK_A;
-    /* fallthrough */
   case "nlst":
     CHECK_LOGIN();
     if ((i = sizeof(bits)) > 1 && bits[1][0] == '-') {
@@ -1359,9 +1186,6 @@ protected void parse_comm(int fd, string str) {
       eventWrite(fd, sprintf("504 Type %s not implemented.\r\n", bits[1]));
     break;
   case "abor":
-    /* Abort...  Handle this with blue stuff,
-     * stops recvs and stors. I guess thats
-     * what it is supposed to do. */
     CHECK_CMD(0);
     if (sess->data_fd != -1) {
       socket_close(sess->data_fd);
@@ -1399,11 +1223,9 @@ protected void parse_comm(int fd, string str) {
     eventWrite(fd, sprintf("500 '%s': command not understood.\r\n", str));
     break;
   }
-} /* parse_comm */
-
+}
 protected void eventRead(int fd, string str) {
   string *bits, bit;
-
   str = replace(str,
                 ({sprintf("%c", 242), "", "\r", "", sprintf("%c", 255), "",
                     sprintf("%c", 244), ""}));
@@ -1411,11 +1233,9 @@ protected void eventRead(int fd, string str) {
   foreach (bit in bits)
     parse_comm(fd, bit);
 }
-
 protected void eventSocketClosed(int fd) {
   int ret;
   class session sess = (class session)socket_info[fd];
-
   if (sess && sess->data_fd != -1) {
     if ((ret = socket_close(sess->data_fd)) != EESUCCESS) {
       TP("socket_close failed, reason: "+socket_error(ret)+"\n");
@@ -1423,7 +1243,6 @@ protected void eventSocketClosed(int fd) {
     }
     map_delete(data_sockets, sess->data_fd);
   }
-
   if (sess && sess->pasv_fd != -1) {
     if ((ret = socket_close(sess->pasv_fd)) != EESUCCESS) {
       TP("socket_close failed, reason: "+socket_error(ret)+"\n");
@@ -1431,22 +1250,16 @@ protected void eventSocketClosed(int fd) {
     }
     map_delete(data_sockets, sess->pasv_fd);
   }
-
   map_delete(socket_info, fd);
 }
-
 protected string get_path(int fd, string str) {
   string *array, *array1, temp;
   int i;
   class session sess = (class session)socket_info[fd];
-
   if (!str || str == "") {
-    /* no change of dir */
     return sess->cwd;
   }
-
   if (str == "~") {
-    /* change to home dir */
     return HOME_DIR(sess->user_name);
   } else {
     if (str[0] == '~') {
@@ -1455,13 +1268,10 @@ protected string get_path(int fd, string str) {
         str = HOME_DIR(sess->user_name) + temp;
       } else {
         string name;
-
         if (sscanf(str, "~%s/%s", name, str) != 2) {
           name = extract(str, 1);
           str = HOME_DIR(name);
         } else {
-          /* cheat at this point and just assume they are a wizard. sigh
-           * i know i know */
           str = HOME_DIR(name) + "/" + str;
         }
       }
@@ -1485,20 +1295,16 @@ protected string get_path(int fd, string str) {
   else
     str = "";
   return "/" + str;
-} /* get_path() */
-
+}
 protected string desc_object(mixed o) {
   string str;
-
   if (!o) return "** Null-space **";
   if (!catch(str = (string)o->short()) && str) return str;
   if (!catch(str = (string)o->query_name()) && str) return str;
   return file_name(o);
-} /* desc_object() */
-
+}
 protected string desc_f_object(object o) {
   string str, tmp;
-
   str = desc_object(o);
   if (o && str != file_name(o)) {
     if (tmp)
@@ -1507,24 +1313,20 @@ protected string desc_f_object(object o) {
       str += " (" + file_name(o) + ")";
   }
   return str;
-} /* desc_f_object() */
-
+}
 protected string get_cfile(string str) {
   if (sscanf(str, "%*s.%*s") != 2)
     str += ".c";
   return str;
-} /* get_cfile() */
-
+}
 protected void do_update(string name, int fd) {
   string pname, err;
   int j;
   object *invent, rsv, env, dup, loaded, ov;
   mixed static_arg, dynamic_arg;
-
   "room/void"->bingle_bingle();
-
-  rsv = find_object("room/void");  /* RSV = Room Slash Void */
-  if (!rsv) { /* Die in horror */
+  rsv = find_object("room/void");
+  if (!rsv) {
     eventWrite(fd, "530 The void is lost!\r\n");
     return;
   }
@@ -1549,10 +1351,8 @@ protected void do_update(string name, int fd) {
   while (j--) {
     invent[j]->move(rsv);
   }
-
   pname = file_name(ov);
   if (sscanf(pname, "%s#%*d", pname) != 2) {
-    /* a room ? */
     ov->dest_me();
     if (ov) {
        ov->dwep();
@@ -1578,7 +1378,6 @@ protected void do_update(string name, int fd) {
     if (loaded) {
        destruct(loaded);
     }
-
     catch(dup = clone_object(pname));
     if (dup && ov) {
       ov->dest_me();
@@ -1601,24 +1400,20 @@ protected void do_update(string name, int fd) {
     eventWrite(fd, "530 Error updating your object, see /log/error-log or /log/catch.\r\n");
     return;
   }
-
   j = sizeof(invent);
   while (j--) {
     if (invent[j]) {
        invent[j]->move(ov);
     }
   }
-
   if (env) {
     ov->move(env);
   }
   eventWrite(fd, sprintf("530 Updated %s.\r\n", desc_f_object(ov)));
-} /* do_update() */
-
+}
 protected void check_connections() {
   int *bits, i;
   class session sess;
-
   bits = keys(socket_info);
   i = sizeof(bits);
   while (i--) {
@@ -1631,8 +1426,7 @@ protected void check_connections() {
     }
   }
   call_out("check_connections", 5 * 60);
-} /* check_connections() */
-
+}
 protected int check_dots(mixed arg) {
   return (arg[0] != ".." && arg[0] != ".");
 }

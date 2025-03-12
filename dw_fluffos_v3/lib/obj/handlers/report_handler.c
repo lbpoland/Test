@@ -1,25 +1,7 @@
-/**
- * This handler manages reports about alleged misdemeanors and other
- * Sherlock Holmes type stuff.  It's main uses are holding cases so
- * they are not overlooked and forgotten about, recording decisions
- * on various offences and allowing a case history of a player to
- * be retrieved.
- *
- * @author Gototh
- */
-// Gototh 22/02/98
-
 #include <report_handler.h>
-
 inherit "/std/object";
-
 void move_to_recent_cases(mixed *thing);
-
 mixed *new_cases, *recent_cases;
-
-/**
- * @ignore yes
- */
 void setup() {
   set_short("report handler");
   add_property("determinate", "the ");
@@ -31,38 +13,20 @@ void setup() {
   if(file_size(RECENT) > -1) {
     recent_cases = restore_variable(read_file(RECENT));
   }
-} /* setup() */
-
-// New cases.
-
-/**
- * @ignore yes
- */
+}
 void save_new_cases() {
   unguarded((: rm, NEWCASES :));
   unguarded((: write_file, NEWCASES, save_variable(new_cases)+"\n" :));
-} /* save_me() */
-
-/**
- * @ignore yes
- */
+}
 mixed query_new() {
   return new_cases;
-} /* query_new() */
-
-/**
- * @ignore yes
- */
+}
 int sizeof_new_cases() {
   if(!new_cases) {
     new_cases = restore_variable(read_file(NEWCASES));
   }
   return sizeof(new_cases);
-} /* sizeof_new_cases() */
-
-/**
- * @ignore yes
- */
+}
 string query_new_cases() {
   int i, j;
   string reports = "";
@@ -79,11 +43,7 @@ string query_new_cases() {
     reports += "%^CYAN%^Category%^RESET%^: "+new_cases[i][CATEGORY]+"\n";
   }
   return reports;
-} /* query_new_cases() */
-
-/**
- * @ignore yes
- */
+}
 string query_new_case(int i) {
   string report = "";
   mixed *stuff;
@@ -106,22 +66,14 @@ string query_new_case(int i) {
     "  %^CYAN%^Category%^RESET%^: "+stuff[CATEGORY]+"\n"
     "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0=";
   return report;
-} /* query_new_case() */
-
-/**
- * @ignore yes
- */
+}
 void add_report(string *stuff) {
   if(!new_cases) {
     new_cases = restore_variable(read_file(NEWCASES));
   }
   new_cases += ({ stuff });
   save_new_cases();
-} /* add_report() */
-
-/**
- * @ignore yes
- */
+}
 void deal_with_it(int num, string name, string decision) {
   mixed *thing;
   num--;
@@ -130,19 +82,11 @@ void deal_with_it(int num, string name, string decision) {
   thing += ({ decision });
   new_cases -= ({new_cases[num]});
   move_to_recent_cases(thing);
-} /* deal_with_it() */
-
-/**
- * @ignore yes
- */
+}
 void save_recent_cases() {
   unguarded((: rm, RECENT :));
   unguarded((: write_file, RECENT, save_variable(recent_cases)+"\n" :));
-} /* save_me() */
-
-/**
- * @ignore yes
- */
+}
 void move_to_recent_cases(mixed *thing) {
   int i, j;
   mixed *c_record, *chars;
@@ -168,21 +112,13 @@ void move_to_recent_cases(mixed *thing) {
   recent_cases += ({ thing });
   save_new_cases();
   save_recent_cases();
-} /* move_to_recent_cases() */
-
-/**
- * @ignore yes
- */
+}
 mixed query_recent() {
   if(!recent_cases) {
     recent_cases = restore_variable(read_file(RECENT));
   }
   return recent_cases;
-} /* query_recent() */
-
-/**
- * @ignore yes
- */
+}
 string query_recent_cases() {
   int i, j;
   string reports = "";
@@ -199,11 +135,7 @@ string query_recent_cases() {
     reports += "%^CYAN%^Category%^RESET%^: "+recent_cases[i][CATEGORY]+"\n";
   }
   return reports;
-} /* query_recent_cases() */
-
-/**
- * @ignore yes
- */
+}
 string query_recent_case(int i) {
   string report = "";
   mixed *stuff;
@@ -232,11 +164,7 @@ string query_recent_case(int i) {
       +stuff[i + 1];
   }
   return report;
-} /* query_recent_cases() */
-
-/**
- * @ignore yes
- */
+}
 string case_history(string name) {
   int i, j;
   mixed *history, *cases, *stuff, *all_cases, *check_case;
@@ -263,7 +191,7 @@ string case_history(string name) {
     other_chars -= ({capitalize(name)});
     other_chars = uniq_array(other_chars);
     write(capitalize(name)+" is also "
-      +query_multiple_short(other_chars)+".\n");    
+      +query_multiple_short(other_chars)+".\n");
   }
   if(!sizeof(history)) {
     return 0;
@@ -292,14 +220,9 @@ string case_history(string name) {
     }
   }
   return report;
-} /* case_history() */
-
-/**
- * @ignore yes
- */
+}
 void add_comment(int i, string name, string comment) {
   i--;
   recent_cases[i] += ({ capitalize(name), comment });
   save_recent_cases();
-} /* add_comment() */
-
+}

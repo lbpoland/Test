@@ -1,31 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: newbie_eff_shadow.c,v 1.1 1998/01/06 04:02:57 ceres Exp $
- * $Log: newbie_eff_shadow.c,v $
- * Revision 1.1  1998/01/06 04:02:57  ceres
- * Initial revision
- * 
-*/
 inherit "/std/effect_shadow";
 #define MY_NAME "NEWBIE SIMULATOR"
-
-/*
- * The Newbie Simulator. Completely shuts off your conversational abilities,
- * replacing about half of your comments with "amusing" alternative from the
- * list below. 
- * 
- * Veronica 1/94, modified from the Upper Case curse. (with the spelling 
- *                                 cleaned up, too... )
- * Modified 2/94 by Veronica to make it unreadable, and use stupid variables
- * in line with DW coding directives. It's also now an effect and thus three
- * times as big.
- */
-
-
 object my_player;
 string name, my_name;
-
 void remove_effect_shadow(int i) {
    if (i == id) {
       destruct(this_object());
@@ -33,17 +9,15 @@ void remove_effect_shadow(int i) {
    }
       else player->remove_effect_shadow(i);
 }
-
-
 protected string newbie(string str) {
   string *says;
   string ret;
   int i;
   says = ({
-	"Are you a creator?\n", 
+	"Are you a creator?\n",
 	"How can I level in this mud?\n",
-	"How do I kill things?\n", 
-	"This is nothing like my nintendo... where are the baddies?\n", 
+	"How do I kill things?\n",
+	"This is nothing like my nintendo... where are the baddies?\n",
 	"Where can I get a good weapon?\n",
 	"Where do I get money?\n",
 	"I'm going to kill you now. Prepare to die.\n",
@@ -76,8 +50,7 @@ protected string newbie(string str) {
 	ret = (says[(random(sizeof(says)))]);
   }
   return ret;
-} /* newbie() */
-
+}
 protected string newbie_emote(string str) {
   string *emotes_male;
   string *emotes_female;
@@ -101,7 +74,6 @@ protected string newbie_emote(string str) {
 	"was consulted for the joy of sex.\n",
 	"wonders why anyone would ever drive anything other than a Porsche.\n"
 	});
-
   emotes_female = ({
 	"carefully brushes out her long, golden hair.\n",
 	"looks a bit like Kim Basinger in RL.\n",
@@ -115,7 +87,6 @@ protected string newbie_emote(string str) {
 	"isn't really into this competition thing.\n",
 	"is really only fourteen years old.\n"
 	});
-
   if ((int)(my_player->query_gender()) == 2 ) {
 	ret = (emotes_female[(random(sizeof(emotes_female)))]);
   }
@@ -123,44 +94,34 @@ protected string newbie_emote(string str) {
 	ret = (emotes_male[(random(sizeof(emotes_male)))]);
   }
   return ret;
-} /* newbie() */
-
+}
 int do_say(string str) {
   return (int)my_player->do_say(newbie(str));
-} /* do_say() */
-
+}
 int do_tell(string str) {
   return (int)my_player->do_tell(newbie(str));
-} /* do_tell() */
-
+}
 int do_loud_say(string str) {
   return (int)my_player->do_loud_say(newbie(str));
-} /* do_loud_say() */
-
+}
 int do_echo(string str) {
   return (int)my_player->do_echo(newbie(str));
-} /* do_echo() */
-
+}
 int do_emote_all(string str) {
   return (int)my_player->do_emote_all(newbie_emote(str));
-} /* do_emote_all() */
-
+}
 int do_emote(string str) {
   return (int)my_player->do_emote(newbie_emote(str));
-} /* do_emote() */
-
+}
 int do_whisper(string str) {
   return (int)my_player->do_whisper(newbie(str));
-} /* do_whisper() */
-
+}
 int do_echo_to(string str) {
   return (int)my_player->do_echo_to(newbie(str));
-} /* do_echo_to() */
-
+}
 int do_shout(string str) {
   return (int)my_player->do_shout(newbie(str));
-} /* do_shout() */
-
+}
 int do_talk(string str) {
   return (int)my_player->do_talk(newbie(str));
-} /* do_talk() */
+}

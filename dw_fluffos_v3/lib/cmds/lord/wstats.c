@@ -1,12 +1,9 @@
 inherit "/cmds/base";
-
 int cmd(string str) {
   mapping stats;
   string obj, file;
   int total, num;
-  
   stats = "/secure/master"->query_write_stats();
-
   if(str) {
     if(!stats[str])
       return notify_fail("No such file\n");

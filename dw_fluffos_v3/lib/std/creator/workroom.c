@@ -1,39 +1,15 @@
 #include <config.h>
 inherit "/std/room/basic_room";
-
 object button, bookcase, board;
-
 void setup() {
-  /* the short description is what you get in a room in brief mode.
-   * use capital letters for proper names only and don't put a period
-   * at the end, since the short can be used to construct sentences
-   */
   set_short("workroom of "+ CREATOR);
-  /* the determinate is put in front of the short.
-   * if you don't specify it, "a " or "an " will be used automatically.
-   * see help setup
-   */
   add_property( "determinate", "the ");
-  /* you set this so you can see in the room.
-   * for a description of light levels and what they mean type
-   * help light
-   */
   set_light(100);
-  /*
-   * and when you work into a room in verbose mode.
-   * remember to put two spaces after periods, and uses proper
-   * capitalization, punctuation and spelling.
-   */
   set_long("This is the workroom of "+CREATOR+".  You can see a small "
      "wooden desk sulking in the corner of the room, it has a "
      "beautifully carved wooden rolly chair in front of it.  It "
      "looks like this was just newly created, there is a smell "
      "of paint and leather in the air.\n");
-  /* The items are the things in the room that you can look at.
-   * Item longs should be proper sentences and shouldn't have \n at the
-   * end.  Make sure you have a room item for every noun described in
-   * the long of the room or in the long of another room item.
-   */
   add_item("chair",
         ({ "long", "The teak rolly chair has amazing carvings of dragons "
                    "and ... other things on it.  They almost seem alive, "
@@ -70,46 +46,16 @@ void setup() {
      "of light bursting in it." );
   add_item("demon", "The demonic heads that pop out are pretty nasty "
      "looking, they disapear with a snarl of strain." );
-
-  /* adds all the exits to the room.
-   * the first parameter is the verb used to get through the exit.
-   * the second is where to go once that exit is opened.
-   * and the third is the type of the exit.  For a better desription of
-   * this read the docs on rooms.
-   *
-   * remember not to put ".c" at the end of the second parameter
-   */
   add_exit("common", "/w/common", "door");
   add_exit("drum", CONFIG_START_LOCATION, "path");
   add_exit("learning", "/d/learning/main", "path");
-
-  /*
-   * modify_exit() is used to change how exits operate.  We are going to
-   * make it so that only players can move through an exit.  This is
-   * so that any NPCs you might have in your workroom can't accidently
-   * escape out.
-   */
-
   modify_exit( ({ "common", "drum", "learning" }),
       ({ "function", "check_player" }) );
-
-  /* these two add_alias alias the exits.  Now when you type north (or n)
-   * you will go to the mended drum and south to the common room
-   */
   add_alias("north", "drum");
   add_alias("south", "common");
-  /* this adds an exit in the common room back to your workroom
-   * this is not needed for normal exits, but the commonroom doesn't have
-   *exits back.
-   */
   "/w/common"->add_exit(CREATOR, "/w/"+CREATOR+"/workroom", "door");
-} /* create() */
-
+}
 void reset() {
-  /* if the button does not exist (it has been dested or it hasn't been
-   * created yet the variable is set to 0)  This makes sure you don't get
-   * more than one button in your room.
-   */
   if (!button) {
     button = clone_object("/obj/misc/button");
     button->move(this_object());
@@ -119,10 +65,6 @@ void reset() {
     board->move(this_object() );
   }
   if (!bookcase) {
-    /* The first parts of making a shelf it covered elsewhere, it's
-     * basically a matter of cloning the object and make it look like
-     * it should
-     */
     bookcase = clone_object("/obj/cont_save");
     bookcase->set_name( "bookcase" );
     bookcase->set_short( "oaken bookcase" );
@@ -137,56 +79,18 @@ void reset() {
     bookcase->set_weight( 2000 );
     bookcase->set_max_weight( 4000 );
     bookcase->reset_get();
-    /* This call will allow the shelf to write the  savefile in the same
-     * domain as the room is in, if you don't do this call, the savefile
-     * will have to be somewhere in /save/
-     */
     bookcase->check_euid();
-    /* This call tells the shelf what file should be used to save the stuff
-     * placed on it.
-     */
     bookcase->set_save_file( "/w/"+CREATOR+"/creator_kit" );
-    /* end by putting the shelf in the room */
     bookcase->move( this_object() );
   }
-} /* reset() */
-
-
-/* This function is used by the button.  It gives a list of things in
- * the room that the button should NOT destroy.
- */
+}
 object *query_non_destable()  {
   return ({ bookcase, board });
-} /* query_non_destable() */
-
-/* This function is used by modify_exit() to make sure only players can
- * move through the exits in your workroom.
- *
- * WARNING: You cannot under any circumstances use the this_player()
- * function in an exit function.  Doing this will cause your exit
- * function to fail horribly when people are following the person
- * moving through the exit.
- *
- * Because of this, the 'player' variable is passed to the exit
- * function. See help exit_function to see how to write your own exit
- * functions.
- */
+}
 int check_player( string verb, object player, string special ) {
-
-    /* We need to check if the person going through the exit is a player.
-     * There are several different ways we can do this.  The easiest
-     * way is with the interactive() function, which returns 1 if an
-     * object is a link-connected player to the MUD or 0 if they are not.
-     */
     if ( interactive( player ) ) {
         return 1;
     }
-
-    /* The notify_fail() here sets it so that an invalid target
-     * doesn't get a 'What?' message when attempting to go through this
-     * exit.
-     */
     notify_fail( "" );
     return 0;
-} /* check_player() */
-
+}

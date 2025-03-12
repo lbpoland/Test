@@ -1,22 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: email.c,v 1.1 1998/01/06 05:29:43 ceres Exp $
- * $Log: email.c,v $
- * Revision 1.1  1998/01/06 05:29:43  ceres
- * Initial revision
- * 
-*/
 #include <player.h>
 inherit "/cmds/base";
-
 #define TP this_player()
-
 int cmd(string str) {
    string email;
-
   email = TP->query_email();
-   
    if (!str) {
       write("Your current email address is "+email+"\n");
       write("To clear use \"email CLEAR\"\n");

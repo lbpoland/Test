@@ -1,15 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: bright.c,v 1.16 2003/02/21 01:10:27 pinkfish Exp $
- */
 inherit "/cmds/base";
 #include <dirs.h>
-
 #define THRESHOLDS ({ 10, 30, 200, 300 })
-
-/* No easy way to get this information from the race object as yet.
-   Everyone is human, though, so it doesn't yet matter. */
-
 string illumination( int number ) {
    if ( number < 0 ) {
       return "in the darkness that lies beyond darkness";
@@ -44,13 +35,11 @@ string illumination( int number ) {
    default :
       return "very brightly lit";
    }
-} /* illumination() */
-
+}
 string intensity(int number, object thing) {
    int flag = (thing == this_player());
-   
    if (number < 0) {
-      return (flag?"are":"is") + " dark beyond darkness"; 
+      return (flag?"are":"is") + " dark beyond darkness";
    }
    if (number < THRESHOLDS[0]) {
       return "produce" + (flag?"":"s") + " a faint light";
@@ -74,11 +63,9 @@ string intensity(int number, object thing) {
    default :
       return (flag?"are":"is") + " extremely bright";
    }
-} /* intensity() */
-
+}
 int check_exists(string file) {
   int retval;
-
   if ( objectp( find_object( file ) ) )
     return 1;
   if (file_size(file+".c") > 0) {
@@ -87,8 +74,7 @@ int check_exists(string file) {
     retval = 0;
   }
   return retval;
-} /* check_exists() */
-
+}
 mixed cmd(object *things) {
    int its_light;
    string results;
@@ -96,21 +82,17 @@ mixed cmd(object *things) {
    object thing;
    object* no_light;
    int result_light;
-   
    results = "";
-
    if (environment(this_player())->query_light() < THRESHOLDS[0]) {
       results += "Wherever you are, it's ";
    } else {
       results += "$C$"+ environment(this_player())->the_short(1) + " is ";
    }
    results += illumination(environment(this_player())->query_light()) + ".\n";
-
    if (!things) {
       write(results);
       return 1;
    }
-
    no_light_results = "";
    no_light = ({ });
    foreach(thing in things) {
@@ -123,42 +105,32 @@ mixed cmd(object *things) {
          no_light += ({ thing });
       }
    }
-   //if (results == "") {
    if (sizeof(no_light) && !result_light) {
       write("$C$" + query_multiple_short(no_light, "one", 0, 1) +
             ((sizeof(no_light) == 1  &&  no_light[0] != this_player()) ?
                " produces" : " produce") + " no light at all.\n");
    }
    write(results);
-   //} else {
-      //write(results);
-   //}
    return 1;
-} /* cmd() */
-
+}
 int cmd_exit(string arg) {
    object room;
    string other;
-
    room = environment(this_player());
    if (room->query_mirror_room()) {
       room = room->query_mirror_room();
    }
-
    if (LENGTHEN[arg]) {
       arg = LENGTHEN[arg];
    }
-
    if(!room->query_exit(arg)) {
      arg = (string)this_player()->find_abs(arg);
    }
-
    if ( room->query_exit( arg ) ) {
       other = room->query_destination(arg);
       if ( check_exists( other )) {
          object door;
          door = room->query_door_control(arg);
-
          if(room->query_door_open(arg) ||
             door->query_transparent()) {
             write(other->the_short(1) + " is " +
@@ -173,12 +145,9 @@ int cmd_exit(string arg) {
          return 0;
       }
    }
-
    add_failed_mess("Unable to find the exit " + arg + ".\n");
    return 0;
-} /* cmd_exit() */
-
-
+}
 mixed *query_patterns() {
    return ({ "<indirect:object>", (: cmd($1) :),
              "exit <string'exit name'>", (: cmd_exit($4[0]) :),

@@ -1,34 +1,26 @@
-
 #include <fuel_handler.h>
 #include <move_failures.h>
 inherit "/std/object";
 inherit "/std/basic/holdable";
-
 #define BRIGHTNESS 30
 #define MAX_FUEL 2000
 #define FUEL_PER_TICK ( FUEL_TIME * 2 )
-
 private int amount_of_fuel;
 private int is_lit;
-
 int finish_it();
-
 void setup_shorts();
-
 void create() {
    object::create();
    holdable::create();
-} /* create() */
- 
+}
 void setup() {
-   amount_of_fuel = MAX_FUEL; 
-   set_name( "torch" ); 
+   amount_of_fuel = MAX_FUEL;
+   set_name( "torch" );
    add_plural( "torches" );
    setup_shorts();
    add_help_file("torch");
    set_long( function() {
       string str;
-      
       if ( is_lit && amount_of_fuel) {
          call_out( (: setup_shorts() :), 2 );
          str = "This is a fire burning out of control on the end "
@@ -64,7 +56,7 @@ void setup() {
                "it is about to go out.\n";
          }
       }
-      if ( amount_of_fuel >= MAX_FUEL ) 
+      if ( amount_of_fuel >= MAX_FUEL )
          return "This lump of what looks like some sort of tree has a few "
          "dirty rags wrapped around the end of it, and it looks as "
          "though it might be possible to light them.  The dirty rags "
@@ -106,21 +98,18 @@ void setup() {
    is_lit = 0;
    set_weight( 6 );
    set_value( 50 );
-} /* setup() */
-
-void set_fuel(int f) { 
+}
+void set_fuel(int f) {
    amount_of_fuel = f;
    if(amount_of_fuel < 0)
      amount_of_fuel = 0;
    setup_shorts();
-} /* set_fuel() */
-
+}
 void init() {
   this_player()->add_command( "light", this_object() );
   this_player()->add_command( "extinguish", this_object() );
   this_player()->add_command( "dowse", this_object() );
-} /* init() */
-
+}
 void setup_shorts() {
    if ( is_lit && amount_of_fuel) {
       set_short( "lit torch" );
@@ -138,15 +127,13 @@ void setup_shorts() {
       remove_adjective( ({ "lit", "lightable" }) );
       add_adjective( ({ "burnt", "out" }) );
    }
-} /* setup_shorts() */
-
+}
 int do_light() {
    if (environment(this_object()) != this_player()) {
       this_player()->add_failed_mess( this_object(),
                                      "You are not carrying $D.\n", ({ }) );
       return 0;
    }
-   
    if (amount_of_fuel <= 0) {
       this_player()->add_failed_mess( this_object(), "$D is burnt out.\n",
                                      ({ }) );
@@ -157,7 +144,7 @@ int do_light() {
                                      ({ }) );
       return 0;
    }
-   if (!query_holder() && 
+   if (!query_holder() &&
        !sizeof( this_object()->hold_item( this_player(), -1 ) ) ) {
      this_player()->add_failed_mess( this_object(), "Unable to hold $D, "
          "your arms are probably full.\n", ({ }) );
@@ -168,8 +155,7 @@ int do_light() {
    set_light( BRIGHTNESS );
    call_out( "setup_shorts", 2);
    return 1;
-} /* do_light() */
-
+}
 void out_of_fuel() {
    is_lit = amount_of_fuel = 0;
    set_light( 0 );
@@ -178,21 +164,17 @@ void out_of_fuel() {
    tell_room( environment(), one_short() +" splutters violently "
      "for the last time before it crumbles to dust.\n" );
    call_out( "finish_it", 2 );
-
-} /* out_of_fuel() */
-
+}
 void do_warning() {
    tell_room( environment(), poss_short() +" starts to sputter and smoke a "
              "lot as it is now burning the light wood.  It is on its last "
              "legs.\n");
    return;
-} /* do_warning() */
-
+}
 void consume_fuel() {
    amount_of_fuel -= FUEL_PER_TICK;
    if(amount_of_fuel < 0)
      amount_of_fuel = 0;
-   
    switch ( amount_of_fuel ) {
     case (200-FUEL_PER_TICK) .. 200:
       do_warning();
@@ -201,10 +183,8 @@ void consume_fuel() {
       out_of_fuel();
       break;
     default:
-      /* do nothing */
    }
-} /* consume_fuel() */
-
+}
 int do_extinguish(object *, string, string, string) {
    if ( !is_lit && objectp( this_player() ) ) {
       this_player()->add_failed_mess(this_object(), "$D is not lit.\n", ({ }) );
@@ -217,34 +197,29 @@ int do_extinguish(object *, string, string, string) {
    set_light( 0 );
    call_out( "setup_shorts", 2);
    return 1;
-} /* do_extinguish() */
-
+}
 int do_dowse() {
    return do_extinguish(({ }), 0, 0, 0);
-} /* do_dowse() */
-
+}
 void dest_me() {
    FUEL_HANDLER->remove_burner( this_object() );
    set_light( 0 );
    holdable::dest_me();
    object::dest_me();
-} /* dest_me() */
-
+}
 mixed *stats() {
   return ::stats() + ({
     ({ "fuel" , amount_of_fuel, }),
     ({ "is lit", is_lit, }),
    });
-} /* stats() */
-
+}
 mixed query_dynamic_auto_load() {
   return ([ "::" : object::query_dynamic_auto_load(),
             "amount of fuel" : amount_of_fuel,
             "hold" : holdable::query_dynamic_auto_load(),
             "is lit" : is_lit,
           ]);
-} /* query_dynamic_auto_load() */
-
+}
 int held_this_item(int type, object holder, mixed arg) {
    if (!type) {
       if (holder && is_lit) {
@@ -267,8 +242,7 @@ int held_this_item(int type, object holder, mixed arg) {
       setup_shorts();
    }
    return 1;
-} /* held_this_item() */
-
+}
 void init_dynamic_arg( mapping arg ) {
    amount_of_fuel = arg["amount of fuel"];
    is_lit = arg["is lit"];
@@ -276,49 +250,37 @@ void init_dynamic_arg( mapping arg ) {
       holdable::init_dynamic_arg(arg["hold"], arg["is lit"]);
    }
    ::init_dynamic_arg(arg["::"]);
-} /* init_dynamic_arg() */
-
+}
 void init_static_arg(mapping arg) {
-} /* init_static_arg() */
-
+}
 mapping query_static_auto_load() {
    return 0;
-} /* query_static_auto_load() */
-
+}
 varargs int move( mixed ob, string mess1, string mess2 ) {
    int ret;
-
    ret = holdable::move(ob);
    if (ret != MOVE_OK) {
       return ret;
    }
    return object::move( ob, mess1, mess2 );
-} /* move() */
-
+}
 void self_light() {
    is_lit = 1;
    FUEL_HANDLER->add_burner( this_object() );
    set_light( BRIGHTNESS );
    call_out( (: setup_shorts() :), 2);
    return;
-}/*self_light*/
-
+}
   int finish_it () {
-
     this_object()->move( "/room/rubbish" );
-    
     return 1;
-
-} /* finish_it*/
-
+}
 int query_torch() {
   return 1;
 }
-
 int query_lit() {
   return is_lit;
 }
-
 int query_fuel() {
   return amount_of_fuel;
 }

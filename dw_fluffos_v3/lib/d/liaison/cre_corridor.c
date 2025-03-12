@@ -1,15 +1,5 @@
-/*
-Liaison hall room - people can add exits here - see the sign.
-This is designed so people don't add to the commonroom, add here instead.
-Lucifer, 10 January 2002 at 2am, the ungodly hour.
-Thank you to Drakkos for the mirror code...
-*/
-
-
 inherit "/std/room/basic_room";
-
 string do_mirror();
-
 void setup() {
     set_short("Liaison hallway");
     set_light(100);
@@ -51,7 +41,6 @@ void setup() {
              "development and implementation of concepts.\n\n"
              "Impressive, huh?");
     add_alias("mission", "statement");
-    
     add_item("frame", "It's just a frame holding a large scroll in place.");
     add_item("hair", "It's hair.  It's reddish blond and it's Ohdamn's.");
     add_item("rum", "It's rum.  Held very securely by Ohdamn.");
@@ -81,37 +70,26 @@ void setup() {
     add_item("painting of you", "The painting of you is ... well, blank with the "
              "words 'Your Name Here' on it.  You get the feeling its a rather "
              "cheesy way of saying everyone is important!  If it wasn't so "
-             "cheesy it might make you feel better.");                    
+             "cheesy it might make you feel better.");
     add_sign("This is an important sign, for viewing along with the "
              "paintings.\n",
              "If you are having problems seeing the paintings, look at "
              "painting of <person>.  "
              "Please note: These paintings are done on collective images.  "
              "Basically, if you don't like your portrait, don't beat Luci "
-             "up.  Thanks!");                                             
+             "up.  Thanks!");
     add_item("mirror", (: do_mirror() :));
-    
     add_exit("common", "/d/liaison/common", "door");
     add_exit("drum", "/d/am/am/mendeddrum", "path");
-    
-/* Please add exits to this room from your commonroom using this line
-   of code:
-   "/d/liaison/cre_corrdior"->add_exit(CREATOR, "workroom path", "door");
-   Thanks!
-*/
 }
-
-string do_mirror() {  
+string do_mirror() {
   string text;
-  
- 
   text = "The mirror is a full length floor to ceiling job, a full length "
     "mirror in the true sense of the word.  It's here to make sure you look "
     "you look your best.  Good job you are checking!\n\n";
   text += this_player()->long(this_player());
-  tell_room (this_object(), this_player()->short() + " checks " + 
+  tell_room (this_object(), this_player()->short() + " checks " +
     this_player()->query_objective() + "self in the big mirror.  Poser.\n",
     this_player());
   return text;
 }
-

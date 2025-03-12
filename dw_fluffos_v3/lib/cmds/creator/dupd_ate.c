@@ -1,24 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: dupd_ate.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: dupd_ate.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
-/* dupdate command by wodan */
-
 inherit "/cmds/base";
-
 #include <creator.h>
-
 string other;
-
 int do_it(string str){
   object ob, *obs;
-  string *all, *dil, file, fnob /* FileName ob */;
-
+  string *all, *dil, file, fnob ;
   obs = WIZ_PRESENT->wiz_present(str, this_player());
   if(!sizeof(obs))
     return 0;
@@ -43,10 +28,8 @@ int do_it(string str){
   }
   return 1;
 }
-
 int cmd(string str){
   object *tmp;
-
   other = 0;
   notify_fail("usage: dupdate <object> [<object>]\n");
   if (!str)
@@ -57,13 +40,9 @@ int cmd(string str){
     if (sizeof(tmp)){
       other = file_name(tmp[0]);
       other += ".c";
-    } 
+    }
     else
       return 0;
   }
   return do_it(str);
 }
-
-
-
-

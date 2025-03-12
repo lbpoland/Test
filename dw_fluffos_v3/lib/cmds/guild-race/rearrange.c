@@ -1,45 +1,17 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: rearrange.c,v 1.5 2002/03/18 09:43:24 terano Exp $
- * $Log: rearrange.c,v $
- * Revision 1.5  2002/03/18 09:43:24  terano
- * Made the message even less open to interpreation, as players are STILL complaining they left points int he pool accidently.
- *
- * Revision 1.4  2000/03/25 06:34:32  taffyd
- * Fixed typo.
- *
- * Revision 1.3  2000/02/22 01:28:11  sin
- * added some logging.
- *
- * Revision 1.2  1998/08/19 10:20:59  pinkfish
- * Make it inherit the correct base.
- *
- * Revision 1.1  1998/01/06 05:27:04  ceres
- * Initial revision
- * 
-*/
-
 #include <playerinfo.h>
-
 #define ME_CON points[ this_player() ][ "me_con" ]
 #define ME_DEX points[ this_player() ][ "me_dex" ]
 #define ME_INT points[ this_player() ][ "me_int" ]
 #define ME_STR points[ this_player() ][ "me_str" ]
 #define ME_WIS points[ this_player() ][ "me_wis" ]
 #define POOL points[ this_player() ][ "pool" ]
-
 inherit "/cmds/guild_base";
-
 mapping points = ([ ]);
-
 int cmd();
-
 void create() {
    ::create();
    set_command_name("rearrange");
-} /* create() */
-
+}
 void do_save() {
    int player, here;
    player = this_player()->query_real_con() +
@@ -68,13 +40,11 @@ void do_save() {
    this_player()->set_str( ME_STR );
    this_player()->remove_known_command( "rearrange" );
    map_delete(points, this_player());
-} /* do_save() */
-
+}
 void display_stats() {
    printf( "Con: %d Dex: %d Int: %d Str: %d Wis: %d Pool: %d\n",
          ME_CON, ME_DEX, ME_INT, ME_STR, ME_WIS, POOL );
-} /* display_stats() */
-
+}
 int get_stat_bit( string word ) {
    int num;
    string stat;
@@ -177,8 +147,7 @@ int get_stat_bit( string word ) {
    write( "Enter [d|c|i|w|s|save|reset|quit] <num> : " );
    input_to( "get_stat_bit" );
    return 1;
-} /* get_stat_bit() */
-
+}
 int get_check( string word ) {
    word = lower_case( word );
    if ( word[ 0 ] != 'y' ) {
@@ -188,8 +157,7 @@ int get_check( string word ) {
    do_save();
    write( "Saving.\n" );
    return 1;
-} /* get_check() */
-
+}
 int cmd() {
    write( "Rearranging stats.\n\n" );
    points[ this_player() ] = ([ ]);
@@ -226,38 +194,18 @@ int cmd() {
          "starting position, while \"%^YELLOW%^quit%^RESET%^\" will quit "+
          "without saving any changes.\n\n" );
    return get_stat_bit( "" );
-} /* cmd() */
-
+}
 int teach( object thing ) { return 0; }
-
-/* This is removed form here as documetation exists elswehere
- *( Which is a duplication of this.
-string help() {
-   return "Syntax: rearrange\n\n"
-      "Once during the life of your character you may modify your stats for "
-      "free.  Stats normally take values between 8 and 23 and you can "
-      "distribute your stats as you choose by typing \"rearrange\" and "
-      "following the instructions.  The idea of this command is to give your "
-      "character unique strengths.  You should read the help on stats to "
-      "find out what each one does and carefully consider your character's "
-      "future career as a member of one of the " + mud_name() + " guilds before "
-      "using this command.\n\n"
-      "See also:\n"
-      "    score\n";
-} p* help() */
-
 int clean_up() {
   if (sizeof(points))
     return 1;
   ::clean_up();
 }
-
 void reset() {
   if (sizeof(points))
     return;
   ::reset();
 }
-
 string query_name()
 {
   return "Rearrange Command";

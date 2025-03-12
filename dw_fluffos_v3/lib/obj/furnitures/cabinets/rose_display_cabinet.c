@@ -1,8 +1,4 @@
-//Una
-//Only for use in Cwc
-
 inherit "/std/room/furniture/storage";
-
 void setup() {
     set_name("cabinet");
     set_short("rosewood display cabinet");
@@ -17,7 +13,4 @@ void setup() {
     set_max_weight(200);
     set_value(590000);
     set_allowed_room_verbs((["squatting" : "squats" ]));
-    
 }
-
-

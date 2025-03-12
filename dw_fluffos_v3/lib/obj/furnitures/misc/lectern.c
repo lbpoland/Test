@@ -1,5 +1,4 @@
 inherit "/std/room/furniture/surface";
-
 void setup() {
   set_name("lectern");
   set_short("oak lectern");

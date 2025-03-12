@@ -1,12 +1,3 @@
-/******************************************************************************
- * This file contains application-related functions
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Used by the shop front to add this person to the applicants mapping.
- * @param player player to add to applicants mapping
- */
 void add_applicant(string player, string message)
 {
    if (previous_object() && previous_object() != find_object(_shop_front))
@@ -26,14 +17,6 @@ void add_applicant(string player, string message)
       save_applicants();
    }
 }
-/* add_applicant() */
-
-/**
- * @ignore yes 
- * Add this person to the list of declined applicants.  Used by the shop front
- * to determine if this person can apply again yet.
- * @param applicant the declined applicant
- */
 private void add_declined(string applicant)
 {
    applicant = lower_case(applicant);
@@ -45,19 +28,10 @@ private void add_declined(string applicant)
       save_me();
    }
 }
-/* add_declined() */
-
-/**
- * @ignore yes 
- * Used by the managers' office whenever a manager casts a vote on an applicant
- * @param applicant the applicant to vote for
- * @param vote the vote type
- */
 private void add_vote(string applicant, int vote)
 {
    string voter = this_player()->query_name();
    int managers = sizeof(get_managers());
-
    if (!managers) managers = 1;
    load_applicants();
    if (vote == VABSTAIN) _applicants[applicant][APP_ABSTAIN] += ({voter});
@@ -66,12 +40,8 @@ private void add_vote(string applicant, int vote)
    shop_log(GENERAL, voter, "voted on "+ cap_name(applicant), PAID);
    save_applicants();
    managers -= sizeof(_applicants[applicant][APP_ABSTAIN]);
-   
    if (sizeof(_applicants[applicant][APP_FOR]) > managers / 2)
    {
-     /* This applicant has the vote of over 50%
-      * of managers so hire them. 
-      */
       PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
          "Congratulations!  You've been accepted to work at "+
          _shop_name+ ".  Please return to the shop within the next "
@@ -84,9 +54,6 @@ private void add_vote(string applicant, int vote)
    else if (sizeof(_applicants[applicant][APP_AGAINST]) >=
       managers / 2)
    {
-     /* This applicant has been voted against by at least 50% of the 
-      * managers so decline them. 
-      */
       remove_applicant(applicant);
       PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
          "Thank you for your recent application for employment "
@@ -96,23 +63,12 @@ private void add_vote(string applicant, int vote)
          "will be re-considered.\n");
       employee_log(applicant, "Application was declined");
       add_declined(applicant);
-   } 
+   }
 }
-/* add_vote() */
-
-/**
- * @ignore yes 
- * Check to see if we should hire any more accepted applicants.
- * Called during reviews, as well as when firing/promoting employees.
- */
 void check_hire_list()
 {
    int count;
    string *hirees = ({});
-   
-   /* Applicant has not confirmed employment after being accepted 
-    * so remove them. 
-    */
    load_applicants();
    foreach (string word in m_indices(filter(_applicants,
       (: _applicants[$1][APP_TYPE] == HIRED :))))
@@ -127,7 +83,6 @@ void check_hire_list()
          employee_log(word, "Lapsed their application");
          remove_applicant(word);
       }
-   
    foreach (string word in m_indices(filter(_applicants,
       (: _applicants[$1][APP_TYPE] == APPLIED :))))
       if (sizeof(_applicants[word][APP_FOR]) >
@@ -147,9 +102,6 @@ void check_hire_list()
          if (sizeof(_applicants[word][APP_FOR]) <=
             sizeof(_applicants[word][APP_AGAINST]))
          {
-           /* Applicant has at least as many 'no' votes than 'yes' votes
-            * so decline them.
-            */
             remove_applicant(word);
             PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
                "Thank you for your recent application for employment "
@@ -162,8 +114,6 @@ void check_hire_list()
          }
          else
          {
-           /* Applicant has more 'yes' votes as 'no' votes so accept them.
-            */
             PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
                "Congratulations!  You've been accepted to work at "+
                _shop_name+ ".  Please return to the shop within the next "
@@ -174,50 +124,27 @@ void check_hire_list()
             employee_log(word, "Application was accepted");
          }
       }
-   
-   /* Number of places available */
    count = _max_emp - sizeof(_employees);
-   
    if (count < 1) return;
    hirees = sort_array(keys(filter(_applicants,
       (: _applicants[$1][APP_TYPE] == AWAITING :))),
       (: _applicants[$1][APP_TIME] - _applicants[$2][APP_TIME] :));
-   
-   /* See if we can hire all people awaiting a vacancy */
    if (count > sizeof(hirees)) count = sizeof( hirees );
-   
-   /* Hire as many people as we can */
    for (int n = 0; n < count; n++) hire(hirees[n]);
    save_applicants();
 }
-/* check_hire_list() */
-
-/**
- * @ignore yes 
- * Shop front.
- * Cancel application.
- */
 int do_cancel()
 {
    object tp = this_player();
-
    remove_applicant(tp->query_name());
    employee_log(tp->query_name(), "Cancelled application");
    tell_object(tp, "You cancel your application.\n");
    return 1;
 }
-/* do_cancel() */
-
-/**
- * @ignore yes 
- * Shop front.
- * Confirm employment.
- */
 int do_confirm()
 {
    object tp = this_player();
    string applicant = lower_case(tp->query_name());
-   
    if (previous_object() && previous_object() != find_object(_shop_front))
    {
       LOG_ERROR("office.c", "do_confirm()");
@@ -229,27 +156,19 @@ int do_confirm()
    tell_object(tp, "You have now been added to "
       "our waiting list.  You will be notified of your position in the "
       "list as it changes.  You may \"cancel\" your application at "
-      "any time.  You are currently at position " + 
+      "any time.  You are currently at position " +
       sizeof(m_indices(filter(_applicants,
-      (: _applicants[$1][APP_TYPE] == AWAITING :))))+ 
+      (: _applicants[$1][APP_TYPE] == AWAITING :))))+
       " in the waiting list.\n");
    save_applicants();
    employee_log(applicant, "Confirmed employment");
    tell_object(tp, "You confirm your employment.\n");
    return 1;
 }
-/* do_confirm() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Vote on an applicant.
- */
 int do_vote(mixed *args, string pattern)
 {
    int query_app;
    string tp = this_player()->query_name();
-   
    if (pattern == VOTE_APPLICANT)
    {
       args[0] = lower_case(args[0]);
@@ -261,7 +180,7 @@ int do_vote(mixed *args, string pattern)
       }
       if (query_app != APPLIED)
       {
-         tell_object(this_player(), cap_name( args[0])+ 
+         tell_object(this_player(), cap_name( args[0])+
             " has already been hired!\n");
          return 1;
       }
@@ -283,7 +202,7 @@ int do_vote(mixed *args, string pattern)
          break;
       case 'a' :
          add_vote(args[0], VABSTAIN);
-         tell_object(this_player(), "You abstain on " + 
+         tell_object(this_player(), "You abstain on " +
             cap_name(args[0] ) + ".\n");
          break;
       default :
@@ -296,20 +215,9 @@ int do_vote(mixed *args, string pattern)
    else do_policy_vote(tp, args[0], args[1]);
    return 1;
 }
-/* do_vote() */
-
-/**
- * @ignore yes 
- * Send a mail to each applicant awaiting a vacancy to let them know
- * their position in the queue.
- */
 private void mail_hirees()
 {
    string *hirees;
-   
-   /* Make sure we are mailing the correct person with the correct position
-    * by sorting the list by time.
-    */
    load_applicants();
    hirees = sort_array(keys(filter(_applicants,
       (: _applicants[$1][APP_TYPE] == AWAITING :))),
@@ -321,14 +229,6 @@ private void mail_hirees()
          "the top of the list, please be patient.\nThank you.\n");
    clear_applicants();
 }
-/* mail_hirees() */
-
-/**
- * @ignore yes 
- * Remove this person from the applicants mapping.
- * Used when an applicant is hired, declined, or cancels their application.
- * @param applicant the applicant to remove
- */
 private void remove_applicant(string applicant)
 {
    applicant = lower_case(applicant);
@@ -339,14 +239,6 @@ private void remove_applicant(string applicant)
       save_applicants();
    }
 }
-/* remove_applicant() */
-
-/**
- * @ignore yes 
- * Remove this person from the list of declined applicants, allowing them to 
- * re-apply.
- * @param declined the declinee to remove
- */
 private void remove_declined(string declined)
 {
    declined = lower_case(declined);
@@ -356,4 +248,3 @@ private void remove_declined(string declined)
       save_me();
    }
 }
-/* remove_declined() */

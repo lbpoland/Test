@@ -1,44 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: newbie_book.c,v 1.4 2002/08/14 09:02:14 wyvyrn Exp $
- *
- * $Log: newbie_book.c,v $
- * Revision 1.4  2002/08/14 09:02:14  wyvyrn
- * Added general language
- *
- * Revision 1.3  2002/08/14 07:09:14  pinkfish
- *  Forcibly unlocked by wyvyrn
- *
- * Revision 1.2  2000/03/09 01:40:03  ceres
- * Made it valueless so the newbie shop doesn't end up full of them.
- *
- * Revision 1.1  2000/03/01 06:06:45  ceres
- * Initial revision
- *
- * Revision 1.1  1998/01/16 02:18:32  arby
- * Initial revision
- *
-*/
-/* Yikes!  Please don't read the code, as it has no punctation 
-   whatsoever :) (I blame the colours)
-   This newbie brochure is *completly* rewritten from the
-   old /d/am/am/items/colourful brochure, found in the tray in the Mended
-   Drum.
-   
-   Hobbes, July 96 
-
-   Rewritten as a book in Mars 97
-                                                     */
-
 #include "path.h"
-
 #define NEWBIE_SAVE "/d/liaison/NEWBIE/save/"
-
 inherit "/std/book_dir";
-
-
-
 void setup() {
   set_name( "book" );
   set_short( "newbie guide book");
@@ -80,7 +42,4 @@ void setup() {
 "   \\  |____________        'open book to page #'       ____________|  /  \n"
 "   /____/          \\__________________________________/          \\____\\ ",
 "general");
-
-            /* Artwork by Gototh, modified and 'transformed' by me */
 }
-

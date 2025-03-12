@@ -1,22 +1,17 @@
 #include <drinks.h>
 #include <language.h>
 #include <player.h>
-
 #define TP this_player()
-
 inherit "/cmds/base";
 inherit "/cmds/speech";
-
 #ifdef USE_SMILEYS
-string *two_smileys = ({":)", ":(", ":P", ":p", ":b", ";)", 
+string *two_smileys = ({":)", ":(", ":P", ":p", ":b", ";)",
   ";(", ";P", ";p", ";b", "=)", "=("});
-
 string *three_smileys = ({":-)", ":-(", ":-P", ":-p", ":-b",
-  ";-)", ";-(", ";-P", ";-p", ";-b", ":o)", ":o(", ":oP", 
+  ";-)", ";-(", ";-P", ";-p", ";-b", ":o)", ":o(", ":oP",
   ":op", ":ob", ";o)", ";o(", ";oP", ";op", ";ob", "=-)",
   "=-(", "=o)", "=o("});
 #endif
-
 int cmd( string arg, mixed thing, int silent ) {
    string word, lang, words, emotion;
 #ifdef USE_SMILEYS
@@ -28,7 +23,6 @@ int cmd( string arg, mixed thing, int silent ) {
    object *net_dead;
    object *fail;
    mixed busy;
-
    emotion = "";
    if (pointerp(thing)) {
       words = arg;
@@ -49,24 +43,20 @@ int cmd( string arg, mixed thing, int silent ) {
    } else {
       words = arg;
    }
-
    if (!pointerp(thing)) {
       obs = ({ thing });
    } else {
       obs = thing;
    }
-
    obs -= ({ this_player() });
    if ( !sizeof(obs) ) {
       add_failed_mess( "Talking to yourself again.  I don't know.\n" );
       return 0;
    }
-
    if (sizeof(obs) > 20) {
       add_failed_mess("You can only tell up to 20 people a message.\n");
       return 0;
    }
-
    fail = this_player()->query_ignoring(obs);
    if ( sizeof( fail ) )  {
       write( "You are currently ignoring " +
@@ -87,7 +77,6 @@ int cmd( string arg, mixed thing, int silent ) {
       return notify_fail( capitalize( lang ) +
             " is not able to be spoken at a distance.\n" );
    }
-  // This is so small tells don't error.
 #ifdef USE_SMILEYS
   if(sizeof(words) >= 3) {
     if(member_array(words[<3..], three_smileys) != -1) {
@@ -107,8 +96,6 @@ int cmd( string arg, mixed thing, int silent ) {
   }
 #ifdef USE_SMILEYS
   if(smiley) {
-    // This is so we don't get errors with people telling each
-    // other smileys on their own.
     if(sizeof(words) > 3) {
       smiley_words = words[0..<sizeof(smiley) + 1];
     } else {
@@ -187,16 +174,13 @@ int cmd( string arg, mixed thing, int silent ) {
       emotion = "";
   }
 #endif
-
    if ( word != " asking" ) {
       me_mess = "tell";
    } else {
       me_mess = "ask";
       word = "";
    }
-
    net_dead = ({ });
-
    foreach (thing in obs) {
       temp = emotion;
       if(thing->query_earmuffs("emoticon")) {
@@ -238,7 +222,7 @@ int cmd( string arg, mixed thing, int silent ) {
       if (busy == 1) {
          write("Warning! You have your busy flag on.\n");
       } else if (pointerp(busy) && sizeof(obs - busy)) {
-         write("Warning! You are currently set as busy with " + 
+         write("Warning! You are currently set as busy with " +
                   query_multiple_short(busy) + ".\n");
       }
       my_mess("(creator) You "+me_mess+" "+them_mess+
@@ -246,11 +230,8 @@ int cmd( string arg, mixed thing, int silent ) {
    }
    TP->adjust_time_left( -5 );
    return 1;
-} /* cmd() */
-
+}
 mixed *query_patterns() {
    return ({ "<indirect:player> <string'message'>", (: cmd($4[1], $1, 0) :),
              "<string>", (: cmd($4[0], 0, 0) :) });
-} /* query_patterns() */
-
-
+}

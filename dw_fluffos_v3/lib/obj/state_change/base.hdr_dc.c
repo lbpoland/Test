@@ -1,9 +1,7 @@
 #include <state_change.h>
 void dest_me() { destruct( this_object() ); }
-
 class state_change item;
 mapping data = ([ ]);
-
 mixed data_return_0() {
   item = new( class state_change );
   item->result = "/obj/reagents/water.ob";
@@ -493,7 +491,6 @@ mixed data_return_0() {
     });
   data["grind:Thyme"] = item;
 }
-
 mixed data_return_1() {
   item = new( class state_change );
   item->result = "/obj/reagents/generic_solid.ob";
@@ -941,7 +938,6 @@ mixed data_return_1() {
     });
   data["grind:BrainOfBird"] = item;
 }
-
 mixed data_return_2() {
   item = new( class state_change );
   item->result = "/obj/reagents/generic_solid.ob";
@@ -1425,7 +1421,6 @@ mixed data_return_2() {
 });
   data["shake:UnshakenWellGreasedDwarf"] = item;
 }
-
 mixed data_return_3() {
   item = new( class state_change );
   item->result = "/obj/reagents/generic_solid.ob";
@@ -1723,7 +1718,6 @@ mixed data_return_3() {
   item->func = ({ });
   data["thresh:Wheat"] = item;
 }
-
 mixed data_return() {
   data_return_0();
   data_return_1();

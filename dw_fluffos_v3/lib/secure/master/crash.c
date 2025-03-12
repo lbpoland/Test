@@ -1,12 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: crash.c,v 1.3 2003/03/25 20:02:49 wodan Exp $
- */
 void crash(string crash_mess, object command_giver, object current_object) {
   object thing, *things;
   string crashtxt;
-
   reset_eval_cost();
   log_file("CRASH", "\n"+ ctime(time()) +":\n");
   if (current_object)
@@ -32,4 +26,4 @@ void crash(string crash_mess, object command_giver, object current_object) {
     efun::tell_object(thing, crashtxt + "\n("+ crash_mess +")\n");
     catch(thing->quit());
   }
-} /* crash() */
+}

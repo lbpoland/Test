@@ -1,20 +1,13 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: upt_ime.c,v 1.14 2003/03/02 23:50:32 pinkfish Exp $
- */
 #include <player.h>
 inherit "/cmds/base";
-
 mixed cmd(int brief) {
   mapping u;
   int r;
   string str;
   string output;
-  
   str = "/secure/finger"->time_elapsed_string(uptime());
 #ifndef __DISTRIBUTION_LIB__
   output = "A'Tuin has been paddling through space for "+
-
       str + ".";
   if (brief) {
      write(output + "\n");
@@ -31,9 +24,7 @@ mixed cmd(int brief) {
      return 1;
   }
 #endif
-
   u = rusage();
-
 #ifndef __DISTRIBUTION_LIB__
   output += sprintf("  This has taken %.2f%% of his (or her) energy and %.2fMB "
                     "of his (or her) mental capacity.  ",
@@ -45,7 +36,6 @@ mixed cmd(int brief) {
                     ((u["stime"] + u["utime"]) / 10.0) / uptime(),
                     (memory_info() / 1024000.0));
 #endif
-
 #ifndef __DISTRIBUTION_LIB__
   r = "/obj/handlers/garbage"->query_next_reboot();
   if (r == -1) {
@@ -56,12 +46,10 @@ mixed cmd(int brief) {
       "any moment now.";
   } else {
     str = "";
-  
     if(r / (60*60*24)) {
       str += (string) (r / (60*60*24)) + " day";
       str += ((r /(60*60*24)) > 1 ? "s" : "");
     }
-
     if(r / ((60*60)) % 24) {
       if(str != "") {
         str += " and ";
@@ -87,7 +75,6 @@ mixed cmd(int brief) {
         break;
       }
     }
-
     output += "He (or she) will be taking his (or her) next rest "
       "in " + str + ".";
   }
@@ -96,7 +83,6 @@ mixed cmd(int brief) {
                   (int)this_player()->query_cols(), output));
   return 1;
 }
-
 mixed* query_patterns() {
    return ({ "", (: cmd(0) :),
              "{brief|verbose}", (: cmd($4[0] == "brief") :) });

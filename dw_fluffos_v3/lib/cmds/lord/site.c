@@ -1,23 +1,10 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: site.c,v 1.9 2001/06/01 20:58:28 ceres Exp $
- */
 #include <parser.h>
 #include <access.h>
-
 inherit "/cmds/base";
-
-/*
- * This will ban a site
- */
 mixed cmd(string address, string level, string reason) {
-
    seteuid("Root");
-   
    if (this_player() != this_player(1))
       return 0;
-
    switch(level) {
    case "nonew":
       level = "2";
@@ -32,35 +19,25 @@ mixed cmd(string address, string level, string reason) {
       level = "1";
       break;
    }
-
-   // the .* is nolonger needed in addresses (or names for that matter).
    address = replace(address, ".*", "");
-   
    if (!"/secure/bastards"->change_access(address, to_int(level), reason)) {
      write("Error changing permissions.\n");
      return 0;
    }
-   
    write("Access permisions changed.\n");
    printf("Site %s set to %s for %s\n", address, PERM_NAMES[to_int(level)],
           reason);
    return 1;
-} /* cmd() */
-
+}
 int access(string filter) {
   string addr, ret;
   mapping list;
   int found;
-  
   seteuid("Root");
-  
   if (this_player() != this_player(1))
     return 0;
-  
   list = "/secure/bastards"->query_all_access();
-  
   ret = "";
-  
   foreach(addr in keys(list)) {
     if(!filter || filter == "" || strsrch(addr, filter) != -1) {
       found = 1;
@@ -71,12 +48,10 @@ int access(string filter) {
   }
   if (!found)
     return notify_fail("No access control defined.\n");
-
   write("Current access list:\n");
   this_player()->more_string(ret, "site access");
   return 1;
 }
-
 int multi(int allow, string address) {
   if("/secure/bastards"->change_multi(address, allow, 0)) {
     if(allow)
@@ -85,17 +60,13 @@ int multi(int allow, string address) {
       write("Site " + address + " has been blocked for multiplayers.\n");
   } else
     write("Error multiplayer settings for site " + address + ".\n");
-  
   return 1;
 }
-
 int list_multi(string filter) {
   string addr, ret;
   mapping list;
   int found;
-
   list = "/secure/bastards"->query_all_multi();
-
   ret = "";
   foreach(addr in keys(list)) {
     if(!filter || filter == "" || strsrch(addr, filter) != -1) {
@@ -105,12 +76,10 @@ int list_multi(string filter) {
   }
   if (!found)
     return notify_fail("No access control defined.\n");
-  
   write("Current multuser site list:\n");
   this_player()->more_string(ret, "site access");
   return 1;
 }
-
 int help() {
    return notify_fail(
       "Syntax: site access\n"+
@@ -134,4 +103,4 @@ mixed *query_patterns() {
                "", (: help() :),
                "help", (: help() :)
                });
-} /* query_patterns() */
+}

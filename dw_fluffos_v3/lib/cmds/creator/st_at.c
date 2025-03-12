@@ -1,23 +1,11 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: st_at.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: st_at.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
 #include <creator.h>
-
 inherit "/cmds/base";
-
 mixed cmd(string str) {
   object *ob, thing;
   mixed *ob1, *thing1;
   string s, bing;
-  string long_fields, temp;   /* added by ember to produce long and short fields */
-  int long_length;  /* fields are divided into long and short fields by this */
-
+  string long_fields, temp;
+  int long_length;
   bing = "";
   str = (string)this_player()->expand_nickname(str);
   ob = WIZ_PRESENT->wiz_present(str, this_player());
@@ -35,8 +23,6 @@ mixed cmd(string str) {
     foreach (thing1 in (pointerp(ob1[0][0])?ob1[0]:ob1)) {
       if (thing1[1]) {
         temp = thing1[0] +": "+ sprintf("%O", thing1[1]) +"\n";
-/* this test will incorrectly assess some fields which have line feeds in
- * them as 'long fields', but who really cares? */
         if (strlen(temp) > long_length) {
           long_fields += temp;
         } else {

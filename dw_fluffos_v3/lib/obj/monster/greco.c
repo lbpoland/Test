@@ -1,23 +1,11 @@
-/* a different attempt by Ember to make an accountable auto_loading system */
-/* uses old system, with a different front end */
-/* 
- *  30-Oct-93    created by E
- *  24-Oct-96    Fiddled by Pinkfish to create the alter ego - Gumboot.
- *  05-Feb-97    Changed by Olorin to not trust find_call_out
- */
-
 #define ITEM_TRACKER ("/obj/handlers/item_tracker")
-
 inherit "/obj/monster";
-
 object my_player;
-mixed total_als;      /* generated total auto-load-string */
+mixed total_als;
 object *save_obs;
 object *unhandled_obs;
 object *done_obs;
-
 int grecos_day_off;
-
 void setup() {
   seteuid("Root");
   if (!grecos_day_off) {
@@ -25,38 +13,31 @@ void setup() {
     set_short("Greco the Departure Gecko");
     set_long("A small mottled grey gecko whose job it is to record all of "
              "the baggage of players so they can be restocked when they "
-             "come back.  Greco is currently scribbling in " 
+             "come back.  Greco is currently scribbling in "
              + query_possessive() + " notebook furiously.\n");
   } else {
-    /* Gumboot.  Greco's happy replacement. */
     set_name("gumboot");
-    set_short("Gumboot");             
+    set_short("Gumboot");
     set_long("A big black lizard who looks rather confused about what "
              + query_pronoun() + " is supposed to be doing.  Nevertheless, "
              + query_pronoun() + " is trying to look busy, scrawling "
-             "something into a huge log book.\n"); 
-  }                      
-              
+             "something into a huge log book.\n");
+  }
   add_property("determinate", "");
   add_property("no_attack", 1);
-  set_gender(1+random(2));  /* Greco (or Gumboot) the androgynous gecko */
+  set_gender(1+random(2));
   basic_setup("gnome", "warrior", 30);
   set_language("general");
-
-} /* setup() */
-
+}
 void set_grecos_day_off(int day_off) {
   grecos_day_off = day_off;
   setup();
-} /* set_grecos_day_off() */
-
+}
 int query_grecos_day_off() {
   return grecos_day_off;
-} /* query_grecos_day_off() */
-
+}
 void get_rid_of(object player, int verbose) {
   int i;
-
   catch(set_grecos_day_off("/obj/monster/greco"->query_grecos_day_off()));
   if (verbose) {
     if (!grecos_day_off) {
@@ -75,31 +56,25 @@ void get_rid_of(object player, int verbose) {
   unhandled_obs = save_obs = all_inventory(player);
   total_als = ({ });
   done_obs = ({ });
-  for (i = 0; i < sizeof(save_obs); i++) 
+  for (i = 0; i < sizeof(save_obs); i++)
     call_out("get_ob_al", 1, save_obs[i], verbose);
   call_out("finish_player", 2, verbose);
-} /* get_rid_of() */
-
+}
 void get_ob_al(object ob, int verbose)
 {
   mixed *als;
-
-  /* this is call_outed for each object in the player's inventory */
-  /* it should add to the autoload array and the done_obs array */
-  unhandled_obs -= ({ ob }); 
+  unhandled_obs -= ({ ob });
   als = my_player->fragile_auto_str_ob(ob);
   done_obs += ({ ob });
   if (sizeof(als) == 0) return;
   total_als += als;
-} /* get_ob_all() */
-
+}
 void handle_dead_ob(object ob) {
   int value;
   mixed *als;
   string obname;
-
   catch(ob->move("/room/broken"));
-  value = 1000; /* random anonymous replacement value */
+  value = 1000;
   catch(value = ob->query_value());
   obname = "unknown object";
   catch(obname = ob->short(1));
@@ -109,35 +84,26 @@ void handle_dead_ob(object ob) {
   als = "/global/auto_load"->
     fragile_auto_str_ob(find_object("/obj/misc/al_receipt"));
   als[0] = 1;
-  // This is a bit of a hack.  It could easily break if the receipt
-  // inheritance changes.
   if (!undefinedp(als[2][1]["::"]["cloned by"])) {
     als[2][1]["::"]["cloned by"] = "greco";
   }
   log_file("GRECO", "%s: %s - Broken object at logout: %O\n",
            ctime(time()), my_player?my_player->query_name():"0", ob);
   total_als += als;
-} /* handle_dead_ob() */
-
+}
 void finish_player(int verbose) {
-  /* this is called after all of the auto_load call_outs are complete,
-   * so it should check which objects failed to complete and write out
-   * receipts for them ... */
   int i, one_more;
   object *missing_obs;
-
   if (find_call_out("get_ob_al") != -1) {
     call_out("finish_player", 2, verbose);
     return;
   }
   if ( sizeof( unhandled_obs ) ) {
-     /* find_call_out isn't to be trusted:(
-      */
     call_out("finish_player", 2, verbose);
     return;
   }
   missing_obs = save_obs - done_obs;
-  if (sizeof(missing_obs)) {  
+  if (sizeof(missing_obs)) {
     one_more = sizeof(missing_obs);
     if (!grecos_day_off) {
       do_command("'"+(one_more==1?"One":"Some")+
@@ -159,7 +125,6 @@ void finish_player(int verbose) {
     for (i = 0; i < sizeof(missing_obs); i++)
       handle_dead_ob(missing_obs[i]);
   }
-
   my_player->save_with_auto_load(total_als);
   if (verbose) {
     if (!grecos_day_off) {
@@ -237,25 +202,15 @@ void finish_player(int verbose) {
     }
   }
   tell_object(my_player, "Do come again!\n");
-
-  // If we break here, then the player won't be destructed and then their
-  // partially destructed inventory will overwrite their new inventory
-  // when they idle out of the departure lounge!
-
-  foreach( object saved_ob in done_obs ) { 
-     reset_eval_cost(); 
-
+  foreach( object saved_ob in done_obs ) {
+     reset_eval_cost();
      catch(saved_ob->set_tracked_item_status_reason("PLAYER_QUIT"));
      catch(saved_ob->dest_me());
-
-     if ( saved_ob ) { 
+     if ( saved_ob ) {
          catch(saved_ob->dwep());
      }
   }
-  
-  // Should be the last one we need. 
   reset_eval_cost();
-
   catch( ITEM_TRACKER->save_all_item_states_delete_cache( my_player->query_name() ));
   catch(my_player->effects_quiting());
   catch(my_player->dest_me());
@@ -267,4 +222,4 @@ void finish_player(int verbose) {
   }
   move( "/room/rubbish", "$N appear$s.",
         "$N disappear$s in a puff of smoke." );
-} /* finish_player() */
+}

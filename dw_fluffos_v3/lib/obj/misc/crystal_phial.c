@@ -1,5 +1,4 @@
 inherit "/obj/vessel";
-
 void setup() {
    set_name( "phial" );
    set_short( "crystal phial" );
@@ -12,8 +11,7 @@ void setup() {
    set_max_weight( 1 );
    set_max_volume( 10 );
    set_transparent();
-} /* setup() */
-
+}
 int test_add( object thing, int flag ) {
    string word;
    object *things;
@@ -29,8 +27,7 @@ int test_add( object thing, int flag ) {
          (string)things[ 0 ]->the_short() :
          (string)thing->the_short() ) +", do you?\n" );
    return 0;
-} /* test_add() */
-
+}
 object query_substance() {
    object *things;
    things = all_inventory( this_object() );
@@ -39,26 +36,23 @@ object query_substance() {
    if ( !stringp( (string)things[ 0 ]->query_medium_alias() ) )
       return 0;
    return things[ 0 ];
-} /* query_substance() */
-
+}
 string short( int dark ) {
    object thing = query_substance();
    if ( dark || !objectp( thing ) )
       return ::short( dark );
    return ::short( dark ) +" of "+ (string)thing->short( dark );
-} /* short() */
-
+}
 string query_plural( int dark ) {
    object thing = query_substance();
    if ( dark || !objectp( thing ) )
       return ::query_plural( dark );
    return ::query_plural( dark ) +" of "+ (string)thing->short( dark );
-} /* query_plural() */
-
+}
 string *parse_command_adjectiv_id_list() {
    object thing = query_substance();
    if ( !objectp( thing ) )
       return ::parse_command_adjectiv_id_list();
    return ::parse_command_adjectiv_id_list() + ({ "of" }) +
       (string *)thing->query_adjectives();
-} /* parse_command_adjectiv_id_list() */
+}

@@ -1,13 +1,8 @@
-/****** This room is made my Mithal, learn and enjoy  ***/
-
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_short("add_item room #7, verb failure messages ");
    set_light(100);
-
    set_long("add_item room #7, verb failure messages\n"
             +"Let us continue with our rat.  Sometimes the general failure "
             +"message just dosn't cut it.  When the player fails to  "
@@ -16,8 +11,6 @@ void setup() {
             +"Notice that, unlike success messages, failure messages go only "
             +"to the player - not to everyone in the room.  *smile* \n"
             +"A filthy rat.\nA note.\n");
-   
-   
    add_item("note", ({ "long", "It can be read.",
 		       "read", "Here is the code for the do_touch:\n"
 	     +"int  do_touch()\n"
@@ -41,17 +34,14 @@ void setup() {
 	     +"direct object, ie previous_object().  It is complicated.  "
 	     +"If you stick to this form, you shouldn't have any problems.  "
 	     +"If all else fails, read the help file on it. *giggle* \n" }));
-   
    add_item( "large filthy rat", ({
       "long", "It looks like it wants to be touched.",
       "touch", ({ this_object(), "do_touch" }) }));
-   
    add_exit( "east", PATH +"verb_success", "path" );
    add_exit( "west", PATH +"action_verbs", "path" );
    add_exit( "start", MAIN, "path" );
    add_exit( "exit", LEARNING +"search", "path" );
 }
-
 int do_touch() {
    if(!random(2)) {
       this_player()->add_failed_mess(previous_object(),
@@ -61,6 +51,3 @@ int do_touch() {
    }
    return 1;
 }
-    
-   
-

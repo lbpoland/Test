@@ -1,23 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: ken_curse.c,v 1.1 1998/01/06 04:35:35 ceres Exp $
- * $Log: ken_curse.c,v $
- * Revision 1.1  1998/01/06 04:35:35  ceres
- * Initial revision
- * 
-*/
-/*
- * Converted to effects system by Jeremy, 7-Jun-96
- */
-
 inherit "/std/effect_shadow";
-
 string *replace_matrix;
 mapping trans;
-
-void create() {  
-  replace_matrix = ({ 
+void create() {
+  replace_matrix = ({
   "Aren't you ", "Aintcha ",
   "aren't you ", "aintcha ",
   "You are", "Yer ",
@@ -55,7 +40,6 @@ void create() {
   "?", " ?",
   "!", " !",
   });
-
   trans = ([ ]);
   trans["stairs"] = "apples and pears";
   trans["Downstairs"] = "Down the apples and pears";
@@ -175,13 +159,11 @@ void create() {
   trans["friend"] = ({ "mucker", "mate", "china" });
   trans["sin'"] = "sing";
   trans["rin'"] = "ring";
-} /* trans() */
-
+}
 string mangle_speech(string str) {
   string tmp, *bits;
   mixed erp;
   int i;
-
   tmp = player->mangle_speech( str );
   tmp = replace(" "+(stringp(tmp)?tmp:str)+" ", replace_matrix);
   bits = explode(tmp, " ");
@@ -215,4 +197,4 @@ string mangle_speech(string str) {
                })[random(4)];
   }
   return replace(tmp, ({ " !", "!", " .", ".", " ?", "?" }));
-} /* mangle_speech() */
+}

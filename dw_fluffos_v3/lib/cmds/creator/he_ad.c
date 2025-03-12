@@ -1,18 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: he_ad.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: he_ad.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
-/* head command, by Wodan. */
-
 mixed cmd(string str) {
   int i;
   string *files;
-
   seteuid(geteuid(this_player()));
   if (!str)
     return notify_fail("Usage: head <file>\n");
@@ -29,15 +17,12 @@ mixed cmd(string str) {
   write(read_file(str,1,i));
   return 1;
 }
-
 void dest_me() {
   destruct(this_object());
 }
-
 void clean_up() {
   dest_me();
 }
-
 void reset() {
   dest_me();
 }

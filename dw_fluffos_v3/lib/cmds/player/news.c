@@ -1,52 +1,15 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: news.c,v 1.6 2001/03/09 22:46:08 pinkfish Exp $
- * $Log: news.c,v $
- * Revision 1.6  2001/03/09 22:46:08  pinkfish
- * Add in a post time.
- *
- * Revision 1.5  2000/04/04 06:06:20  ceres
- * Modified to use board handler newsrc functions
- *
- * Revision 1.4  1998/02/21 19:49:01  pinkfish
- * Changed it again to fix yp the login only showing 10 lines...
- *
- * Revision 1.3  1998/02/21 19:40:57  pinkfish
- * cd /global
- *
- * Revision 1.2  1998/02/21 19:38:55  pinkfish
- * Make it handle shorter login lists when players logon.
- *
- * Revision 1.1  1998/01/06 05:29:43  ceres
- * Initial revision
- * 
-*/
-/* command, trial out by Turrican for a commands daemon. */
-/*
- * A news system for player announcements. It uses a bulletin board called:
- * "announcements". Players will be able to read the news at anytime which
- * should be an improvement over the current NEWS file which is shown
- * on login only.
- */
 #include <board.h>
-
 inherit "/cmds/base";
-
 object board;
 string board_name = "announcements";
-
 void do_list(int all);
 int do_read(int num);
-
 #define LOGON_LIMIT 10
 #define MOST 1
 #define ALL 2
 #define SOME 0
-
 mixed cmd(string str) {
   int msg;
-  
   switch(str) {
   case "help":
   case "?":
@@ -72,17 +35,14 @@ mixed cmd(string str) {
   }
   return 1;
 }
-
 int do_read(int num) {
   mapping news_rc;
   mixed *stuff;
-  
   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
   if ( !news_rc ) {
     news_rc = ([ ]);
   }
   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
-  
   if(!num) {
     num = sizeof(stuff);
     while((num > 0) && (stuff[num - 1][B_TIME] > news_rc[board_name])) {
@@ -94,7 +54,6 @@ int do_read(int num) {
     }
     num++;
   }
-  
   if(num < 0) {
     num = sizeof(stuff) + num + 1;
   }
@@ -103,7 +62,6 @@ int do_read(int num) {
     return 1;
   }
   num--;
-  
   if(news_rc[ board_name ] < stuff[ num ][ B_TIME ]) {
     news_rc[ board_name ] = stuff[ num ][ B_TIME ];
     BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
@@ -115,19 +73,15 @@ int do_read(int num) {
        "[Note "+ ( num + 1 ) +"]" );
   return 1;
 }
-
 string the_date(int i) {
   return ctime(i)[4..9];
 }
-
 void do_list(int all) {
   int i, newones;
   mixed *stuff;
   string ret;
   mapping news_rc;
-
   ret = "";
-  
   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
   if (!sizeof(stuff)) {
     tell_object(this_player(), "No news is good news.\n");

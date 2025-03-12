@@ -1,61 +1,13 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: water.c,v 1.12 2002/08/03 22:27:04 ceres Exp $
- * $Log: water.c,v $
- * Revision 1.12  2002/08/03 22:27:04  ceres
- * Fixed skill names
- *
- * Revision 1.11  2002/03/09 20:20:04  tannah
- * Made add_property recognise the third parameter.
- *
- * Revision 1.10  2002/03/01 23:28:25  tannah
- * Made it check for use_base_stats before returning modified bonus, and checked
- * for query_verb() == "skills", too.
- * Made it recalculate bonus whenever query_skill_bonus() is called.
- *
- * Revision 1.9  2002/02/21 14:03:50  taffyd
- * Forced it to recalculate the burdening.
- *
- * Revision 1.8  2002/02/21 13:21:17  presto
- *  Forcibly unlocked by taffyd
- *
- * Revision 1.7  2001/06/07 14:47:41  wobin
- * Added in cascading to do_soak for shadowed functions
- *
- * Revision 1.6  1999/05/25 23:39:50  pinkfish
- * Make it more error safe.
- *
- * Revision 1.5  1999/04/06 00:34:04  ceres
- * Modified to allow query_skill_bonus() to work for the swimming skill.
- *
- * Revision 1.4  1999/03/05 21:06:08  pinkfish
- * Fix up some errors that Mystic pointer out.
- *
- * Revision 1.3  1999/03/05 21:04:05  presto
- *  Forcibly unlocked by pinkfish
- *
- * Revision 1.2  1998/05/14 00:43:52  presto
- * Slave work for Jeremy. :)
- *
- * Revision 1.1  1998/01/06 04:39:04  ceres
- * Initial revision
- *
-*/
 #include <move_failures.h>
-
 #define SWIMMING_SKILL "other.movement.swimming"
 #define STAMINA_SKILL "other.health"
 #define BUOYANT_PROP "buoyancy"
 #define ANCHOR_PROP "anchor"
 #define GILLS_PROP "gills"
 #define TROLL_RACE "troll"
-
 object swimmer;
 int bonus, buoyancy, drown_stage, swimming = 0, recheck_delay = -1;
 string sweep_dir = "";
-
-
 void calc_swim_bonus();
 int abs( int i );
 void test_sweep();
@@ -63,22 +15,16 @@ void test_float();
 void test_drown();
 string sweep_string( mixed *dest_other_info, int pos );
 varargs int exit_command( string word, mixed verb, object thing );
-
 int abs( int i )  {  return i < 0 ? -i : i;  }
-
 int start_floating();
 int start_swimming();
-
 void setup_shadow( object this_swimmer )  {
    shadow( this_swimmer, 1 );
    swimmer = this_swimmer;
    calc_swim_bonus();
-}  /* setup_shadow() */
-
-
+}
 void event_enter( object ob, string message, object from )  {
    int old_bonus, old_buoy;
-
    if (swimmer) {
       swimmer->event_enter( ob, message, from );
    }
@@ -91,12 +37,9 @@ void event_enter( object ob, string message, object from )  {
       test_float();
    }
    return;
-}  /* event_enter() */
-
-
+}
 void event_exit( object ob, string message, object to )  {
    int old_bonus, old_buoy;
-
    if (swimmer) {
       swimmer->event_exit(ob, message, to);
    }
@@ -109,17 +52,12 @@ void event_exit( object ob, string message, object to )  {
       test_float();
    }
    return;
-}  /* event_exit() */
-
-
+}
 void calc_swim_bonus()  {
    float pct;
    object *held;
-
    if ( living( swimmer )  &&
         ( held = (object *)swimmer->query_holding() ) )  {
-
-      // Force a recalculation of their weight.
       swimmer->calc_burden();
       bonus = (int)swimmer->query_skill_bonus( SWIMMING_SKILL ) /
                             ( sizeof( held - (object *)({ 0 }) ) + 1 );
@@ -145,11 +83,8 @@ void calc_swim_bonus()  {
                     (int)swimmer->query_weight();
       }
    }
-
    return;
-}  /* calc_swim_bonus() */
-
-
+}
 void add_property( string prop, mixed val, int time )  {
    if (swimmer) {
       swimmer->add_property( prop, val, time );
@@ -160,9 +95,7 @@ void add_property( string prop, mixed val, int time )  {
       test_float();
    }
    return;
-}  /* add_property() */
-
-
+}
 void remove_property( string prop )  {
    if (swimmer) {
      swimmer->remove_property( prop );
@@ -173,12 +106,9 @@ void remove_property( string prop )  {
       test_float();
    }
    return;
-}  /* remove_property() */
-
-
+}
 int add_skill_level( string skill, int lev )  {
    int lvl;
-
    if ( living(swimmer) )  {
       lvl = (int)swimmer->add_skill_level( skill, lev );
       if ( skill == SWIMMING_SKILL  &&  lev )  {
@@ -189,12 +119,7 @@ int add_skill_level( string skill, int lev )  {
       return lvl;
    }
    else return 0;
-}  /* add_skill_level() */
-
-
-/* Added to allow the use of query_skill_bonus directly and still
- * obtain the correct result. -- Ceres
- */
+}
 varargs int query_skill_bonus( string skill, int use_base_stats ) {
   if( ( skill == SWIMMING_SKILL ) &&
       ( !use_base_stats ) &&
@@ -204,18 +129,13 @@ varargs int query_skill_bonus( string skill, int use_base_stats ) {
   }
   return swimmer->query_skill_bonus(skill, use_base_stats);
 }
-
 int query_swim_bonus()  {  return bonus;  }
-
 int query_buoyancy()  {  return buoyancy;  }
-
-
 void test_sweep()  {
    mapping flows, possible;
    int total_flow, r, f, s, flow_rate;
    string *dirs, dir, *dest_dir_info;
    object room;
-
    s = find_call_out( "do_sweep" );
    room = environment( swimmer );
    flows = (mapping)room->query_flows();
@@ -242,18 +162,15 @@ void test_sweep()  {
             possible += ([ dir : f ]);
          }
       }
-
       r = random( total_flow );
       dirs = keys( possible );
       total_flow = 0;
-
       foreach ( dir in dirs )  {
          if ( r < total_flow + possible[ dir ] )  {
             sweep_dir = dir;
             f = ( 300 - possible[ dir ] ) / 30;
             if ( f < 0 )  f = 0;
             f += room->query_min_sweep_delay( dir );
-//tell_object(swimmer, "Calling do sweep, delay = " + f + ", direction = " + dir + "\n" );
             call_out( "do_sweep", f,
                       dest_dir_info[ member_array( sweep_dir,
                                                    dest_dir_info ) + 1 ] );
@@ -263,13 +180,10 @@ void test_sweep()  {
       }
    }
    return;
-}  /* test_sweep() */
-
-
+}
 void test_float()  {
    object room;
    int s, t;
-
    room = environment( swimmer );
    if ( buoyancy < 0 )  {
       remove_call_out( "do_rise" );
@@ -316,12 +230,9 @@ void test_float()  {
       swimmer->add_property( "there", (string)room->query_float_mess() );
    }
    return;
-}  /* test_float() */
-
-
+}
 void test_drown()  {
    int delay;
-
    if ( environment( swimmer )->query_surface() )
       remove_call_out("do_drown");
    else if ( find_call_out( "do_drown" ) == -1  &&
@@ -332,13 +243,10 @@ void test_drown()  {
       drown_stage = 0;
    }
    return;
-}  /* test_drown() */
-
-
+}
 void do_sweep( string dest )  {
    mixed *dest_other_info;
    object room;
-
    room = environment(swimmer);
    if ( environment( swimmer )->query_terrain() )
       environment( swimmer )->set_destination( sweep_dir );
@@ -364,15 +272,12 @@ void do_sweep( string dest )  {
                                                sweep_dir ) );
    }
    return;
-}  /* do_sweep() */
-
-
+}
 void do_sink()  {
    string dir;
    mixed *dest_other_info;
    int i;
    object room;
-
    room = environment(swimmer);
    dir = (string)room->query_down_dir();
    if ( environment( swimmer )->query_terrain() )
@@ -399,15 +304,12 @@ void do_sink()  {
       }
    }
    return;
-}  /* do_sink() */
-
-
+}
 void do_rise()  {
    string dir;
    mixed *dest_other_info;
    int i;
    object room;
-
    room = environment( swimmer );
    dir = (string)room->query_up_dir();
    if ( environment( swimmer )->query_terrain() )
@@ -434,13 +336,10 @@ void do_rise()  {
       }
    }
    return;
-}  /* do_rise() */
-
-
+}
 void do_drown()  {
    string *exits, up;
    int delay;
-
    delay = (int)swimmer->query_skill_bonus( STAMINA_SKILL ) / 5;
    if ( delay < 15 )  delay = 15;
    switch ( drown_stage )  {
@@ -493,24 +392,16 @@ void do_drown()  {
    }
    ++drown_stage;
    return;
-}  /* do_drown() */
-
-
-// Changed slightly by Ceres to make it simpler, if youre swimming it
-// makes you soaked immediately now.
+}
 void do_soak()  {
    swimmer->add_effect("/std/effects/other/wetness", swimmer->query_weight());
    swimmer->do_soak();
-}  /*  do_soak()  */
-
-
+}
 void cancel_sweep()  {
    remove_call_out( "do_sweep" );
    sweep_dir = "";
    return;
-}  /* cancel_sweep() */
-
-
+}
 void dest_water_shadow()  {
    remove_call_out( "do_sweep" );
    remove_call_out( "do_rise" );
@@ -523,15 +414,10 @@ void dest_water_shadow()  {
    }
    destruct( this_object() );
    return;
-}  /* dest_water_shadow() */
-
-
+}
 object find_water_shadow()  {  return this_object();  }
-
-
 int command_shadowed( string verb, string args )  {
    string my_mess, others_mess;
-
    my_mess = 0;
    if ( !( environment( swimmer )->query_surface() ) )  {
       if ( verb == "say"  ||  verb == "'" )  {
@@ -590,12 +476,9 @@ int command_shadowed( string verb, string args )  {
       return 1;
    }
    else return (int)swimmer->command_shadowed( verb, args );
-}  /* command_shadowed() */
-
-
+}
 int *set_hold( object ob, int pos )  {
    int *other, old_bonus;
-
    old_bonus = bonus;
    other = (int *)swimmer->set_hold( ob, pos );
    calc_swim_bonus();
@@ -604,9 +487,7 @@ int *set_hold( object ob, int pos )  {
       test_float();
    }
    return other;
-}  /* set_hold() */
-
-
+}
 void do_death( object thing )  {
    if (swimmer) {
       swimmer->do_death( thing );
@@ -618,19 +499,14 @@ void do_death( object thing )  {
    remove_call_out( "do_soak" );
    swimmer->remove_property("there");
    return;
-}  /* do_death() */
-
-
+}
 void remove_ghost()  {
   swimmer->remove_ghost();
   environment( swimmer )->event_enter( swimmer, "", 0 );
   return;
-}  /* remove_ghost() */
-
-
+}
 int *set_unhold( object ob )  {
    int *other, old_bonus;
-
    old_bonus = bonus;
    other = (int *)swimmer->set_unhold( ob );
    calc_swim_bonus();
@@ -639,13 +515,10 @@ int *set_unhold( object ob )  {
       test_float();
    }
    return other;
-}  /* set_unhold() */
-
-
+}
 int move( mixed dest, string messin, string messout )  {
    string where, *dest_dir_info;
    int pos;
-
    if ( !swimmer->query_property( "dead" )  &&  living( swimmer ) )  {
       if ( objectp( dest ) )  where = file_name( dest );
       else where = dest;
@@ -659,10 +532,7 @@ int move( mixed dest, string messin, string messout )  {
       }
    }
    return swimmer->move( dest, messin, messout );
-}  /* move() */
-
-
-
+}
 int do_float()  {
    if ( !swimming )  {
       tell_object( swimmer, "You are already drifting with the current.\n" );
@@ -673,9 +543,7 @@ int do_float()  {
       test_sweep();
    }
    return 1;
-}  /* do_float() */
-
-
+}
 int do_swim()  {
    if ( swimming )  {
       tell_object( swimmer, "You are already fighting the current.\n" );
@@ -686,20 +554,14 @@ int do_swim()  {
       test_sweep();
    }
    return 1;
-}  /* do_swim() */
-
-
+}
 void test_again()  {
    test_float();
    test_sweep();
    call_out( "test_again", recheck_delay );
 }
-
-
 void update_recheck( int time_out )  {
    int t;
-
-//tell_object( swimmer, "Called update...\n" );
    recheck_delay = time_out;
    if ( time_out == -1 )  {
       remove_call_out( "test_again" );
@@ -713,8 +575,6 @@ void update_recheck( int time_out )  {
    }
    return;
 }
-
-
 string sweep_string( mixed *dest_other_info, int pos )  {
    if ( pointerp( dest_other_info[pos][5] ) )  {
       return dest_other_info[pos][5][1];

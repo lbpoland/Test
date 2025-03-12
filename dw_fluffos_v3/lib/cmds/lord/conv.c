@@ -1,25 +1,11 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: site.c,v 1.8 2000/09/23 05:50:26 pinkfish Exp $
- */
 #include <parser.h>
 #include <access.h>
-
 inherit "/cmds/base";
-
 private string print_access(string bit, mapping bing, int depth, int cols, string filter);
-
-/*
- * This will ban a site
- */
 mixed cmd(string ip, string ident, string level, string reason) {
-
    seteuid("Root");
-   
    if (this_player() != this_player(1))
       return 0;
-
    switch(level) {
    case "nonew":
       level = "2";
@@ -31,29 +17,22 @@ mixed cmd(string ip, string ident, string level, string reason) {
       level = "1";
       break;
    }
-   
    if (!"/secure/bastards.old"->change_access(explode(ip, "."), ident,
                                                              to_int(level), reason)) {
       write("Error changing permissions.\n");
       return 0;
    }
-   
    write("Access permisions changed.\n");
    printf("User %s at site %s set to %s for %s\n",
              ident, ip, PERM_NAMES[to_int(level)], reason);
    return 1;
-} /* cmd() */
-
+}
 int access(string filter) {
    mixed bing;
-   
    seteuid("Root");
-   
    if (this_player() != this_player(1))
       return 0;
-
    bing = (mixed)"/secure/bastards.old"->query_all_access();
-
    if (!m_sizeof(bing)) {
       notify_fail("No access control defined.\n");
       return 0;
@@ -63,14 +42,12 @@ int access(string filter) {
    this_player()->more_string(bing, "site access");
    return 1;
 }
-
 private string print_access(string bit, mapping bing, int depth, int cols,
                             string filter) {
    mixed *bits;
    int i;
    string ret;
    string colour;
-
    ret = "" ;
    if (this_player() != this_player(1)) {
       return 0;
@@ -79,7 +56,6 @@ private string print_access(string bit, mapping bing, int depth, int cols,
    if (depth == 4) {
       if(!filter || filter == "" ||
           strsrch(bit, filter) != -1 || strsrch(bits[i], filter) != -1) {
-         /* Do the ident printing... */
          for (i=0;i<sizeof(bits);i++) {
             switch (bing[bits[i]][0]) {
             case NO_NEW:
@@ -98,7 +74,6 @@ private string print_access(string bit, mapping bing, int depth, int cols,
                  "/secure/bastards.old"->query_reason(explode(bit, "."), bits[i]));
          }
       }
-    
       return "";
    }
    for (i=0;i<sizeof(bits);i++) {
@@ -106,8 +81,7 @@ private string print_access(string bit, mapping bing, int depth, int cols,
                           filter);
    }
    return ret;
-} /* print_access() */
-
+}
 int help() {
    return notify_fail(
       "Syntax: site access\n"+
@@ -125,4 +99,4 @@ mixed *query_patterns() {
                      "", (: help() :),
                      "help", (: help() :)
                      });
-} /* query_patterns() */
+}

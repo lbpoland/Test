@@ -1,7 +1,5 @@
 #include "path.h"
-
 inherit "/std/shops/print_shop";
-
 void setup() {
    set_short("Flopsies Print Shop");
    set_long(
@@ -15,8 +13,6 @@ void setup() {
             "under it.",
             "read", "In memory of 'Mopsy'.\n" }) );
    set_light(70);
-
    add_exit("north", RABBIT + "rabbit3", "door");
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

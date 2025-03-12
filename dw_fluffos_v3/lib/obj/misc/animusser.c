@@ -1,10 +1,7 @@
 #include <skills.h>
-
 inherit "/std/object";
-
 string *skill_names;
 mapping new_skills, old_skills;
-
 void setup() {
    set_name( "lever" );
    set_short( "blue lever" );
@@ -17,12 +14,10 @@ void setup() {
    skill_names = ({ });
    new_skills = ([ ]);
    old_skills = ([ ]);
-} /* setup() */
-
+}
 void init() {
    this_player()->add_command( "pull", this_object() );
-} /* init() */
-
+}
 int find_level( string skill ) {
    int i, sublevel, total;
    string *others;
@@ -39,8 +34,7 @@ int find_level( string skill ) {
       skill_names -= ({ others[ i ] });
    }
    return total / sizeof( others );
-} /* find_level() */
-
+}
 int do_pull() {
    int i, adjust;
    new_skills = ([ ]);
@@ -59,4 +53,4 @@ int do_pull() {
    }
    this_player()->set_skills( new_skills + ([ ]) );
    return 1;
-} /* do_pull() */
+}

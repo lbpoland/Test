@@ -1,5 +1,4 @@
 int db;
-
 int cmd(string who){
   mixed rows;
   string ret;
@@ -11,7 +10,7 @@ int cmd(string who){
   else
     rows = db_exec(db, sprintf("select Reporter, count(*) from errors "
                                "where Reporter = '%s' and Status = 'DENIED' "
-			       "group by Reporter", 
+			       "group by Reporter",
                                who));
   if(intp(rows)){
     ret = sprintf("%-15s %s\n", "player", "reports");

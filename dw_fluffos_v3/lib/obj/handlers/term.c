@@ -1,40 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: term.c,v 1.8 2003/02/21 00:53:43 pinkfish Exp $
- */
-/**
- * This object handles all the terminal related stuff.  Figuring out to 
- * display each colour and verifying that the colours are correct.
- * The terminal handler.  This has all sorts of utterly useless junk on it
- * Share and enjoy.
- * Thrown up by Pinkfish.
-
-    Modified by Godot to add the xterm terminal. (10/16/92)
-    Added vt100 Chrisy 15 may 93
-
-    Definitions:
-
-        <colour>    foreground colour
-        B_<colour>  background colour
-        BOLD        bold or bright letters
-        ENDTERM     unknown
-        FLASH       flashing or blinking letters
-        INITTERM    unknown
-        RESET       return to the normal font -- not a terminal reset.
-        STATUS      unknown
-        WINDOW      unknown
-        REVERSE     reverse video mode
-        UNDERLINE   underline mode
- */
-
 #define ANSI(p) sprintf("%c["+(p)+"m", 27)
 #define ESC(p) sprintf("%c"+(p), 27)
 #define CHAR(p) sprintf("%c", (p))
-
 #define TERMINAL_DUMB "dumb"
-
 private nosave mapping aliases, terms;
-
 void create() {
   aliases = ([ "xterm-debian" : "xterm",
                "zmud" : "vt220",
@@ -137,7 +105,7 @@ void create() {
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
                          "B_BLACK" : ANSI(40),
-                         "B_WHITE" : ANSI(47), /* 47? */
+                         "B_WHITE" : ANSI(47),
                          "B_MAGENTA" : ANSI(45),
                          "STATUS": "",
                          "WINDOW": "",
@@ -167,7 +135,7 @@ void create() {
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
                          "B_BLACK" : ANSI(40),
-                         "B_WHITE" : ANSI(47), /* 47? */
+                         "B_WHITE" : ANSI(47),
                          "B_MAGENTA" : ANSI(45),
                          "STATUS": "",
                          "WINDOW": "",
@@ -197,7 +165,7 @@ void create() {
                          "B_BLUE" : ESC("G4"),
                          "B_CYAN" : ESC("GD"),
                          "B_BLACK" : ESC("GD"),
-                         "B_WHITE" : ESC("G4"), /* 47? */
+                         "B_WHITE" : ESC("G4"),
                          "B_MAGENTA" : ESC("G4"),
                          "STATUS": "",
                          "WINDOW": "",
@@ -228,7 +196,7 @@ void create() {
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
                          "B_BLACK" : ANSI(40),
-                         "B_WHITE" : ANSI(47), /* 47? */
+                         "B_WHITE" : ANSI(47),
                          "B_MAGENTA" : ANSI(45),
                          "STATUS" : ESC("[23;24r") + ESC(8),
                          "WINDOW" : ESC(7)+ESC("[0;22r")+ESC("[22H\n"),
@@ -245,7 +213,7 @@ void create() {
                          "BLACK" : ANSI(30),
                          "RED" : ANSI(31),
                          "GREEN" : ANSI(32),
-                         "ORANGE" : ANSI(33), /* Can't do brown */
+                         "ORANGE" : ANSI(33),
                          "YELLOW" : ANSI("1;33"),
                          "BLUE" : ANSI(34),
                          "CYAN" : ANSI(36),
@@ -254,12 +222,12 @@ void create() {
                          "WHITE" : ANSI(37),
                          "B_RED" : ANSI(41),
                          "B_GREEN" : ANSI(42),
-                         "B_ORANGE" : ANSI(43), /* Can't do brown */
+                         "B_ORANGE" : ANSI(43),
                          "B_YELLOW" : ANSI("1;43"),
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
                          "B_BLACK" : ANSI(40),
-                         "B_WHITE" : ANSI(47), /* 47? */
+                         "B_WHITE" : ANSI(47),
                          "B_MAGENTA" : ANSI(45),
                          "WINDOW" : "",
                          "INITTERM" : "",
@@ -287,7 +255,7 @@ void create() {
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
                          "B_BLACK" : ANSI(40),
-                         "B_WHITE" : ANSI(47), /* 47? */
+                         "B_WHITE" : ANSI(47),
                          "B_MAGENTA" : ANSI(45),
                          "STATUS": "",
                          "WINDOW": "",
@@ -390,7 +358,7 @@ void create() {
                          "BLACK" : ANSI(30),
                          "RED" : ANSI(31),
                          "GREEN" : ANSI(32),
-                         "ORANGE" : ANSI(33), /* Can't do brown */
+                         "ORANGE" : ANSI(33),
                          "YELLOW" : ANSI("1;33"),
                          "BLUE" : ANSI(34),
                          "CYAN" : ANSI(36),
@@ -399,7 +367,7 @@ void create() {
                          "WHITE" : ANSI(37),
                          "B_RED" : ANSI(41),
                          "B_GREEN" : ANSI(42),
-                         "B_ORANGE" : ANSI(43), /* Can't do brown */
+                         "B_ORANGE" : ANSI(43),
                          "B_YELLOW" : ANSI("1;43"),
                          "B_BLUE" : ANSI(44),
                          "B_CYAN" : ANSI(46),
@@ -441,7 +409,7 @@ void create() {
                          "REVERSE" : ANSI(7),
                          "UNDERLINE" : ANSI(4),
                          "%" : "%^",
-                         ]),           
+                         ]),
              "vt220-nc" : ([ "RESET" : ESC("[m"),
                          "BOLD" : ANSI(1),
                          "FLASH" : ANSI(5),
@@ -470,59 +438,34 @@ void create() {
                          "REVERSE" : ANSI(7),
                          "UNDERLINE" : ANSI(4),
                          "%" : "%^",
-                         ]),           
+                         ]),
           ]);
 }
-
-/**
- * This returns the mapping of colours based on the terminal type
- * entered in here.
- * @param str the terminal type
- * @return mapping of colours to escape codes
- */
 mixed set_network_term_type(string str) {
   string type;
-
   str = lower_case(str);
   if (!terms[str] && !(type = aliases[str])) {
 #ifdef DEBUG
     log_file("TERMTYPES", "No entry for \"%s\" (%s).\n", str,
              this_player()->query_name());
-#endif    
+#endif
     return 0;
   }
   if (type) {
      return terms[type];
   }
   return terms[str];
-} /* set_network_term_type() */
-
-/**
- * This returns the mapping of colours based on the terminal type
- * entered in here.
- * @param str the terminal type
- * @return mapping of colours to escape codes
- */
+}
 mapping set_term_type(string str) {
   if (!terms[str] && !(str = aliases[str])) {
     efun::tell_object(this_player(), "No entry for "+str+", using dumb.\n");
     str = TERMINAL_DUMB;
   }
   return terms[str];
-} /* set_term_type() */
-
-/**
- * This method returns all the currently available types of terminals.
- * @return the array of terminal types
- */
+}
 string *query_term_types() {
   return m_indices(terms);
-} /* query_term_types() */
-
-/**
- * This method returns the array of usable colours.
- * @return the array of usable colours
- */
+}
 string *query_colour_codes() {
    return keys(terms[TERMINAL_DUMB]);
-} /* query_colour_codes() */
+}

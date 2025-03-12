@@ -1,14 +1,11 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "the usual mustelidae.  This should not be used as it is a "
       "base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 40, 0,
          "left eye", "right eye", "left ear", "right ear", "skull",
          "tongue", "nose" }),
@@ -41,11 +38,9 @@ void create() {
       "tail", "tail", ({ 0, 5, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "teeth", "tooth", "tail", "skin" });
    unrottable = ({ "skull", "teeth", "tooth" });
    set_skin( "fur" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
+}

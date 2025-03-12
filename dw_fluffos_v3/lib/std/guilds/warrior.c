@@ -1,14 +1,10 @@
 #include <player_handler.h>
 #include <top_ten_tables.h>
 #include <playtesters.h>
-
 #define SAVE_FILE ( "/save/guilds/warriors/warrior_ob" )
-
 inherit "/std/guilds/standard";
-
 void load_file();
 void save_file();
-
 void setup() {
   set_name("warriors");
   set_short("Warriors' Guild");
@@ -40,9 +36,7 @@ void setup() {
                  "fighting.combat.special.unarmed",
                  "other.evaluating.weapons",
                  "other.evaluating.armour"  }));
-} /* setup() */
-
-
+}
 int query_skill_cost(string skill) {
   string *bits;
   if(member_array(skill, skills) != -1)
@@ -58,8 +52,7 @@ int query_skill_cost(string skill) {
     default :
       return 10;
   }
-} /* query_skill_cost() */
-
+}
 int query_skill_max_level( string skill ) {
   string *bits;
   if(member_array(skill, skills) != -1)
@@ -77,8 +70,7 @@ int query_skill_max_level( string skill ) {
     default :
       return 10;
   }
-} /* query_skill_max_level() */
-
+}
 string query_title( object player ) {
   int lvl, female;
   female = (int)player->query_gender() == 2;
@@ -89,23 +81,13 @@ string query_title( object player ) {
       case 31..45: return "the Skillful Fighter";
       default: return "the Grave of All Hope";
     }
-} /* query_title() */
-
-/**
- *Method is used to see if a player is a warrior
- *@param player name of player
- */
+}
 int query_warrior( string player ) {
   if( PLAYER_HANDLER->test_guild( player ) == "/std/guilds/warrior" ) {
     return 1;
   }
   return 0;
 }
-
-/**
- *Method is used to see if a player is a warrior
- *@param player player object
- */
 int query_warrior_ob( object player ) {
   if( player->query_guild_ob() == "/std/guilds/warrior" ) {
     return 1;

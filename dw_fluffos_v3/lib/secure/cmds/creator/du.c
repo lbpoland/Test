@@ -1,18 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- */
-
 #define MAX_FILES 1000
-
 inherit "/cmds/base";
-
 mapping _counts = ([ ]);
-
 protected int rec_du(string path) {
   string *files;
   int i, size, tot;
-
   if (path[strlen(path)-1] != '/') {
     path += "/";
   }
@@ -32,11 +23,9 @@ protected int rec_du(string path) {
   }
   return (tot+1023)/1024;
 }
-
 int cmd( string path ) {
-    if ( !path ) 
+    if ( !path )
         return 0;
-
     _counts[this_player()] = 0;
     if ( master()->valid_read( path, geteuid( this_player() ) ) ) {
       printf( "%-30s %5d\n", "Total:", rec_du( path ) );
@@ -44,12 +33,11 @@ int cmd( string path ) {
         printf("Note: count truncated due to file limit\n");
       return 1;
     }
-    add_failed_mess( "You must have read access to a path to use " 
+    add_failed_mess( "You must have read access to a path to use "
                      "du on it.\n" );
     return 0;
-} /* cmd() */
-
+}
 mixed *query_patterns() {
     return ({ "", (: cmd( this_player()->query_path() ) :),
         "<string'path'>", (: cmd( $4[0] ) :) });
-} /* query_patterns() */
+}

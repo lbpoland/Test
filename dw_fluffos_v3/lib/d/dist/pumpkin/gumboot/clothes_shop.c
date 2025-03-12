@@ -1,7 +1,5 @@
 #include "path.h"
-
 inherit "/std/shops/item_shop";
-
 void setup() {
    set_short("Squiggles Clothing Store");
    set_long(
@@ -10,9 +8,7 @@ void setup() {
 "reall limited in the type clothes they sell, obviously they belive in "
 "volume rather than breadth of stock.\n");
    set_light(70);
-
    add_exit("east", PATH + "gumboot2", "door");
-
    add_object("green bathrobe", 1 + random(10));
    add_object("green cloak", 1 + random(10));
    add_object("green pants", 1 + random(10));
@@ -33,6 +29,5 @@ void setup() {
    add_object("white silk pinafore", 1 + random(10));
    add_object("white silk sash", 1 + random(10));
    add_object("white socks", 1 + random(10));
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

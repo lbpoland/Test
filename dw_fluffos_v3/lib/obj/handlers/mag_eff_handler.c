@@ -1,73 +1,18 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: mag_eff_handler.c,v 1.3 2000/11/16 23:35:36 rodion Exp $
- * $Log: mag_eff_handler.c,v $
- * Revision 1.3  2000/11/16 23:35:36  rodion
- * Took out caterpillar stat-setting, as it was causing problems.
- * Rodion
- *
- * Revision 1.2  1998/04/23 14:01:25  pinkfish
- * Added documentation.  And cleanedup a little.
- *
- * Revision 1.1  1998/01/06 05:03:33  ceres
- * Initial revision
- * 
-*/
-/**
- * This handler controls the ambient enchantment effects and effects
- * from solid grains of octarine.  Ambient enchantment is caused by
- * the use of spells in certain locations.  Ambient enchantment can
- * be blocked by use of the property "enchantment block".
- * @author Deutha
- */
-/*
- * Other effects:
- * shower of lead cubes
- * gibbering eldritch shapes
- *  4-sided triangles
- *  pineapple-flavoured custard
- *  double ended circles
- */
-
 #define BLACK_MASS 1000
 #define NUM_POSS 6
 #define NUM_USER 20
-
 private mixed *_octonite;
 private int _call_out_no;
-
 protected void update_octonite();
 protected void schedule_next();
-
-/**
- * This method checks to see if the particular object is blocking the use
- * of enchantments.
- * @param thing the object to check for enchantment block
- * @return 1 if it is blocking enchanments, 0 if not
- * @see do_effect()
- * @see ambient_enchantment()
- * @see choose_effect()
- */
 int block( object thing ) {
    if ( !thing->query_closed() )
       return 0;
    return (int)thing->query_property( "enchantment block" );
-} /* block() */
-
-/**
- * This method returns the current ambient enchantment for the particular
- * object.
- * @param thing the object to get the ambient enchantment for
- * @return the ambient enchantment of the object
- * @see do_effect()
- * @see choose_effect()
- * @see block()
- */
+}
 int ambient_enchantment( object thing ) {
    int i, total;
    object *tops;
-
    tops = ({ thing });
    while ( environment( tops[ 0 ] ) ) {
       tops = ({ environment( tops[ 0 ] ) }) + tops;
@@ -76,44 +21,15 @@ int ambient_enchantment( object thing ) {
       total += (int)tops[ i ]->query_enchant();
       total = ( total * ( 100 - block( tops[ i ] ) ) + 50 ) / 100;
    }
-/*
-   tell_object( find_player( "deutha" ), "Total for "+ file_name( thing ) +
-         " is "+ total +".\n" );
-*/
    return total;
-} /* ambient_enchantment() */
-
-/**
- * This method chooses a random effect from the curent list of effects
- * defined in the handler.  It returns an array consisting of
- * two elements, the first is the number, the second is a random
- * number between the input number multiplied by 6 and then divided
- * by 1000.
- * @param number the intput number
- * @return an array as described above
- * @see do_effect()
- * @see ambient_enchantment()
- * @see block()
- */
+}
 int *choose_effect( int number ) {
   return ({ number, random( NUM_POSS * number ) / BLACK_MASS });
-} /* choose_effect() */
-
-/**
- * This method causes an effect to occur.  The number is the severity
- * of the effect.
- * @param number the severity of the magic infestation
- * @param name the name of the thing being effected
- * @param place the place being effected (room)
- * @see choose_effect()
- * @see ambient_enchantment()
- * @see block()
- */
+}
 void do_effect( int number, string name, object place ) {
   int i;
   string word;
   object thing, *things;
-
   switch( number ) {
     case 0:
       tell_room( place, "How curious.\n" );
@@ -136,13 +52,6 @@ void do_effect( int number, string name, object place ) {
       thing->add_plural( "caterpillars" );
       thing->set_long( "This is a small, common or garden caterpillar.\n" );
       thing->set_race( "caterpillar" );
-/*
-      thing->set_no_check( 1 );
-      thing->set_max_hp( 10 );
-      thing->set_hp( 10 );
-      thing->set_max_weight( 1 );
-      thing->set_get();
-*/
       thing->set_level( 1 );
       thing->move( place );
       break;
@@ -191,29 +100,10 @@ void do_effect( int number, string name, object place ) {
     default:
       tell_room( place, "Something really, really strange happens.\n" );
   }
-} /* do_effect() */
-
-/**
- * This method returns the current list of octonite cystals handled
- * by this handler.
- * @return the array of octonite crystals
- * @see schedule_next()
- * @see update_octonite()
- * @see add_octonite_cyrstal()
- */
+}
 object *query_octonite_crystals() { return _octonite; }
-
-/**
- * This method adds an octonite crystal into the current list of
- * octonite crystals.
- * @param crystal the crystal to add
- * @see query_octonite_crystals()
- * @see update_octonite()
- * @see schedule_next()
- */
 void add_octonite_crystal( object crystal ) {
    int i, when;
-
    when = time() + roll_MdN( 5, 60 );
    if ( !sizeof( _octonite ) ) {
       _octonite = ({ crystal, when });
@@ -236,18 +126,9 @@ void add_octonite_crystal( object crystal ) {
       _octonite = _octonite[ 0 .. i - 1 ] + ({ crystal, when }) +
             _octonite[ i ..  ];
    }
-} /* add_octonite_crystal() */
-
-/**
- * This schedules the next update to occur.  The updates are for the
- * octonite crystals.
- * @see query_octonite_crystals()
- * @see update_octonite()
- * @see add_octonite_cyrstal()
- */
+}
 protected void schedule_next() {
    int next;
-
    remove_call_out(_call_out_no);
    next = _octonite[ 1 ] - time();
    if ( next > 0 ) {
@@ -255,19 +136,10 @@ protected void schedule_next() {
    } else {
       _call_out_no = call_out( (: update_octonite :), 0 );
    }
-} /* schedule_next() */
-
-/**
- * This updatest he values associated with the octonite pebbles.  They
- * decay away slowly releasing ambient magic into the background.
- * @see query_octonite_crystals()
- * @see schedule_next()
- * @see add_octonite_cyrstal()
- */
+}
 protected void update_octonite() {
    int ambient, weight;
    object crystal;
-
    crystal = _octonite[ 0 ];
    if ( objectp( crystal ) ) {
       weight = 20 * (int)crystal->query_weight();
@@ -276,9 +148,7 @@ protected void update_octonite() {
       if ( ambient > weight ) {
          weight += ( ambient - weight ) / 4;
       }
-      //tell_object( find_player( "deutha" ), "Influx to: "+ weight +".\n" );
       weight -= ( weight * ( 100 - block( environment( crystal ) ) ) ) / 800;
-      //tell_object( find_player( "deutha" ), "Outflux to: "+ weight +".\n" );
       if ( random( 20 ) < weight % 20 ) {
          weight += 20;
       }
@@ -303,14 +173,7 @@ protected void update_octonite() {
          schedule_next();
       }
    }
-} /* update_octonite() */
-
-/**
- * This method returns the extra look information for a piece of octonite.
- * It gives different messages about size depending on its weight.
- * @param thing the object to give na extra look for
- * @return the extra information about the octonite pebbles
- */
+}
 string extra_look( object thing ) {
    if ( explode( file_name( thing ), "#" )[ 0 ] != "/obj/magic/octonite" ) {
       return "";
@@ -331,4 +194,4 @@ string extra_look( object thing ) {
       default :
          return "It is about the size of a pumpkin.\n";
    }
-} /* extra_look() */
+}

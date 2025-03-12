@@ -1,32 +1,5 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker: pinkfish $
- * $Id: more_string.c,v 1.3 1999/05/08 00:57:17 presto Exp pinkfish $
- * 
- */
-/**
- * This file will handle the real moreing of a string to the player.  The
- * player object will call out to this, so the all the code and the
- * variables are not stored in the player object.
- * @see /global/more_file.c
- *
- * @author Pinkfish
- */
 #define COLS (int)this_object()->query_cols()
 #define ROWS ( (int)this_object()->query_rows() - 1 )
-
-/**
- * Information on the string being mored.
- * @element fsize the size of the file
- * @element topl the top line being displayed
- * @element botl the bottom line being display
- * @element last_search the last attempted search
- * @element the_bit the actual file itself
- * @element finish_func the function to call on finishing
- * @element more_bit the string to print at the bottom of the screen
- * @element stat_line the status line
- * @element finish_ob the finish object
- */
 class more_string_info {
    int fsize;
    int topl;
@@ -38,40 +11,27 @@ class more_string_info {
    string stat_line;
    object finish_ob;
 }
-
 nosave mixed *_pending_more;
 class more_string_info _current_info;
-
 int internal_more_string();
-
 void create() {
    add_command("Internal_More_String", "<string>", (:internal_more_string:));
-} /* create() */
-
-/**
- * @ignore yes
- */
+}
 void string_display_file(class more_string_info info) {
   int i;
   string stuff;
-
   info->botl = info->topl + ROWS;
   stuff = "";
   for ( i = info->topl; ( i < info->botl ) && ( i < info->fsize ); i++ ) {
     stuff += info->the_bit[ i ] +"\n";
   }
   efun::tell_object( this_object(), stuff );
-} /* string_display_file() */
-
-/**
- * @ignore yes
- */
+}
 void more_string_status_line(class more_string_info info) {
    string *frog;
    string s;
    int i;
    int percentage;
-
    if (!info->stat_line) {
       info->stat_line = "$N From $T to $B of $S ($%%) - h for help. ";
    }
@@ -108,27 +68,20 @@ void more_string_status_line(class more_string_info info) {
    }
    efun::tell_object( this_object(), (string)this_object()->fix_string( s ) );
    return;
-} /* more_string_status_line() */
-
-/**
- * @ignore yes
- */
+}
 void string_next_page(string str, class more_string_info info) {
    int num;
    int noargs;
    int i;
    int redraw;
    string s1;
-
    if (!str) {
      str = "";
    }
-
    if (sscanf(str,"%d%s", num, str) != 2) {
      noargs = 1;
    }
    s1 = str[1..];
-   /* case statements WEEEEEE */
    if (str == "") {
       str = "f";
    }
@@ -149,7 +102,6 @@ void string_next_page(string str, class more_string_info info) {
          return;
       case 'f' :
       case 'F' :
-         /* go on a number of pages... */
          info->topl += ROWS;
          redraw = 1;
          break;
@@ -159,7 +111,6 @@ void string_next_page(string str, class more_string_info info) {
          redraw = 1;
          break;
       case '/' :
-         /* sigh */
          i = info->topl + 4;
          if (!s1 || s1 == "") {
             s1 = info->last_search;
@@ -235,7 +186,7 @@ void string_next_page(string str, class more_string_info info) {
          input_to("string_next_page", 0, info);
       } else {
          if (info->finish_func) {
-            if ( info->finish_ob ) { // sometimes screwed up:(
+            if ( info->finish_ob ) {
                call_other(info->finish_ob, info->finish_func);
             }
             info->finish_func = 0;
@@ -246,21 +197,11 @@ void string_next_page(string str, class more_string_info info) {
       more_string_status_line(info);
       input_to("string_next_page", 0, info);
    }
-} /* string_next_page() */
-
-/**
- * Puts a long string through a more function.
- * @param text the text to place through the pager
- * @param bity the title of the text
- * @param noreline no idea...
- * @see /global/more_file.c->more_file()
- * @see set_finish_func()
- */
+}
 varargs int more_string( string text, string bity, int noreline ) {
   int i, ncols;
   string *bits;
   class more_string_info info;
-
   if ( this_player() != this_object() ){
      if ( !_pending_more ) {
         _pending_more = ({ ({ text, bity, noreline }) });
@@ -271,7 +212,6 @@ varargs int more_string( string text, string bity, int noreline ) {
      command( "Internal_More_String something" );
      return 1;
   }
-
   _current_info = info = new(class more_string_info);
   if ( bity ) {
     info->more_bit = bity;
@@ -307,7 +247,6 @@ varargs int more_string( string text, string bity, int noreline ) {
   } else {
       if ( info->finish_func ) {
          if ( !info->finish_ob ) {
-            //screwed up:
             info->finish_func = 0;
             return 1;
          }
@@ -317,16 +256,7 @@ varargs int more_string( string text, string bity, int noreline ) {
       _current_info = 0;
   }
   return 1;
-} /* more_string() */
-
-/**
- * Sets the finish function.  This is called when the more_string
- * command exits.  If the ob is set to 0 then previous_object() is used
- * for it.  The str can be a function pointer as well.
- * @param str the function name or function pointer to use
- * @param ob the object to call it on (ignore for function pointers)
- * @see more_string()
- */
+}
 varargs void set_finish_func(string str, object ob) {
   _current_info->finish_func = str;
   if (!ob) {
@@ -334,15 +264,10 @@ varargs void set_finish_func(string str, object ob) {
   } else {
     _current_info->finish_ob = ob;
   }
-} /* set_finish_func() */
-
-/**
- * @ignore yes
- */
+}
 int internal_more_string() {
    string text, bity;
    int noreline;
-   
    if ( sizeof( _pending_more ) ) {
       text = _pending_more[ 0 ][ 0 ];
       bity = _pending_more[ 0 ][ 1 ];
@@ -351,4 +276,4 @@ int internal_more_string() {
       more_string( text, bity, noreline );
    }
    return 1;
-} /* internal_more_string() */
+}

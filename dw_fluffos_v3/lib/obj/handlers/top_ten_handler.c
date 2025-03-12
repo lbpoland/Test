@@ -1,45 +1,17 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: top_ten_handler.c,v 1.23 2003/03/21 01:25:05 ceres Exp $
- * 
-*/
-/**
- * Top ten player lists - overall and for each guild.
- *<p>
- * archive and top_ten is of the format:
- *<code><p>
- *       ({ ({ name (guild), rating, level, age }), ... })
- *</code><p>
- * guild_top_tens is of the format:
- *<code><p>
- *       ([ guild: ({ ({ name, rating, level, age }), ... }), ... ])
- * </code>
- * @author Deutha
- */
-
 #include <library.h>
 #include <skills.h>
 #include <top_ten_tables.h>
 #include <clubs.h>
 #include <player.h>
 #include <player_handler.h>
-
 #define SAVE_FILE "/save/top_ten_tables"
 #define TOP_TEN_SIZE 15
 #define GUILD_TOP_TEN_SIZE 10
 #define ARCHIVE_TIME 50 * 24 * 60 * 60
 #define ARCHIVE_RATING 30000
-
-/* The Apex Club accepts members with a rating of 10k or greater */
 #define APEX_LIMIT 10000
-
-/* Age in days = age in seconds / 86400 */
 #define AGE_DIVIDER 100
-// #define AGE ( -thing->query_time_on() / 86400 )
 #define AGE calculate_age_modifier( thing, 0 )
-// #define AGE ( -( thing->query_time_on() - ( thing->query_refresh_time() ? ( time() - thing->query_refresh_time() ) + thing->query_time_on() : 0 ) ) / 86400 )
-
 mapping guild_top_tens;
 mixed *archive, *top_ten;
 nosave int average;
@@ -60,7 +32,6 @@ string _family_start_time;
 int _family_start_time_num;
 string _family_relationships;
 int _family_relationships_num;
-
 string _club_largest;
 int _club_largest_num;
 string _club_qp;
@@ -75,9 +46,7 @@ string _club_single_gender;
 int _club_single_gender_num;
 string _club_start_time;
 int _club_start_time_num;
-
 void calculate_family_and_club_info();
-
 void create() {
     seteuid( (string)"/secure/master"->
       creator_file( file_name( this_object() ) ) );
@@ -99,84 +68,42 @@ void create() {
             _club_guilds_num = ([ ]);
         }
     }
-} /* setup() */
-
+}
 private void save_me() {
     unguarded( (: save_object, SAVE_FILE :) );
-} /* save_me() */
-
-/**
- * Some sort of weight average used in the rating calulation.
- * @return the weighted average
- */
+}
 int query_average() { return average; }
-/**
- * The skils list with weights.  This is used to help generate the
- * rating.
- * @return the skils list with ratings
- */
 mixed *query_skills() { return skills; }
-
-/**
- * The mapping which is the guild top ten tables.
- * @return the guild top ten mapping
- */
 mapping query_guild_top_tens() { return guild_top_tens; }
-
-/** @ignore yes */
 void set_guild_top_tens( mapping map ) {
     guild_top_tens = map;
     save_me();
-} /* set_guild_top_tens() */
-
-/**
- * Add in a new table.  This should be used when a new guild is created
- * and their table needs to be defined.
- * @param word the name of the table to create
- */
+}
 void add_guild_top_ten( string word ) {
     if ( guild_top_tens[ word ] ) {
         return;
     }
     guild_top_tens[ word ] = ({ });
     save_me();
-} /* add_guild_top_ten() */
-
-/**
- * The complete archived top ten table.
- * @return the archived top ten table
- */
+}
 mixed *query_archive() { return archive; }
-
-/** @ignore yes */
 void set_archive( mixed *args ) {
     archive = args;
     save_me();
-} /* set_archive() */
-
-/**
- * Return the complete list of top ten tables.
- * @return the array of arrays being the top ten tab;les
- */
+}
 mixed *query_top_ten() { return top_ten; }
-
-/** @ignore yes */
 void set_top_ten( mixed *args ) {
     top_ten = args;
     save_me();
-} /* set_top_ten() */
-
-/** @ignore yes */
+}
 int check_person( mixed *args, string guild ) {
     int i;
     string word;
-
     if ( !guild ) {
         sscanf( args[ 0 ], "%s (%s)", word, guild );
     } else {
         word = args[ 0 ];
     }
-
     if ( !PLAYER_HANDLER->test_user( word ) ||
       !PLAYER_HANDLER->test_active( word ) ||
       PLAYER_HANDLER->test_creator( word ) ||
@@ -184,7 +111,6 @@ int check_person( mixed *args, string guild ) {
       PLAYER_HANDLER->test_property( word, "no score" ) ) {
         return 0;
     }
-
     if ( "/obj/handlers/player_handler"->test_guild( word, guild ) != "/std/guilds/"+ guild )
         return 0;
     if ( ( (int)PLAYER_HANDLER->test_last( word ) < time() - ARCHIVE_TIME ) ) {
@@ -204,16 +130,10 @@ int check_person( mixed *args, string guild ) {
         return 0;
     }
     return 1;
-} /* check_person() */
-
-/**
- * Wander over the top ten tables checking to see if everyone
- * still exists.
- */
+}
 void check_tables() {
     int i;
     string word;
-
     for ( i = sizeof( top_ten ) - 1; i > -1; i-- ) {
         if ( !check_person( copy( top_ten[ i ] ), 0 ) ) {
             top_ten = delete( top_ten, i, 1 );
@@ -227,20 +147,10 @@ void check_tables() {
         }
     }
     save_me();
-} /* check_tables() */
-
-/**
- * Returns the ordered list of people on the top ten list.  If the table
- * name is 0 or it is "main" the main table is checked.  If the 
- * table name is "archive" then the archive is used.
- * @param table_name the name of the tanble to check
- * @return the array of arrays of the top ten information
- * @see /include/top_ten_tables.h
- */
+}
 mixed *query_ordered_table( string table_name ) {
     int i, highest_loc, highest_num;
     mixed *ret, *args;
-
     if ( !table_name || table_name == "main") {
         args = top_ten;
     } else {
@@ -266,12 +176,9 @@ mixed *query_ordered_table( string table_name ) {
         args = args[ 0 .. highest_loc - 1 ] + args[ highest_loc + 1 .. ];
     }
     return ret;
-} /* query_orderd_table() */
-
-/** @ignore yes */
+}
 mixed *remove_name( string word, mixed *args ) {
     int i;
-
     if ( !sizeof( args ) ) {
         return ({ });
     }
@@ -281,12 +188,9 @@ mixed *remove_name( string word, mixed *args ) {
         }
     }
     return args;
-} /* remove_name() */
-
-/** @ignore yes */
+}
 int *find_lowest( mixed *args ) {
     int i, lowest_loc, lowest_num;
-
     if ( !sizeof( args ) ) {
         return ({ 0, 0 });
     }
@@ -299,13 +203,10 @@ int *find_lowest( mixed *args ) {
         }
     }
     return ({ lowest_loc, lowest_num });
-} /* find_lowest() */
-
-/** @ignore yes */
+}
 int query_skill_weight( string skill ) {
     int total;
     string *next;
-
     next = (string *)SKILL_OB->query_immediate_children( skill );
     if ( !sizeof( next ) ) {
         return 1;
@@ -314,24 +215,15 @@ int query_skill_weight( string skill ) {
         total += query_skill_weight( skill );
     }
     return total;
-} /* query_skill_weight() */
-
+}
 int calculate_age_modifier( object thing, int algorithm ) {
-
-    if ( algorithm ) { 
+    if ( algorithm ) {
         return ( -( thing->query_time_on() - ( thing->query_refresh_time() ? ( time() - thing->query_refresh_time() ) + thing->query_time_on() : 0 ) ) / 86400 );
     }
     return ( -thing->query_time_on() / 86400 );
-} /* calculate_start_time() */ 
-
-/**
- * Figure out the rating for the player.
- * @param thing the object to get the ratingof
- * @return the current rating
- */
+}
 int calculate_rating( object thing ) {
     int i, j, rating, *bonuses;
-
     rating = (int)thing->query_level();
     if ( !skills ) {
         skills = ({ });
@@ -365,24 +257,15 @@ int calculate_rating( object thing ) {
             query_quest_points( (string)thing->query_name() );
         }
     }
-
     if( rating > APEX_LIMIT && userp( thing ) ) {
         rating = AGE * (rating - APEX_LIMIT) / AGE_DIVIDER + APEX_LIMIT;
     }
-
     return rating;
-} /* calculate_rating() */
-
-/**
- * Called when a player advances their skills.
- * @param word the skill being advanced
- * @param thing the player which advanced their skils
- */
+}
 void player_skill_advance( string word, object thing ) {
     int rating, *lowest;
     string name;
     mixed *guild_top_ten;
-
     if ( thing->query_creator() ) {
         return;
     }
@@ -415,7 +298,6 @@ void player_skill_advance( string word, object thing ) {
         }
     }
     guild_top_tens[ word ] = guild_top_ten;
-    //   save_me();
     top_ten = remove_name( name, top_ten );
     lowest = find_lowest( top_ten );
     if ( sizeof( top_ten ) < TOP_TEN_SIZE ) {
@@ -429,14 +311,7 @@ void player_skill_advance( string word, object thing ) {
               (int)thing->query_level(), -(int)thing->query_time_on() });
         }
     }
-    //   save_me();
-} /* player_skill_advance() */
-
-/**
- * Remove the named player from the named table.
- * @param word1 the name of the player
- * @param word2 the name of the table, 0 for the main table
- */
+}
 varargs void excise_name( string word1, string word2 ) {
     if ( !word2 ) {
         top_ten = remove_name( word1, top_ten );
@@ -447,28 +322,20 @@ varargs void excise_name( string word1, string word2 ) {
         }
     }
     save_me();
-} /* excise_name() */
-
-/**
- * Stuff to make sure that all the clubs still exist.
- */
+}
 void check_family_and_club_info() {
     int offset;
     string bing;
     string guild;
-
     _family_qp_num = 0;
     _family_age_num = 0;
     _family_largest_num = 0;
     if (!mapp(_family_guilds)) {
         _family_guilds = ([ ]);
     }
-
     if (!mapp(_club_guilds)) {
         _club_guilds = ([ ]);
     }
-
-    // Do these first so that the table is not stuffed up.
     if (_family_qp && !CLUB_HANDLER->is_family(_family_qp)) {
         _family_qp = 0;
         _family_qp_num = 0;
@@ -489,7 +356,6 @@ void check_family_and_club_info() {
         _family_pk = 0;
         _family_pk_num = 0;
     }
-
     if (_club_qp && !CLUB_HANDLER->is_club(_club_qp)) {
         _club_qp = 0;
         _club_qp_num = 0;
@@ -510,7 +376,6 @@ void check_family_and_club_info() {
         _club_pk = 0;
         _club_pk_num = 0;
     }
-
     offset = 3;
     foreach (guild, bing in _family_guilds) {
         if (stringp(bing)) {
@@ -523,7 +388,6 @@ void check_family_and_club_info() {
             map_delete(_family_guilds_num, guild);
         }
     }
-
     foreach (guild, bing in _club_guilds) {
         if (stringp(bing)) {
             if (!CLUB_HANDLER->is_club(bing)) {
@@ -536,15 +400,13 @@ void check_family_and_club_info() {
         }
     }
     save_me();
-} /* calculate_family_and_club_info() */
-
+}
 void inform_of_club(string club,
   int family,
   int type,
   mixed num) {
     string str;
     int bing;
-
     if (family) {
         switch (type) {
         case TOP_TEN_LARGEST_FAMILY:
@@ -677,8 +539,7 @@ void inform_of_club(string club,
             break;
         }
     }
-} /* inform_of_club() */
-
+}
 mixed *query_family_info() {
     return ({ _family_largest,
       _family_age,
@@ -688,8 +549,7 @@ mixed *query_family_info() {
       _family_single_gender,
       _family_start_time,
       _family_relationships });
-} /* query_family_info() */
-
+}
 mixed *query_club_info() {
     return ({ _club_largest,
       _club_age,
@@ -698,15 +558,11 @@ mixed *query_club_info() {
       _club_pk,
       _club_single_gender,
       _club_start_time });
-} /* query_club_info() */
-
-/** @ignore yes */
+}
 void dest_me() {
     save_me();
     destruct(this_object());
-} /* dest_me() */
-
-/** @ignore yes */
+}
 void reset() {
     save_me();
-} /* reset() */
+}

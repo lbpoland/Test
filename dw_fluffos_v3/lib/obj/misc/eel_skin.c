@@ -1,13 +1,4 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: eel_skin.c,v 1.1 2001/09/27 11:43:37 siel Exp $
- *
- *
- */
-
 inherit "/std/object";
-
 void setup()
 {
   set_name( "skin" );

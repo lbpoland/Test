@@ -1,41 +1,21 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: duplicate.c,v 1.3 2000/06/23 03:40:56 pinkfish Exp $
- * $Log: duplicate.c,v $
- * Revision 1.3  2000/06/23 03:40:56  pinkfish
- * Fix up the references to find_match.
- *
- * Revision 1.2  1998/08/19 10:51:00  pinkfish
- * Fix up to work withj the new base object.
- *
- * Revision 1.1  1998/01/06 05:26:23  ceres
- * Initial revision
- * 
-*/
 #include <artifacts.h>
 #include <move_failures.h>
-
 #define COST 50
 #define LEVEL 100
 #define SHAPING "crafts.pottery.forming.shaping"
 #define SMITHING "crafts.smithing"
 #define TURNING "crafts.carpentry.turning"
 #define WHITTLING "crafts.carpentry.whittling"
-
 inherit "/cmds/guild_base";
 inherit "/std/basic/cute_look";
-
 void create() {
    ::create();
    set_nroff_file("duplicate");
-} /* create() */
-
+}
 int cmd( object* things) {
    int i, bonus;
    object form;
    mapping map;
- 
    for ( i = 0; i < sizeof( things ); i++ ) {
       if ( !function_exists( "query_artifact_type", things[ i ] ) ) {
          write( "You cannot duplicate "+  things[ i ]->the_short() +".\n" );
@@ -83,8 +63,7 @@ int cmd( object* things) {
          form->move( environment( this_player() ) );
    }
    return 1;
-} /* cmd() */
-
+}
 mixed *query_pattern() {
    return ({ "<indirect:object:me>", (: cmd($1) :) });
-} /* query_pattern() */
+}

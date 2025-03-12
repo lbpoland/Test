@@ -1,9 +1,7 @@
 #include "path.h"
 inherit "/std/room/basic_room";
-
 object floor, sign;
 string log_bing, chair;
-
 void setup() {
   set_short("Meeting room");
   set_long(
@@ -14,7 +12,6 @@ void setup() {
 "hammer sitting in the middle of the room.  You can see a small sign on "+
 "the wall.\n");
   set_light(70);
-
   add_item("oak table",
            "A large heavy looking oak table.  It was built to last. "+
            "It looks very old, you can tell by all the worn marks "+
@@ -36,7 +33,6 @@ void setup() {
   sign = add_sign("A small sign with not much written on it.\n",
                   "There is no current chair of the meeting.\n");
 }
-
 void reset() {
   if (floor)
     return ;
@@ -50,29 +46,20 @@ void reset() {
 "after you have finished.\n");
   floor->move(this_object());
 }
-
 void init() {
   string str;
-
   ::init();
-/* So I just banged my gavel.
- * You did what?
- * I banged my gavel and did the "order in the court thing"
- */
   str = previous_object()->query_name();
   if (interactive(previous_object()) && (previous_object()->query_lord()
       || str == chair)) {
     add_action("appoint", "appoint");
     add_action("bang", "bang");
-    add_action("recover", "recover"); /* recovers the floor in case of
-                                       * loss */
+    add_action("recover", "recover");
     add_action("do_log", "log");
   }
 }
-
 int appoint(string str) {
   object ob;
-
   if (chair && (string)this_player()->query_name() != chair) {
     notify_fail("The chair has already been apointed.\n");
     return 0;
@@ -92,7 +79,6 @@ int appoint(string str) {
   sign->set_read_mess("The chair of the meeting is "+str+".\n");
   return 1;
 }
-
 int bang(string str) {
   if ((string)this_player()->query_name() != chair) {
     notify_fail("Only the chair can bang the gavel.\n");
@@ -103,7 +89,6 @@ int bang(string str) {
             "STOP!\n");
   return 1;
 }
-
 int recover() {
   if (!floor)
     reset();
@@ -112,7 +97,6 @@ int recover() {
   say(this_player()->one_short()+" has recovered the floor.\n");
   return 1;
 }
-
 int do_log(string str) {
   if (log_bing && !str) {
     write("Stopped logging.\n");
@@ -131,22 +115,18 @@ int do_log(string str) {
   log_bing = str;
   return 1;
 }
-
 void event_person_say(object ob, string start, string rest) {
   if (log_bing)
     log_file(log_bing, start+rest+"\n");
 }
-
 void event_say(object ob, string rest) {
   if (log_bing)
     log_file(log_bing, rest);
 }
-
 void event_soul(object ob, string rest) {
   if (log_bing)
     log_file(log_bing, rest);
 }
-
 void dest_me() {
   if (floor)
     floor->dest_me();

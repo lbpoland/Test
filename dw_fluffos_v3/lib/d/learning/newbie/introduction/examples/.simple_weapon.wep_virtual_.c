@@ -1,15 +1,11 @@
 #include <virtual.h>
-
 void dest_me() { destruct( this_object() ); }
-
 void create()
 {
   seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
-} /* create() */
-
+}
 object create_virtual_ob() {
    object clone;
-
   clone = (object)SERVER->create_virtual_object( "/obj/weapon.c", 1 );
   clone->add_property( "virtual name", "/d/learning/newbie/introduction/examples/simple_weapon.wep#1" );
   call_other( clone, "set_name",  "mop"  );
@@ -22,4 +18,4 @@ object create_virtual_ob() {
   call_other( clone, "add_attack",  "prod", 50, ({ 5, 6, 6 }), "blunt", "blunt", 0  );
   call_other( clone, "add_attack",  "whack", 50, ({ 10, 10, 5 }), "blunt", "blunt", 0 );
    return clone;
-} /* create_virtual_ob() */
+}

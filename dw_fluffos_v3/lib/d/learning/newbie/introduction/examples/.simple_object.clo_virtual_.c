@@ -1,15 +1,11 @@
 #include <virtual.h>
-
 void dest_me() { destruct( this_object() ); }
-
 void create()
 {
   seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
-} /* create() */
-
+}
 object create_virtual_ob() {
    object clone;
-
   clone = (object)SERVER->create_virtual_object( "/obj/clothing.c", 1 );
   clone->add_property( "virtual name", "/d/learning/newbie/introduction/examples/simple_object.clo#1" );
   call_other( clone, "set_name",  "dungarees"  );
@@ -21,4 +17,4 @@ object create_virtual_ob() {
   call_other( clone, "setup_clothing",  50000  );
   call_other( clone, "set_type",  "robe" );
    return clone;
-} /* create_virtual_ob() */
+}

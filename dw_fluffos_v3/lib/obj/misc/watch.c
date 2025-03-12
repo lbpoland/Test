@@ -1,18 +1,15 @@
 inherit "/obj/clock";
-
 int our_offset,
     their_offset,
     last_time,
     cur_alarm,
     offset_alarm,
     alarm;
-mixed *alarms; 
+mixed *alarms;
 string *alarm_write,
        alarm_name;
 object our_player;
-
 varargs int get_text(string line);
-
 void setup() {
   set_name("watch");
   add_adjective("demonic");
@@ -29,29 +26,12 @@ void setup() {
   call_out("check_alarm",60);
   alarms = ({ });
 }
-/*
-string long(string word, int dark) {
-  if (our_offset == their_offset)
-    return ::long()+".\n"+get_time()+".\n";
-  else
-    return ::long()+"\n"+get_time()+"\nMud time: "+ctime(time())+".\n";
-}
-
-string query_read() {
-  if (our_offset == their_offset)
-    return get_time()+".\n";
-  else
-    return get_time()+"\nMud time: "+ctime(time())+".\n";
-}
-*/
-
 void init() {
   add_command("time", "");
   add_command("gmt", "<word'offset'>", (:this_object()->set_gmt($4[0]):));
   add_command("use", "<direct:object>", (:this_object()->use():));
   this_player()->add_command("read", this_object());
 }
-
 int use(string arg) {
   if (!alarms)
     alarms = ({ });
@@ -64,11 +44,9 @@ int use(string arg) {
   input_to("the_command");
   return 1;
 }
-
 int the_command(string arg) {
   string s1;
   int i;
-
   if (arg == "quit") {
     write("Thank you for using this wonderful watch.\n");
     return 1;
@@ -133,7 +111,6 @@ int the_command(string arg) {
   }
   return 1;
 }
-
 varargs int get_text(string line) {
    string text;
   if (!line) {
@@ -151,34 +128,27 @@ varargs int get_text(string line) {
   input_to("get_text");
   return 1;
 }
-
 mixed query_auto_load() {
   mixed ret;
-
   if (!alarms)
     alarms = ({ });
   ret = ({ their_offset, alarms });
   return ret;
 }
-
 void init_arg(mixed *arg) {
   their_offset = arg[0];
   alarms = arg[1];
   if (!alarms)
     alarms = ({ });
 }
-
 void check_alarm() {
    int the_time, offset, i;
    int tmp;
-   
    the_time = time();
    offset = (the_time/(3600*24))*3600*24 - our_offset*3600;
    for (i=0;i<sizeof(alarms);i+=4) {
-
       tmp = offset + (alarms[i+1]-our_offset+their_offset)*3600 + alarms[i+2]*60;
       if (the_time>tmp && tmp>last_time) {
-         /* we go off. bounce */
          alarm = 6;
          alarm_name = alarms[i];
          if (alarms[i+3])
@@ -199,7 +169,6 @@ void check_alarm() {
    last_time = the_time;
    call_out("check_alarm",60);
 }
-
 void heart_beat() {
    if (our_player)
      our_player->event_say(this_object(), "The watch goes: "+
@@ -207,10 +176,8 @@ void heart_beat() {
    if (offset_alarm>sizeof(alarm_write))
      set_heart_beat(0);
 }
-
 int move(object ob) {
   int i;
-
   i = ::move(ob);
   our_player = environment();
   return i;

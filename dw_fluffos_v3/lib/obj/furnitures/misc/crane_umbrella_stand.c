@@ -1,8 +1,4 @@
-//Una
-//Only for use in Cwc
-
 inherit "/std/room/furniture/storage";
-
 void setup() {
     set_name("stand");
     set_short("lacquered umbrella stand");
@@ -23,5 +19,3 @@ void setup() {
                                "sitting" : "sits",
                                "standing" : "stands" ]) );
 }
-
-

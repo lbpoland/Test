@@ -1,40 +1,16 @@
-/* Blood Loss Effect for use with vampire bites.                       *
- * based on the drunk effect by ceres.                                 *
- *                                                                     *
- * Archana 4/20/97                                                     *
- *                                                                     *
- * Updated to cause vampirism on death, various other modifications as *
- * well to make is simpler and add more descriptions.                  *
- *                                                                     *
- * Arguements are: int duration                                        *
- * See also "vampirebite_shadow.c" and "vampirecorpse_effect.c"        *
- *                                                                     *
- * Lemming, 03/07/2000                                                 */
-
 #include <effect.h>
 #include <living.h>
 #include <move_failures.h>
 #include <player.h>
-
 mapping compass = ([ "north" : 1, "northeast" : 1, "east" : 1, "southeast" : 1,
                      "south" : 1, "southwest" : 1, "west" : 1, "northwest" : 1
                     ]);
-
 void come_around( object person );
-
-/** @ignore yes */
 string query_classification() { return "body.bite.vampire"; }
-
-/** @ignore yes */
 string query_shadow_ob() { return "/std/shadows/npc/vampirebite_shadow"; }
-
-/** @ignore yes */
 int survive_death() { return 1; }
-
-/** @ignore yes */
 int beginning( object person, int extent, int id ) {
    int con, time;
- 
    tell_object( person, "Pain shoots through your veins, exploding inside "
       "your head, making you scream in agony as the effect of the vampire's "
       "bite fills your body.\n" );
@@ -43,63 +19,41 @@ int beginning( object person, int extent, int id ) {
    person->adjust_bonus_wis(-2);
    person->adjust_bonus_str(-2);
    person->adjust_bonus_dex(-2);
-
    person->submit_ee( "bite_pain", ({ 10, 60 }), EE_CONTINUOUS );
-
-   // The duration should be similar to the old /global/player drunk
-   // effect, ie, time = 2*extent/query_con().
-
    con = person->query_con();
    if( con < 1 ) con = 1;
-
    time = 2 * extent / con;
    person->submit_ee( 0, time, EE_REMOVE );
-
    return time;
-} /* beginning() */
-
-/** @ignore yes */
+}
 int merge_effect( object person, int old_time, int new_extent, int id ) {
    int con, new_time;
-
    con = person->query_con();
    if( con < 1 ) con = 1;
-
    new_time = ( 2 * new_extent / con ) + person->expected_tt();
    person->submit_ee( 0, new_time, EE_REMOVE );
-
    return new_time;
-} /* merge_effect() */
-
-/** @ignore yes */
+}
 void restart( object person, int time, int id ) {
    person->adjust_bonus_int(-2);
    person->adjust_bonus_wis(-2);
    person->adjust_bonus_str(-2);
    person->adjust_bonus_dex(-2);
-} /* restart() */
-
-/** @ignore yes */
+}
 void end( object person, int time, int id ) {
    if( person->query_property( PASSED_OUT_PROP ) )
       come_around( person );
-
    person->adjust_bonus_int(2);
    person->adjust_bonus_wis(2);
    person->adjust_bonus_str(2);
    person->adjust_bonus_dex(2);
-
    tell_object( person, "The firey pain screaming through your veins and "
       "incessant pounding inside your head finally wear off, leaving you "
       "with a mild headache.\n" );
-} /* end() */
-
-/** @ignore yes */
+}
 void bite_pain( object person, int time, int id ) {
    int timeleft, selector;
-
    timeleft = (int)person->expected_tt();
-  
    if( person->query_property( PASSED_OUT_PROP ) ) {
       switch( random(3) ) {
       case 0 :
@@ -118,9 +72,7 @@ void bite_pain( object person, int time, int id ) {
       }
       return;
    }
-
    selector = random( timeleft ) / person->query_con() / 5;
-
    switch( selector ) {
    case 0 :
       break;
@@ -194,11 +146,9 @@ void bite_pain( object person, int time, int id ) {
             person->submit_ee( "wander_about", 3, EE_ONCE );
             break;
          }
-      } 
+      }
    }
-} /* bite_pain() */
-
-/** @ignore yes */
+}
 void come_around( object person ) {
    tell_object( person, "You feel a pounding headache coming on and realise "
       "you are finally conscious.\n" );
@@ -206,28 +156,22 @@ void come_around( object person ) {
       "painfully, opens " + person->query_possessive() + " eyes and slowly "
       "picks " + person->query_objective() + "self up.\n", person );
    person->remove_property( PASSED_OUT_PROP );
-} /* come_around() */
-
-/** @ignore yes */
+}
 void wander_about( object person, int time, int id ) {
    int i, flag;
    string *direcs;
-
    if( person->query_property( PASSED_OUT_PROP ) || !environment( person ) )
       return;
-
    if( random( 4 ) )
       person->submit_ee( "wander_about", ({ 8, 8 }), EE_ONCE );
-
    direcs = (string *)environment( person )->query_direc();
    while( sizeof( direcs ) && !flag ) {
       i = random( sizeof( direcs ) );
-      if( /* !environment( person )->query_obvious_exit( direcs[ i ] ) || */
+      if(
           !environment( person )->query_door_open( direcs[ i ] ) ) {
          direcs = delete( direcs, i, 1 );
          continue;
       }
-
       person->add_property( UNKNOWN_MOVE, 1 );
       if( compass[direcs[i]] )
          flag = person->exit_command( 0, ({ direcs[ i ], "$N attempt$s to "
@@ -236,16 +180,14 @@ void wander_about( object person, int time, int id ) {
       else
          flag = person->exit_command( 0, ({ direcs[ i ], "$N stumble$s off "
             "towards the $T." }) );
-
       tell_object( person, "You attempt to get up and walk and just "
          "manage to stumble around a bit.\n" );
       person->remove_property( UNKNOWN_MOVE );
-
       if( !flag )
          direcs = delete( direcs, i, 1 );
    }
-} /* wander_about() */
+}
 string extra_look( object player, mixed *args ) {
     return capitalize(player->query_pronoun()+" looks rather pale with cold,"
     " clammy skin and a look of dizziness.\n");
-} /* extra_look() */
+}

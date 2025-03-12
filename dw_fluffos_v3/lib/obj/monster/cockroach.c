@@ -1,5 +1,4 @@
 inherit "/obj/monster";
-
 void setup() {
    set_name("cockroach");
    set_short("cockroach");
@@ -24,5 +23,4 @@ void setup() {
          1, ":oozes horrible white stuff.",
          1, ":makes a sort of scraping noise."
       }) );
-} /* setup() */
-
+}

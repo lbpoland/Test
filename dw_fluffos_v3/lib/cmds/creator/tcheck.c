@@ -1,41 +1,23 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: tcheck.c,v 1.1 1998/01/06 05:25:41 ceres Exp $
- * $Log: tcheck.c,v $
- * Revision 1.1  1998/01/06 05:25:41  ceres
- * Initial revision
- * 
-*/
-/* tcheck command. 
- * It doesn't do nearly all the checks I though it would, but it
- * still finds some.
- */
-
 int cmd( string str ) {
    mixed  err, ret;
    object ob;
    string file, wiz_dir;
-   
    if (!this_player()) return 0;
    seteuid(geteuid(this_player()));
    if (!str) {
       notify_fail("Usage: tcheck <file name>\n");
       return 0;
-   }   
+   }
    wiz_dir = "/w/" + (string)this_player()->query_name();
    if (file_size(wiz_dir)!=-2) {
       notify_fail("Directory: " + wiz_dir + " does not exist.\n");
       return 0;
    }
-
    if ( str[0..0] != "/" )
      str = (string)this_player()->query_path() + "/" + str;
-
    if (str[<1..<1]=="0") {
       str=str[0..<2];
    }
-   
    if (file_size(str)<0) {
       notify_fail("File: " + str + " does not exist or is a directory.\n");
       return 0;
@@ -55,15 +37,12 @@ int cmd( string str ) {
    rm(file+".c");
    return 1;
 }
-
 void dest_me() {
    destruct(this_object());
 }
-
 void clean_up() {
    dest_me();
 }
-
 void reset() {
    dest_me();
 }

@@ -1,25 +1,21 @@
-// These are the places the guide can go to.  The first element is the
-// word the player must say, the second is the file name of the location
-// and the third is what the guide describes the place as.
-
 string *guilds = ({
   "fish",
-    "/d/am/cockbill/cockbill8", 
+    "/d/am/cockbill/cockbill8",
       "the Temple of Fish",
   "small gods",
-    "/d/guilds/priests/Ankh-Morpork/small-gods/entrance", 
+    "/d/guilds/priests/Ankh-Morpork/small-gods/entrance",
       "the Temple of the Small Gods",
-  "warrior", 
-    "/d/am/hero/lobby", 
+  "warrior",
+    "/d/am/hero/lobby",
       "the Warriors' Guild",
-  "wizard", 
-    "/d/am/square/ss13", 
+  "wizard",
+    "/d/am/square/ss13",
       "the Unseen University",
-  "university", 
-    "/d/am/square/ss13", 
+  "university",
+    "/d/am/square/ss13",
       "the Unseen University",
-  "assassin", 
-    "/d/guilds/assassins/Ankh-Morpork/admin/foyer", 
+  "assassin",
+    "/d/guilds/assassins/Ankh-Morpork/admin/foyer",
       "the Assassins' Guild",
   "thief",
     "/d/guilds/thieves/Ankh-Morpork/rooms/ground/entrance",
@@ -30,7 +26,6 @@ string *guilds = ({
   "gennie",
     "/d/guilds/witches/Ankh-Morpork/gennies_cottage",
       "Gennie's place"});
-
 string *services = ({
   "drum",
     "/d/am/am/mendeddrum",
@@ -50,13 +45,12 @@ string *services = ({
   "patrician",
     "/d/am/patrician/foyer",
       "the Patrician's Palace"});
-
 string *places = ({
   "sator square",
-    "/d/am/square/ss33", 
+    "/d/am/square/ss33",
       "Sator Square",
-  "least gate", 
-    "/d/am/gates/least", 
+  "least gate",
+    "/d/am/gates/least",
       "the Least Gate",
   "brass bridge",
     "/d/am/river/bridge",
@@ -79,4 +73,3 @@ string *places = ({
   "ninth yard",
     "/d/am/ninth/ninth1",
       "Ninth Yard"});
-

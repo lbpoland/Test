@@ -1,13 +1,11 @@
 #ifndef __CLIENT_H__
 #define __CLIENT_H__
-
 class client {
     int Descriptor;
     int Blocking;
     mixed *Buffer;
     int Closed;
 }
-
 int eventCreateSocket(string host, int port);
 protected void eventAbortCallback(int fd);
 protected void eventReadCallback(int fd, mixed val);
@@ -21,5 +19,4 @@ protected void eventSocketError(string str, int x);
 function SetRead(function f);
 int SetSocketType(int x);
 int SetDestructOnClose(int x);
-
-#endif /* __CLIENT_H__ */
+#endif

@@ -1,29 +1,17 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: communication.c,v 1.8 2003/02/19 06:39:05 ceres Exp $
- *
-*/
-/* Added no teleport property- 26-06-98- Shalla */
-
 #include "path.h"
 inherit PATH + "inside";
-
 object sign;
-
 void setup() {
   set_zone( "Newbie" );
   set_short( "Communication room" );
   set_light( 75 );
   add_property("no teleport", 1);
-
   set_long("This small room seems to be filled with frogs which are bouncing "
            "around, wombling on and chattering away like crazy.  Around the "
            "walls are a number of posters that describe various aspects of "
            "communication on Discworld.  There are posters on 'general', "
            "'speaking', 'expression', 'emote', 'newbie' and "
            "'mail'.\n");
-  
   add_item("frog", "There are small green frogs everywhere.  They seem very "
            "excited and are moshing, sniggering, hugging,... you name it, "
            "they are doing it.");
@@ -35,7 +23,6 @@ void setup() {
            "yellow.");
   add_item("floor", "The floor is composed of stone slabs and covered "
            "with frogs.");
-
   sign=add_sign("A poster entitled 'What Do You Mean?'\n",
            "If you are new to online communication you may be surprised how "
            "easy it is to misunderstand and to be misunderstood when you "
@@ -45,7 +32,6 @@ void setup() {
            "read it!", 0, "general", "general");
   sign->set_short("sign marked 'general'");
   sign->add_property("determinate","the ");
-  
   sign=add_sign("A poster entitled 'It's Good To Talk'\n",
            "There are a number of ways to communicate verbally.\n"
            "To speak to everyone in the same room as yourself use the "
@@ -57,7 +43,6 @@ void setup() {
            0, "speaking", "general");
   sign->set_short("sign marked 'speaking'");
   sign->add_property("determinate","the ");
-
   sign=add_sign("A poster entitled 'Womble On'\n",
            "Discworld also has a soul which allows you some emotional "
            "expression, thus you can 'laugh' or 'cry'.  There are "
@@ -66,7 +51,6 @@ void setup() {
            "them.\n", 0, "expression", "general");
   sign->set_short("sign marked 'expression'");
   sign->add_property("determinate","the ");
-
   sign=add_sign("A poster entitled 'Laugh In An Old Fashioned Way'\n",
            "Emote allows free expression.  If Jim used 'emote jumps around "
            "in a slightly artistic manner' everyone in the room would see "
@@ -74,7 +58,6 @@ void setup() {
            "must learn that skill.", 0, "emote", "general");
   sign->set_short("sign marked 'emote'");
   sign->add_property("determinate","the ");
-
   sign=add_sign("A poster entitled 'What Do You Mean?'\n",
            "For the first day of your time on Discworld you will have access "
            "to the newbie chat channel which is listened to by most creators "
@@ -84,7 +67,6 @@ void setup() {
            0, "newbie", "general");
   sign->set_short("sign marked 'newbie'");
   sign->add_property("determinate","the ");
-
   sign=add_sign("A poster entitled 'But You're Not There'\n",
            "Discworld provides a mail system which allows you to send "
            "messages to players who are not currently logged in.  You must "
@@ -96,19 +78,13 @@ void setup() {
            "board located somewhere in the guildhouse.\n", 0, "mail", "general");
   sign->set_short("sign marked 'mail'");
   sign->add_property("determinate","the ");
-
-  
-  /* Make it so you cannot godmother out of here */
   add_property("no godmother", 1);
-
   room_chat(({120, 240, ({"A small frog bumps into you, apologises "
                             "profusely, and hops off.",
                             "A frog leaps up and down excitedly.",
                             "A frog wombles around you happily.",
                             "A frog bingles happily.",
                             "A frog parps wryly at you."})}));
-                        
   add_exit( "foyer", PATH + "foyer", "door" );
   add_alias( "west", "foyer" );
-} /* setup() */
-
+}

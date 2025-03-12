@@ -1,11 +1,7 @@
 #include "path.h"
 #include <terrain.h>
-
 #define COLS (int)this_player()->query_cols()
-
-
 inherit "/std/room/basic_room";
-
 int do_help();
 int do_terrain(string name);
 int do_list(string what);
@@ -15,10 +11,8 @@ int do_add(int floating, string file, int x1, int y1, int z1,
 	   int x2, int y2, int z2, int level);
 int do_remove(int floating, string file, int x1, int y1, int z1,
 	   int x2, int y2, int z2);
-
 string terrain_name;
 object generator;
-
 void setup() {
    set_short( "terrain-maker room" );
    add_property( "determinate", "the " );
@@ -49,15 +43,13 @@ void setup() {
            "    For both removing and adding, no commas and no .c at the end\n"
            "    of path names.  When removing/adding fixed locations, all\n"
            "    locations must be done one by one.\n", 0, "notice");
-} /* setup() */
-
+}
 void reset() {
    if ( !generator ) {
       generator = clone_object( "/obj/handlers/terrain_things/dungeon_maker" );
       generator->move( this_object() );
    }
-} /* reset() */
-
+}
 void init() {
   ::init();
   add_command("help", "room", (: do_help() :) );
@@ -97,8 +89,7 @@ void init() {
     (: do_remove(2, $4[0], $4[1], $4[2], $4[3],
 		 0, 0, 0 ) :) );
   add_command("clear", "", (: do_clear() :) );
-} /* init() */
-
+}
 int do_help () {
   write( "Available commands are:\n\n"+
       "     terrain  -  set terrain name\n"+
@@ -108,8 +99,7 @@ int do_help () {
       "     remove   -  remove an old location\n"+
       "     clear    -  clear all clones and connections\n" );
   return 1;
-} /* do_help() */
-
+}
 int do_terrain( string name ) {
   if ( !name ) {
     if ( stringp( terrain_name ) )
@@ -121,8 +111,7 @@ int do_terrain( string name ) {
   write( "Terrain name set to "+ name +".\n" );
   terrain_name = name;
   return 1;
-} /* do_terrain() */
-
+}
 int do_list( string word ) {
   int i, size;
   string list;
@@ -181,8 +170,7 @@ int do_list( string word ) {
           "), level "+ locations[ i ][ 2 ] );
   this_player()->more_string( list, "Floating" );
   return 1;
-} /* do_list() */
-
+}
 int do_member( string type, string parameters ) {
   int i, size, *co_ords;
   string list, location;
@@ -242,14 +230,12 @@ int do_member( string type, string parameters ) {
         ", level "+ locations[ 2 * i + 1 ] );
   this_player()->more_string( list, "Member" );
   return 1;
-} /* do_member() */
-
+}
 int do_add(int floating,
 	   string file, int x1, int y1, int z1,
 	   int x2, int y2, int z2, int level)
 {
   int *co_ords;
-
   if ( !terrain_name ) {
     write( "There is no current terrain name.\n" );
     return 1;
@@ -290,8 +276,7 @@ int do_add(int floating,
         "terrain "+ terrain_name +" at coordinates ("+ co_ords[ 0 ] +", "+
         co_ords[ 1 ] +", "+ co_ords[ 2 ] +") and level "+ level +".\n" );
   return 1;
-} /* do_add() */
-
+}
 int do_remove(int floating,
 	   string file, int x1, int y1, int z1,
 	   int x2, int y2, int z2)
@@ -347,8 +332,7 @@ int do_remove(int floating,
       terrain_name +" at coordinates ("+ co_ords[ 0 ] +", "+ co_ords[ 1 ] +
       ", "+ co_ords[ 2 ] +") has been removed.\n" );
   return 1;
-} /* do_remove() */
-
+}
 int do_clear() {
   if ( !terrain_name ) {
     write( "There is no current terrain name.\n" );
@@ -359,4 +343,4 @@ int do_clear() {
   write( "Clones and connections cleared for the terrain "+ terrain_name +
       ".\n" );
   return 1;
-} /* do_clear() */
+}

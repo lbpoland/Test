@@ -1,19 +1,6 @@
-/**
- * Player-run shop manager handbook object.
- * This object is claimable by managers of player-run shops.
- * It is intended to describe the duties & offer guidance to these managers.
- * This object should not be inherited by anything, but is created by the
- * player_shop office.
- *
- * @author Ringo
- * @started 1st August 1999
- */
 #include "player_shop.h"
-
 inherit "/std/book";
-
 private string _office;
-
 void setup() {
     set_name( "book" );
     add_alias( "handbook" );
@@ -25,18 +12,13 @@ void setup() {
     set_no_pages( 11 );
     add_property( "no recycling", 1 );
 }
-/* setup() */
-
-/** @ignore yes */
-private string cap_name(string name) 
+private string cap_name(string name)
 {
    if (test_player(name))
       return PLAYER_HANDLER->query_cap_name(name);
    else return capitalize(name);
 }
-
-/** @ignore yes */
-void set_office( string office ) { 
+void set_office( string office ) {
    _office = office;
    if ( !query_property( "office" ) ) {
       add_property( "office", office );
@@ -46,9 +28,8 @@ void set_office( string office ) {
      "the managers' job not covered by the staff handbook.\n"
      "You may <read book>, <open book to page #> and "
      "<turn a page of book>.\n" );
-
     set_open_page( 1 );
-    set_read_mess( "\n"     
+    set_read_mess( "\n"
       "                            TABLE OF CONTENTS                    Page 1\n"
       "                    .o0o.o0o.o0o.o0o.o0o.o0o.o0o.o0o.\n\n"
       "       Introduction............................................2\n"
@@ -58,7 +39,6 @@ void set_office( string office ) {
       "       Hiring new employees....................................8-9\n"
       "       Disciplinary procedures.................................10-11\n",
       "common", 100 );
-
     set_open_page( 2 );
     set_read_mess( "\n"
       "                               Introduction                      Page 2\n"
@@ -69,7 +49,6 @@ void set_office( string office ) {
       " shop.  This book is to be treated as a confidential document, and its\n"
       " contents only to be discussed with other managers.\n",
       "common", 100 );
-
     set_open_page( 3 );
     set_read_mess( "\n"
       "                                 The Job                         Page 3\n"
@@ -88,8 +67,7 @@ void set_office( string office ) {
       " capacity.  Whilst having very limited functional control over the\n"
       " shop, retired managers are still able to keep their badge, and use\n"
       " the notice board and \"memo\" facility.\n",
-      "common", 100 );  
-
+      "common", 100 );
     set_open_page( 4 );
     set_read_mess( "\n"
       "                           The way things work                   Page 4\n"
@@ -108,7 +86,6 @@ void set_office( string office ) {
       " supervisors halfway in between.  The bonuses are calculated in the same\n"
       " way.\n",
       "common", 100 );
-
     set_open_page( 5 );
     set_read_mess( "\n"
       "                              Specific commands                  Page 5\n"
@@ -131,7 +108,6 @@ void set_office( string office ) {
       "           these values\n"
       " transfer - Transfer money between two accounts                (Continued...)\n",
       "common", 100 );
-
     set_open_page( 6 );
     set_read_mess( "\n"
       "                                                                 Page 6\n\n"
@@ -154,7 +130,6 @@ void set_office( string office ) {
       "        is the right decision.\n"
       " check - Allows you to check your current votes               (Continued...)\n",
       "common", 100 );
-
     set_open_page( 7 );
     set_read_mess( "\n"
       "                                                                 Page 7\n\n"
@@ -171,8 +146,6 @@ void set_office( string office ) {
       "          reflecting their history.\n"
       " fire - Terminate someone's employment with this shop.\n",
       "common", 100 );
-
-
     set_open_page( 8 );
     set_read_mess( "\n"
       "                            Hiring new employees                Page 8\n"
@@ -193,7 +166,6 @@ void set_office( string office ) {
       " 5) If 50% hasn't been reached after 7 days, then the candidate is\n"
       "    hired/rejected on the basis of votes received so far.  (Continued...)\n",
       "common", 100 );
-
     set_open_page( 9 );
     set_read_mess( "\n"
       "                                                                Page 9\n\n"
@@ -207,7 +179,6 @@ void set_office( string office ) {
       " Since the candidates are hired in order of being accepted, please make\n"
       " sure you vote for the oldest applications first.\n",
       "common", 100 );
-
     set_open_page( 10 );
     set_read_mess( "\n"
       "                           Disciplinary procedures              Page 10\n"
@@ -228,7 +199,6 @@ void set_office( string office ) {
       " action as this will allow you to see what action has already been\n"
       " taken, and when.                                       (Continued...)\n",
       "common", 100 );
-
     set_open_page( 11 );
     set_read_mess( "\n"
       "                                                                Page 11\n\n"
@@ -240,12 +210,8 @@ void set_office( string office ) {
       " suggestions on content as well as shop policy.\n"
       " (c) "+ cap_name(CREATOR)+ " 2001",
       "common", 100 );
-
     set_open_page( 0 );
 }
-/* setup() */
-
-
 void init () {
    set_open_page( 0 );
    if ( !_office || _office == "" ) {
@@ -262,4 +228,3 @@ void init () {
    }
    ::init();
 }
-/* init() */

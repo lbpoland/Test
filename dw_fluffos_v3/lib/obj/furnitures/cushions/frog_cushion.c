@@ -1,7 +1,4 @@
-// Rue 1.2000
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
   set_name( "cushion" );
   set_short( "frog cushion" );
@@ -16,4 +13,3 @@ void setup() {
   set_weight(2);
   set_value(8000);
 }
-

@@ -1,13 +1,10 @@
 inherit "/obj/monster";
 #include <panic.h>
 #include <armoury.h>
-
 void finish_up();
-
 int state, start_time, prodded;
 object lost;
 string safeplace;
-
 void setup() {
   start_time = time();
   set_name("garlick");
@@ -24,7 +21,6 @@ void setup() {
     "a tinker's wagon with a broken wheel.  With one hand she clutches her "
     "regulation wand and with the other she dabs at her red and dripping "
     "nose with a damp scrap of lace.\n");
-
   set_race("human");
   set_guild("witch");
   set_level(200);
@@ -32,56 +28,41 @@ void setup() {
   set_language("general");
   set_response_mon_understand_anything(1);
   add_property( "anchor", 1);
-
   ARMOURY->request_item("startling green dress", 100)->move( this_object() );
   ARMOURY->request_item("spiderweb shawl", 100)->move( this_object() );
   ARMOURY->request_item("pumps", 50)->move( this_object() );
   init_equip();
-
   add_respond_to_with(({ "yes" }), "#yes_response");
   add_respond_to_with(({ "@nod" }), "#yes_response");
   add_respond_to_with(({ "no" }), "#no_response");
   add_respond_to_with(({ "@shake" }), "#no_response");
-} /* setup() */
-
-
+}
 void do_panic(object pl) {
-
   string home;
   string nationality;
-
   nationality = pl->query_nationality();
-   
-  if ( !nationality ) { 
+  if ( !nationality ) {
       queue_command( "say Oops.. you haven't got a nationality, I can't "
         "send you home!");
       finish_up();
       return;
   }
-
   home = nationality->query_default_start_location();
   safeplace = home->query_short();
- 
   queue_command( "say Umm.  Hi.  You are lost?  Would you like me to get "
              "you back to " + safeplace + "?" );
   queue_command( "emote waves her wand around a bit." );
   tell_room(environment(),
             "A puff of smoke drifts away from where something else used to "
             "be.  Now residing there is a pumpkin.\n");
-
   ARMOURY->request_item("pumpkin", 100)->move(environment());
   queue_command( "say Whoops." );
   lost = pl;
   start_time = time();
   prodded = 0;
   call_out("do_prod", 30);
-
-} /* do_panic() */
-
-
+}
 int query_waiting() { return time()-start_time; }
-
-
 void yes_response(object ob) {
   if (ob != lost)
     return ;
@@ -91,13 +72,10 @@ void yes_response(object ob) {
   tell_room( environment(), the_short() + " waves her wand in " +
     lost->the_short() + "'s direction.\n", lost );
   PANIC_HANDLER->finish_panic(lost, PANIC_OK);
-  /* A couple of pumpkins for good luck. */
   ARMOURY->request_item("pumpkin", 100)->move(lost);
   ARMOURY->request_item("pumpkin", 100)->move(environment(lost));
   lost = 0;
-} /* yes_response() */
-
-
+}
 void no_response(object ob) {
   if(ob != lost)
     return;
@@ -108,9 +86,7 @@ void no_response(object ob) {
   ARMOURY->request_item("pumpkin", 100)->move(environment(lost));
   PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
   lost = 0;
-} /* no_response() */
-
-
+}
 void do_prod() {
   if(!lost)
     return;
@@ -126,9 +102,7 @@ void do_prod() {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* do_prod() */
-
-
+}
 void event_exit(object ob, string message, object to) {
     if (ob == lost) {
     queue_command( "say Bye..." );
@@ -139,21 +113,16 @@ void event_exit(object ob, string message, object to) {
     ARMOURY->request_item("pumpkin", 100)->move(environment(lost));
     lost = 0;
   }
-} /* event_exit() */
-
-
+}
 void hurry_up() {
   if (!lost) {
-    /* If the player has buggered off, we give up */
     queue_command( "blink twice" );
     queue_command( "say I guess my help wasn't wanted, then..." );
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
   else do_prod();
-} /* hurry_up() */
-
-
+}
 void event_fight_in_progress(object attacker, object attackee) {
   if (attackee == this_object()) {
     queue_command( "say Look, this is really not very nice." );
@@ -169,9 +138,7 @@ void event_fight_in_progress(object attacker, object attackee) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
-} /* event_fight_in_progress() */
-
-
+}
 void finish_up() {
   queue_command( "shuffle" );
   queue_command( "say Umm.  I have to go." );
@@ -179,18 +146,14 @@ void finish_up() {
   queue_command( "wave" );
   PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
   lost = 0;
-} /* finish_up() */
-
-
+}
 void dest_me() {
   if (lost) {
     PANIC_HANDLER->finish_panic(lost, PANIC_NOT_OK);
     lost = 0;
   }
   ::dest_me();
-} /* dest_me() */
-
-
+}
 int unambushable() {
     return 1;
 }

@@ -1,16 +1,10 @@
-/*
- * Command to list the effects on a person.
- */
 inherit "/cmds/base";
-
 int cmd( object * obs, int brief ) {
    object who;
    int num, * enums;
    mixed arg;
-
    if( !obs )
       obs = ({ this_player() });
-
    foreach( who in obs ) {
       write( "%^BOLD%^Effects on " + who->query_short() + ":%^RESET%^\n" );
       enums = who->effects_matching( "" );
@@ -20,7 +14,6 @@ int cmd( object * obs, int brief ) {
            "-----------------------------------------------------------" );
          continue;
       }
-
       foreach( num in enums ) {
          arg = who->arg_of(num);
          if ( brief && ( arrayp(arg) || classp(arg) || mapp(arg) ) ) {
@@ -39,7 +32,6 @@ int cmd( object * obs, int brief ) {
    }
    return 1;
 }
-
 mixed * query_patterns() {
    return ({
      "<indirect:wiz-present> verbose", (: cmd( $1, 0 ) :),

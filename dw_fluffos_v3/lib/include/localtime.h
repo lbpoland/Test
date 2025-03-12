@@ -1,7 +1,3 @@
-
-/*
- * Definitions for localtime() efun
- */
 #define LT_SEC          0
 #define LT_MIN          1
 #define LT_HOUR         2

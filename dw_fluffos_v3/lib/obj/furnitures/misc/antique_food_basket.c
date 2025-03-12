@@ -1,10 +1,5 @@
-// Una
-// For use in Cwc
-
 inherit "/std/room/furniture/storage";
-
 void setup(){
-
     set_name( "basket" );
     set_short( "antique food basket" );
     add_adjective( ({ "antique", "food", "basket" }) );
@@ -19,7 +14,7 @@ void setup(){
     set_value( 62000 );
     set_allowed_room_verbs(([ "sitting" : "sits",
                               "standing" : "stands",
-                              "leaning" : "leans", 
+                              "leaning" : "leans",
                               "lying" : "lies",
                               "squatting" : "squats" ]));
-} /* setup() */
+}

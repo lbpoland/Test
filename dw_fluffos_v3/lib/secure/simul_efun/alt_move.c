@@ -1,4 +1,3 @@
-
 void alt_move(mixed dest, object ob){
   if(!ob)
     return;

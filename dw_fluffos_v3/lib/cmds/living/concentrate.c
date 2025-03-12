@@ -1,8 +1,6 @@
 inherit "/cmds/base";
-
 int concentrate_list( ) {
    object conc;
-
    conc = this_player()->query_concentrating();
    if ( !conc ) {
       write("You are not currently concentrating on "
@@ -12,8 +10,7 @@ int concentrate_list( ) {
             conc->the_short() + ".\n");
    }
    return 1;
-} /* concentrate_list() */
-
+}
 int concentrate(object *things ) {
    if ( sizeof( things ) > 1 ) {
       return notify_fail( "You can only concentrate on one thing at once.\n" );
@@ -36,9 +33,8 @@ int concentrate(object *things ) {
       add_succeeded_mess(({"Unable to concentrate on $I.\n", "" }), things);
    }
    return 1;
-} /* concentrate() */
-
+}
 mixed *query_patterns() {
    return ({ "[on] <indirect:living>", (: concentrate($1) :),
              "", (: concentrate_list() :) });
-} /* query_patterns() */
+}

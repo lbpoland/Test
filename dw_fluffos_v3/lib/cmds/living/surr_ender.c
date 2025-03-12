@@ -1,25 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: surr_ender.c,v 1.3 1998/02/23 23:50:08 sin Exp $
- * $Log: surr_ender.c,v $
- * Revision 1.3  1998/02/23 23:50:08  sin
- * Ok, everything is working with the surrender command now.
- *
- * Revision 1.2  1998/02/23 23:18:17  sin
- * *blush* I made a boo-boo
- *
- * Revision 1.1  1998/02/23 23:17:06  sin
- * Initial revision
- *
- * 
-*/
 inherit "/cmds/base";
-
 mixed cmd(int mode, int val) {
   if (!mode) {
     int surr = this_player()->query_surrender();
-
     if (surr)
       write(sprintf("You will surrender at %d%% of your max hps.\n", surr));
     else
@@ -32,8 +14,7 @@ mixed cmd(int mode, int val) {
     write(sprintf("Surrender set to %d%%\n", this_player()->query_surrender()));
     return 1;
   }
-} /* cmd() */
-
+}
 mixed *query_patterns()
 {
   return ({ "", (: cmd(0, 0) :),

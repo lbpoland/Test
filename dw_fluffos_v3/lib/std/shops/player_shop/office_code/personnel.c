@@ -1,14 +1,3 @@
-/******************************************************************************
- * This file contains the personnel related functions
- *****************************************************************************/
-
-/**
- * @ignore yes 
- * Adds a new employee.
- * Also prevent the employee from receiving a bonus until they have
- * worked a full month by setting EMP_NOBONUS to 1.
- * @param player the employee to add
- */
 private void add_employee(string player)
 {
     if (!_employees[player])
@@ -21,19 +10,11 @@ private void add_employee(string player)
         save_emps();
     }
 }
-/* add_employee() */
-
-/**
- * @ignore yes 
- * Demote a manager or supervisor.
- * @param demoter the person doing the demoting
- * @param demotee the person being demoted
- */
 private void demote(string demoter, string demotee)
 {
     int points = _employees[demotee][EMP_POINTS] & CLOCKED_IN;
     if (_employees[demotee][EMP_POINTS] & MANAGER)
-        points += (SUPER_POINTS * 32) + EMPLOYEE + SUPERVISOR;      
+        points += (SUPER_POINTS * 32) + EMPLOYEE + SUPERVISOR;
     else points += EMPLOYEE;
     _employees[demotee][EMP_POINTS] = points;
     save_emps();
@@ -43,17 +24,9 @@ private void demote(string demoter, string demotee)
     employee_log(demotee, "Demoted by "+ demoter);
     shop_log(PERSONNEL, demoter, "demoted "+ cap_name(demotee), PAID);
 }
-/* demote() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Commend employees.  Adds 5% of their promotion target.
- */
 int do_commend(string emp)
 {
     string commender;
-
     if (!_employees[emp])
     {
         tell_object(this_player(), cap_name(emp)+
@@ -84,13 +57,6 @@ int do_commend(string emp)
     tell_object(this_player(), "You commend "+ cap_name(emp)+ ".\n");
     return 1;
 }
-/* do_commend() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Demote supervisors or managers.
- */
 int do_demote(string emp)
 {
     object tp = this_player();
@@ -116,13 +82,6 @@ int do_demote(string emp)
     tell_object(tp, "You demote "+ cap_name(emp)+ ".\n");
     return 1;
 }
-/* do_demote() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Fire an employee.
- */
 int do_fire(mixed *args)
 {
     args[0] = lower_case(args[0]);
@@ -150,13 +109,6 @@ int do_fire(mixed *args)
       " for "+ args[1]+ ".\n" );
     return 1;
 }
-/* do_fire() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Place an employee on leave.
- */
 int do_leave(mixed *args)
 {
     object tp = this_player();
@@ -185,12 +137,6 @@ int do_leave(mixed *args)
       " on leave for " + args[1]+ " days.\n");
     return 1;
 }
-/* do_leave() */
-
-/**
- * @ignore yes 
- * This employee has requested to be passed over (or not) for promotion.
- */
 private int do_promote(string on)
 {
     object tp = this_player();
@@ -221,29 +167,15 @@ private int do_promote(string on)
     save_emps();
     return 1;
 }
-/* do_promote() */
-
-/**
- * @ignore yes 
- * Employee wishes to terminate their employment with the shop.
- */
 private int do_resign()
 {
     string word = this_player()->query_name();
-
     add_succeeded_mess("$N $V.\n");
     remove_employee(word);
     shop_log(PERSONNEL, word, "resigned", UNPAID);
     employee_log(word, "Resigned");
     return 1;
 }
-/* do_resign() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Retire from management.
- */
 int do_retire()
 {
     string manager = this_player()->query_name();
@@ -256,25 +188,17 @@ int do_retire()
     add_succeeded_mess("$N retire$s.\n");
     return 1;
 }
-/* do_retire() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Suspend employee's bonus for x months.
- */
 int do_suspend(mixed *args)
 {
     string suspender;
     object tp = this_player();
-
     args[0] = lower_case(args[0]);
     if (!_employees[args[0]])
     {
         tell_object(tp, cap_name(args[0])+ " is not an active employee!\n");
         return 1;
     }
-    if ((_employees[args[0]][EMP_POINTS] & MANAGER) && 
+    if ((_employees[args[0]][EMP_POINTS] & MANAGER) &&
       (!tp->query_creator()))
     {
         tell_object(tp, "You don't have the authority to "
@@ -304,19 +228,11 @@ int do_suspend(mixed *args)
       "'s bonus for "+ args[1]+ " months.\n");
     return 1;
 }
-/* do_suspend() */
-
-/**
- * @ignore yes 
- * Managers' office.
- * Warn employees.  Removes 5% of their promotion target.
- */
 int do_warn(mixed *args)
 {
     string warner;
     object tp = this_player();
     int points;
-
     args[0] = lower_case(args[0]);
     if (!_employees[args[0]])
     {
@@ -339,7 +255,7 @@ int do_warn(mixed *args)
       "This is to advise you that you have today received a formal "
       "warning for " + args[1] + ".\nThis warning will now stay on "
       "your employment record.\n");
-    employee_log(args[0], "Received a warning from "+ warner+ 
+    employee_log(args[0], "Received a warning from "+ warner+
       " for "+ args[1]);
     shop_log(PERSONNEL, warner, "warned "+
       cap_name( args[0] ) + " for "+ args[1], PAID);
@@ -358,26 +274,17 @@ int do_warn(mixed *args)
       args[1]+ ".\n");
     return 1;
 }
-/* do_warn() */
-
-/**
- * @ignore yes 
- * Used when employees are fired by managers, or automatically.
- * @param word the person doing the firing
- * @param them the person being fired
- * @param reason the reason for being fired
- */
 private void fire_them(string word, string them, string reason)
 {
     if (!_employees[them]) return;
     BANK_HANDLER->adjust_account(them, BANKS[_employees[them][EMP_BANK]][1],
       _employees[them][EMP_PAY]);
-    shop_log(ACCOUNTS, _proprietor, "paid "+ 
+    shop_log(ACCOUNTS, _proprietor, "paid "+
       MONEY_HAND->money_value_string(_employees[them][EMP_PAY], _place)+
       " to "+ cap_name(them), UNPAID);
     shop_log(PERSONNEL, word, "fired "+ cap_name(them) +
       " for "+ reason, PAID);
-    PLAYER_SHOP->auto_mail(them, word, _shop_name, "", 
+    PLAYER_SHOP->auto_mail(them, word, _shop_name, "",
       "Unfortunately, I have to inform you that you have today "
       "been fired for " + reason + ".  You have been paid the sum of "+
       MONEY_HAND->money_value_string( _employees[them][EMP_PAY], _place )+
@@ -387,26 +294,15 @@ private void fire_them(string word, string them, string reason)
       " for "+ reason);
     remove_employee(them);
 }
-/* fire_them() */
-
-/**
- * @ignore yes 
- * Used when applicant has sufficient supporting votes to be accepted.
- * @param word the person to hire
- */
 private void hire(string word)
 {
     int gender;
-
     remove_applicant(word);
-
-    /* Do not hire if not a user, already an employee, or banned */
     if (!test_player(word) || _employees[word] || query_baddie(word)) return;
-
     add_employee(word);
     employee_log(word, "Hired");
     shop_log(PERSONNEL, _proprietor, "hired "+ cap_name(word), UNPAID);
-    PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "", 
+    PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
       "Congratulations!  You've been hired to work at "+ _shop_name+
       ".  You'll find that you can now move through the counter "
       "to the back areas of the shop.  The first things you should "
@@ -417,52 +313,32 @@ private void hire(string word)
         "%s gets started in %s new position.\n", cap_name(word),
         ({"it", "him", "her"})[gender] ,({"it", "him", "her"})[gender],
         ({"it", "he", "she"})[gender], ({"its", "his", "her"})[gender]));
-
-    /* Update the other accepted applicants */
     remove_call_out(_call_mail_hirees);
     _call_mail_hirees = call_out((: mail_hirees() :), 5);
 }
-/* hire() */
-
-/**
- * @ignore yes 
- * Used by the employee list to show managers & creators the last
- * time an employee was active.  Employees will be highlighted yellow
- * if they are currently on an inactivity warning, and red if they are
- * within 7 days of being fired/demoted
- * @param emp the employee to query
- */
 private string query_worked(string emp)
 {
     string blurb;
-
-    /* Clocked in */
     if (_employees[emp][EMP_POINTS] & CLOCKED_IN)
         return " is currently clocked in";
-
-    /* NPC */
     if (_employees[emp][EMP_POINTS] & NPC)
         return " has gone home for tea";
-
-    /* On leave */
     if (_times[emp] > time())
         return " - %^CYAN%^on leave until "+ ctime(_times[emp])+ "%^RESET%^";
-
     blurb = " - last action ";
-
     if (_employees[emp][EMP_POINTS] & MANAGER)
     {
         if ((time() - _times[emp]) > ((60*60*24*MGR_DEMOTE)-7))
-            blurb += "%^RED%^"; 
+            blurb += "%^RED%^";
         else if ((time() - _times[emp]) > (60*60*24*MGR_WARN))
-            blurb += "%^RED%^"; 
+            blurb += "%^RED%^";
     }
     else if (_employees[emp][EMP_POINTS] & SUPERVISOR)
     {
         if (( time() - _times[emp]) > ((60*60*24*SPR_DEMOTE)-7))
-            blurb += "%^RED%^"; 
+            blurb += "%^RED%^";
         else if ((time() - _times[emp]) > (60*60*24*SPR_WARN))
-            blurb += "%^YELLOW%^"; 
+            blurb += "%^YELLOW%^";
     }
     else if (( time() - _times[emp]) > ((60*60*24*EMP_FIRE)-7))
         blurb += "%^RED%^";
@@ -470,21 +346,12 @@ private string query_worked(string emp)
         blurb += "%^YELLOW%^";
     return blurb + ctime(_times[emp])+ "%^RESET%^";
 }
-/* query_worked() */
-
-/**
-* @ignore yes 
-* Sets the last action time of an employee.
-* This time is the last time an employee did something worth
-* recording and is used to determine if they are inactive.
-* @param employee The employee.
-*/
 private void set_emp_time(string employee)
 {
     if (!_employees[employee]) return;
     if (_employees[employee][EMP_INACTIVE])
     {
-        _employees[employee][EMP_INACTIVE] = 0;   // Reset inactivity flag
+        _employees[employee][EMP_INACTIVE] = 0;
         save_emps();
     }
     if (!sizeof(_times)) _times = ([employee:0]);
@@ -493,18 +360,8 @@ private void set_emp_time(string employee)
     remove_call_out(_call_times);
     _call_times = call_out((: save_times() :), PERS_DELAY);
 }
-/* set_emp_time() */
-
-/**
- * @ignore yes 
- * View an employee's history or an applicant's application.
- * This method displays a formatted display of the employee's history
- * with a particular shop, and is viewable by managers of that shop.
- * If passed the name of an applicant, it will view the relevant application.
- * @param person The employee or applicant.
- */
 void view_record(string person, string pattern)
-{   
+{
     if (pattern == VIEW_EMP)
     {
         string text = sprintf("Employment history of %s:\n\n", cap_name(person));
@@ -516,7 +373,7 @@ void view_record(string person, string pattern)
         }
         for(int i = 0; i < sizeof(_history[person][0]); i++)
             text += sprintf("%s: %s\n", ctime(_history[person][0][i]),
-              _history[person][1][i]); 
+              _history[person][1][i]);
         tell_object(this_player(), sprintf("$P$%s's history$P$%s",
             cap_name(person), text));
         clear_history();
@@ -536,4 +393,3 @@ void view_record(string person, string pattern)
         clear_applicants();
     }
 }
-/* view_record() */

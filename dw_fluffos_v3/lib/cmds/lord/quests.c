@@ -1,37 +1,11 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: quests.c,v 1.6 2000/07/29 15:40:43 laurana Exp $
- * $Log: quests.c,v $
- * Revision 1.6  2000/07/29 15:40:43  laurana
- * fixed my help
- *
- * Revision 1.4  2000/07/24 13:29:54  taffyd
- * Tightened use of protected/private.
- *
- * Revision 1.3  2000/07/24 13:27:41  taffyd
- * Fixed up the quests command so you can't get info unless you're allowed(tm).
- *
- * Revision 1.2  1999/05/20 01:07:54  ceres
- * Added support for active/inactive flag
- *
- * Revision 1.1  1998/01/06 05:29:21  ceres
- * Initial revision
- * 
-*/
 #include <quest_handler.h>
-
 #define TEXTS_DIR "/save/quests/"
-
 inherit "/cmds/base";
-
 private string *names;
 private mapping makers;
-
 protected void create() {
    makers = ([ ]);
-} /* create() */
-
+}
 private void print_info( int i ) {
    string text;
    text = read_file( TEXTS_DIR + replace( names[ i ], " ", "_" ) +".txt" );
@@ -50,11 +24,8 @@ private void print_info( int i ) {
            (int)QUEST_HANDLER->query_quest_times( names[ i ] ),
            capitalize( (string)QUEST_HANDLER->query_quest_done( names[ i ] ) ),
            text );
-} /* print_info() */
-
-
+}
 private void change_status( int i ) {
-  
   switch(QUEST_HANDLER->change_quest_status(names[i])) {
   case 1:
     printf("Quest %s set to active.\n", names[i]);
@@ -67,12 +38,10 @@ private void change_status( int i ) {
     break;
   }
 }
-
 void main_menu( string word ) {
    int number, which;
    string name;
    mixed *args;
-   
    which = makers[ this_player() ][ 0 ];
    args = makers[ this_player() ][ 1 ];
    if ( !word || ( word == "" ) )
@@ -287,8 +256,7 @@ void main_menu( string word ) {
    makers[ this_player() ] = ({ which, args });
    printf( "Choose one of Q, N, P, G, C, L, T, S, R, E, F or H (for help) : " );
    input_to( "main_menu" );
-} /* main_menu() */
-
+}
 void end_edit( string text ) {
    string name;
    if ( !text || ( text == "" ) ) {
@@ -306,18 +274,13 @@ void end_edit( string text ) {
    unguarded( (: write_file, TEXTS_DIR + replace( name, " ", "_" ) +
          ".txt", text, 1 :) );
    main_menu( "Z" );
-} /* end_edit() */
-
+}
 private int cmd() {
    names = (string *)QUEST_HANDLER->query_quest_names();
    makers[ this_player() ] = ({ 0, allocate( 3 ) });
    main_menu( "G 1" );
    return 1;
-} /* cmd() */
-
-/** 
- * @ignore yes
- */
+}
 public mixed *query_patterns() {
     return ({ "", (: cmd() :) });
-} /* query_patterns() */
+}

@@ -1,13 +1,9 @@
 #include "path.h"
 #include <clubs.h>
-
 inherit "/std/room/club_control_room";
-
 int check_playtester(string str, object ob, string special_mess);
-
 void setup() {
    object table;
-
    set_light(100);
    set_club_control_type(CLUB_ROOM_FAMILY_ONLY);
    set_short("Family control room");
@@ -18,7 +14,6 @@ void setup() {
    add_sign("A large imposing 'read me' type sign.\n",
             (: query_club_warning_message() :),
             "sign");
-
    add_item("white board", "They are everywhere, the drawings all look "
                    "somewhat meaningless, although perhaps they are "
                    "trying to convey some sort of family tree feeling.  "
@@ -47,11 +42,8 @@ void setup() {
                    "They are not recognisably words, they just look like they "
                    "could be words until you take a closer look.\n");
    set_not_replaceable(1);
-
    add_exit("south", PATH + "crumpt4", "door");
-
    table = clone_object("/obj/misc/top_families");
    table->move(this_object());
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

@@ -1,45 +1,18 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: snowball.c,v 1.1 1998/01/06 04:10:22 ceres Exp $
- * $Log: snowball.c,v $
- * Revision 1.1  1998/01/06 04:10:22  ceres
- * Initial revision
- * 
-*/
-/**
- * This is the effect skelton docs.  This effect
- * has a classification of "mudlib.snowball".
- * <p>
- * Describe the arguments in here.
- * @classification mudlib.snowball
- * @see help::effects
- */
 #include <effect.h>
-
-/** @ignore yes */
 string query_classification() { return "mudlib.snowball"; }
-
-/** @ignore yes */
 void beginning( object player, int amount, int id ) {
    player->add_extra_look( this_object() );
    player->submit_ee( "decrease_amount", 15, EE_CONTINUOUS );
-} /* beginning() */
-
+}
 void restart( object player, int amount, int id ) {
    player->add_extra_look( this_object() );
-} /* restart() */
-
-/** @ignore yes */
+}
 int merge_effect( object player, int old_amount, int new_amount, int id ) {
    return old_amount + new_amount;
-} /* merge_effect() */
-
-/** @ignore yes */
+}
 void end( object player, int amount, int id ) {
    player->remove_extra_look( this_object() );
-} /* end() */
-
+}
 void decrease_amount( object player, int amount, int id ) {
    amount -= 3 + random( random(amount) );
    if ( amount < 0 ) {
@@ -48,8 +21,7 @@ void decrease_amount( object player, int amount, int id ) {
    }
    player->set_arg_of( (int)player->sid_to_enum( id ), amount );
    player->add_effect("/std/effects/other/wetness", roll_MdN( 10, 10 ) );
-} /* decrease_amount() */
-
+}
 string extra_look( object player ) {
    int *enums;
    string desc;
@@ -79,9 +51,8 @@ string extra_look( object player ) {
          desc = " has a lot of snow";
          break;
       default :
-/* They should be blind with this much... */
          desc = " has a thick layer of snow";
    }
    return capitalize( (string)player->query_pronoun() ) + desc +" on "+
          (string)player->query_possessive() +" face.\n";
-} /* extra_look() */
+}

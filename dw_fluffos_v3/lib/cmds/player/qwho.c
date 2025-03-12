@@ -1,15 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: qwho.c,v 1.25 2003/01/16 23:23:09 ceres Exp $
- * 
- */
 inherit "/cmds/base";
-
 #include <login_handler.h>
-
 int playercompare(object p1, object p2);
-
 int cmd(string guild_name) {
    int i;
    int countcre;
@@ -35,7 +26,6 @@ int cmd(string guild_name) {
    int totalUsers;
    int totalPlayers;
    int totalCompressed;
-
    if (this_player()->query_creator()) {
       showmasters = 1;
    } else {
@@ -44,43 +34,37 @@ int cmd(string guild_name) {
    countcre = 0;
    countplay = 0;
    counttest = 0;
-   compressed = 0; 
+   compressed = 0;
    cres = "";
    plays = "";
    testers = "";
    logins = "";
    friends = "";
-   user_data = unique_mapping( users(), 
+   user_data = unique_mapping( users(),
        (: "/d/liaison/master"->query_member( $1->query_name() ) :) );
-
    if ( user_data[1] ) {
        liaisons = sort_array( user_data[1], (: playercompare :) );
    }
    else {
        liaisons = ({ });
     }
-   
-   if ( user_data[0] ) { 
+   if ( user_data[0] ) {
        arr = sort_array( user_data[0], (: playercompare :));
    }
    else {
        arr = ({ });
    }
-
-   arr = liaisons + arr; 
+   arr = liaisons + arr;
    arr = filter(arr, (: (!$1->query_invis() || reference_allowed(this_player(),
      $1)) && !$1->query_login_ob() :) );
- 
    if (guild_name) {
-      // Do weird filtering!
       arr = "/cmds/player/who"->filter_users(arr, guild_name, 1);
       if (!sizeof(arr)) {
-         add_failed_mess("Unable to find any members of " + 
+         add_failed_mess("Unable to find any members of " +
                          guild_name + ".\n");
          return 0;
       }
    }
-   
    for(i=0;i<sizeof(arr);i++) {
       nam = arr[i]->query_cap_name();
       if (!nam) {
@@ -142,7 +126,6 @@ int cmd(string guild_name) {
       if (this_player()->is_friend(arr[i]->query_name())) {
          nam += "(%^GREEN%^F%^RESET%^)";
       }
-
       if (compressedp(arr[i])) {
           compressed++;
       }
@@ -163,9 +146,7 @@ int cmd(string guild_name) {
          plays = plays + " " + nam;
       }
    }
-
    if (guild_name) {
-      // Do weird filtering!
       arr = LOGIN_HANDLER->query_login_queue();
       arr = "/cmds/player/who"->filter_users(arr, guild_name);
       login_q = map(arr, (: $1->query_cap_name() :));
@@ -175,9 +156,7 @@ int cmd(string guild_name) {
    }
    login_q = filter(login_q, (: $1 :));
    login_q = sort_array(login_q, 1);
-   
    countloginq = sizeof(login_q);
-   
    tmp = sprintf("%%^BOLD%%^%d Creator%s:%%^RESET%%^%s\n",
                  countcre, countcre != 1 ? "s" : "", cres);
    write(tmp);
@@ -185,21 +164,17 @@ int cmd(string guild_name) {
       switch (counttest) {
         case 0:
             break;
-        
         case 1:
            write("%^BOLD%^" + counttest + " Playtester:%^RESET%^" + testers + "\n");
         break;
-        
         default:
-           write("%^BOLD%^" + counttest + " Playtesters:%^RESET%^" + testers + "\n");        
+           write("%^BOLD%^" + counttest + " Playtesters:%^RESET%^" + testers + "\n");
         break;
      }
-
       if (countFriends) {
-         write("%^GREEN%^" + countFriends + " Friend" + 
+         write("%^GREEN%^" + countFriends + " Friend" +
              (countFriends > 1 ? "s" : "") + ":%^RESET%^" + friends + "\n");
       }
-     
       write("%^BOLD%^" + countplay + " Players:%^RESET%^" + plays + "\n");
       if (countlogins < countloginq) {
          countlogins = countloginq;
@@ -214,7 +189,6 @@ int cmd(string guild_name) {
          write("%^BOLD%^" + (countlogins - countloginq) +
                " Logging in:%^RESET%^" + logins + "\n");
       }
-      
       if(countloginq) {
          write("%^BOLD%^" + countloginq + " Queued:%^RESET%^ " +
                implode(login_q, " ") + "\n");
@@ -224,27 +198,17 @@ int cmd(string guild_name) {
       counttest = 0;
       countplay = 0;
    }
-
    totalUsers = countcre + counttest + countplay + countlogins + countFriends;
-   totalPlayers = counttest + countplay + countFriends; 
-   totalCompressed = compressed - countFriends; 
-
+   totalPlayers = counttest + countplay + countFriends;
+   totalCompressed = compressed - countFriends;
    write("%^BOLD%^" + (totalPlayers) + " Players, " +
-         totalUsers + " Total%^RESET%^\n" ); 
-   
-/*    +
-         " Total (" + totalCompressed + " with MCCP, " + 
-            (totalUsers - totalCompressed) + 
-         " without)%^RESET%^\n");
-*/    
+         totalUsers + " Total%^RESET%^\n" );
    return 1;
-} /* cmd() */
-
+}
 int playercompare(object p1, object p2) {
    return strcmp(p1->query_name(), p2->query_name());
-} /* playercompare() */
-
+}
 mixed *query_patterns() {
    return ({ "", (: cmd(0) :),
              "<string'guild name'>", (: cmd($4[0]) :) });
-} /* query_patterns() */
+}

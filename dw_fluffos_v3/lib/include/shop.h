@@ -1,6 +1,5 @@
 #ifndef __SYS__SHOP
 #define __SYS__SHOP
-
 #define PAY_RATES ({ 100, 90, \
                      200, 80, \
                      400, 70, \
@@ -13,5 +12,4 @@
 #define MAX_AMOUNT 50000
 #define MAX_INVENTORY 50
 #define MAX_OBS 8
-
-#endif /* __SYS__SHOP */
+#endif

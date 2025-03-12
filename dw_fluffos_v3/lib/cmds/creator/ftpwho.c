@@ -1,17 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: ftpwho.c,v 1.5 2003/05/21 03:46:41 ceres Exp $
- */
-
 inherit "/cmds/base";
-
 #define FTPD "/secure/ftpd"
 #define UNIX_FTPD "/secure/ftp_auth"
-
 mixed cmd(string) {
   mixed *who_unix, *who;
   int i;
-
   if(!find_object(FTPD)) {
     write("MUD FTP is currently disabled.\n");
   } else {

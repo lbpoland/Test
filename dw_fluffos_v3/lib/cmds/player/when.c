@@ -1,15 +1,5 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: when.c,v 1.19 2003/04/10 06:05:44 ceres Exp $
- *
- *
- */
-
 #include <login.h>
-
 inherit "/cmds/base";
-
 int cmd(string who)   {
    object player;
    int last;
@@ -17,7 +7,6 @@ int cmd(string who)   {
    string* bits;
    string womble;
    int bing;
-
    bits = explode(who, ",");
    if (sizeof(bits) > 1) {
       bing = 0;
@@ -28,8 +17,7 @@ int cmd(string who)   {
       }
       return bing;
    }
-
-   caller = this_player()->query_invis(); 
+   caller = this_player()->query_invis();
    who = this_player()->expand_nickname(lower_case(who));
    player = find_player( who );
    if (player &&
@@ -44,7 +32,6 @@ int cmd(string who)   {
       }
       return 1;
    } else {
-      /* Should be a nice number.... */
       last = PLAYER_HANDLER->test_last(who);
       if ( last < 1 ) {
          return notify_fail( "Cannot find any record of $C$" + who + ".\n" );
@@ -60,8 +47,6 @@ int cmd(string who)   {
       }
    }
 }
-
-
 mixed *query_patterns()   {
    return ({ "<string'player name'>", (: cmd( $4[0] ) :) });
-} /* query_patterns() */
+}

@@ -1,13 +1,10 @@
 #include <terrain_map.h>
-
 inherit "/cmds/base";
-
 int cmd(int size) {
    mixed* data;
    int x;
    int y;
    string line;
-
    data = TERRAIN_MAP_WORLD_MAP->query_map_template(size);
    line = "";
    for (y = 0; y < sizeof(data); y++) {
@@ -23,7 +20,6 @@ int cmd(int size) {
    write(line);
    return 1;
 }
-
 mixed* query_patterns() {
    return ({ "<number>", (: cmd($4[0]) :) });
 }

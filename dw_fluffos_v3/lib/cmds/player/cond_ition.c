@@ -1,19 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: cond_ition.c,v 1.17 2003/07/11 00:24:45 pinkfish Exp $
- * 
- */
 inherit "/cmds/base";
-
 class cond_info {
    object cond_item;
    string cond_string;
    int cond_percent;
 }
-
 int compare(float, float);
-
 string cond_colour(int percent)
 {
    switch (100 - percent) {
@@ -30,11 +21,9 @@ string cond_colour(int percent)
    case 91..100:
       return "%^BOLD%^%^RED%^";
    }
-}                               /* cond_colour() */
-
+}
 int is_valid_environment(object ob) {
    object env;
-
    env = environment(ob);
    if (env == environment(this_player())) {
       return 1;
@@ -47,7 +36,6 @@ int is_valid_environment(object ob) {
    }
    return 0;
 }
-
 int cmd(object *things, int dir, int no_excellent)
 {
    int i;
@@ -56,12 +44,10 @@ int cmd(object *things, int dir, int no_excellent)
    class cond_info *info = ({ });
    class cond_info new_info;
    int dark;
-
    if (!this_player()->query_property("dead")) {
       dark =
          this_player()->check_dark(environment(this_player())->query_light());
    }
-
    if (dark == 2) {
       add_failed_mess("It is way too bright to see anything at all.\n");
       return 0;
@@ -70,14 +56,12 @@ int cmd(object *things, int dir, int no_excellent)
       add_failed_mess("It is way too dark to see anything at all.\n");
       return 0;
    }
-
    things = filter(things, (: is_valid_environment :));
    if (!sizeof(things)) {
       add_failed_mess("Can only check the condition of things you "
                       "have in your inventory or on the ground.\n");
       return 0;
    }
-
    if (sizeof(things) == 1) {
       list = things[0]->cond_string();
       if (!list || list == "") {
@@ -89,7 +73,6 @@ int cmd(object *things, int dir, int no_excellent)
       write("$C$" + things[0]->the_short() + list);
       return 1;
    }
-
    foreach(thing in things) {
       list = thing->cond_string();
       if (list && list != "") {
@@ -127,10 +110,8 @@ int cmd(object *things, int dir, int no_excellent)
          write("Everything is in excellent condition.\n");
       }
    }
-
    return 1;
-}                               /* cmd() */
-
+}
 mixed *query_patterns()
 {
    return ({ "<indirect:object'item(s)'> sorting {up|down}",
@@ -141,9 +122,7 @@ mixed *query_patterns()
              (: cmd($1, 0, 1) :),
              "<indirect:object'item(s)'> damaged sorting {up|down}",
              (: cmd($1, $4[1] == "up" ? 1 : -1, 1) :), });
-}                               /* query_patterns() */
-
-
+}
 int compare(float first, float second)
 {
    if (first > second)
@@ -151,4 +130,4 @@ int compare(float first, float second)
    if (first < second)
       return -1;
    return 0;
-}                               /* compare() */
+}

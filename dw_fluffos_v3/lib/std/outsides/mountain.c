@@ -1,38 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: mountain.c,v 1.4 2002/03/26 01:41:57 pinkfish Exp $
- * $Log: mountain.c,v $
- * Revision 1.4  2002/03/26 01:41:57  pinkfish
- * Give them all basic inherit stuff so they can work with terrain rooms.
- *
- * Revision 1.3  2000/06/22 01:19:30  pinkfish
- * Make it use autodoc and fix up the inherit paths.
- *
- * Revision 1.2  1999/08/16 23:34:00  rywfol
- * Fixed pluralisation of flowers.
- * Rywfol 990817
- *
- * Revision 1.1  1998/01/06 04:29:46  ceres
- * Initial revision
- * 
-*/
 #define CREATOR "Ceres"
-/**
- * This is a standard woodland room.  It is a specialisation of /std/outside
- * providing various ready-made add_items for your woodland.
- * <p>
- * room_chats are also provided, if you don't wish to keep them simply use
- * room_chat to write your own or stop_room_chats to remove them. 
- * <p>
- * The items and chats are seasonal adding richness to your woodland setting.
- * @author Ceres
- */
 #include <weather.h>
 #include <terrain_map.h>
-
 inherit TERRAIN_MAP_OUTSIDE_BASE;
-
 void create() {
   ::create();
   add_property("climate", ({-10, 0, 0 }) );
@@ -51,7 +20,6 @@ void create() {
              "by hardy grass interspersed by small shrubs, however there "+
              "are large patches of bare rock or gravel.  "+
              "Here and there larger rocks protrude from the ground.");
-    
     room_chat(({120, 240, ({"A bird of prey swoops overhead.",
                             "A small insect flies past your face."})}));
     add_property("flower type", "snowdrop");
@@ -86,13 +54,10 @@ void create() {
   add_property("rock size", 5+random(20));
   add_property("track type", "mountain");
 }
-
-/** @ignore yres */
 mixed do_get_rock(string verb, object *dest ) {
   int rock_size;
   string rock_type;
   object rock;
-
   if ( query_property( "rock object" ) )
     return ( rock = clone_object( (string)query_property( "rock object" ) ) );
   if ( undefinedp( rock_size = (int)query_property( "rock size" ) ) )
@@ -107,19 +72,15 @@ mixed do_get_rock(string verb, object *dest ) {
   rock->dest_me();
   return 0;
 }
-
-/** @ignore yres */
 mixed do_get_flower( string verb, object *dest ) {
   string flower_type;
   object flower;
-
   printf("Verb: %s\n", verb);
   if ( query_property( "flower object" ) )
     return (flower = clone_object((string)query_property("flower object")));
   if ((int)query_property("noflowers"))
     return 0;
   flower = clone_object("/std/plant");
-  
   if(undefinedp(flower_type = (string)query_property("flower type")))
     flower_type = ({"forgetmenot", "violet"})[ random(2) ];
   flower->set_plant(flower_type);
@@ -127,7 +88,6 @@ mixed do_get_flower( string verb, object *dest ) {
   flower->set_plant_desc("A beautiful "+flower_type+" picked before its "+
                          "time.\n");
   flower->add_plural( capitalize( flower_type ) );
-  
   if (!(flower->move(this_player()))) return 1;
   flower->dest_me();
   return 0;

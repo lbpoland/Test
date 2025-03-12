@@ -1,10 +1,5 @@
-// Una
-// Only for use in Cwc
-
 inherit "/std/room/furniture/fireplace";
-
 void setup() {
-
     set_name("oven");
     set_short("large wood oven");
     add_adjective( ({ "large", "wood" }) );
@@ -16,7 +11,7 @@ void setup() {
         "complemented by dual warming shelves.  Subtle and sophisticated, "
         "this stovetop would compliment most tasteful homes.\n");
     set_allowed_room_verbs(([
-                            "sitting" : "sits", 
+                            "sitting" : "sits",
                             "squatting" : "squats",
                             "crouching" : "crouches",
                             "resting" : "rests",
@@ -25,5 +20,4 @@ void setup() {
     set_weight(495);
     set_max_weight(100);
     set_value(120000);
-  
-} /* setup() */
+}

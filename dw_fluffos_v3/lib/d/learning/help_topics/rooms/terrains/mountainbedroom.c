@@ -1,8 +1,5 @@
-/* -*- LPC -*- */
 #include "path.h"
-
 inherit "/std/room";
-
 void setup() {
    set_terrain( "tutorial_mountain" );
    set_short( "mountain cabin attic" );
@@ -15,6 +12,5 @@ void setup() {
    add_item( "comforter",
       "This thick quilted comforter is made of some "
       "soft cotton fabric sandwiching a thick layer of down.");
-   
    set_light( 50 );
-} /* setup() */
+}

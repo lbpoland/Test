@@ -1,31 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: force.c,v 1.2 2000/06/23 03:40:56 pinkfish Exp $
- * $Log: force.c,v $
- * Revision 1.2  2000/06/23 03:40:56  pinkfish
- * Fix up the references to find_match.
- *
- * Revision 1.1  1998/01/06 05:08:31  ceres
- * Initial revision
- * 
-*/
-/* code to handle forcing.   The method used will be to ask the object to
- * do the command.  While this is similar to the original method of doing this
- * it will be used to be more in the style of asking things to do things,
- * rather than the making things do things without asking them first. */
-
 #include <obj_parser.h>
-
 #define FORCE_COST 1
 #define ILLEGAL_FORCE ({ "alias", "unalias", "mv", "mkdir", "call", "rm", \
                          "force", "kill", "gauge", "exec", "promote", \
                          "new_domain", "rmdir", "cd", "history", "echoall", "shout" })
-
 nosave string fname;
 nosave int no_force_me;
-
-
 void force_commands() {
   sscanf(file_name(this_object()), "%s#", fname);
   if(!this_object()->query_property("npc") &&
@@ -34,7 +13,6 @@ void force_commands() {
   if(fname == "/global/lord")
     add_action("no_force", "noforce");
 }
-
 protected int no_force(string str) {
   if(fname!="/global/lord")
     return 0;
@@ -57,13 +35,11 @@ protected int no_force(string str) {
   }
   return 1;
 }
-
 int do_force(string str) {
   string who, what;
   object *obs, ob;
   int i;
   class obj_match omatch;
-
   if(fname == "/global/player" && !this_player()->query_property("force")) {
     notify_fail("You do not have the ability to do that yet.\n");
     return 0;
@@ -96,11 +72,9 @@ int do_force(string str) {
   write("Ok.\n");
   return 1;
 }
-
 int do_force_on_me  (string str) {
   string temp1, temp2;
   object forcer;
-
   forcer = this_player(1);
   if(!forcer) {
     forcer = previous_object();
@@ -118,7 +92,6 @@ int do_force_on_me  (string str) {
   if(!sscanf(str, "%s %s", temp1, temp2)) {
     temp1 = str;
   }
-/* Delete this at your own peril */
   if (member_array(temp1, ILLEGAL_FORCE) != -1 &&
       !"secure/master"->high_programmer(geteuid(forcer))) {
     log_file("FORCE", " (failed)\n");

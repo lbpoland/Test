@@ -1,13 +1,10 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "your standard fish.  This should not be used since it is a "
       "base race" );
-
    bits = ({
       "head", "head", ({ 0, 200, 0,
          "left eye", "right eye", "left gill", "right gill" }),
@@ -28,18 +25,13 @@ void create() {
       "dorsal petral fin", "fin", ({ 0, 100, 0 }),
       "tail", "tail", ({ 0, 150, 0 })
    });
-
    inedible = ({ "left petral fin", "right petral fin", "dorsal petral fin",
       "tail" });
    unrottable = ({  });
    set_skin( "scales" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
-
-
+}
 string *query_target_zones() {
   return ({ "head", "head",
               "body","body", "body", "body", "body", "body",
@@ -48,10 +40,9 @@ string *query_target_zones() {
               "body", "body",
               "body", "body",
               "body", "body", "body", "body", "body"
-              "body", "body", 
+              "body", "body",
               "tail", "tail" });
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "head":
@@ -66,5 +57,4 @@ string map_target_zone(string zone) {
     return "body";
   }
 }
-
 int lives_in_water() { return 1; }

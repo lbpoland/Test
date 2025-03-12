@@ -1,13 +1,10 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "a humanoid-type being.  This should not be used since it is a "
       "base race" );
-
    bits = ({
       "head", "head", ({ 0, 40, 0,
          "left ear", "right ear", "left eye", "right eye", "nose", "scalp",
@@ -75,33 +72,24 @@ void create() {
       "left big toe", "toe", ({ "left foot", 1, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "teeth", "tooth", "rib", "left femur", "right femur" });
    unrottable = ({ "skull", "teeth", "tooth", "rib", "left femur", "right femur" });
    set_skin( "skin" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
-
-/**
- * So that all races that inherit this one are marked as humanoids.
- * @return 1 if the race is a humanoid, 0 if not
- */
+}
 int query_humanoid() {
    return 1;
-} /* query_humanoid() */
-
+}
 string *query_target_zones() {
   return ({ "head", "head", "neck",
-              "chest", "chest", "chest", "chest", "back", 
+              "chest", "chest", "chest", "chest", "back",
               "left arm", "left arm", "left hand",
               "stomach", "stomach", "stomach",
               "right arm", "right arm", "right hand",
               "left leg", "left leg", "left foot",
               "right leg", "right leg", "right foot"});
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "abdomen":

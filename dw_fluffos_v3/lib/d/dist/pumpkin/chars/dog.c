@@ -1,36 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: am_dog.c,v 1.3 2000/01/09 00:52:03 rue Exp $
- *
- * $Log: am_dog.c,v $
- * Revision 1.3  2000/01/09 00:52:03  rue
- * Added gender
- *
- * Revision 1.2  1999/04/11 21:50:06  ranma
- * typo.
- *
- * Revision 1.1  1998/02/08 08:44:56  terano
- * Initial revision
- *
-*/
-/* -*- LPC -*-
- */
 inherit "/obj/monster";
-
 #include "path.h"
-
 string colour, type;
-
-/* predefs */
 void check_for_hidden();
 void test_rabid_attack();
 void test_urinate();
 void pat_me( object per );
 void sic_em( object per, string mess );
-
 string query_colour() { return colour; }
-
 void setup() {
    colour = ({ "light brown", "black", "grey", "mottled", "white", "patched",
          "dark brown", "black and white", "fluorescent yellow" })[ random( 9 ) ];
@@ -40,8 +16,7 @@ void setup() {
   set_level( 1 + random( 1 + random( 3 ) ) );
   add_adjective("hairy");
   add_adjective(explode(colour, " "));
-} /* setup() */
-
+}
 void set_type(string type) {
    set_short( type +" "+ colour +" dog" );
    set_main_plural( type +" "+ colour +" dogs" );
@@ -60,14 +35,10 @@ void set_type(string type) {
                  "insolently not moving aside for the warriors and heroes "
                  "stalking the streets.\n");
    }
-  /* Make them bark at hiding people */
    add_enter_commands( "#check_for_hidden" );
-
    if ( !random( 3 ) )
      add_effect( "/std/effects/disease/flea_infestation", 10000 );
-
   if (!random(6)) {
-    /* A rabid dog... */
     set_wimpy(10);
     load_chat( 10, ({
        1, "@froth",
@@ -99,18 +70,13 @@ void set_type(string type) {
                                 query_name() }), "#pat_me" );
     add_respond_to_with( ({ "@say", ({ "get", "sic" }), }), "#sic_em" );
   }
-
   add_effect("/std/effects/npc/eat_edible", 0);
-
   add_effect("/std/effects/npc/i_died", ({ HOSPITAL, "regen_after_death" }));
-  //add_triggered_action("regen", "death", HOSPITAL, "regen_after_death");
   add_property("monster_type", type);
   add_property("animal type", type);
-} /* setup() */
-
+}
 void bark_at_hidden(object per) {
   mapping hide_invis;
- 
   if (per) {
     hide_invis = per->query_hide_invis();
     if (environment(per) == environment() &&
@@ -124,14 +90,12 @@ void bark_at_hidden(object per) {
       call_out("bark_at_hidden", 2, per);
     }
   }
-} /* bark_at_hidden() */
-
+}
 void check_for_hidden() {
   object *obs, mine;
   int i;
   mapping hide_invis;
   function fun;
-
   mine = query_property("following");
   obs = all_inventory(environment(this_object()));
   for (i=0;i<sizeof(obs);i++) {
@@ -142,12 +106,10 @@ void check_for_hidden() {
       break;
     }
   }
-} /* check_for_hidden() */
-
+}
 void test_rabid_attack() {
   int i;
   object *obs;
-
   obs = filter_array(all_inventory(environment()),
                      (: living($1) && $1 != $2 &&
                         (!$1->query_property("player") ||
@@ -155,28 +117,20 @@ void test_rabid_attack() {
                       this_object());
   if (sizeof(obs))
     attack_ob(obs[0]);
-} /* test_rabid_attack() */
-
+}
 void test_urinate() {
   object *obs, *liv, blue, mine;
   int i;
-  
   liv = ({ });
   mine = query_property("following");
   obs = all_inventory(environment());
-
-  /* Recheck for hidding people. */
   check_for_hidden();
-
-  /* Track down those living objects */
   for (i=0;i<sizeof(obs);i++) {
     if (living(obs[i]) && obs[i] != mine &&
         obs[i] != this_object()) {
       liv += obs[i..i];
     }
   }
-
-  /* Ok, found someone.  Lets do it! */
   if (sizeof(liv)) {
     blue = liv[random(sizeof(liv))];
     tell_room(environment(),
@@ -185,12 +139,10 @@ void test_urinate() {
     tell_object(blue, capitalize(the_short()) + " urinates on your leg.\n");
     blue->add_effect("/std/effects/other/dog_urinate", 120);
   }
-} /* test_urinate() */
-
+}
 void i_like_them(object them) {
   if(!them || environment() != environment(them))
     return ;
-
   call_out("i_like_them", 60+random(240), them);
   if (query_property("excited")) {
     do_command("bounce excit");
@@ -211,11 +163,9 @@ void i_like_them(object them) {
       do_command("drool "+them->query_name());
       break;
   }
-} /* i_like_them() */
-
+}
 void pat_me(object per) {
   object ob;
-
   ob = query_property("following");
   if (objectp(ob) &&
       environment(ob) == environment()) {
@@ -230,8 +180,7 @@ void pat_me(object per) {
   } else {
     init_command("ignore "+per->query_name());
   }
-} /* pat_me() */
-
+}
 void periodic_excited() {
   if (query_property("excited")) {
     if (query_property("excited") > 1) {
@@ -255,14 +204,12 @@ void periodic_excited() {
       do_command("caper");
     call_out("periodic_excited", 10+random(10));
   }
-} /* periodic_excited() */
-
+}
 void sic_em(object per, string mess) {
    string *bing;
    object mine;
    object *obs;
    int lvl;
-   
    bing = explode(replace(mess, "!", ""), " ");
    mine = query_property("following");
    if (bing[0] == "get" && per == mine) {
@@ -273,7 +220,6 @@ void sic_em(object per, string mess) {
 	 add_property( "excited", lvl+1 );
 	 call_out( function( object npc ) {
 	    int lvl;
-	    
 	    lvl = npc->query_property("excited");
 	    if (lvl > 0)
 	       npc->add_property("excited", lvl - 1);
@@ -296,4 +242,4 @@ void sic_em(object per, string mess) {
 	 }
       }
    }
-} /* sic_em() */
+}

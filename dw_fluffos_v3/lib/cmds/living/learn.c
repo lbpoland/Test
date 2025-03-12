@@ -1,19 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: learn.c,v 1.19 2003/01/31 06:27:31 pinkfish Exp $
- * 
- */
 #include <skills.h>
 #include <tune.h>
 #include <cmds/teach.h>
 #include <command.h>
-
 inherit "/cmds/base";
-
 #define TP this_player()
 mixed cmd(string str, object *obs);
-
 mixed cmd(string str, object *obs) {
   object *diff_lvl;
   object *no_xp;
@@ -28,20 +19,15 @@ mixed cmd(string str, object *obs) {
   string *bits;
   string levelstr;
   class teaching_skill womble;
-
   if (TP->query_property("dead")) {
     notify_fail("Your dead.  Your mind slips off the task and goes for "
                 "a wander down memory lane.\n");
     return 0;
   }
-
   skill = str;
-
-  /* Figure out the skill thingy. */
   bits = explode(implode(explode(skill, " "), "."), ".");
   skill = SKILL_OB->query_skill(bits);
   if (!skill) {
-    /* Ok, not a skill...  Check to see if it is a command. */
     ok = ({ });
     cmd = str;
     if (sizeof(CMD_D->GetPaths(cmd)) &&
@@ -74,7 +60,6 @@ mixed cmd(string str, object *obs) {
     }
     return 0;
   }
-
   moved = ok = not_offer = no_xp = diff_lvl = ({ });
   foreach (ob in obs) {
     womble = TP->query_respond_command(TEACH_SKILL_TYPE, ob);
@@ -103,13 +88,11 @@ mixed cmd(string str, object *obs) {
       levelstr = "level";
     else
       levelstr = "levels";
-
     if (environment(this_player()) != womble->room) {
        moved += ({ ob });
        TP->remove_respond_command(TEACH_SKILL_TYPE, womble->teacher);
        continue;
     }
-    
     if (ob != TP) {
       write(ob->short()+" starts to teach you " + womble->num + " " +
             levelstr + " of " + womble->skill + " for " + womble->xp +
@@ -128,22 +111,15 @@ mixed cmd(string str, object *obs) {
       say(TP->short()+" starts to teach " + TP->query_objective() +
           "self some skills.\n", ({ TP }));
     }
-    /*
-     * Ok...  We now change the time on both people and wait...
-     * After they have both finished everything is hunky womble.  If one
-     * types stop, we dont teach them anything...
-     */
     time = womble->xp / TIME_DIV;
     if(time > 1000) {
       time = 1000;
     }
-    
     TP->adjust_time_left(-time);
     womble->teacher = ob;
     womble->taught = TP;
     TP->set_interupt_command("stop_teaching_skills", file_name(this_object()),
                              womble);
-
     if (TP != ob) {
       ob->adjust_time_left(-time);
       ob->set_interupt_command("stop_teaching_skills", TP, womble);
@@ -179,25 +155,14 @@ mixed cmd(string str, object *obs) {
         ".\n", ok);
   }
   return 1;
-} /* cmd() */
-
-/**
- * The method to call when we stop teaching skills.  THis will stop the
- * stuff being taught if the stop is successful, and only teach partial
- * amounts if we are not finished yet.
- * @param left the amount of time left
- * @param bing the data associated with the command
- */
+}
 void stop_teaching_skills(int time_left, class teaching_skill womble,
                           object us, object interupter, string cmd) {
    object ob;
    mixed *stuff;
    string levelstr;
-   
    if (time_left > 0) {
-      /* Someone did a stop!  Naughty frogs! */
       if (womble->teacher == us) {
-         /* Only print the messages once. */
          if (womble->teacher == womble->taught) {
             say(womble->taught->short() + " stops teaching " +
                 womble->taught->query_objective() + "self some "
@@ -214,8 +179,6 @@ void stop_teaching_skills(int time_left, class teaching_skill womble,
              womble->taught->short() + ".\n",
              ({ us, interupter }));
       }
-
-      /* Interupt the other person. */
       if (us == womble->teacher) {
          ob = womble->taught;
       } else {
@@ -231,15 +194,11 @@ void stop_teaching_skills(int time_left, class teaching_skill womble,
       }
       us->adjust_time_left(-((int)womble->taught->query_time_left()));
       us->set_interupt_command(0);
-
       return ;
    }
-  
    if (interupter != us) {
-      /* First make sure we dont get the level twice... */
       return ;
    }
-
    if (environment(womble->taught) != environment(womble->teacher) ||
        environment(womble->taught) != womble->room) {
       tell_object(us, "You appear to have left your excellent "
@@ -248,27 +207,20 @@ void stop_teaching_skills(int time_left, class teaching_skill womble,
                       "teaching environment, so the skill teaching failed.\n");
       return;
    }
-
-   // additional test added by ceres coz people are getting put into negative
-   // xp by getting taught twice somehow.
    if(womble->taught->query_xp() < womble->xp) {
       write("Something has gone wrong. :(\n");
       return;
    }
-   /* Ok...  We did it!  Finished! */
    if (womble->taught != womble->teacher) {
       womble->teacher->adjust_xp(womble->xp / 10);
    }
    womble->taught->adjust_xp(-womble->xp);
-
    if(womble->num == 1)
      levelstr = "level";
    else
      levelstr = "levels";
-   
    if(womble->taught->add_skill_level(womble->skill, womble->num, womble->xp))
      {
-       
        if (us != womble->teacher) {
          tell_object(us, "You finish learning " + womble->num +
                      " " + levelstr + " of "
@@ -294,9 +246,8 @@ void stop_teaching_skills(int time_left, class teaching_skill womble,
                    ".\n");
      }
    womble->taught->remove_respond_command(TEACH_SKILL_TYPE, womble->teacher);
-} /* stop_teaching_skills() */
-
+}
 mixed *query_patterns() {
    return ({ "<string'skill/command'> from <indirect:living>",
              (: cmd($4[0], $1) :) });
-} /* query_pattern() */
+}

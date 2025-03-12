@@ -1,26 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: spells.c,v 1.3 2001/11/08 07:05:25 pinkfish Exp $
- * $Log: spells.c,v $
- * Revision 1.3  2001/11/08 07:05:25  pinkfish
- * Spells!
- *
- * Revision 1.2  1998/04/14 02:33:32  pinkfish
- * Changed to use add_command and the defines from spells.h.
- *
- * Revision 1.1  1998/01/06 05:29:43  ceres
- * Initial revision
- * 
-*/
 #include <spells.h>
-
 inherit "/cmds/base";
-
 int cmd() {
    string spell, *magic;
    mapping spells;
-
    spells = this_player()->query_spells();
    if ( !sizeof( spells ) ) {
       write( "You don't know any magic spells.\n" );
@@ -61,8 +43,7 @@ int cmd() {
             implode( sort_array( magic, 1 ), "\n" ) );
    }
    return 1;
-} /* cmds() */
-
+}
 mixed *query_patterns() {
    return ({ "", (: cmd() :) });
-} /* query_patterns() */
+}

@@ -1,20 +1,9 @@
-/*   -*- LPC -*-   */
-/*
- * $Locker:  $
- * $Id: put.c,v 1.23 2003/04/30 19:43:46 ceres Exp $
- *
- */
-
 #include <move_failures.h>
 #include <player.h>
-
 #define MAX_PUT_NUMBER 20
-
 inherit "cmds/base";
-
 #define TP this_player()
 string con;
-
 mixed cmd(mixed *indir,
           string *indir_match,
           string *args)
@@ -33,20 +22,12 @@ mixed cmd(mixed *indir,
    object *succ;
    object *too_many;
    int num;
-
    con = args[1];
    per = indir[1];
    thing = indir_match[0];
    person = indir_match[1];
    succ = ({ });
    too_many = ({ });
-   
-   // Check to see if they have too many drated objects.
-   //if (sizeof(indir[0]) > MAX_PUT_NUMBER) {
-   //too_many = indir[0][MAX_PUT_NUMBER..];
-   //indir[0] = indir[0][0..MAX_PUT_NUMBER - 1];
-   //}
-
    foreach(pobj in per) {
       if (living(pobj) && !pobj->query_living_container()) {
          tell_object(TP,
@@ -65,7 +46,6 @@ mixed cmd(mixed *indir,
                          ".\n", obs);
          continue;
       }
-
       ret = ({ });
       fail = ({ });
       foreach(ob in obs) {
@@ -99,11 +79,10 @@ mixed cmd(mixed *indir,
          } else {
             ret += ({ ob });
             tot += (int) ob->query_weight();
-
 #ifndef __DISTRUBUTION_LIB__
             if(interactive(TP))
               PLAYER_MULTIPLAYER_HANDLER->record_object("dropped", TP, ob);
-#endif         
+#endif
             num++;
          }
       }
@@ -131,14 +110,12 @@ mixed cmd(mixed *indir,
       }
    }
    return sizeof(succ) > 0;
-}                               /* cmd() */
-
+}
 string query_con() {
   return con;
 }
-
 mixed *query_patterns()
 {
    return ({ "<indirect:object:me> {in|on|into} <indirect:object>",
              (: cmd($1, $3, $4) :) });
-}                               /* query_patterns() */
+}

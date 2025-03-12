@@ -1,6 +1,5 @@
 #ifndef __SYS__DIRS
 #define __SYS__DIRS
-
 #define STD_ORDERS ({ \
   "north", ({ -1, 0, 0 }), "south", ({ 1, 0, 0 }), \
   "east", ({ 0, -1, 0 }), "west", ({ 0, 1, 0 }), \
@@ -45,7 +44,5 @@
   "rt":"right", "br":"backward-right", \
   "bw":"backward", "bl":"backward-left", \
   "lt":"left", "fl":"forward-left" ])
-
 #define EXPAND_EXIT(x) LENGTHEN[x]?LENGTHEN[x]:x
-
-#endif /* __SYS__DIRS */
+#endif

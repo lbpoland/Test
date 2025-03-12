@@ -1,14 +1,11 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "a generic rodent.  It shouldn't be used since this is just a "
       "base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 40, 0,
          "left eye", "right eye", "left ear", "right ear", "skull" }),
       "left eye", "eye", ({ "head", 1, 0 }),
@@ -42,11 +39,9 @@ void create() {
       "tail", "tail", ({ 0, 25, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "teeth", "tooth", "tail", "skin" });
    unrottable = ({ "skull", "teeth", "tooth" });
    set_skin( "fur" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
+}

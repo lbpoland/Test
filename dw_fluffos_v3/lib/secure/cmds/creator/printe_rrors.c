@@ -1,23 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: printe_rrors.c,v 1.4 2003/04/22 21:45:26 pinkfish Exp $
- */
-
-/* printerrors command */
-
 #include <log.h>
 #include <board.h>
 #include <error_handler.h>
 #include <db.h>
-
 inherit "/cmds/base";
-
 void finish_details(string player, int result, mixed results);
-
 int cmd(string str) {
   string player, ret;
   class error_query query;
-   
   if (str) {
     if (str[0] != '/')  {
       str = this_player()->query_path() + "/" + str;
@@ -30,7 +19,6 @@ int cmd(string str) {
     }
     player = this_player()->query_name();
     write_file("/w/" + player + "/print_errors.txt", "", 1);
-
     write("%^YELLOW%^Starting to collect bugreports, this may take a "
           "while.%^RESET%^\n");
     query = new(class error_query);
@@ -45,15 +33,13 @@ int cmd(string str) {
     return notify_fail("Usage:\nprinterrors <path>\n note that this will "
                        "overwrite any previous print_errors.txt file\n");
 }
-
 protected string get_bug(class error_complete complete) {
   string ret;
   class error_details error;
   class error_forward forward;
   class error_comment comment;
-
   error = complete->details;
-  ret = sprintf("%s %s %s\n", error->summary->category, 
+  ret = sprintf("%s %s %s\n", error->summary->category,
                               error->summary->type, error->summary->status);
   ret += sprintf("Filename       : %s\n", error->summary->filename);
   ret += sprintf("Directory      : %s\n", error->summary->directory);
@@ -76,12 +62,10 @@ protected string get_bug(class error_complete complete) {
   ret +=
 "------------------------------------------------------------------------------";
   return ret;
-} /* get_bug() */
-
+}
 void finish_details(string player, int result, mixed results) {
    class error_complete* details;
    string str;
-
    if (result != DB_SUCCESS) {
       tell_creator(player, "Failed to return the results " + results);
       return ;

@@ -1,17 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: ken_mangle.c,v 1.1 1998/01/06 04:02:57 ceres Exp $
- * $Log: ken_mangle.c,v $
- * Revision 1.1  1998/01/06 04:02:57  ceres
- * Initial revision
- * 
-*/
 string *replace_matrix;
 mapping trans;
-
-void create() {  
-  replace_matrix = ({ 
+void create() {
+  replace_matrix = ({
   "Aren't you ", "Aintcha ",
   "aren't you ", "aintcha ",
   "You are", "Yer ",
@@ -49,7 +39,6 @@ void create() {
   "?", " ?",
   "!", " !",
   });
-
   trans = ([ ]);
   trans["stairs"] = "apples and pears";
   trans["Downstairs"] = "Down the apples and pears";
@@ -169,13 +158,11 @@ void create() {
   trans["friend"] = ({ "mucker", "mate", "china" });
   trans["sin'"] = "sing";
   trans["rin'"] = "ring";
-} /* trans() */
-
+}
 string do_transmute(string str) {
   string tmp, *bits;
   mixed erp;
   int i;
-
   tmp = replace(" "+str+" ", replace_matrix);
   bits = explode(tmp, " ");
   for (i=0;i<sizeof(bits);i++) {
@@ -208,4 +195,4 @@ string do_transmute(string str) {
                })[random(4)];
   }
   return replace(tmp, ({ " !", "!", " .", ".", " ?", "?" }));
-} /* do_transmute() */
+}

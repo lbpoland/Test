@@ -1,10 +1,5 @@
-// Una
-// For use in Cwc
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
-    
     set_name( "screen" );
     set_short( "muslin screen" );
     add_adjective( "muslin" );
@@ -18,5 +13,4 @@ void setup() {
     set_allowed_room_verbs((["standing" : "stands", "sitting" : "sits" ]) );
     set_weight(150);
     set_value(225000);
-
-} /* setup() */
+}

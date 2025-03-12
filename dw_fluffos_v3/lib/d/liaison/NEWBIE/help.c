@@ -1,16 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: help.c,v 1.9 2003/02/19 06:54:24 ceres Exp $
- */
 #include "path.h"
 #include <library.h>
-
 inherit PATH+"inside";
-
 object womble;
-
- 
 void setup() {
   set_zone( "Newbie" );
   set_short( "Help Room" );
@@ -20,15 +11,12 @@ void setup() {
            "number of signs.\n"
            "The signs are labelled 'helpme', 'newbie', 'problems', "
            "'etiquette' and 'quit'.\n");
-
   add_item("floor", "The floor is made of polished marble so smooth that "
            "you can see your face in it - yeuch!\n");
-  
   add_item("wall", "The walls are hidden behind row upon row of shelves.\n");
   add_item(({ "shelves", "shelf" }), "The shelves are filled with books.\n");
   add_item("book", "There are many, many reference books here, most are "
            "weighty tomes in black leather bindings.\n");
-  
   add_sign("This is a simple white sign marked 'helpme'.\n",
            FOYER->format_sign(
                  "The Discworld help system is divided into two parts: "
@@ -44,7 +32,6 @@ void setup() {
                  "you're likely to need to get you started."),
            "sign marked 'helpme'",
            "helpme", "general");
-  
    add_sign("This is a simple white sign marked 'problems'.\n",
             FOYER->format_sign(
             "If you have problems getting started or understanding help "
@@ -68,8 +55,7 @@ void setup() {
             "'help typo' for information on making reports."),
             "sign marked 'problems'",
             "problems", "general" );
-
-   add_sign("This is a simple white sign marked 'newbie'.\n", 
+   add_sign("This is a simple white sign marked 'newbie'.\n",
             FOYER->format_sign(
             "This is part of the newbie area on Discworld, "
             "written to help you get acquainted with the game.  "
@@ -80,14 +66,13 @@ void setup() {
             "use 'newbie <question>' and hopefully someone will "
             "answer your question and 'hnewbie' to view the past couple "
             "of questions.\n\n"
-            "Once you have visited each room you may " 
+            "Once you have visited each room you may "
             "leave the newbie area to enter Discworld proper.  "
             "Before reaching the Disc, you'll be given the choice of "
             "which city you wish to start in.  Information is given about "
             "each region and city at that time."),
             "sign marked 'newbie'",
             "newbie", "general" );
-
    add_sign("This is a simple white sign marked 'etiquette'.\n",
             FOYER->format_sign(
             "Discworld is a very friendly mud and there are "
@@ -101,11 +86,10 @@ void setup() {
             "If you wish to play more than one character you must "
             "never have them both logged on at the same time.  "
             "Harassment of other players, sexual or otherwise, "
-            "is not acceptable and may lead to banishment."), 
+            "is not acceptable and may lead to banishment."),
             "sign marked 'etiquette'",
             "etiquette", "general" );
-
-   add_sign("This is a simple white sign marked 'quit'.\n", 
+   add_sign("This is a simple white sign marked 'quit'.\n",
             FOYER->format_sign(
             "To leave Discworld at any time, "
             "type 'quit' at the prompt.  Your "
@@ -114,11 +98,7 @@ void setup() {
             "you are under 30 minutes old, in which case you won't save."),
             "sign marked 'quit'",
             "quit", "general" );
-   
    add_exit( "foyer", PATH +"foyer", "door");
    add_alias( "southeast", "foyer");
-   
-  /* Make it so you cannot godmother out of here */
   add_property("no godmother", 1);
-} /* setup() */
-
+}

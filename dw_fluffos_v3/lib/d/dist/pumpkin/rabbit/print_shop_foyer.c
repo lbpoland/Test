@@ -1,7 +1,5 @@
 #include "path.h"
-
 inherit "/std/room/basic_room";
-
 void setup() {
    set_light(70);
    set_room_size(5);
@@ -40,16 +38,13 @@ void setup() {
 ({ "long", "It is a nice polished brass plaque on a surprisingly nice "
 "looking door.\nIt appears to have something written on it.",
 "read", "Office.\n" }) );
-
    add_exit("west", PATH + "print_shop_office", "door");
    add_exit("east", PATH + "print_shop_press", "corridor");
    add_exit("south", PATH + "rabbit3", "door");
-
    room_chat( ({ 120, 240, ({
        "Someone rushes into the room, looks around wildly and rushes back "
        "out again.",
          "You hear a CLANK, WHAM, HISS from the east",
     }) }) );
-
    add_property("place", "Pumpkin");
-} /* setup() */
+}

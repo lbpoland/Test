@@ -1,8 +1,4 @@
-// Pinkfish
-// Started Wed May 30 21:37:15 PDT 2001
-
 inherit "/std/room/furniture/shop_base";
-
 void setup() {
    set_name( "counter" );
    set_short( "small shop counter" );

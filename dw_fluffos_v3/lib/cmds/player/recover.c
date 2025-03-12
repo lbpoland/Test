@@ -1,25 +1,10 @@
-/**
- * This method allows you to recover items from the room.
- * @author Pinkfish
- * @started Mon Feb  7 01:04:04 PST 2000
- * @changed Sun Jul 16 23:43:49 PST 2000 Taffyd 
- * Added MAX_RECOVER.
- */
 #include <obj_parser.h>
-
 inherit "/cmds/base";
-
 #include <move_failures.h>
 #include <cmds/bury.h>
 #include <playtesters.h>
 #include <player.h>
-
-/**
- * This is the maximum number of items that can be
- * recovered.
- */
 #define MAX_RECOVER 20
-
 int cmd_recover(string name) {
    object* obs;
    object* fail;
@@ -28,7 +13,6 @@ int cmd_recover(string name) {
    object cont;
    object ob;
    class obj_match omatch;
-
 #ifdef PT
    if (!PLAYTESTER_HAND->query_playtester(this_player()->query_name()) &&
        !this_player()->query_creator()) {
@@ -36,13 +20,11 @@ int cmd_recover(string name) {
       return 0;
    }
 #endif
-
    if (this_player()->query_property("dead")) {
       add_failed_mess("You're a disembodied spirit, how do you expect to "
                       "recover anything at all?\n");
       return 0;
    }
-
    cont = BURY_EFFECT->query_buried_container(environment(this_player()));
    if (!cont) {
       add_failed_mess("There is nothing buried here.\n");
@@ -54,20 +36,15 @@ int cmd_recover(string name) {
       return 0;
    }
    obs = omatch->objects;
-   
    if ( sizeof( obs ) > MAX_RECOVER ) {
-      add_failed_mess( "You can only recover " + 
+      add_failed_mess( "You can only recover " +
         query_num( MAX_RECOVER ) + " items at a time.\n" );
       return 0;
    }
-
    fail = ({ });
    ok_me = ({ });
    ok_here = ({ });
    if (sizeof(obs)) {
-      //
-      // Recover them...
-      //
       foreach (ob in obs) {
 #ifndef __DISTRIBUTION_LIB__
         if(interactive(this_player()) &&
@@ -75,7 +52,7 @@ int cmd_recover(string name) {
                                                            this_player(),
                                                            ob)) {
           fail += ({ ob });
-        } else 
+        } else
 #endif
          if (ob->move(this_player()) == MOVE_OK) {
             ok_me += ({ ob });
@@ -109,8 +86,7 @@ int cmd_recover(string name) {
       }
       return 0;
    }
-} /* cmd_recover() */
-
+}
 mixed* query_patterns() {
    return ({ "<string'buried object'>", (: cmd_recover($4[0]) :) });
-} /* query_patterns() */
+}

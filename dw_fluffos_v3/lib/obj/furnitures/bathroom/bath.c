@@ -1,5 +1,4 @@
 inherit "/std/room/furniture/bath";
-
 void setup() {
   set_name("bathtub");
   set_short("cast iron bathtub");

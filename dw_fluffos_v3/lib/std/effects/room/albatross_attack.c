@@ -1,24 +1,19 @@
 #include <effect.h>
-
 #define BLIND "/std/effects/religious/blind"
 #define CLASS "auriental.punishment.albatross"
 #define COMBAT "/std/effects/fighting/combat"
-
 string query_classification(){ return CLASS; }
 int query_indefinite(){ return 1; }
-
 void damage_player( object pl, int damage ){
-  if( damage > 0 ) 
+  if( damage > 0 )
     damage = damage * -1;
   if( pl->adjust_hp( damage ) <= 0 )
     pl->attack_by( this_object() );
   COMBAT->monitor_points( pl, 1 );
-} /* damage_player() */
-
+}
 void pecking( object pl ){
   int damage = roll_MdN( 3, 150 );
   object room = environment( pl );
-
   if( room->query_property( "location" ) != "outside" ){
     if( pl->expected_tt() )
       pl->submit_ee( 0, ( pl->expected_tt() + 15 + random( 20 ) ), EE_REMOVE );
@@ -29,7 +24,6 @@ void pecking( object pl ){
       pl );
     return;
   }
-
   switch( roll_MdN( 2, 3 ) ){
     case 2:
       tell_object( pl,
@@ -75,8 +69,7 @@ void pecking( object pl ){
       damage_player( pl, damage * 2 );
       break;
   }
-} /* pecking() */
-
+}
 int beginning( object pl, int args ){
   tell_object( pl,
     "A flock of albatrosses forms above you.  They don't look pleased to see "
@@ -88,13 +81,11 @@ int beginning( object pl, int args ){
   pl->submit_ee( 0, args, EE_REMOVE );
   pl->add_extra_look( this_object() );
   return args;
-} /* beginning() */
-
+}
 int merge_effect( object pl, int old_args, int new_args ){
   pl->submit_ee( 0, new_args, EE_REMOVE );
   return new_args;
-} /* merge_effect() */
-
+}
 int restart( object pl, int args ){
   tell_object( pl,
     "The flock of albatrosses returns, apparently not finished with their "
@@ -104,25 +95,22 @@ int restart( object pl, int args ){
     ({ pl }) );
   pl->add_extra_look( this_object() );
   return args;
-} /* restart() */
-
+}
 void end( object pl, int args ){
   tell_room( environment( pl ),
     "The albatrosses lose interest and slowly fly away, trying to remember "
     "how to be properly pointless.\n" );
   pl->remove_extra_look( this_object() );
-} /* end() */
-
+}
 string extra_look( object pl ){
   if( environment( pl )->query_property( "location" ) != "outside" ){
     return capitalize( pl->query_pronoun() ) +
       " is surrounded by angry albatrosses.\n";
   }
-  return capitalize( pl->query_pronoun() ) + 
-    " has an angry flock of albatrosses around " + 
+  return capitalize( pl->query_pronoun() ) +
+    " has an angry flock of albatrosses around " +
     pl->query_objective() + ".\n";
-} /* extra_look() */
-
-string query_death_reason(){ 
+}
+string query_death_reason(){
   return "being pecked to death by albatrosses";
-} /* query_death_reason() */
+}

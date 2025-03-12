@@ -1,9 +1,7 @@
 #include <reaction.h>
 void dest_me() { destruct( this_object() ); }
-
 class reaction item;
 mapping data = ([ ]);
-
 mixed data_return_0() {
   if (!mapp(data["TeaLeaf"])) data["TeaLeaf"] = ([]);
   item = new( class reaction );
@@ -27,12 +25,7 @@ mixed data_return_0() {
    $3->set_long( "This is some thick brown sludge, streaked through with "
      "white.  The smell is... prominent.\n" )
 :) })
-/**
- *  Author Terano
- *  Created 8/07/02
- *  This file prevents the mixing of healing tea and blue water, in
- *  accordance with the prophecy.
- */;
+;
   data["BatGuano"]["Water"] = item;
   if (!mapp(data["BlueHealingWater"])) data["BlueHealingWater"] = ([]);
   item = new( class reaction );
@@ -73,7 +66,6 @@ mixed data_return_0() {
     });
   data["BlueHealingWater"]["ComfreyYarrowTea"] = item;
 }
-
 mixed data_return() {
   data_return_0();
   return data;

@@ -1,25 +1,12 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: weather_room.c,v 1.1 1998/01/06 04:23:53 ceres Exp $
- * $Log: weather_room.c,v $
- * Revision 1.1  1998/01/06 04:23:53  ceres
- * Initial revision
- * 
-*/
 inherit "std/room";
-
 mixed leverarr;
-
 reset (arg) {
   if (arg) return;
-
   set_short("The weather room");
   set_long("The weather control center for the entire mud. On the floor should\n"+
            "be the controller itself, scattered around the room are hundred of impresive\n"+
            "flashing lights, dials and levers. You get the feeling however that they dont\n"+
            "actually do anything.\n");
-
   set_light(1);
   seteuid("pinkfish");
   add_property("inside");
@@ -37,21 +24,16 @@ reset (arg) {
                 ({ "white",
        "The ground heaves in a major convulsion and a mound of paper falls onto\n"+
        "You from the ceiling saying:\n#query_cloud" }) });
-       
 }
-
 init() {
   ::init();
   add_action("pull","pull");
   add_action("push","push");
 }
-
-
 pull(str) {
   int i;
   string type,rand;
   object lever, weather;
-
   if (str == "lever" || str == "levers")
     lever = leverarr[random(sizeof(leverarr))];
   else {
@@ -70,7 +52,6 @@ pull(str) {
     notify_fail("You need to choose and existing lever");
     return ;
   }
-
   weather = present("weather",this_object());
   if (!weather) {
     notify_fail("Opps the weather controller does not exist.\n");
@@ -81,12 +62,10 @@ pull(str) {
   this_player()->print_object(call_other(weather,rand));
   return 1;
 }
-
 push(str) {
   object lever;
   int i;
   string type,bing;
-
   if (str == "levers" && str == "lever")
     lever = leverarr[random(sizeof(leverarr))];
   else {
@@ -104,6 +83,5 @@ push(str) {
     notify_fail("An existing lever could be usefull...\n");
     return 0;
   }
-
   write("You huff and you puff, but you just cant push that lever.\n");
 }

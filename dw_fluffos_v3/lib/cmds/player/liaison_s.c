@@ -1,13 +1,7 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: liaison_s.c,v 1.4 2000/01/18 00:23:45 turrican Exp $
- */
 inherit "/cmds/base";
-
 private string idle_time(object person) {
   int hours, mins, secs;
   string s, m, h;
-
   secs = query_idle(person);
   mins = secs / 60;
   secs %= 60;
@@ -20,13 +14,11 @@ private string idle_time(object person) {
   }
   h = ("0"+hours)[<2..<1];
   return " (idle: "+h+":"+m+":"+s+")";
-} /* idle_time() */
-
+}
 mixed cmd( ) {
    int i, j;
    string *members, *member_alias, *aliases;
    object person;
-   
    members = (string *)"/d/liaison/master"->query_members();
    aliases = ({ });
    i = sizeof( members );
@@ -72,7 +64,6 @@ mixed cmd( ) {
          }
       }
    }
-
    if ( this_player()->query_creator() || !sizeof( members )) {
       members += aliases;
    }
@@ -80,7 +71,6 @@ mixed cmd( ) {
       add_failed_mess( "There are no Liaison creators currently logged on.\n" );
       return 0;
    }
-
    if ( sizeof( members ) > 1 ) {
       write( "Liaison creators logged on are "+
             query_multiple_short( members ) +".\n" );
@@ -88,8 +78,7 @@ mixed cmd( ) {
       write( "The only Liaison creator logged on is "+ members[ 0 ] +".\n" );
    }
    return 1;
-} /* cmd() */
-
+}
 mixed *query_patterns() {
    return ({ "", (: cmd() :) });
-} /* query_patterns() */
+}

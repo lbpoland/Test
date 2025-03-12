@@ -1,17 +1,9 @@
-/**
- * This command will allow players to control their friends.
- * @author Pinkfish
- * @started Mon Mar 12 22:41:23 PST 2001
- */
-
 inherit "/cmds/base";
 #include <player.h>
 #include <player_handler.h>
-
 int cmd_display(string person, string pattern) {
    string* friends;
    string ret;
-
    if (person == "online") {
       friends = filter(this_player()->query_friends(), (: find_player($1) :));
    } else if (person != "") {
@@ -24,7 +16,6 @@ int cmd_display(string person, string pattern) {
    } else {
       friends = this_player()->query_friends();
    }
-
    if (pattern) {
       if (regexp(pattern,
            "[\\[\\]\\(\\)\\*\\?\\+][\\[\\]\\(\\)\\*\\?\\+]+") ) {
@@ -40,7 +31,6 @@ int cmd_display(string person, string pattern) {
          add_failed_mess("Pattern has an error in it, mismatched brackets?\n");
          return 0;
       }
-      // Now we filter out the ones we don't want.
       foreach (person in friends) {
          if (!regexp(this_player()->query_friend_tag(person), pattern)) {
             friends -= ({ person });
@@ -52,7 +42,6 @@ int cmd_display(string person, string pattern) {
          return 0;
       }
    }
-
    if (!sizeof(friends)) {
      if(person == "online") {
        add_failed_mess("You do not have any friends online.\n");
@@ -61,7 +50,6 @@ int cmd_display(string person, string pattern) {
      }
      return 0;
    }
-
    ret = "";
    foreach (person in sort_array(friends, 0)) {
       ret += "$I$5=" + capitalize(person) + ": " +
@@ -69,28 +57,23 @@ int cmd_display(string person, string pattern) {
    }
    write("$P$Friends$P$" + ret);
    return 1;
-} /* cmd_display() */
-
+}
 int cmd_add(string person, string tag) {
    person = lower_case(person);
    person = this_player()->expand_nickname(person);
-
    if(person == this_player()->query_name()) {
      add_failed_mess("Are you really that lonely?\n");
      return 0;
    }
-   
    if (!PLAYER_HANDLER->test_user(person)) {
       add_failed_mess(person + " does not exist.\n");
       return 0;
    }
-
    if (strlen(tag) > PLAYER_MAX_FRIEND_TAG_LEN) {
       add_failed_mess("Your tag for " + person + " is too long, the "
                       "maximum is " + PLAYER_MAX_FRIEND_TAG_LEN + ".\n");
       return 0;
    }
-
    if (!this_player()->is_friend(person)) {
       this_player()->add_friend(person, tag);
       add_succeeded_mess(({ "You add " + person + " with a tag of: " +
@@ -103,8 +86,7 @@ int cmd_add(string person, string tag) {
                             "" }));
    }
    return 1;
-} /* cmd_add() */
-
+}
 int cmd_remove(string person) {
    person = lower_case(person);
    person = this_player()->expand_nickname(person);
@@ -112,35 +94,29 @@ int cmd_remove(string person) {
       add_failed_mess("Sorry, " + person + " is not your friend to remove.\n");
       return 0;
    }
-
    this_player()->remove_friend(person);
    add_succeeded_mess(({ "You remove " + person + " from your friends list.\n",
                          "" }));
    return 1;
-} /* cmd_remove() */
-
+}
 int cmd_clear() {
    write("This will clear all of your friends.  Are you sure you want to do "
          "this? ");
    input_to("clear_check");
    add_succeeded_mess("");
    return 1;
-} /* cmd_clear() */
-
+}
 void clear_check(string str) {
    string friend;
-
    if (!strlen(str) || str[0] != 'y') {
       write("Ok, aborting.\n");
       return ;
    }
-
    foreach (friend in this_player()->query_friends()) {
       this_player()->remove_friend(friend);
    }
    write("Friend list cleared.\n");
-} /* clear_check() */
-
+}
 mixed *query_patterns() {
    return ({ "<word'friend'>",
                 (: cmd_display($4[0], 0) :),
@@ -159,4 +135,4 @@ mixed *query_patterns() {
              "clear",
                 (: cmd_clear() :),
              });
-} /* query_patterns() */
+}

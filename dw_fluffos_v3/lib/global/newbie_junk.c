@@ -1,20 +1,8 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: newbie_junk.c,v 1.18 2003/07/25 05:51:49 pinkfish Exp $
- */
-/**
- * Handles the new player stuff and the login gifts.
- *
- * @see /global/player
- * @author Pinkfish
- */
 #include <armoury.h>
 #include <config.h>
 #ifndef  __DISTRIBUTION_LIB__
 #include <priest.h>
 #endif
-
 #define CABBAGE "/obj/monster/cabbage"
 #define LEMON "/obj/monster/muffled_lemon"
 #define STICK "/obj/misc/boring_stick"
@@ -25,26 +13,18 @@
 #define BINKY_BRUSH (BINKY_PATH "binky_brush")
 #define BINKY_COMB (BINKY_PATH "binky_comb")
 #define BINKY_KEY (BINKY_PATH "binky_key")
-
-/**
- * This method is called when a player first starts on the mud.  It gives
- * out all of the newbiew equipment and stuff.
- */
 void start_player(object pl) {
   object ob, bucket, bottle, drink, label;
   seteuid(getuid());
-
-
   bucket = ARMOURY->request_item( "bucket small", 100 );
   bucket->set_short( "champagne bucket" );
   bucket->set_long( "This metal bucket was designed for a purpose, "
     "and looks like it would fit a champagne bottle perfectly.\n" );
   bucket->add_adjective( "champagne", "wine" );
   bucket->add_alias( "cooler" );
-  bucket->add_read_mess( this_player()->query_cap_name(), 
+  bucket->add_read_mess( this_player()->query_cap_name(),
     "etched characters", "general" );
   bucket->move(this_player());
-    
   bottle = clone_object( "/obj/bottle" );
   bottle->set_max_volume( 750 );
   bottle->set_name( "bottle" );
@@ -78,11 +58,10 @@ void start_player(object pl) {
                           "   |   Year of the   | \n"
                           "   |  Midnight Frog  | \n"
                           "   |                 | \n"
-                          "   |_________________| \n", 
+                          "   |_________________| \n",
                      "cursive lettering on the bottle's label", "general" );
-  bottle->add_effect("/std/effects/object/label", label);             
+  bottle->add_effect("/std/effects/object/label", label);
   bottle->move( bucket );
-
   ob = clone_object("/obj/armour");
   ob->set_name("sash");
   ob->set_long("A large colourful sash.\n");
@@ -99,38 +78,26 @@ void start_player(object pl) {
       ob->dest_me();
   }
   pl->wear_armour( ob );
-
   ob = ARMOURY->request_item( "torch" );
   ob->add_read_mess( "\n" + mud_name() + " MUD, it brightens up your night!  "
-                     "More torches can be purchased from the general stores " 
-                     "found across the Disc!", "to the wood", 
+                     "More torches can be purchased from the general stores "
+                     "found across the Disc!", "to the wood",
                      "general" );
   ob->move( pl );
-    
   ob = clone_object( "/d/liaison/NEWBIE/newbie_book" );
   ob->move( pl );
-
   pl->adjust_money( 8, "Pumpkin dollar" );
   pl->adjust_money( 100, "Pumpkin pence" );
-} /* start_player() */
-
+}
 void give_junk(object pl) {
   call_out("start_player", 2, pl);
 }
-/**
- * Gives out the login gifts and anything else that should be done on
- * a certain login number.
- *
- * @param num the number of logins
- */
 void logged_on_times(int num) {
   object ob;
   int bing;
-
   this_player()->remove_property("binky level");
   switch (num) {
   case 3 :
-    /* Third time, give them a free cabbage */
     ob = clone_object(CABBAGE);
     if(!environment(this_player()))
       return;
@@ -143,7 +110,6 @@ void logged_on_times(int num) {
                 "appreciation.%^RESET%^\n");
     break;
   case 10 :
-    /* Tenth time.  Give them a badge... */
     ob = clone_object("/obj/clothing");
     ob->set_name("badge");
     ob->set_type("badge");
@@ -157,7 +123,6 @@ void logged_on_times(int num) {
     ob->add_read_mess("Congratulations on being a 10 time loginer to "
                       "" + mud_name() + " MUD!\n", 0,
                       this_player()->query_default_language());
-    
     if (ob->move(this_player()))
       ob->move(environment(this_player()));
     tell_object(this_player(),
@@ -180,7 +145,6 @@ void logged_on_times(int num) {
                 "you just wrote.%^RESET%^\n");
     break;
   case 100 :
-    /* 100th time...  A singing lemon, up to a point. */
     ob = clone_object(LEMON);
     ob->set_owner(this_player());
     tell_object(this_player(),
@@ -189,7 +153,6 @@ void logged_on_times(int num) {
                 "This lemon will help you on your travels.%^RESET%^\n");
     break;
   case 150 :
-    /* 150th time. */
     ob = clone_object(STICK);
     if (ob->move(this_player()))
       ob->move(environment(this_player()));
@@ -249,11 +212,9 @@ void logged_on_times(int num) {
                 "came from?\n");
     break;
   }
-
-  // See how long the player has been on.
   bing = -this_player()->query_time_on();
   if (bing / (24 * 60 * 60) > 100) {
     this_player()->add_player_title("old man");
     this_player()->add_player_title("old woman");
   }
-} /* no_login_times() */
+}

@@ -1,5 +1,4 @@
 inherit "/std/races/reptile_base";
-
 void setup() {
    set_name( "snake" );
    set_long( "Snake, Serpent, Legless thingy that crawls on its belly all "
@@ -7,9 +6,7 @@ void setup() {
    set_height( 5 );
    set_weight( 60 );
    set_desc( "a serpent, the type with no legs but with scales." );
-  
-   /* throw away reptilian bits and replace totally */
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 50, 0,
          "left eye", "right eye", "poison sac", "tongue", "skull" }),
       "left eye", "eye", ({ "head", 5, 0 }),
@@ -34,48 +31,36 @@ void setup() {
       "tail", "tail", ({ 0, 500, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "poison sac", "tooth" });
    unrottable = ({ "tooth" });
-
    add_ac( "blunt", "blunt", 40 );
    add_ac( "sharp", "sharp", 20 );
    add_ac( "pierce", "pierce", 10 );
-
    set_stats( ({ 0, 0, -4, 4, -4 }) );
-} /* setup() */
-     
+}
 void set_unarmed_attacks( object thing ) {
    int number;
-
    number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
    number = sqrt( number );
-
    thing->remove_attack( "hands" );
    thing->remove_attack( "feet" );
-
    thing->remove_attack( "bite" );
    thing->remove_attack( "crush" );
-
    thing->add_attack( "bite", 80, ({ ( 3 * number ) / 2, 5, number * 2 }),
       "pierce", "unarmed", ({ "poison", this_object() }) );
    thing->tactics( "response dodge" );
-} /* set_unarmed_attacks() */
-
+}
 void poison( int damage, object him, object me, string a_type,
              string a_name ) {
    tell_room( me->one_short() + " visciously sinks its fangs into " +
       him->one_short() + " who seethes in agony!\n" );
    tell_object( him, me->one_short() + " sinks its fangs into you!  You "
       "seethe in agony.\n" );
-
    him->add_effect( POISON_EFFECT, random(200) );
 }
-
 string *query_target_zones() {
   return ({ "head", "body", "body", "body", "tail", "tail", "tail" });
 }
-
 string map_target_zone(string zone) {
   switch(zone) {
   case "head":
@@ -87,4 +72,3 @@ string map_target_zone(string zone) {
     return "tail";
   }
 }
-

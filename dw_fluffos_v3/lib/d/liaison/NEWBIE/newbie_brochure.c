@@ -1,31 +1,6 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: newbie_brochure.c,v 1.2 2002/09/11 04:25:30 pinkfish Exp $
- *
- * $Log: newbie_brochure.c,v $
- * Revision 1.2  2002/09/11 04:25:30  pinkfish
- * Fix up for the changeover.
- *
- * Revision 1.1  2000/03/01 06:06:45  ceres
- * Initial revision
- *
- * Revision 1.1  1998/01/16 02:18:32  arby
- * Initial revision
- *
-*/
-/* Please, oh please, don't read the code, as it has no punctation 
-   whatsoever :) (I blame the colours)
-   This newbie brochure is *completly* rewritten from the
-   old /d/am/am/items/colourful brochure found in the tray in the Mended
-   Drum.
-   
-   Hobbes, July 96                                                   */
-
 #include "path.h"
 #define PAGES    6
 inherit "/std/leaflet";
-
 void setup() {
   set_name( "brochure" );
   set_short( "newbie brochure");
@@ -42,7 +17,7 @@ void setup() {
             "<turn a page of brochure>.\n" );
   set_open_page( 1 );
   set_read_mess( "                                                \n"
- "                                                                \n"     
+ "                                                                \n"
 "                            %^B_RED%^TABLE OF CONTENTS%^RESET%^                        Page 1\n"
  "                    .o0o.o0o.o0o.o0o.o0o.o0o.o0o.o0o.       \n"
  "                                            \n"
@@ -57,11 +32,9 @@ void setup() {
  " to read any of the \n"
  " FAQ's around (Frequently Asked Questions).  To read the Discworld FAQ,\n"
  " type 'help FAQ' or point your http browser at: \n"
- " http://www.imaginary.com/LPMud/lpmud_faq.html\n",
-
+ " http:
  "general", 100 );
   set_open_page( 2 );
-
   set_read_mess( "                                                        \n"
  "                            GENERAL INFORMATION                     Page 2\n"
  "                           -=-=-=-=-=-=-=-=-=-=-                 \n"
@@ -86,7 +59,7 @@ void setup() {
  "general", 100 );
   set_open_page( 3 );
   set_read_mess( "                                                  \n"
- "                                                                   Page 3\n" 
+ "                                                                   Page 3\n"
  " In Ankh-Morpork there are GUIDES wandering around that can take you to \n"
  " certain destinations.  These are often waiting by the guilds or in the \n"
  " Mended Drum.  To use one you say in the same room as one, for example: \n"
@@ -96,11 +69,11 @@ void setup() {
  "                                                    \n"
  " You start off with a total of eight lives.  If you should happen to die,\n"
  " Harry at the Temple of Small Gods, can RAISE you from the dead and you \n"
- " are then set to go again (one life shorter).  Player Priests also have \n" 
+ " are then set to go again (one life shorter).  Player Priests also have \n"
  " the ability to resurrect.\n"
 " And please BUG report bugs and typos you see.  Do  '%^B_RED%^help bug%^RESET%^' "
  " and \n"
- " '%^B_RED%^help typo%^RESET%^' for more information.\n", 
+ " '%^B_RED%^help typo%^RESET%^' for more information.\n",
  "general", 100 );
   set_open_page( 4 );
   set_read_mess( "                                                       \n"
@@ -131,7 +104,7 @@ void setup() {
   " '%^B_RED%^commands%^RESET%^', '%^B_RED%^score stats%^RESET%^',  "
   "'%^B_RED%^nickname%^RESET%^',  '%^B_RED%^consider%^RESET%^'\n"
   " '%^B_RED%^gp%^RESET%^' and  '%^B_RED%^playerkilling%^RESET%^'.\n",
-  "general", 100 );  
+  "general", 100 );
   set_open_page( 5 );
   set_read_mess( "                                                   \n"
  "                               THE GUILDS                           Page 5\n"
@@ -171,27 +144,6 @@ void setup() {
  " The tour operator at Sator Square is ready to send you to the warm \n"
  " and distant continent of Klatch, if you have enough money.\n"
  " There are more fantastic and exciting places to come.\n",
- "general", 100 );   
+ "general", 100 );
   set_open_page( 1 );
 }
-
-/*
-void init() {
-   this_player()->add_command( "scan", this_object(), "'page' %d 'of' %D" );
-}   
-
-mixed do_scan( object *indir, string id_match, string ind_match,
-         mixed *args, string pattern ) {
-   int pg;
-
-   if( !args || !sizeof( args ) )
-     return ::do_read();
-   
-   pg = args[ 0 ];
-   if( pg > PAGES || pg < 1 )
-      return 0;
-   set_open_page( pg );
-   return ::do_read();
-
-}
-*/

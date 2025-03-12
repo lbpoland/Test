@@ -1,21 +1,13 @@
-//swiped from the Thieves' Guild room with modifications - Rue
-/*combat classroom*/
-
 #include "path.h"
 #define MAX 100;
-
 inherit PATH + "inside";
-
 string *arr0;
 object sign, dummy, trainer;
-
 void setup() {
-  //set_zone( "Newbie" );
   set_short("John's Boot Camp");
   add_property("determinate", "");
   set_light( 75 );
   add_property("no teleport", 1);
-  
   set_long("This is a small training room, designed to help the new "
            "adventurer get off to a good start on Discworld.  The air is "
            "stale with the combined stench of sweat, beer, and old "
@@ -31,13 +23,10 @@ void setup() {
   add_item( "ceiling", "The ceiling appears to be dingy patches of plaster "
             "stuck between old oak rafters that have turned black with "
             "age.\n");
-/* Make it so you cannot godmother out of here */
   add_property("no godmother", 1);
-
   add_exit( "combat", PATH + "combat", "door" );
   add_alias( "southeast", "foyer");
-}/*setup*/
-
+}
 void reset() {
   if(!sign) {
     sign=add_sign("This is a plaque that seems to describe how to have "
@@ -56,10 +45,8 @@ void reset() {
   if(!dummy)
     dummy = clone_object(PATH + "dummy");
   dummy->move(this_object());
-  
   call_out("get_trainer", 1);
-}/*reset*/
-
+}
 void dest_me() {
   if(sign)
     sign->dest_me();
@@ -69,25 +56,19 @@ void dest_me() {
     trainer->dest_me();
   ::dest_me();
 }
-
 void get_trainer() {
   if(!trainer)
     trainer = clone_object(PATH +"trainer");
-  
   if (trainer) {
     trainer->whichone("john");
     trainer->move( this_object(), "$N hobble$s toward you on his straw-filled stumps." );
     dummy->set_trainer(trainer);
   }
-}/*get_trainer*/
-
+}
 void stop_them(object who) {
   if(trainer && dummy)
     trainer->stop_them(who, dummy);
 }
-
-
 string query_quit_handler() {
   return "/d/liaison/NEWBIE/combat";
-} /* query_quit_handler() */
-
+}

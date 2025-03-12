@@ -1,40 +1,10 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: shut.c,v 1.8 2003/05/05 07:00:55 ceres Exp $
- * 
-*/
-/*
-** Armageddon 3.0 is largely a rip off of the 2.4.5 version
-** that most of us are familiar with. The original author
-** left no credits, but the work is recognized.
-** This version has a number of improvements, and hopefully,
-** a neater finished product.
-**
-** To use, merely use the command:
-**   call shut(##) /obj/shut
-** where ## is the number of minutes till shutdown. Armageddon
-** will then handle a nice shutdown.
-**      Gordon
-**  Bashed for our great mud by pinkfish.
-**
-**  Changed to use quit_alt on Fri Dec  6 10:35:04 WST 1996
-**    -- Pinkfish.
-*/
-
 #include <network.h>
-
 #define OFFLER_SHADOW "/std/shadows/misc/offler_shadow"
-
 #undef CONVERTER
 #undef AUTO_RESURRECT
-
 inherit "/std/container";
-
 int time_of_crash, time_of_last_shout;
-
 void setup() {
-/* This stops wizzes from cloning armageddon. He only needs to be loaded */
   if (file_name(this_object()) != "/obj/shut") {
     write("This object can't be cloned.\n");
     dest_me();
@@ -51,10 +21,8 @@ void setup() {
            "like this really.\n");
   add_alias("shut");
   reset_get();
-} /* setup() */
-
+}
 #define ishout(str) user_event("say", "%^BOLD%^%^RED%^Offler the Crocodile God shouts: "+str+"%^RESET%^\n", 0)
-
 void heart_beat() {
    int time_to_crash;
    if (!time_of_crash) return;
@@ -80,7 +48,6 @@ void heart_beat() {
       return;
    time_of_last_shout = time_to_crash;
    if (time_to_crash > 30) {
-      /* Give them at least 30 minutes warning... */
       return ;
    }
    if(time_to_crash == 1) {
@@ -91,8 +58,7 @@ void heart_beat() {
       ishout( "Game ith webooting in "+ time_to_crash +" minuteth." );
       return;
    }
-} /* heart_beat() */
-
+}
 void shut(int minutes, string reason) {
    object *players;
    int i;
@@ -125,18 +91,15 @@ void shut(int minutes, string reason) {
    if (time_of_crash)
      write( "There was already a reboot scheduled, set for "+
            (time_of_crash - time()) + " seconds.\n");
-
    move("/d/am/buildings/drum/mendeddrum",
       "Offler the Crocodile God appears in a puff of smoke.",
       "Offler the Crocodile God appears in a puff of smoke.");
-
    time_of_crash = time() + minutes*60;
    time_of_last_shout = minutes;
    set_heart_beat(1);
-#ifdef AUTO_RESURRECT  
+#ifdef AUTO_RESURRECT
    call_out( "check_ghosts", 60 );
 #endif
-   
    if(file_name(previous_object()) == "/obj/handlers/garbage")
      log_file("REBOOT", "Shutdown requested automatically at "+ctime(time())+
               "\n");
@@ -146,9 +109,7 @@ void shut(int minutes, string reason) {
    else
      log_file("REBOOT", "Shutdown at "+ctime(time())+" requested by " +
               file_name(previous_object()) + " for " + reason + "\n");
-
-} /* shut() */
-
+}
 string long(string str, int dark) {
   ::long(str, dark);
   if ( time_of_crash && this_player() && this_player()->query_creator() )
@@ -156,20 +117,17 @@ string long(string str, int dark) {
             "Game reboot will be in " + ( time_of_crash - time() ) +
             " seconds.\n";
   return ::long(str,dark);
-} /* long() */
-
+}
 void end_it_all() {
    int i;
    object *obs;
-   
    ishout( "Thutdown now!" );
    obs = users();
    for (i=0;i<sizeof(obs);i++) {
       call_out("force_quit", i, obs[i]);
    }
    call_out("blue", 10);
-} /* end_it_all() */
-
+}
 void force_quit( object ob ) {
    if ( !objectp( ob ) )
       return;
@@ -180,23 +138,15 @@ void force_quit( object ob ) {
    }
    if ( !environment( ob ) )
      ob->move( "/d/am/buildings/drum/mendeddrum" );
-   /* Change it to use the quit_alt code. */
    if(environment(ob) &&
       file_name( environment( ob ) ) != "/room/departures" ) {
      ob->quit_alt();
    }
-   /* If the quit_alt doesn't work.  Force a hard quit */
-   if (environment(ob) && 
+   if (environment(ob) &&
        file_name( environment( ob ) ) != "/room/departures" ) {
      ob->quit();
    }
-} /* force_quit() */
-
-/*
- * Check to see that everyone has been quit.  If we have taken
- * longer than 4 minutes to quit everyone, then we shutdown
- * anyway. -- Pinkfish
- */
+}
 void blue() {
   if (sizeof(users()) > 0 &&
       time() - time_of_crash < 240)
@@ -205,8 +155,7 @@ void blue() {
     SERVICES_D->eventShutdown(1);
     shutdown(0);
   }
-} /* blue() */
-
+}
 int query_time_to_crash() {
    if ( !time_of_crash ) {
       call_out( "dest_me", 1 );
@@ -214,15 +163,12 @@ int query_time_to_crash() {
    }
    set_heart_beat( 1 );
    return time_of_crash - time();
-} /* query_time_to_crash() */
-
+}
 int query_unambushable() { return 1; }
-
 void do_ambushed() {
    write( "Bad mistake...\n" );
    this_player()->run_away();
-} /* do_ambushed() */
-
+}
 #ifdef AUTO_RESURRECT
 void person_died( string word, int number ) {
    object thing;
@@ -250,8 +196,7 @@ void person_died( string word, int number ) {
          return;
    }
    call_out( "person_died", 3, word, number + 1 );
-} /* person_died() */
-
+}
 void person_dead( object thing, int number ) {
    if ( !thing )
       return;
@@ -274,16 +219,14 @@ void person_dead( object thing, int number ) {
          return;
    }
    call_out( "person_dead", 3, thing, number + 1 );
-} /* person_dead() */
-
+}
 void check_ghosts() {
    object thing;
    foreach( thing in users() ) {
-      
       if ( !thing ) {
           continue;
       }
-      if ( !thing->query_property( "dead" ) ) { 
+      if ( !thing->query_property( "dead" ) ) {
          continue;
       }
       if ( (int)thing->query_deaths() > (int)thing->query_max_deaths() ) {
@@ -291,6 +234,5 @@ void check_ghosts() {
       }
       call_out( "person_dead", 3, thing, 0 );
    }
-} /* check_ghosts() */
-
+}
 #endif

@@ -1,8 +1,4 @@
-//Una
-//Only for use in CWC
-
 inherit "/std/room/furniture/surface";
-
 void setup() {
     set_name( "table" );
     set_short( "pedestal table" );
@@ -19,4 +15,4 @@ void setup() {
     set_max_weight( 50 );
     set_value( 88000 );
     set_allow_use_internals( 1 );
-} /* void setup() */
+}

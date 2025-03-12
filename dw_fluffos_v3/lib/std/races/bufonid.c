@@ -1,5 +1,4 @@
 inherit "/std/races/humanoid";
-
 void setup() {
    set_name( "bufonid" );
    set_long( "The bufonids are rare species of humanoid toad-like beings.  "
@@ -11,19 +10,15 @@ void setup() {
    set_weight( 1800 );
    set_desc( "a strange creature, with webbed feet and warty green skin, "
       "that gives you the impression of being a humanoid toad" );
-
    remove_bit( "left ear" );
    remove_bit( "right ear" );
    remove_bit( "nose" );
    remove_bit( "scalp" );
    remove_bit( "teeth" );
-
    add_ac( "blunt", "blunt", 15 );
    add_ac( "pierce", "pierce", 12 );
    add_ac( "sharp", "sharp", 10 );
-
    add_attack( "hands", 75, ({ 40, 5, 10 }) );
    add_attack( "feet", 25, ({ 30, 5, 20 }) );
-
    set_stats( ({ 2, 2, 0, 2, 0 }) );
-} /* setup() */
+}

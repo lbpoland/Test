@@ -1,15 +1,11 @@
 #include <virtual.h>
-
 void dest_me() { destruct( this_object() ); }
-
 void create()
 {
   seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
-} /* create() */
-
+}
 object create_virtual_ob() {
    object clone;
-
   clone = (object)SERVER->create_virtual_object( "/obj/food.c", 1 );
   clone->add_property( VIRTUAL_NAME_PROP, "/obj/reagents/generic_liquid.ob#1" );
   call_other( clone, "add_adjective",  "some"  );
@@ -21,4 +17,4 @@ object create_virtual_ob() {
   call_other( clone, "set_liquid",   );
   call_other( clone, "add_property",  "determinate", "" );
    return clone;
-} /* create_virtual_ob() */
+}

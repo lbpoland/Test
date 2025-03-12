@@ -1,5 +1,4 @@
 #define TMP_FILE "/global/virtual/tmp_file.c"
-
 #define O_FUN ([ "item"  : "add_item",\
                  "name"  : "set_name",\
                  "long"  : "set_long",\
@@ -22,7 +21,6 @@
                  "effect" : "add_effect",\
                  "read mess" : "add_read_mess", \
                  "short" : "set_short" ])
-
 #define R_FUN ([ "exit" : "add_exit",\
                  "modify exit" : "modify_exit",\
                  "reset" : "add_reset_item",\
@@ -33,7 +31,6 @@
                  "cloned object" : "add_cloned_object", \
                  "alias" : "add_alias", \
                  "sign" : "add_sign" ])
-
 #define ARM_FUN ([ "setup" : "setup_armour",\
                    "no limbs" : "set_no_limbs", \
                    "condition" : "set_cond", \
@@ -46,7 +43,6 @@
                    "wear effect" : "add_wear_effect", \
                    "dex minus" : "set_dex_minus", \
                    "damage chance" : "set_damage_chance" ])
-
 #define CLO_FUN ([ "setup" : "setup_clothing",\
                    "condition" : "set_cond", \
                    "enchant" : "set_enchant", \
@@ -62,13 +58,11 @@
                    "key" : "set_key", \
                    "damage chance" : "set_damage_chance", \
                    "pair" : "set_is_pair" ])
-
 #define CLOTRANS_FUN ([ \
                    "race" : "set_worn_by_race", \
                    "mount modifier" : "set_mount_difficulty_modifier", \
                    "direction modifier" : "set_direction_difficulty_modifier", \
                  ])
-
 #define SCA_FUN ([ "setup" : "setup_scabbard",\
                    "condition" : "set_cond", \
                    "enchant" : "set_enchant", \
@@ -80,7 +74,6 @@
                    "dex minus" : "set_dex_minus", \
                    "types" : "set_types", \
                    "damage chance" : "set_damage_chance" ])
-
 #define CONT_FUN ([ \
                     "amount" : "set_amount", \
                     "continuous" : "set_continuous", \
@@ -90,7 +83,6 @@
                     "amount types" : "set_amount_types", \
                     "pile types" : "set_pile_types", \
                   ])
-
 #define FOOD_FUN ([ \
                     "bites gone" : "set_bites_gone", \
                     "weight per bite" : "set_weight_per_bite", \
@@ -98,7 +90,6 @@
                     "eat effects" : "add_eat_effect", \
                     "piece description" : "set_piece_description", \
                   ])
-
 #define WEP_FUN ([ "setup" : "new_weapon",\
                    "condition" : "set_condition", \
                    "enchant" : "set_enchant", \
@@ -108,7 +99,6 @@
                    "no limbs" : "set_no_limbs", \
                    "attack message" : "add_attack_message", \
                    "damage chance" : "set_damage_chance" ])
-
 #define MON_FUN ([ "move after" : "set_move_after", \
                    "move zone" : "add_move_zone", \
                    "race" : "set_race", \

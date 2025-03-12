@@ -1,14 +1,11 @@
 inherit "/std/races/base";
-
 void create() {
    do_setup++;
    ::create();
    do_setup--;
-
    set_desc( "your standard reptile.  This should not be used as it is a "
       "base race" );
-
-   bits = ({ 
+   bits = ({
       "head", "head", ({ 0, 50, 0,
          "left eye", "right eye", "skull", "tongue", "snout" }),
       "left eye", "eye", ({ "head", 2, 0 }),
@@ -43,13 +40,11 @@ void create() {
       "tail", "tail", ({ 0, 100, 0 }),
       "skin", "skin", ({ 0, 175, 0 })
    });
-
    inedible = ({ "skull", "left front foot", "right front foot",
       "left rear foot", "right rear foot", "tail", "teeth", "tooth",
       "skin" });
    unrottable = ({ "skull", "teeth", "tooth" });
    set_skin( "scales" );
-
    if( !do_setup )
       this_object()->setup();
-} /* create() */
+}

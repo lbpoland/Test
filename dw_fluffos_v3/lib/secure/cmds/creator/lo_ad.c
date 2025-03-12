@@ -1,16 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Id: lo_ad.c,v 1.2 1999/05/27 13:53:08 turrican Exp $
- */
-
 inherit "/cmds/base";
-
 mixed cmd(string str) {
   string *filenames, err, fname, *failed, *succ, ret, load_err;
   int size;
-
   if (!str) {
-    return notify_fail("Load what?\n"); 
+    return notify_fail("Load what?\n");
   }
   filenames = this_player()->get_cfiles(str);
   if (!sizeof(filenames)) {

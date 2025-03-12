@@ -11,7 +11,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -111,7 +110,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -211,7 +209,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -311,7 +308,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -411,7 +407,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -511,7 +506,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);
@@ -611,7 +605,6 @@ void dest_me() { destruct( this_object() ); }
 mixed data_return() {
   class item_data item;
   mapping data = ([ ]);
-
   item = new( class item_data );
   item->season = ({ "spring", "summer", "autumn", "winter" });
   item->quant = (: random(3) + 3 :);

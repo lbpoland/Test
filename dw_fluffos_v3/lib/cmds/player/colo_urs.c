@@ -1,18 +1,9 @@
-/*  -*- LPC -*-  */
-/*
- * $Locker:  $
- * $Id: colo_urs.c,v 1.11 2002/02/24 03:07:12 ceres Exp $
- * 
- */
 #include <colour.h>
 #include <clubs.h>
 #include <creator.h>
 #include <newbiehelpers.h>
-
 inherit "cmds/base";
-
 private string* _colours;
-
 void create() {
   ::create();
   _colours = ({
@@ -35,28 +26,23 @@ void create() {
    "B_WHITE",
    "B_GREEN",
    "B_MAGENTA" });
-} /* create() */
-
+}
 int is_valid_colour(string name) {
    if (member_array(name, _colours) != -1) {
       return 1;
    }
    return 0;
-} /* is_valid_colour() */
-
+}
 int show_allowed_colours() {
    write("The allowed colour codes are " +
          query_multiple_short(map(_colours, (: lower_case($1) :)), 0, 0, 1) +
          ".\n");
    return 1;
-} /* show_allowed_colours() */
-
-
+}
 string* query_colour_list(int inform) {
   string* colour_list;
   string* clubs;
   string bing;
-
   switch (inform) {
   case 0:
     colour_list = USER_COLOUR_LIST;
@@ -80,30 +66,24 @@ string* query_colour_list(int inform) {
     break;
   }
   return colour_list;
-} /* query_colour_list() */
-
+}
 mixed set_colours(int inform, string event_type, string colour, int force) {
   mapping my_colours;
   string *colour_list;
   string *bad;
   string tmp;
   string name;
-
   colour_list = query_colour_list(inform);
-  
   if (inform == 2) {
     name = CLUB_HANDLER->query_club_name(event_type);
     event_type = "club_" + event_type;
   } else {
     name = lower_case(event_type);
   }
-  
   if(member_array(event_type, colour_list) == -1) {
     return notify_fail("No such type.\n");
   }
-
   my_colours = this_player()->query_my_colours();
-  
   if(colour == "default") {
     this_player()->set_my_colours(event_type, colour);
     write(name + " colour set to default.\n");
@@ -126,24 +106,19 @@ mixed set_colours(int inform, string event_type, string colour, int force) {
        }
        return 0;
     }
-
     tmp = "%^" + implode(colour_list, (: $1 + "%^ %^" + $2 :)) + "%^";
-
     this_player()->set_my_colours(event_type, tmp);
     write(name + " colour set to " + tmp + "[" + colour +
           "]%^RESET%^.\n");
   }
   return 1;
-} /* set_colours() */
-
+}
 private int show_colours(int inform) {
   string *colour_list, event;
   mapping my_colours;
   string name;
-
   colour_list = query_colour_list(inform);
   my_colours = this_player()->query_my_colours();
- 
   if (!inform) {
     write(sprintf("%-20s %s\n", "Clubs", "<list>"));
     write(sprintf("%-20s %s\n", "Inform", "<list>"));
@@ -167,9 +142,7 @@ private int show_colours(int inform) {
     }
   }
   return 1;
-} /* show_colours() */
-
-
+}
 mixed *query_patterns() {
   return ({ "<word'event type'> <string'colour'>",
               (: set_colours(0, $4[0], $4[1], 0) :),
@@ -187,4 +160,4 @@ mixed *query_patterns() {
             "inform", (: show_colours(1) :),
             "allowed", (: show_allowed_colours() :),
             "clubs", (: show_colours(2) :) });
-} /* query_patterns() */
+}

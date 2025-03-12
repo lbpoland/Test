@@ -1,7 +1,4 @@
-// Rue 2.2000
-
 inherit "/std/room/furniture/basic";
-
 void setup() {
   set_name( "birdbath" );
   set_short( "stone bird bath" );
@@ -16,4 +13,3 @@ void setup() {
   set_weight(200);
   set_value(4000);
 }
-

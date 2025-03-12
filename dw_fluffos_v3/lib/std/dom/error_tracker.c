@@ -1,5 +1,4 @@
 inherit "/std/dom/error_tracker_master";
-
 void create()
 {
   set_domain("klatch");
