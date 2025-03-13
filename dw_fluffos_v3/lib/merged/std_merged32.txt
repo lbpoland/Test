@@ -1,2551 +1,2720 @@
-# Total Tokens: 22562
-# Total Files Merged: 11
-# Total Characters: 75241
+# Total Tokens: 25236
+# Total Files Merged: 7
+# Total Characters: 84138
 
-/carriage/testhandler.c
+ure/poker.c
 ==================================================
 
-#include <room.h>
-#include <data.h>
-#include <room/carriage.h>
-#define CARRIAGE ITEMS "carriage"
-private mapping _routedetails = ([ ]);
-private mapping _routesactual = ([ ]);
-private nosave mapping _carriages = ([ ]);
-private nosave string _base_dir;
-private nosave string _carriage;
-private nosave string _pole;
-private nosave string _data_dir;
-private nosave string _save_file;
-private mapping _file_modified_time;
-private void load_data();
-private void map_carriages();
-private void save_file() {
-   unguarded((: save_object(_save_file) :));
+inherit "/std/room/furniture/games/card_base";
+inherit "/std/room/furniture/games/multiplayer_base";
+inherit "/std/room/furniture/commercial";
+#include <money.h>
+#include <room/card_base.h>
+#define HAND_TYPE_HIGH_CARD  1
+#define HAND_TYPE_PAIR       2
+#define HAND_TYPE_TWO_PAIR   3
+#define HAND_TYPE_THREE      4
+#define HAND_TYPE_STRAIGHT   5
+#define HAND_TYPE_FLUSH      6
+#define HAND_TYPE_FULL_HOUSE 7
+#define HAND_TYPE_FOUR       8
+#define HAND_TYPE_STRAIGHT_FLUSH 9
+#define POKER_STATE_ANTE      0
+#define POKER_STATE_PAID_ANTE 1
+#define POKER_STATE_DEALT     2
+#define POKER_STATE_BET       3
+#define POKER_STATE_DISCARD   4
+#define POKER_STATE_AFTER_DISCARD   5
+#define POKER_STATE_FINAL_BET 6
+#define POKER_STATE_FOLDED    7
+#define POKER_STATE_END       8
+#define TIE -1
+class hand_type {
+   int hand_type;
+   class playing_card* kickers;
+   class playing_card duplicate_1;
+   class playing_card duplicate_2;
+   class playing_card high_card;
 }
+class player_data {
+   class playing_card* hand;
+   class hand_type hand_type;
+   int bet;
+   int state;
+}
+#define BOARD_TAG "poker"
+private int _return;
+private int _ante_amount;
+private int _ante_house;
+private int _house_cut;
+private int _min_bet;
+private int _max_bet;
+private int _current_bet;
+private int _pot;
+private int _finished;
+private int _poker_phase;
+private int _turn_timeout;
+private int _draw_round;
+private int _max_draw_rounds;
+private class playing_card* _deck;
+private class playing_card* _discard;
+private mapping _player_stats;
+int query_hand_value(class playing_card* cards);
+class hand_type query_hand_type(class playing_card* hand);
 void create() {
-   seteuid(getuid());
-   _file_modified_time = ([ ]);
-   this_object()->setup();
+   multiplayer_base::create();
+   set_minimum_needed(2);
+   add_help_file("poker");
+   _ante_house = 400;
+   _ante_amount = 400;
+   _min_bet = 400;
+   _max_bet = 1200;
+   _max_draw_rounds = 1;
+   _player_stats = ([ ]);
+   set_shop_use_types(({ "poker" }));
+   commercial::create();
+   set_commercial_type("gambling");
+   set_commercial_name("poker");
 }
-void setup_carriage(string dir, string base_dir,
-                    string carriage, string pole, string save_file) {
-   _data_dir = dir;
-   _base_dir = base_dir;
-   _carriage = carriage;
-   _pole = pole;
-   _save_file = save_file;
-   unguarded((: restore_object(_save_file) :));
-   if (!_file_modified_time) {
-      _file_modified_time = ([ ]);
+string query_hand_type_string(class hand_type bing) {
+   string ret;
+   switch (bing->hand_type) {
+   case HAND_TYPE_FULL_HOUSE :
+      ret = "Full house";
+      break;
+   case HAND_TYPE_THREE :
+      ret = "Three of a kind";
+      break;
+   case HAND_TYPE_FLUSH :
+      ret = "Flush";
+      break;
+   case HAND_TYPE_STRAIGHT :
+      ret = "Straight";
+      break;
+   case HAND_TYPE_STRAIGHT_FLUSH :
+      ret = "Straight flush";
+      break;
+   case HAND_TYPE_PAIR :
+      ret = "Pair";
+      break;
+   case HAND_TYPE_FOUR :
+      ret = "Four of a kind";
+      break;
+   case HAND_TYPE_TWO_PAIR :
+      ret = "Two pairs";
+      break;
+   case HAND_TYPE_HIGH_CARD :
+      ret = "High card " + query_card_string(bing->high_card);
+      break;
+   default :
+      ret = "Nothing";
+      break;
    }
-   load_data();
-   map_carriages();
+   return ret;
 }
-mapping query_route_details() { return _routedetails; }
-mapping query_route_actual() { return _routesactual; }
-string* query_route_names() { return keys(_routesactual); }
-string query_stop_location(string name) {
-   if (_routedetails[name]) {
-     return _routedetails[name]->path;
-   }
-   return "bad stop " + name;
-}
-string query_stop_name(string name) {
-   if (_routedetails[name]) {
-      return _routedetails[name]->name;
-   }
-   return "Broken Position " + name;
-}
-int query_stop_delay(string name) {
-   if (_routedetails[name]) {
-      return _routedetails[name]->delay;
-   }
-   return 60;
-}
-class stop_list_details* query_route_stops(string route) {
-   return _routesactual[route]->stops;
-}
-object query_carriage_on_route(string route) {
-   return _carriages[route];
-}
-private void parse_stop(string fname, mapping data) {
-   string name;
-   class stop_details info;
-   if (!data["id"]) {
-      debug_printf("No id for stop %O\n", data);
-      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
-      return 0;
-   }
-   if (!data["name"]) {
-      debug_printf("No name for stop %O\n", data);
-      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
-      return 0;
-   }
-   name = data["name"];
-   if (!data["path"]) {
-      log_file("COMPILE_ERROR", "Required path field not present for stop %s\n", name);
-      return 0;
-   }
-   info = new(class stop_details);
-   info->name = data["name"];
-   if (data["path"][0] == '/') {
-      info->path = data["path"];
-   } else {
-      info->path = _base_dir + data["path"];
-   }
-   info->delay = data["delay"];
-   _routedetails[data["id"]] = info;
-   save_file();
-}
-private void parse_route(string fname, mapping data) {
-   string name;
-   class route_details info;
-   mixed bing;
-   if (!data["name"]) {
-      debug_printf("No id for route %O\n", data);
-      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
-      return 0;
-   }
-   if (!data["colour"]) {
-      debug_printf("No colour for route %O\n", data);
-      log_file("COMPILE_ERROR", "No name for stop %O\n", data);
-      return 0;
-   }
-   name = data["name"];
-   info = new(class route_details, stops : ({ }));
-   info->colour = data["colour"];
-   info->return_along = data["samereturnpath"];
-   foreach (bing in data["stop"]) {
-      if (!mapp(bing) || !stringp(bing["id"]) || !intp(bing["travel"])) {
-         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
-         log_file("COMPILE_ERROR", "Invalid data for route (%s) %O\n", name,  bing);
-      } else {
-         info->stops += ({ new(class stop_list_details, id : bing["id"],
-                                             travel_time : bing["travel"]) });
-      }
-   }
-   _routesactual[data["name"]] = info;
-   save_file();
-}
-protected void finish_compiling(string fname, mapping data) {
-   mixed* bits;
-   mapping thing;
-   string name;
-   foreach (name, bits in data) {
-      switch (name) {
-      case "stop" :
-         foreach (thing in bits) {
-            parse_stop(fname, thing);
-         }
-         break;
-      case "route" :
-         foreach (thing in bits) {
-            parse_route(fname, thing);
-         }
-         break;
-      default :
-         debug_printf("Unknown data area %s in %s\n", name, fname);
-         log_file("COMPILE_ERROR", "Unknown data area %s in %s\n", name, fname);
-         break;
-      }
-   }
-   _file_modified_time[fname] = unguarded( (: stat($(fname)) :))[1];
-   save_file();
-   map_carriages();
-}
-void scan_for_new_data() {
-   string *files;
-   string fname;
-   string *bits;
-   debug_printf("Scan for new data.");
-   if (unguarded( (: stat(__FILE__)[1] :)) !=
-       _file_modified_time[__FILE__]) {
-      _file_modified_time = ([ ]);
-   }
-   files = ({ _data_dir });
-   while (sizeof(files)) {
-      fname = files[0];
-      files = files[1..];
-      if (unguarded( (: file_size($(fname)) :)) == -2) {
-         bits = get_dir(fname + "/");
-         if (bits) {
-            bits -= ({ "RCS", ".", ".." });
-            bits = filter(bits, (: $1[0] != '.' :));
-            files += map(bits, (: $2 + "/" + $1 :), fname);
+string query_card_status(string id) {
+   string id_bing;
+   string ret;
+   string* not_playing;
+   class player_data data;
+   string* womble;
+   string place;
+   int left;
+   ret = "";
+   not_playing = ({ });
+   womble = query_player_ids();
+   place = query_money_place();
+   foreach (id_bing in womble) {
+      if (is_person_playing(id_bing)) {
+         ret += capitalize(id_bing) + " (" +
+                query_player_cap_name(id_bing) + ")";
+         data = query_player_data(id_bing);
+         if (data) {
+            if (data->state == POKER_STATE_FOLDED) {
+               ret += " Folded!\n";
+            } else {
+               if (data->state == POKER_STATE_PAID_ANTE) {
+                  ret += " (paid ante) ";
+               }
+               if (data->state == POKER_STATE_AFTER_DISCARD) {
+                  ret += " (discarded) ";
+               }
+               if (data->state == POKER_STATE_BET ||
+                   data->state == POKER_STATE_FINAL_BET) {
+                  if (id_bing == query_current_player()) {
+                     ret += " <-- Their bet ";
+                  }
+               }
+               if (data->bet) {
+                  ret += "  Current bet " +
+                         MONEY_HAND->money_value_string(data->bet, place);
+                  ret += "\n";
+               } else {
+                  ret += "  No bet yet.\n";
+               }
+            }
+         } else {
+            ret += "\n";
          }
       } else {
-         if (unguarded( (: stat($(fname)) :))[1] != _file_modified_time[fname]) {
-            debug_printf("Compiling: %s", fname);
-            DATA_HANDLER->compile_file(fname,
-                     (: finish_compiling :));
+         not_playing += ({ id_bing });
+      }
+   }
+   if (sizeof(not_playing) > 1) {
+      ret += query_multiple_short(map(not_playing, (: capitalize($1) :))) +
+                                  " are not playing.\n";
+   } else if (sizeof(not_playing) == 1) {
+      ret += query_multiple_short(map(not_playing, (: capitalize($1) :))) +
+                                  " is not playing.\n";
+   }
+   ret += "The pot is " +
+          MONEY_HAND->money_value_string(_pot, place) + ".\n";
+   if (is_game_started()) {
+      if (_draw_round < _max_draw_rounds) {
+         left = _max_draw_rounds - _draw_round;
+         ret += left + " draw round" + (left>1?"s":"") + " left.\n";
+      }
+   }
+   ret += "\n";
+   if (id) {
+      if (!_finished) {
+         data = query_player_data(id);
+         if (data && sizeof(data->hand)) {
+            ret += "Your hand (" +
+                   query_hand_type_string(data->hand_type) +
+                   (data->state == POKER_STATE_FOLDED?" -- Folded":"") +
+                   "):\n";
+            if (data->state != POKER_STATE_FOLDED) {
+               ret += query_hand_string(data->hand,
+                                     CARD_HAND_THREE|CARD_HAND_LETTERS,
+                                     this_player()->query_cols());
+            }
          }
-      }
-   }
-   _file_modified_time[__FILE__] =
-                unguarded( (: stat(__FILE__)[1] :));
-}
-private string trim(string str) {
-   while (strlen(str) && str[0] == ' ') {
-      str = str[1..];
-   }
-   while (strlen(str) && str[<1] == ' ') {
-      str = str[0..<2];
-   }
-   return str;
-}
-void load_data() {
-   scan_for_new_data();
-}
-private void map_carriages() {
-  string route;
-  int i, j;
-  class route_details rods;
-  class route_details new_rods;
-  string *locshorts;
-  object carriage;
-  object car;
-  object room;
-  object pole;
-  class stop_list_details loc;
-  string str;
-  foreach( route, rods in _routesactual) {
-    carriage = 0;
-    if (!_carriages[route]) {
-      foreach( car in children( _carriage ) ) {
-        if (clonep(car) && car->query_carriage_name() == route) {
-          carriage = car;
-          break;
-        }
-      }
-    } else {
-      carriage = _carriages[route];
-    }
-    locshorts = ({ });
-    foreach (loc in rods->stops) {
-       str = query_stop_name(loc->id);
-       if (str) {
-          locshorts += ({ str });
-       }
-    }
-    j = 0;
-    foreach (loc in rods->stops) {
-      str = query_stop_location(loc->id);
-      room = load_object(str);
-      if(objectp(room)) {
-        if( room->query_property("test pole")) {
-          pole = room->query_property("test pole");
-        } else {
-          pole = clone_object(_pole);
-          if(objectp(pole)) {
-            pole->move(room);
-            room->add_property(ROOM_KEEP_PROP);
-          }
-        }
-        if(objectp(pole)) {
-          pole->setup_route(
-                  locshorts[(j+1)..] + locshorts[0..j],
-                  _routesactual[route]->colour,
-                  route);
-        }
-      j++;
-      }
-    }
-    if (rods->return_along) {
-       new_rods = copy(rods);
-       for (i = sizeof(rods->stops) - 2; i >= 1; i--) {
-          new_rods->stops += ({ rods->stops[i] });
-       }
-    } else {
-       new_rods = rods;
-    }
-    if (!carriage) {
-      carriage = clone_object( _carriage );
-      carriage->make_carriage( route, new_rods, this_object() );
-      carriage->setup();
-    } else {
-      carriage->update_route( route, new_rods, this_object() );
-      carriage->setup();
-    }
-    if(objectp(carriage)) {
-      _carriages[route] = carriage;
-    }
-  }
-}
-mixed* stats() {
-   mixed* ret;
-   string route;
-   object ob;
-   ret = ({ });
-   foreach (route in query_route_names()) {
-      ob = query_carriage_on_route(route);
-      if (ob) {
-         ret += ({ ({ route + "-carriage", file_name(ob) })  });
-      }
-      ret += ({ ({ route + "-colour", _routesactual[route]->colour }) });
-      ret += ({ ({ route + "-current stop", ob->query_current_stop()->name })  });
-      ret += ({ ({ route + "-next stop", ob->query_next_stop()->name })  });
-      if (ob && ob->query_outside()) {
-         ret += ({ ({ route + "-outside", file_name(ob->query_outside()) }) });
+         if (_finished) {
+            tell_all_players(query_player_cap_name(id) + " peeks at their hand on " +
+                         the_short() + ".\n", ({ id }));
+         }
+      } else {
+         foreach (id in query_started_player_ids()) {
+            data = query_player_data(id);
+            if (data && sizeof(data->hand)) {
+               ret += query_player_cap_name(id);
+               if (data->state == POKER_STATE_FOLDED) {
+                  ret += " folded, so the cards are hidden.\n";
+               } else {
+                  ret += " hand (" +
+                         query_hand_type_string(data->hand_type) + ":\n";
+                  ret += query_hand_string(data->hand, CARD_HAND_SINGLE,
+                                        this_player()->query_cols());
+               }
+            }
+         }
       }
    }
    return ret;
 }
-
-==================================================
-FILE: room/controller/club_room_controller.c
-==================================================
-
-inherit "/std/basic/setup";
-#include <clubs.h>
-#include <room/club_room.h>
-private nosave string _save_directory;
-private mapping _options;
-private string _club;
-private mapping _ownership;
-private nosave mapping _default_ownership;
-private int _board_contained;
-class ownership {
-   string name;
-   int type;
-   int control_type;
-}
-private void setup_discussions();
-void save_me();
-void load_me();
-void create() {
-   _options = ([ ]);
-   _ownership = ([ ]);
-   _default_ownership = ([ ]);
-   do_setup();
-   call_out((: load_me() :), 0);
-}
-private void add_board_to(string club) {
-   int board_count;
-   board_count = CLUB_HANDLER->query_elected_option(club,
-                                                    CLUB_ROOM_BOARD_COUNT);
-   board_count++;
-   if (board_count == 1) {
-      CLUB_HANDLER->create_club_board(club);
+string long(string str, int dark) {
+   if (dark) {
+      return ::long() +
+             "It is too dark to make out the pieces on the board.\n";
    }
-   CLUB_HANDLER->set_elected_option(club,
-                                    CLUB_ROOM_BOARD_COUNT,
-                                    board_count);
+   return ::long() + query_card_status(find_player_id_of_person(this_player()));
 }
-private void remove_board_from(string club) {
-   int board_count;
-   board_count = CLUB_HANDLER->query_elected_option(club,
-                                                    CLUB_ROOM_BOARD_COUNT);
-   board_count--;
-   if (board_count == 0 &&
-       CLUB_HANDLER->query_club_board(club)) {
-      CLUB_HANDLER->remove_club_board(club);
+int check_end_round() {
+   int bet;
+   string id;
+   class player_data data;
+   foreach (id in query_started_player_ids()) {
+      data = query_player_data(id);
+      if (data->state != POKER_STATE_FOLDED) {
+         if (!data->bet) {
+            return 0;
+         } else if (!bet && data->bet) {
+            bet = data->bet;
+         } else if (bet != data->bet) {
+            return 0;
+         }
+      }
    }
-   if (board_count <= 0) {
-      CLUB_HANDLER->remove_elected_option(club,
-                                          CLUB_ROOM_BOARD_COUNT);
+   if (bet) {
+      call_out("complete_round", 2);
+      _poker_phase = POKER_STATE_END;
+      return 1;
+   }
+}
+void next_person_turn() {
+   class player_data data;
+   string start_id;
+   start_id = query_current_player();
+   do {
+      increment_current_player();
+      data = query_player_data(query_current_player());
+   } while (data->state == POKER_STATE_FOLDED &&
+            query_current_player() != start_id);
+   if (query_current_player() == start_id) {
+      printf("Force end of game.\n");
+      call_out("complete_round", 2, 1);
+      _poker_phase = POKER_STATE_END;
    } else {
-      CLUB_HANDLER->set_elected_option(club,
-                                       CLUB_ROOM_BOARD_COUNT,
-                                       board_count);
+      call_out("tell_current_player", 0, "%^BOLD%^Your turn!%^RESET%^\n");
    }
 }
-int set_club(string club) {
-   class ownership bing;
-   class ownership fluff;
-   string name;
-   if (!CLUB_HANDLER->is_elected_club(club)) {
-      return 0;
-   }
-   if (_club &&
-       CLUB_HANDLER->query_club_name(club) ==
-       CLUB_HANDLER->query_club_name(_club)) {
-      return 1;
-   }
-   if (_board_contained) {
-      if (_club) {
-         remove_board_from(_club);
-      }
-      add_board_to(club);
-   }
-   _club = club;
-   foreach (name, bing in _ownership) {
-      if (bing->control_type != CLUB_ROOM_CONTROLLED_FIXED) {
-         if (_default_ownership[name]) {
-            fluff = _default_ownership[name];
-            bing->type = fluff->type;
-            if (functionp(fluff->name)) {
-               bing->name = evaluate(fluff->name,
-                                     name,
-                                     club);
-            } else {
-               bing->name = fluff->name;
-            }
+void deal_cards() {
+   string id;
+   class player_data data;
+   _deck = make_deck(1, 0);
+   _deck = shuffle_deck(_deck);
+   foreach (id in query_currently_playing_ids()) {
+      data = query_player_data(id);
+      data->hand = sort_cards(_deck[0..4], 3);
+      data->bet = 0;
+      if (data->state != POKER_STATE_FOLDED) {
+         if (!_max_draw_rounds) {
+            data->state = POKER_STATE_FINAL_BET;
+         } else {
+            data->state = POKER_STATE_BET;
          }
       }
+      data->hand_type = query_hand_type(data->hand);
+      _deck = _deck[5..];
+      if (query_player_object(id)) {
+         tell_player(id, "Your hand:\n" +
+                query_hand_string(data->hand, CARD_HAND_THREE|CARD_HAND_LETTERS,
+                                  query_player_object(id)->query_cols()) +
+            query_hand_type_string(data->hand_type) + ".\n");
+      }
    }
-   call_out((: setup_discussions :), 1);
-   save_me();
+   if (!_max_draw_rounds) {
+      _poker_phase = POKER_STATE_FINAL_BET;
+   } else {
+      _poker_phase = POKER_STATE_BET;
+   }
+   next_person_turn();
+   tell_all_players(query_player_cap_name(query_current_player()) +
+                    " goes first.\n");
+   _current_bet = 0;
+}
+int start_game() {
+   class player_data data;
+   string id;
+   randomise_player_numbers();
+   if (!::start_game()) {
+      return 0;
+   }
+   foreach (id in query_player_ids()) {
+      data = new(class player_data);
+      data->bet = 0;
+      data->hand = ({ });
+      data->state = POKER_STATE_ANTE;
+      set_player_data(id, data);
+   }
+   _poker_phase = POKER_STATE_ANTE;
+   _pot = 0;
+   _finished = 0;
+   _draw_round = 0;
+   _discard = ({ });
+   tell_all_players("%^BOLD%^Place your ante to start playing.%^RESET%^\n");
    return 1;
 }
-string query_club() {
-   return _club;
-}
-void set_board_associated(int board_associated) {
-   board_associated = board_associated != 0;
-   if (_club) {
-      if (_board_contained != board_associated) {
-         if (board_associated) {
-            add_board_to(_club);
-         } else {
-            remove_board_from(_club);
-         }
+void check_for_finish_ante() {
+   string id;
+   class player_data data;
+   object ob;
+   foreach (id in query_currently_playing_ids()) {
+      data = query_player_data(id);
+      ob = query_player_object(id);
+      if (ob && !interactive(ob)) {
+         data->state = POKER_STATE_FOLDED;
       }
-   }
-   _board_contained = board_associated;
-}
-int query_board_associated() {
-   return _board_contained;
-}
-int is_option(string name) {
-   return !undefinedp(_options[name]);
-}
-mixed query_option(string name) {
-   return _options[name];
-}
-int remove_option(string name) {
-   if (is_option(name)) {
-      map_delete(_options, name);
-      return 1;
-   }
-   return 0;
-}
-int set_option(string name, mixed value) {
-   _options[name] = value;
-}
-int add_controlled_ownership(string name,
-                             int type,
-                             int default_type,
-                             mixed default_name) {
-   class ownership bing;
-   if (!_ownership[name]) {
-      bing = new(class ownership);
-      bing->name = CLUB_UNKNOWN_MEMBER;
-      bing->type = CLUB_ROOM_OWNED_PERSON;
-      bing->control_type = type;
-      _ownership[name] = bing;
-      bing = new(class ownership);
-      bing->name = default_name;
-      bing->type = default_type;
-      bing->control_type = type;
-      _default_ownership[name] = bing;
-      return 1;
-   }
-   return 0;
-}
-int set_controlled_ownership_owner(string controlled,
-                                   string owner,
-                                   int type) {
-   class ownership bing;
-   if (!_ownership[controlled]) {
-      return 0;
-   }
-   bing = _ownership[controlled];
-   bing->type = type;
-   bing->name = owner;
-   save_me();
-   return 1;
-}
-mixed discuss_nominate_ownership(string message,
-                                 string club_name,
-                                 class discussion_idea frog,
-                                 string arg1,
-                                 string arg2) {
-   string *nominated;
-   string body;
-   string *nom;
-   string name;
-   int ret;
-   switch (message) {
-   case CLUB_DISCUSS_MESSAGE_VERIFY :
-      if (CLUB_HANDLER->query_club_name(club_name) !=
-          CLUB_HANDLER->query_club_name(_club)) {
-         return 0;
-      }
-      if (!_ownership[frog->information]) {
-         return 0;
-      }
-      return 1;
-   case CLUB_DISCUSS_MESSAGE_COMPLETE :
-      body = "Hello!\n\nThe discussion item "
-         "added at " + ctime(frog->time_added) + ", finished at " +
-         ctime(time()) + " and added by " + frog->added_by +
-         " has finished.";
-      body += "  The vote for nominations for the ownership of " +
-         frog->information + " in the club " +
-         CLUB_HANDLER->query_club_name(club_name) +
-         " has been completed and the "
-         "results are:\n";
-      nominated = ({ });
-      foreach (name, nom in frog->choices) {
-         body += name + ": " + query_multiple_short(nom);
-         if ((member_array(name, nom) != -1 ||
-              name[0..strlen(CLUB_ROOM_POSITION_START)] == CLUB_ROOM_POSITION_START) &&
-              sizeof(nom) >= 2) {
-            body += " (accepted)\n";
-            nominated += ({ name });
-         } else {
-            body += "\n";
-         }
-      }
-      if (frog->information) {
-         body += frog->information;
-      }
-      if (sizeof(nominated)) {
-         if (_ownership[frog->information]) {
-            if (sizeof(nominated) != 1) {
-               body += "Therefor we had added an election with " +
-                  query_multiple_short(nominated) +
-                  " for the ownership of " +
-                  frog->information + ".\n";
-               CLUB_HANDLER->add_discussion_item(club_name,
-                                   CLUB_DISCUSS_FUNCTION,
-                                   frog->added_by,
-                                   ({ file_name(this_object()),
-                                      "discuss_elect_ownership" }),
-                                   frog->information,
-                                   nominated,
-                                   7 * (24 * 60 * 60),
-                                   0);
-            } else {
-               body += "Only " + nominated[0] +
-                  " was nominated, so they are given ownership immediately.\n";
-               if (name[0..strlen(CLUB_ROOM_POSITION_START)] == CLUB_ROOM_POSITION_START) {
-                  set_controlled_ownership_owner(frog->information,
-                                                 nominated[0][strlen(CLUB_ROOM_POSITION_START)..],
-                                                 CLUB_ROOM_OWNED_POSITION);
-               } else {
-                  set_controlled_ownership_owner(frog->information,
-                                                 nominated[0],
-                                                 CLUB_ROOM_OWNED_PERSON);
-               }
-            }
-         } else {
-            body += "The ownership item appears to have vanished!\n";
-         }
-      } else {
-         if (_ownership[frog->information]) {
-            body += "No one accepted their nomination, so nothing "
-               "happened.\n";
-            CLUB_HANDLER->add_discussion_item(club_name,
-                                CLUB_DISCUSS_FUNCTION,
-                                frog->added_by,
-                                frog->name,
-                                frog->information,
-                                ({ }),
-                                7 * (24 * 60 * 60),
-                                frog->optional_data);
-         } else {
-            body += "The position in the club appears to have vanished!\n";
-         }
-      }
-      return body;
-   case CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION :
-      return "Nominations for ownership of " + frog->information;
-   case CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION :
-      body = "Nominations for the ownership of " + frog->information +
-         ", positions or people can be nominated to have ownership.  "
-         "Positions are nominated by putting the word 'position' in front "
-         "ie: 'position president'.\n"
-         "Currently nominated are:\n";
-      foreach (name, nom in frog->choices) {
-         body += name + ": " + query_multiple_short(nom);
-         if ((member_array(name, nom) != -1 ||
-              name[0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START) &&
-              sizeof(nom) >= 2) {
-            body += " (accepted)\n";
-         } else {
-            body += "\n";
-         }
-      }
-      return body;
-   case CLUB_DISCUSS_MESSAGE_NOMINATION :
-      if (CLUB_HANDLER->is_member_of(_club, arg1)) {
-         if (CLUB_HANDLER->is_member_of(_club, arg2) ||
-             (name[0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START &&
-              CLUB_HANDLER->is_valid_position(_club,
-                                              name[strlen(CLUB_ROOM_POSITION_START)..]))) {
-            if (!frog->choices[arg2]) {
-               frog->choices[arg2] = ({ arg1 });
-               return 1;
-            } else if (member_array(arg1,
-                                    frog->choices[arg2]) == -1) {
-               frog->choices[arg2] += ({ arg1 });
-               return 1;
-            }
-         }
-      }
-      return 0;
-   case CLUB_DISCUSS_MESSAGE_TYPE :
-      return CLUB_DISCUSS_MESSAGE_TYPE_NOMINATE;
-   case CLUB_DISCUSS_MESSAGE_REMOVE_MEMBER :
-      if (frog->choices[arg1]) {
-         map_delete(frog->choices, arg1);
-         ret = 1;
-      }
-      foreach (name, nom in frog->choices) {
-         if (member_array(arg1, nom) != -1) {
-            frog->choices[name] = nom - ({ arg1 });
-            if (!sizeof(frog->choices[name])) {
-               map_delete(frog->choices, name);
-            }
-            ret = 1;
-         }
-      }
-      return ret;
-   case CLUB_DISCUSS_MESSAGE_REMOVE_POSITION :
-      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
-         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
-         ret = 1;
-      }
-      return ret;
-   case CLUB_DISCUSS_MESSAGE_CHANGE_POSITION :
-      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
-         frog->choices[CLUB_ROOM_POSITION_START + arg2] = frog->choices[CLUB_ROOM_POSITION_START + arg1];
-         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
-         ret = 1;
-      }
-      return ret;
-   case CLUB_DISCUSS_MESSAGE_NOMINATION_QUERY :
-      return frog->choices;
-   }
-}
-mixed discuss_elect_ownership(string message,
-                              string club_name,
-                              class discussion_idea frog,
-                              string arg1,
-                              string arg2) {
-   string body;
-   string name;
-   int votes;
-   int ret;
-   int max_votes;
-   string *names;
-   switch (message) {
-   case CLUB_DISCUSS_MESSAGE_VERIFY :
-      if (CLUB_HANDLER->query_club_name(club_name) !=
-          CLUB_HANDLER->query_club_name(_club)) {
-         return 0;
-      }
-      if (!_ownership[frog->information]) {
-         return 0;
-      }
-      return 1;
-   case CLUB_DISCUSS_MESSAGE_COMPLETE :
-      body = "Hello!\n\nThe discussion item "
-         "added at " + ctime(frog->time_added) + ", finished at " +
-         ctime(time()) + " and added by " + frog->added_by +
-         " has finished.";
-      body += "  The vote for elections of the ownership of " +
-              frog->information +
-         " in the club " +
-         CLUB_HANDLER->query_club_name(club_name) +
-         " has been completed and the "
-         "results are:\n";
-      names = ({ });
-      max_votes = 0;
-      foreach (name, votes in frog->choices) {
-         body += name + ": " + votes + "\n";
-         if (votes > max_votes) {
-            max_votes = votes;
-            names = ({ name });
-         } else if (votes == max_votes) {
-            names += ({ name });
-         }
-      }
-      if (_ownership[frog->information]) {
-         if (sizeof(names) == 1) {
-            body += "Therefor we set " + names[0] +
-                  " as owning " + frog->information + ".\n";
-            if (names[0][0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START) {
-               set_controlled_ownership_owner(frog->information,
-                                              names[0][strlen(CLUB_ROOM_POSITION_START)..],
-                                              CLUB_ROOM_OWNED_POSITION);
-             } else {
-               set_controlled_ownership_owner(frog->information,
-                                              names[0],
-                                              CLUB_ROOM_OWNED_PERSON);
-             }
-         } else {
-            body += "There was a tie for the results of the position, readding "
-                    "a discussion with the tied members: " +
-                    query_multiple_short(names) + ".\n";
-            CLUB_HANDLER->add_discussion_item(club_name,
-                                   CLUB_DISCUSS_FUNCTION,
-                                   frog->added_by,
-                                   ({ file_name(this_object()),
-                                      "discuss_elect_ownership" }),
-                                   frog->information,
-                                   names,
-                                   7 * (24 * 60 * 60),
-                                   frog->optional_data);
-         }
-      } else {
-         body += "The ownership item appears to have vanished!\n";
-      }
-      return body;
-   case CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION :
-      return "Election for ownership of " + frog->information;
-   case CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION :
-      body = "Election for the ownership of " + frog->information +
-         ".\n";
-      return body;
-   case CLUB_DISCUSS_MESSAGE_TYPE :
-      return CLUB_DISCUSS_MESSAGE_TYPE_VOTE;
-   case CLUB_DISCUSS_MESSAGE_REMOVE_MEMBER :
-      if (frog->choices[arg1]) {
-         map_delete(frog->choices, arg1);
-         ret = 1;
-      }
-      return ret;
-   case CLUB_DISCUSS_MESSAGE_REMOVE_POSITION :
-      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
-         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
-         ret = 1;
-      }
-      return ret;
-   case CLUB_DISCUSS_MESSAGE_CHANGE_POSITION :
-      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
-         frog->choices[CLUB_ROOM_POSITION_START + arg2] = frog->choices[CLUB_ROOM_POSITION_START + arg1];
-         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
-         ret = 1;
-      }
-      return ret;
-   }
-}
-private void setup_discussions() {
-   string name;
-   class ownership bing;
-   foreach (name, bing in _ownership) {
-      if (bing->control_type != CLUB_ROOM_CONTROLLED_FIXED) {
-         CLUB_HANDLER->add_discussion_item(_club,
-                                           CLUB_DISCUSS_FUNCTION,
-                                           ({ file_name(this_object()),
-                                              "discuss_nominate_ownership" }),
-                                           name,
-                                           ({ }),
-                                           7 * 24 * 60 * 60,
-                                           0);
-      }
-   }
-}
-void load_me() {
-   if (_save_directory) {
-      unguarded( (: restore_object(_save_directory + CLUB_ROOM_CONTROLLER_SAVE_FILE ) :) );
-   }
-}
-void save_me() {
-   if (_save_directory) {
-      unguarded( (: save_object(_save_directory + CLUB_ROOM_CONTROLLER_SAVE_FILE ) :) );
-   }
-}
-void set_save_directory(string save_directory) {
-   while (save_directory[<1] == '/') {
-      save_directory = save_directory[0..<2];
-   }
-   _save_directory = save_directory;
-}
-string query_save_directory() {
-   return _save_directory;
-}
-string query_room_save_file_name(mixed fname) {
-   if (objectp(fname)) {
-      fname = file_name(fname);
-   }
-   fname = fname[strsrch(fname, '/', -1)..];
-   return _save_directory + fname;
-}
-
-==================================================
-FILE: room/controller/topography/area.c
-==================================================
-
-#include <dirs.h>
-#include <image.h>
-inherit "/std/room";
-mapping direction_bits = ([
-    "north": 1,
-    "northeast": 2,
-    "east": 4,
-    "southeast": 8,
-    "south": 16,
-    "southwest": 32,
-    "west": 64,
-    "northwest": 128,
-    "up": 256,
-    "down": 512,
-]);
-class AREA_INFO {
-  string base;
-  int *origin;
-  int *size;
-  mixed *bbox;
-  mixed *vertices;
-  class IMAGE_INFO height;
-  class IMAGE_INFO exits;
-}
-private int dbg_lvl = 0;
-private string debugger = "jeremy";
-private string _handler;
-private class AREA_INFO *areas = ({ });
-private mapping room_cache = ([ ]);
-private mapping area_cache = ([ ]);
-void set_handler(string handler) {
-   _handler = handler;
-}
-string query_handler() {
-   return _handler;
-}
-void set_debugger(string s) { debugger = s; }
-string query_debugger() { return debugger; }
-void set_debug_level(int l) { dbg_lvl = l; }
-int query_debug_level() { return dbg_lvl; }
-mixed query(string s) { return fetch_variable(s); }
-void set_base(int i, string s) { areas[i]->base = s; }
-string query_base(int i) { return areas[i]->base; }
-void set_origin(int i, int *o) { areas[i]->origin = copy(o); }
-int *query_origin(int i) { return copy(areas[i]->origin); }
-void create() {
-  do_setup++;
-  ::create();
-  do_setup--;
-  set_keep_room_loaded(1);
-  if ( !do_setup ) {
-    this_object()->setup();
-    this_object()->reset();
-  }
-}
-int *quantize_to_origin(int *coord_r, int a) {
-  int size2, i, *coord_q;
-  coord_q = allocate(3);
-  for (i = 0; i < 3; i++) {
-    size2 = areas[a]->size[i] * 2;
-    if (coord_r[i] < areas[a]->origin[i]) {
-      coord_q[i] = coord_r[i] - areas[a]->size[i];
-    } else {
-      coord_q[i] = coord_r[i] + areas[a]->size[i];
-    }
-    coord_q[i] = ((coord_q[i] - areas[a]->origin[i]) / size2) * size2
-      + areas[a]->origin[i];
-  }
-  return coord_q;
-}
-void set_size(int i, mixed s) {
-  if (intp(s)) {
-    areas[i]->size = ({ s, s, s });
-  } else if (arrayp(s) && (sizeof(s) == 3)) {
-    areas[i]->size = copy(s);
-  } else {
-    error("Illegal size; must be int or 3-element array.\n");
-  }
-}
-varargs void set_height_map(int i, string map_file, int rle) {
-  int *nw;
-  areas[i]->height = IMAGE_HANDLER->load_image(map_file, rle);
-  if (arrayp(areas[i]->bbox)) {
-    nw = copy(areas[i]->bbox[0]);
-    nw[0] = areas[i]->bbox[1][0] - 1;
-    nw[1] += 1;
-    nw[2] += 1;
-    areas[i]->height->nw_coord = quantize_to_origin(nw, i);
-  }
-}
-varargs void set_exits_map(int i, string map_file, int rle) {
-  int *nw;
-  areas[i]->exits = IMAGE_HANDLER->load_image(map_file, rle);
-  if (arrayp(areas[i]->bbox)) {
-    nw = copy(areas[i]->bbox[0]);
-    nw[0] = areas[i]->bbox[1][0] - 1;
-    nw[1] += 1;
-    nw[2] += 1;
-    areas[i]->exits->nw_coord = quantize_to_origin(nw, i);
-  }
-}
-int new_area() {
-  areas += ({ new(class AREA_INFO) });
-}
-void set_vertices(int a, mixed *vs) {
-  int v, i;
-  if (!arrayp(areas[a]->origin)) {
-    error("Origin unset - setting to (0,0,0).\n");
-    areas[a]->origin = ({ 0, 0, 0 });
-  }
-  areas[a]->vertices = copy(vs);
-  areas[a]->bbox = ({ copy(vs[0]), copy(vs[0]) });
-  for (i = 0; i < 3; i++) {
-    areas[a]->bbox[0][i] += areas[a]->origin[i];
-    areas[a]->bbox[1][i] += areas[a]->origin[i];
-  }
-  for (v = 0; v < sizeof(areas[a]->vertices); v++) {
-    for (i = 0; i < 3; i++) {
-      areas[a]->vertices[v][i] += areas[a]->origin[i];
-      if (areas[a]->vertices[v][i] < areas[a]->bbox[0][i]) {
-        areas[a]->bbox[0][i] = areas[a]->vertices[v][i];
-      } else if (areas[a]->vertices[v][i] > areas[a]->bbox[1][i]) {
-        areas[a]->bbox[1][i] = areas[a]->vertices[v][i];
-      }
-    }
-  }
-}
-int in_bbox(int *coord, mixed *bbox) {
-  if ((coord[0] < bbox[0][0]) || (coord[0] > bbox[1][0])) {
-    return 0;
-  }
-  if ((coord[1] < bbox[0][1]) || (coord[1] > bbox[1][1])) {
-    return 0;
-  }
-  if ((coord[2] < bbox[0][2]) || (coord[2] > bbox[1][2])) {
-    return 0;
-  }
-  return 1;
-}
-int in_area(int a, int *v) {
-  int crossings, i, i0, i1, de, int_n, below_vertex;
-  mixed *vs;
-  if (!in_bbox(v, areas[a]->bbox)) {
-    return 0;
-  }
-  vs = allocate(2);
-  for (i = 0; i < sizeof(areas[a]->vertices); i++) {
-    below_vertex = 0;
-    vs[0] = areas[a]->vertices[i];
-    if (i < sizeof(areas[a]->vertices)-1) {
-      vs[1] = areas[a]->vertices[i+1];
-    } else {
-      vs[1] = areas[a]->vertices[0];
-    }
-    if ((v[1] < vs[0][1]) && (v[1] < vs[1][1])) {
-      continue;
-    }
-    if ((v[1] > vs[0][1]) && (v[1] > vs[1][1])) {
-      continue;
-    }
-    if ((v[0] > vs[0][0]) && (v[0] > vs[1][0])) {
-      continue;
-    }
-    if ((v[0] < vs[0][0]) && (v[0] < vs[1][0])) {
-      if (v[1] != vs[0][1]) {
-        if (v[1] != vs[1][1]) {
-          crossings++;
-        }
-        continue;
-      } else {
-        below_vertex = 1;
-      }
-    }
-    if (vs[0][1] == vs[1][1]) {
-      if (!below_vertex) {
-        return 1;
-      }
-      continue;
-    }
-    if ((v[0] == vs[0][0]) && (v[1] == vs[0][1])) {
-      return 1;
-    }
-    if ((vs[0][0] == vs[1][0]) && !below_vertex) {
-      return 1;
-    }
-    if (v[1] == vs[1][1]) {
-      continue;
-    }
-    if (v[1] == vs[0][1]) {
-      if (v[0] > vs[0][0]) {
-        continue;
-      }
-      i0 = i;
-      while (areas[a]->vertices[i0][1] == v[1]) {
-        i0--;
-        if (i0 < 0) i0 = sizeof(areas[a]->vertices) - 1;
-      }
-      i1 = i;
-      while (areas[a]->vertices[i1][1] == v[1]) {
-        i1++;
-        if (i1 >= sizeof(areas[a]->vertices)) i1 = 0;
-      }
-      crossings++;
-      if (((areas[a]->vertices[i0][1] > v[1]) &&
-           (areas[a]->vertices[i1][1] > v[1])) ||
-          ((areas[a]->vertices[i0][1] < v[1]) &&
-           (areas[a]->vertices[i1][1] < v[1]))) {
-        crossings++;
-      }
-      continue;
-    }
-    de = vs[1][1] - vs[0][1];
-    int_n = ceil(to_float(vs[1][0] - vs[0][0])*(v[1] - vs[0][1])/de
-                 + vs[0][0] + 0.5);
-    if (int_n > v[0]) {
-      crossings++;
-    }
-  }
-  return (crossings & 1);
-}
-object clone_room(int a, int *coord_q, string coord_s) {
-  int i, j, e, bit;
-  string dir;
-  object room;
-  room = clone_object(areas[a]->base);
-  room_cache[coord_s] = room;
-  area_cache[coord_s] = a;
-  room->set_room_size(areas[a]->size);
-  room->set_co_ord(coord_q);
-  if (areas[a]->exits) {
-    i = (areas[a]->origin[0] - coord_q[0])/(2*areas[a]->size[0]);
-    j = (coord_q[1] - areas[a]->origin[1])/(2*areas[a]->size[1]);
-    if ((i < areas[a]->exits->size[0]) && (j < areas[a]->exits->size[1])
-        && (i >= 0) && (j >= 0)) {
-      e = areas[a]->exits->image[i][j];
-      foreach (dir, bit in direction_bits) {
-        if (e & bit) {
-          room->add_exit(dir, "", "path");
-        }
-      }
-      room->add_property("image_cell", ({ i, j }));
-    }
-  }
-  return room;
-}
-object find_room_at_coord(int *coord) {
-  int a, ac, *coord_q;
-  string coord_s;
-  object room;
-  coord_s = sprintf("%d:%d:%d", coord[0], coord[1], coord[2]);
-  if (objectp(room = room_cache[coord_s])) {
-    return room;
-  }
-  if (!undefinedp(ac = area_cache[coord_s])) {
-    return clone_room(ac, coord, coord_s);
-  }
-  for (a = 0; a < sizeof(areas); a++) {
-    coord_q = quantize_to_origin(coord, a);
-    coord_s = sprintf("%d:%d:%d", coord_q[0], coord_q[1], coord_q[2]);
-    if (objectp(room = room_cache[coord_s])) {
-      return room;
-    }
-    if (!undefinedp(ac = area_cache[coord_s])) {
-      return clone_room(ac, coord_q, coord_s);
-    }
-    if (!in_area(a, coord_q)) {
-      continue;
-    }
-    return clone_room(a, coord_q, coord_s);
-  }
-  return 0;
-}
-object find_room_at_exit(object r, int *d, string direc) {
-  int a, ac, i, *coord, *coord_r, *coord_q;
-  string coord_s;
-  object room;
-  mixed size_r;
-  if (dbg_lvl > 0) {
-    tell_creator(debugger, "%s::find_room_at_exit()\n"
-                 "  r: %O\n"
-                 "  d: %O\n"
-                 "  direc: %O\n",
-                 file_name(this_object()), r, d, direc);
-  }
-  if (!arrayp(d)) {
-    return 0;
-  }
-  coord = r->query_co_ord();
-  size_r = r->query_actual_room_size();
-  if (!arrayp(size_r)) {
-    size_r = r->query_room_size();
-    if (!arrayp(size_r)) {
-      size_r = ({ size_r, size_r, size_r });
-    }
-  }
-  coord_r = allocate(3);
-  for (a = 0; a < sizeof(areas); a++) {
-    for (i = 0; i < 3; i++) {
-      coord_r[i] = coord[i] + (size_r[i] + areas[a]->size[i]) * d[i];
-    }
-    coord_s = sprintf("%d:%d:%d", coord_r[0], coord_r[1], coord_r[2]);
-    return load_object(_handler + ":" + coord_s);
-#if 0
-    if (objectp(room = room_cache[coord_s])) {
-      if (dbg_lvl > 0) {
-        tell_creator(debugger, "%s::find_room_at_exit()\n"
-                 "  found room %O cached at %s...\n",
-                 file_name(this_object()), room, coord_s);
-      }
-      return room;
-    }
-    if (!undefinedp(ac = area_cache[coord_s])) {
-      if (dbg_lvl > 0) {
-        tell_creator(debugger, "%s::find_room_at_exit()\n"
-                 "  found area %O cached at %s...\n",
-                 file_name(this_object()), ac, coord_s);
-      }
-      return clone_room(ac, coord_r, coord_s);
-    }
-    coord_q = quantize_to_origin(coord_r, a);
-    coord_s = sprintf("%d:%d:%d", coord_q[0], coord_q[1], coord_q[2]);
-    if (objectp(room = room_cache[coord_s])) {
-      return room;
-    }
-    if (!undefinedp(ac = area_cache[coord_s])) {
-      return clone_room(ac, coord_q, coord_s);
-    }
-    if (!in_area(a, coord_q)) {
-      continue;
-    }
-    return clone_room(a, coord_q, coord_s);
-#endif
-  }
-  return 0;
-}
-int goto_room_at_coord(int *coord) {
-  return this_player()->move_with_look(find_room_at_coord(coord));
-}
-int goto_room_at_exit(int *d, string direc) {
-  return this_player()->move_with_look(find_room_at_exit(
-                        environment(this_player()), d, direc));
-}
-void print_images(int a) {
-  if (areas[a]->height) {
-    printf("-------- Height:\n");
-    IMAGE_HANDLER->print_image(areas[a]->height);
-  }
-  if (areas[a]->exits) {
-    printf("-------- Exits:\n");
-    IMAGE_HANDLER->print_image(areas[a]->exits);
-  }
-}
-void print_map(int a) {
-  int s, e;
-  string l = "";
-  class IMAGE_INFO exits;
-  if (areas[a]->exits) {
-    exits = areas[a]->exits;
-    for (s = 0; s < exits->size[1]; s++) {
-      for (e = 0; e < exits->size[0]; e++) {
-        l += (exits->image[s][e] & 128)?"\\":" ";
-        l += (exits->image[s][e] & 1)  ?"|":" ";
-        l += (exits->image[s][e] & 2)  ?"/":" ";
-      }
-      l += "\n";
-      for (e = 0; e < exits->size[0]; e++) {
-        l += (exits->image[s][e] & 64) ?"-":" ";
-        l += "*";
-        l += (exits->image[s][e] & 4)  ?"-":" ";
-      }
-      l += "\n";
-      for (e = 0; e < exits->size[0]; e++) {
-        l += (exits->image[s][e] & 32) ?"/":" ";
-        l += (exits->image[s][e] & 16) ?"|":" ";
-        l += (exits->image[s][e] & 8)  ?"\\":" ";
-      }
-      l += "\n";
-    }
-    write(l);
-  }
-}
-
-==================================================
-FILE: room/controller/topography/interroom.c
-==================================================
-
-#include <map.h>
-inherit "/std/room";
-class IROOM_INFO {
-  string base;
-  int *size;
-  mixed *bbox;
-  int sgn_n;
-  int sgn_e;
-  string *exits;
-}
-int closed;
-nosave int dbg_lvl = 0;
-mixed *irooms;
-string *milestones;
-mixed *milestone_coords;
-mapping milestone_idx = ([ ]);
-class IROOM_INFO *iroom_info;
-mixed *overall_bbox;
-string save_file;
-nosave string debugger = "jeremy";
-mixed *bbox(int *coord_a, int *coord_b);
-int in_bbox(int *coord_a, mixed bbox);
-void set_debugger(string s) { debugger = s; }
-string query_debugger() { return debugger; }
-void set_debug_level(int l) { dbg_lvl = l; }
-int query_debug_level() { return dbg_lvl; }
-mixed query(string s) { return fetch_variable(s); }
-int abs(int i) {
-  return (i<0)?-i:i;
-}
-float fabs(float i) {
-  return (i<0)?-i:i;
-}
-void set_save_file(string s) { save_file = s; }
-string query_save_file() { return save_file; }
-void set_milestones(string *s) {
-  int i;
-  milestones = copy(s);
-  if (milestones[0] == milestones[<1]) {
-    closed = 1;
-  }
-  for (i = 0; i < sizeof(milestones) - closed; i++) {
-    milestone_idx[s[i]] = i;
-  }
-  milestone_coords = allocate(sizeof(milestones));
-  irooms = allocate(sizeof(milestones)-1);
-  iroom_info = allocate(sizeof(milestones)-1);
-  for (i = 0; i < sizeof(iroom_info); i++) {
-    iroom_info[i] = new(class IROOM_INFO);
-    iroom_info[i]->exits = allocate(2);
-  }
-  overall_bbox = 0;
-}
-string *query_milestones() { return milestones; }
-string query_milestone(int i) { return milestones[i]; }
-void set_milestone_coords(int i, int *c) {
-  if (!arrayp(c) || (sizeof(c) != 3)) {
-    return;
-  }
-  if (!arrayp(milestone_coords[i]) || (milestone_coords[i][0] != c[0])
-  || (milestone_coords[i][1] != c[1]) || (milestone_coords[i][2] != c[2])) {
-    milestone_coords[i] = copy(c);
-    if ((i > 0) && arrayp(milestone_coords[i-1])) {
-      iroom_info[i-1]->bbox = bbox(milestone_coords[i-1], milestone_coords[i]);
-      if (milestone_coords[i-1][0] < milestone_coords[i][0]) {
-        iroom_info[i-1]->sgn_n = 1;
-      } else if (milestone_coords[i-1][0] > milestone_coords[i][0]) {
-        iroom_info[i-1]->sgn_n = -1;
-      } else {
-        iroom_info[i-1]->sgn_n = 0;
-      }
-      if (milestone_coords[i-1][1] < milestone_coords[i][1]) {
-        iroom_info[i-1]->sgn_e = 1;
-      } else if (milestone_coords[i-1][1] > milestone_coords[i][1]) {
-        iroom_info[i-1]->sgn_e = -1;
-      } else {
-        iroom_info[i-1]->sgn_e = 0;
-      }
-      if (!arrayp(overall_bbox)) {
-        overall_bbox = copy(iroom_info[i-1]->bbox);
-      } else {
-        if (iroom_info[i-1]->bbox[0][0] < overall_bbox[0][0]) {
-          overall_bbox[0][0] = iroom_info[i-1]->bbox[0][0];
-        }
-        if (iroom_info[i-1]->bbox[0][1] < overall_bbox[0][1]) {
-          overall_bbox[0][1] = iroom_info[i-1]->bbox[0][1];
-        }
-        if (iroom_info[i-1]->bbox[1][0] > overall_bbox[1][0]) {
-          overall_bbox[1][0] = iroom_info[i-1]->bbox[1][0];
-        }
-        if (iroom_info[i-1]->bbox[1][1] > overall_bbox[1][1]) {
-          overall_bbox[1][1] = iroom_info[i-1]->bbox[1][1];
-        }
-      }
-    }
-    if ((i < sizeof(iroom_info)) && arrayp(milestone_coords[i+1])) {
-      iroom_info[i]->bbox = bbox(milestone_coords[i], milestone_coords[i+1]);
-      if (milestone_coords[i][0] < milestone_coords[i+1][0]) {
-        iroom_info[i]->sgn_n = 1;
-      } else if (milestone_coords[i][0] > milestone_coords[i+1][0]) {
-        iroom_info[i]->sgn_n = -1;
-      } else {
-        iroom_info[i]->sgn_n = 0;
-      }
-      if (milestone_coords[i][1] < milestone_coords[i+1][1]) {
-        iroom_info[i]->sgn_e = 1;
-      } else if (milestone_coords[i][1] > milestone_coords[i+1][1]) {
-        iroom_info[i]->sgn_e = -1;
-      } else {
-        iroom_info[i]->sgn_e = 0;
-      }
-      if (!arrayp(overall_bbox)) {
-        overall_bbox = copy(iroom_info[i]->bbox);
-      } else {
-        if (iroom_info[i]->bbox[0][0] < overall_bbox[0][0]) {
-          overall_bbox[0][0] = iroom_info[i]->bbox[0][0];
-        }
-        if (iroom_info[i]->bbox[0][1] < overall_bbox[0][1]) {
-          overall_bbox[0][1] = iroom_info[i]->bbox[0][1];
-        }
-        if (iroom_info[i]->bbox[1][0] > overall_bbox[1][0]) {
-          overall_bbox[1][0] = iroom_info[i]->bbox[1][0];
-        }
-        if (iroom_info[i]->bbox[1][1] > overall_bbox[1][1]) {
-          overall_bbox[1][1] = iroom_info[i]->bbox[1][1];
-        }
-      }
-    }
-  }
-}
-mixed query_milestone_coords() { return milestone_coords; }
-void set_bases(string *s) {
-  int i;
-  if (sizeof(s) != sizeof(iroom_info)) {
-    error("Wrong number of bases (" + sizeof(s) + ") for given milestones (" +
-          sizeof(milestones) + ").\n");
-    return;
-  }
-  for (i = 0; i < sizeof(s); i++) {
-    iroom_info[i]->base = s[i];
-  }
-}
-void set_sizes(mixed *s) {
-  int i;
-  if (sizeof(s) != sizeof(iroom_info)) {
-    error("Wrong number of sizes (" + sizeof(s) + ") for given milestones (" +
-          sizeof(milestones) + ").\n");
-    return;
-  }
-  for (i = 0; i < sizeof(s); i++) {
-    iroom_info[i]->size = allocate(3);
-    if (intp(s[i])) {
-      iroom_info[i]->size[0] = s[i];
-      iroom_info[i]->size[1] = s[i];
-      iroom_info[i]->size[2] = s[i];
-    } else if (arrayp(s[i])) {
-      iroom_info[i]->size[0] = s[i][0];
-      iroom_info[i]->size[1] = s[i][1];
-      iroom_info[i]->size[2] = s[i][2];
-    } else {
-      error("Illegal room size given (" + i + ").\n");
-      continue;
-    }
-  }
-}
-class IROOM_INFO *query_iroom_info() { return iroom_info; }
-int query_endpoint(int i, int j, int dir) {
-  if ((dir && (j == sizeof(irooms[i])-1)) || (!dir && (j == 0))) {
-    return 1;
-  }
-  return 0;
-}
-object *query_irooms_inv(int i, int j, int dir) {
-  int k;
-  object *invs;
-  invs = ({ });
-  if (dir) {
-    if (!arrayp(irooms[i])) {
-      return invs;
-    }
-    for (k = j+1; k < sizeof(irooms[i]); k++) {
-      if (objectp(irooms[i][k])) {
-        invs += all_inventory(irooms[i][k]);
-      }
-    }
-  } else {
-    if (j == -1) {
-      if (closed) {
-        i = sizeof(milestones) - 2;
-      } else {
-        i--;
-      }
-      if (!arrayp(irooms[i])) {
-        return invs;
-      } else {
-        j = sizeof(irooms[i]);
-      }
-    } else if (!arrayp(irooms[i])) {
-      return invs;
-    }
-    for (k = j-1; k >= 0; k--) {
-      if (objectp(irooms[i][k])) {
-        invs += all_inventory(irooms[i][k]);
-      }
-    }
-  }
-  return invs;
-}
-mixed *bbox(int *coord_a, int *coord_b) {
-  int c;
-  mixed *bbox;
-  bbox = allocate(2);
-  bbox[0] = allocate(3);
-  bbox[1] = allocate(3);
-  for (c = 0; c < 3; c++) {
-    if (coord_a[c] < coord_b[c]) {
-      bbox[0][c] = coord_a[c];
-      bbox[1][c] = coord_b[c];
-    } else {
-      bbox[0][c] = coord_b[c];
-      bbox[1][c] = coord_a[c];
-    }
-  }
-  return bbox;
-}
-int in_bbox(int *coord_a, mixed bbox) {
-  if ((coord_a[0] < bbox[0][0]) || (coord_a[0] > bbox[1][0])
-  || (coord_a[1] < bbox[0][1]) || (coord_a[1] > bbox[1][1]))
-    return 0;
-  return 1;
-}
-int number_of_irooms(int i) {
-  int n;
-  mixed bbox;
-  class IROOM_INFO ir;
-  ir = iroom_info[i];
-  bbox = ir->bbox;
-  if (ir->sgn_n == 0) {
-    n = (bbox[1][1] - bbox[0][1])/(ir->size[1]*2);
-  } else if (ir->sgn_e == 0) {
-    n = (bbox[1][0] - bbox[0][0])/(ir->size[0]*2);
-  } else {
-    n = (bbox[1][1] - bbox[0][1])/(ir->size[1]*2);
-    if (n != (bbox[1][0] - bbox[0][0])/(ir->size[0]*2)) {
-      error("Interroom sizes don't match diagonal.\n");
-      return 0;
-    }
-  }
-  return n-1;
-}
-object clone_iroom(int i, int idx, int *icoord) {
-  object iroom;
-  iroom = clone_object(iroom_info[i]->base);
-  iroom->set_room_size(iroom_info[i]->size);
-  iroom->set_co_ord(icoord);
-  iroom->set_milestone_index( ({ i, idx }) );
-  iroom->add_exit(iroom_info[i]->exits[0], milestones[i], "road");
-  iroom->add_exit(iroom_info[i]->exits[1], milestones[i+1], "road");
-  iroom->add_milestone_dir(iroom_info[i]->exits[0]);
-  iroom->add_milestone_dir(iroom_info[i]->exits[1]);
-  iroom->add_topo_exits_int();
-  return iroom;
-}
-void setup_milestone(object ms) {
-  int *coord, i, j, idir;
-  string *dir;
-  if (undefinedp(i = milestone_idx[file_name(ms)])) {
-    error("This room (" + file_name(ms) + ") is not a milestone.\n");
-    return;
-  }
-  ms->set_milestone_index(file_name(this_object()), i);
-  coord = ms->query_co_ord();
-  if (arrayp(coord)) {
-    set_milestone_coords(i, coord);
-  } else {
-    if (arrayp(milestone_coords[i])) {
-      coord = milestone_coords[i];
-    } else {
-      coord = MAP->static_query_co_ord(file_name(ms));
-      set_milestone_coords(i, coord);
-    }
-    ms->set_co_ord(coord);
-  }
-  if (closed && (i == 0)) {
-    milestone_coords[<1] = milestone_coords[0];
-  }
-  dir = ms->query_dest_dir();
-  if ((i > 0) || closed) {
-    if (closed && i == 0) {
-      j = sizeof(milestones) - 2;
-    } else {
-      j = i - 1;
-    }
-    if ((idir = member_array(milestones[j], dir)) < 0) {
-      ms->add_milestone_dir(file_name(this_object()), 0);
-    } else {
-      iroom_info[j]->exits[0] = dir[idir-1];
-      ms->add_milestone_dir(file_name(this_object()), dir[idir-1]);
-    }
-  } else {
-    ms->add_milestone_dir(file_name(this_object()), 0);
-  }
-  if (i < sizeof(irooms)) {
-    j = i + 1;
-    if ((idir = member_array(milestones[j], dir)) < 0) {
-      ms->add_milestone_dir(file_name(this_object()), 0);
-    } else {
-      iroom_info[i]->exits[1] = dir[idir-1];
-      ms->add_milestone_dir(file_name(this_object()), dir[idir-1]);
-    }
-  }
-}
-varargs object find_room_at_coord(int *coord_a, int hint_idx) {
-  int i, idx, in_bbox;
-  int start_i, stop_i;
-  int *icoord = ({ 0, 0, 0 });
-  mixed bbox;
-  float slope;
-  class IROOM_INFO ir;
-  if (dbg_lvl > 0) {
-    tell_creator(debugger, "%s::find_room_at_coord()\n"
-                 "  coord_a: %O\n"
-                 "  hint_idx: %s\n",
-                 file_name(this_object()), coord_a,
-                 undefinedp(hint_idx)?"NULL":hint_idx+"");
-  }
-  if (!in_bbox(coord_a, overall_bbox)) {
-    return 0;
-  }
-  in_bbox = 0;
-  if (undefinedp(hint_idx)) {
-    start_i = 0;
-    stop_i = sizeof(iroom_info);
-  } else {
-    start_i = hint_idx;
-    stop_i = hint_idx + 1;
-  }
-  for (i = start_i; i < stop_i; i++) {
-    ir = iroom_info[i];
-    bbox = ir->bbox;
-    if (dbg_lvl > 1) {
-      tell_creator(debugger, "%s::find_room_at_coord()\n"
-                   "  Checking bbox(%d,%d): %O\n",
-                   file_name(this_object()), i, i+1, bbox);
-    }
-    if (in_bbox(coord_a, bbox)) {
-      if (dbg_lvl > 1) {
-        tell_creator(debugger, "%s::find_room_at_coord()\n"
-                     "  In bbox(%d,%d)...\n",
-                     file_name(this_object()), i, i+1);
-      }
-      if (ir->sgn_e == 0) {
-        if (abs(coord_a[1]-milestone_coords[i][1]) < ir->size[1]) {
-          if (dbg_lvl > 2) {
-            tell_creator(debugger, "%s::find_room_at_coord()\n"
-                         "  On vline between (%d,%d)...\n",
-                         file_name(this_object()), i, i+1);
-          }
-          break;
-        }
-      } else {
-        slope = to_float(milestone_coords[i][0] - milestone_coords[i+1][0])
-          / to_float(milestone_coords[i][1] - milestone_coords[i+1][1]);
-        if (abs(slope * (coord_a[1] - milestone_coords[i+1][1]) +
-            milestone_coords[i+1][0] - coord_a[0]) < ir->size[0]) {
-          if (dbg_lvl > 2) {
-            tell_creator(debugger, "%s::find_room_at_coord()\n"
-                         "  On line between (%d,%d)...\n",
-                         file_name(this_object()), i, i+1);
-          }
-          break;
-        }
-      }
-    }
-  }
-  if (i == stop_i) {
-    if (dbg_lvl > 2) {
-      tell_creator(debugger, "%s::find_room_at_coord()\n"
-                   "  Couldn't find a room...\n",
-                   file_name(this_object()));
-    }
-    return 0;
-  }
-  if (ir->sgn_n == 0) {
-    idx = abs(coord_a[1] - milestone_coords[i][1]
-              + ir->size[1]*ir->sgn_e)/(ir->size[1]*2);
-    icoord[0] = milestone_coords[i][0];
-    icoord[1] = milestone_coords[i][1] + idx*ir->sgn_e*ir->size[1]*2;
-  } else {
-    idx = abs(coord_a[0] - milestone_coords[i][0]
-              + ir->size[0]*ir->sgn_n)/(ir->size[0]*2);
-    icoord[0] = milestone_coords[i][0] + idx*ir->sgn_n*ir->size[0]*2;
-    if (ir->sgn_e == 0) {
-      icoord[1] = milestone_coords[i][1];
-    } else {
-      icoord[1] = milestone_coords[i][1] + idx*ir->sgn_e*ir->size[1]*2;
-    }
-  }
-  if (dbg_lvl > 2) {
-    tell_creator(debugger, "%s::find_room_at_coord()\n"
-                 "  idx: %O\n",
-                 file_name(this_object()), idx);
-  }
-  if (idx == 0) {
-    return load_object(milestones[i]);
-  }
-  if (!arrayp(irooms[i])) {
-    irooms[i] = allocate(number_of_irooms(i));
-  }
-  if (idx == sizeof(irooms[i])+1) {
-    return load_object(milestones[i+1]);
-  }
-  idx--;
-  if (!objectp(irooms[i][idx])) {
-    icoord[2] = (milestone_coords[i+1][2] - milestone_coords[i][2])
-      * idx / sizeof(irooms[i]) + milestone_coords[i][2];
-    irooms[i][idx] = clone_iroom(i, idx, icoord);
-  }
-  return irooms[i][idx];
-}
-object find_room_at_index(int i, int idx) {
-  int *icoord = ({ 0, 0, 0 });
-  class IROOM_INFO ir;
-  if (dbg_lvl > 0) {
-    tell_creator(debugger, "%s::find_room_at_index()\n"
-                 "  i: %O, idx: %O\n",
-                 file_name(this_object()), i, idx);
-  }
-  if (closed && (i == -1)) {
-    i = sizeof(milestones) - 2;
-  }
-  if ((i < 0) || (i >= sizeof(irooms))) {
-    return 0;
-  }
-  if (idx == -1) {
-    return load_object(milestones[i]);
-  }
-  if (!arrayp(irooms[i])) {
-    irooms[i] = allocate(number_of_irooms(i));
-  }
-  if (idx == sizeof(irooms[i])) {
-    return load_object(milestones[i+1]);
-  }
-  if (idx == -2) {
-    idx = sizeof(irooms[i]) - 1;
-  }
-  if ((idx < 0) || (idx >= sizeof(irooms[i]))) {
-    return 0;
-  }
-  if (!objectp(irooms[i][idx])) {
-    ir = iroom_info[i];
-    if (ir->sgn_n == 0) {
-      icoord[0] = milestone_coords[i][0];
-      icoord[1] = milestone_coords[i][1] + (idx+1)*ir->sgn_e*ir->size[1]*2;
-    } else {
-      icoord[0] = milestone_coords[i][0] + (idx+1)*ir->sgn_n*ir->size[0]*2;
-      if (ir->sgn_e == 0) {
-        icoord[1] = milestone_coords[i][1];
-      } else {
-        icoord[1] = milestone_coords[i][1] + (idx+1)*ir->sgn_e*ir->size[1]*2;
-      }
-    }
-    icoord[2] = (milestone_coords[i+1][2] - milestone_coords[i][2])
-      * idx / sizeof(irooms[i]) + milestone_coords[i][2];
-    irooms[i][idx] = clone_iroom(i, idx, icoord);
-  }
-  return irooms[i][idx];
-}
-int query_region(int *coord, mixed bbox) {
-  int ret;
-  if (coord[0] < bbox[0][0]) {
-    ret += 1;
-  } else if (coord[0] > bbox[1][0]) {
-    ret += 2;
-  }
-  if (coord[1] < bbox[0][1]) {
-    ret += 4;
-  } else if (coord[1] > bbox[1][1]) {
-    ret += 8;
-  }
-  return ret;
-}
-object find_room_at_crossing(int *coord_a, int *coord_b) {
-  int i, a, b, c, d, dist2, ret_dist2;
-  float e, f, det;
-  int *isect;
-  object ret;
-  mixed bbox, road_a, road_b;
-  if (dbg_lvl > 0) {
-    tell_creator(debugger, "%s::find_room_at_crossing()\n"
-                 "  coord_a: %O\n"
-                 "  coord_b: %O\n",
-                 file_name(this_object()), coord_a, coord_b);
-  }
-  if (query_region(coord_a, overall_bbox)
-      & query_region(coord_b, overall_bbox)) {
-    return 0;
-  }
-  for (i = 0; i < sizeof(iroom_info); i++) {
-    bbox = iroom_info[i]->bbox;
-    if (query_region(coord_a, iroom_info[i]->bbox)
-        & query_region(coord_b, iroom_info[i]->bbox)) {
-      continue;
-    }
-    road_a = allocate(3);
-    road_b = allocate(3);
-    if (iroom_info[i]->sgn_n > 0) {
-      road_a[0] = bbox[0][0];
-      road_b[0] = bbox[1][0];
-    } else {
-      road_a[0] = bbox[1][0];
-      road_b[0] = bbox[0][0];
-    }
-    if (iroom_info[i]->sgn_e > 0) {
-      road_a[1] = bbox[0][1];
-      road_b[1] = bbox[1][1];
-    } else {
-      road_a[1] = bbox[1][1];
-      road_b[1] = bbox[0][1];
-    }
-    a = coord_b[0] - coord_a[0];
-    b = coord_a[1] - coord_b[1];
-    c = road_b[0] - road_a[0];
-    d = road_a[1] - road_b[1];
-    e = to_float(a)*coord_a[1] + to_float(b)*coord_a[0];
-    f = to_float(c)*road_a[1] + to_float(d)*road_a[0];
-    det = a*d - b*c;
-    if (fabs(det) < 0.0000000000001) {
-      continue;
-    }
-    isect = allocate(3);
-    isect[0] = to_int(floor((a*f - e*c)/det + 0.5));
-    isect[1] = to_int(floor((e*d - b*f)/det + 0.5));
-    if (!in_bbox(isect, bbox) || !in_bbox(isect, bbox(coord_a, coord_b))) {
-      continue;
-    }
-    dist2 = (isect[0]-coord_a[0])*(isect[0]-coord_a[0]) +
-      (isect[1]-coord_a[1])*(isect[1]-coord_a[1]);
-    if (objectp(ret) && (dist2 >= ret_dist2)) {
-      continue;
-    }
-    ret = find_room_at_coord(isect, i);
-    if (dbg_lvl > 0) {
-      tell_creator(debugger, "%s::find_room_at_crossing()\n"
-                   "  find_room_at_coord() returned %O\n",
-                   file_name(this_object()), ret);
-    }
-    ret_dist2 = dist2;
-    if (!objectp(ret)) {
-      error("Couldn't find a room where there should be one!\n");
-    }
-  }
-  return ret;
-}
-void create() {
-  string std_euid;
-  std_euid = "/secure/master"->creator_file(file_name(this_object()));
-  seteuid(std_euid);
-  do_setup++;
-  ::create();
-  do_setup--;
-  if ( !do_setup ) {
-    this_object()->setup();
-    this_object()->reset();
-  }
-  set_keep_room_loaded(1);
-}
-void dest_me() {
-  if (stringp(save_file)) {
-    unguarded( (: save_object, save_file :) );
-  }
-  ::dest_me();
-}
-int goto_room_at_coord(int *coord) {
-  return this_player()->move_with_look(find_room_at_coord(coord));
-}
-int goto_room_at_index(int i, int j) {
-  return this_player()->move_with_look(find_room_at_index(i, j));
-}
-int goto_room_at_crossing(int *a, int *b) {
-  return this_player()->move_with_look(find_room_at_crossing(a, b));
-}
-void recalc_milestones(int idx, int callouts, object tp) {
-  int *c;
-  string ms;
-  if (callouts > 10) {
-    error(sprintf("Too many callouts in %s:recalc_iroom_info(%d, %d)\n",
-          file_name(this_object()), idx, callouts));
-    return;
-  }
-  if (!idx && !callouts && !tp) {
-    rm(save_file);
-    this_object()->setup();
-    idx = 0;
-    tp = this_player();
-  }
-  ms = milestones[idx];
-  if (!arrayp(c = ms->query_co_ord())) {
-    call_out("recalc_milestones", 0, idx, callouts+1, tp);
-    tell_object(tp, sprintf("Waiting on %s (%d, %d)...\n",
-                          ms, idx, callouts));
-    return;
-  }
-  ms->setup_milestone(ms);
-  tell_object(tp, sprintf("Loaded room %s at (%d, %d, %d)...\n",
-                          ms, c[0], c[1], c[2]));
-  idx++;
-  if (idx < sizeof(milestones)) {
-    call_out("recalc_milestones", 0, idx, 0, tp);
-    return;
-  }
-  tell_object(tp, "IRoom info successfully recalculated.\n");
-}
-void clear_map_handler() {
-  int i;
-  string ms, directory, troom;
-  for (i = 0; i < sizeof(milestones); i++) {
-    ms = milestones[i];
-    directory = implode( explode( ms, "/" )[ 0..<2 ], "/" );
-    troom = explode( ms, "/" )[ <1 ];
-    if ( troom[ <2.. ] == ".c" ) {
-      troom = troom[ 0..<3];
-    }
-    MAP->del(directory, troom);
-    printf("Deleting %s in %s from map handler.\n", directory, troom);
-  }
-}
-int sanity_checks() {
-  int i, success = 1;
-  for (i = 0; i < sizeof(milestone_coords); i++) {
-    if (sizeof(milestone_coords[i]) != 3) {
-      printf("Milestone %d (%s) doesn't have proper coordinates: %O\n",
-             i, milestones[i], milestone_coords[i]);
-      success = 0;
-    }
-  }
-  for (i = 0; i < sizeof(iroom_info); i++) {
-    if (sizeof(iroom_info[i]->size) != 3) {
-      printf("Interroom segment %d has improper size: %O\n",
-             i, iroom_info[i]->size);
-      success = 0;
-    }
-    if ((sizeof(iroom_info[i]->bbox) != 2) ||
-        (sizeof(iroom_info[i]->bbox[0]) != 3) ||
-        (sizeof(iroom_info[i]->bbox[1]) != 3)) {
-      printf("Interroom segment %d has improper bounding box: %O\n",
-             i, iroom_info[i]->bbox);
-      success = 0;
-    }
-  }
-  return success;
-}
-
-==================================================
-FILE: room/controller/topography/topography.c
-==================================================
-
-#include <dirs.h>
-#include "path.h"
-inherit "/std/basic/setup";
-class bounding_box {
-   int* topleft;
-   int* bottomright;
-}
-class FIXED_INFO {
-  string path;
-  object ob;
-  int *coord;
-  mixed bbox;
-}
-private mapping opposites = ([
-  "north": "south", "south": "north", "west": "east",
-  "east": "west", "northeast": "southwest", "southwest": "northeast",
-  "northwest": "southeast", "southeast": "northwest", "up": "down",
-  "down": "up"
-]);
-private int _dbg_lvl = 0;
-private string _debugger;
-private object *_area_handlers = ({ });
-private object *_iroom_handlers = ({ });
-private class FIXED_INFO *_fixed_rooms = ({ });
-private mapping _fixed_room_index = ([ ]);
-private class bounding_box _topo_box;
-void set_debugger(string s) { _debugger = s; }
-string query_debugger() { return _debugger; }
-void set_debug_level(int l) { _dbg_lvl = l; }
-int query_debug_level() { return _dbg_lvl; }
-void create() {
-  do_setup();
-}
-class bounding_box query_bounding_box() {
-   return _topo_box;
-}
-int in_bbox(int *coord, class bounding_box bbox) {
-  if ((coord[0] < bbox->topleft[0]) || (coord[0] > bbox->bottomright[0])) {
-    return 0;
-  }
-  if ((coord[1] < bbox->topleft[1]) || (coord[1] > bbox->bottomright[1])) {
-    return 0;
-  }
-  return 1;
-}
-class bounding_box bounding_box(int *coord, mixed s) {
-  int *size;
-  class bounding_box bbox;
-  if (sizeof(coord) != 3) {
-    return 0;
-  }
-  if (arrayp(s)) {
-    if (sizeof(s) == 3) {
-      size = s;
-    } else {
-      return 0;
-    }
-  } else if (intp(s)) {
-    size = ({ s, s, s });
-  } else {
-    return 0;
-  }
-  bbox = new(class bounding_box);
-  bbox->topleft = ({ coord[0]-size[0], coord[1]-size[1], coord[2]-size[2] });
-  bbox->bottomright = ({ coord[0]+size[0], coord[1]+size[1], coord[2]+size[2] });
-  return bbox;
-}
-void add_area_handler(mixed h) {
-  object oh;
-  if (stringp(h)) {
-    oh = load_object(h);
-    oh->set_handler(base_name(this_object()));
-    if (objectp(oh)) {
-      _area_handlers += ({ oh });
-    } else {
-      error(sprintf("Couldn't find area handler %s.\n", h));
-    }
-  } else if (objectp(h)) {
-    h->set_handler(base_name(this_object()));
-    _area_handlers += ({ h });
-  } else {
-    error(sprintf("Couldn't find area handler %O.\n", h));
-  }
-}
-void add_iroom_handler(mixed h) {
-  object oh;
-  if (stringp(h)) {
-    oh = load_object(h);
-    oh->set_handler(base_name(this_object()));
-    if (objectp(oh)) {
-      _iroom_handlers += ({ oh });
-    } else {
-      error(sprintf("Couldn't find interroom handler %s.\n", h));
-    }
-  } else if (objectp(h)) {
-    h->set_handler(base_name(this_object()));
-    _iroom_handlers += ({ h });
-  } else {
-    error(sprintf("Couldn't find interroom handler %O.\n", h));
-  }
-}
-private void add_internal_fixed_room(string path,
-                                     object ob,
-                                     int* coord,
-                                     class bounding_box bbox) {
-  class FIXED_INFO cf;
-  cf = new(class FIXED_INFO);
-  cf->path = path;
-  cf->ob = ob;
-  cf->coord = coord;
-  cf->bbox = bbox;
-  _fixed_room_index[cf->path] = sizeof(_fixed_rooms);
-  _fixed_rooms += ({ cf });
-}
-void add_fixed_room(string f) {
-  object of;
-  of = load_object(f);
-  if (!objectp(of)) {
-    error(sprintf("Couldn't load fixed room %s.\n", f));
-    return;
-  }
-  add_internal_fixed_room(f, of, of->query_co_ord(),
-                      bounding_box(of->query_co_ord(), of->query_room_size()));
-}
-void add_fixed_room_object(object of) {
-  add_internal_fixed_room(file_name(of), of, of->query_co_ord(),
-                    bounding_box(of->query_co_ord(), of->query_room_size()));
-}
-void add_fixed_room_coordinate(string f, int* coord, int* size) {
-    add_internal_fixed_room(f, 0, coord, bounding_box(coord, size));
-}
-void setup_fixed_room() {
-  object shad, r;
-  int i;
-  r = previous_object();
-  shad = clone_object(FIXED_SHADOW);
-  if (!objectp(shad)) {
-    error(sprintf("Couldn't create shadow for fixed room %O.\n", r));
-    return;
-  }
-  shad->attach(r);
-  shad->set_area_handler(file_name(this_object()));
-  if (undefinedp(i = _fixed_room_index[file_name(r)])) {
-    error(sprintf("Couldn't find entry for fixed room %O.\n", r));
-  }
-  r->set_co_ord(_fixed_rooms[i]->coord);
-}
-object find_room_at_coord(int *coord) {
-  int i;
-  object ob;
-  if (_dbg_lvl > 0) {
-    tell_creator(_debugger, "%s::find_room_at_coord()\n"
-                 "  coord: %O\n",
-                 file_name(this_object()), coord);
-  }
-  for (i = 0; i < sizeof(_fixed_rooms); i++) {
-    if (in_bbox(coord, _fixed_rooms[i]->bbox)) {
-      if (!objectp(_fixed_rooms[i]->ob)) {
-        _fixed_rooms[i]->ob = load_object(_fixed_rooms[i]->path);
-      }
-      return _fixed_rooms[i]->ob;
-    }
-  }
-  for (i = 0; i < sizeof(_iroom_handlers); i++) {
-    if (objectp(ob = _iroom_handlers[i]->find_room_at_coord(coord))) {
-      return ob;
-    }
-  }
-  for (i = 0; i < sizeof(_area_handlers); i++) {
-    if (objectp(ob = _area_handlers[i]->find_room_at_coord(coord))) {
-      return ob;
-    }
-  }
-  return 0;
-}
-object create_virtual_object(int x, int y, int z) {
-   if (undefinedp(x) || undefinedp(y) || undefinedp(z)) {
-      return 0;
-   }
-   return find_room_at_coord(({ x, y, z }));
-}
-object find_room_at_exit(object r, int *d, string direc) {
-  int i, s, dist, max_dist, max_iroom, *coord, *coord_r, *coord_ob;
-  string msg;
-  object ob, *irooms = ({ });
-  mixed size_r;
-  class bounding_box bbox_r;
-  if (_dbg_lvl > 0) {
-    tell_creator(_debugger, "%s::find_room_at_exit()\n"
-                 "  r: %O\n"
-                 "  d: %O\n"
-                 "  direc: %O\n",
-                 file_name(this_object()), r, d, direc);
-  }
-  if (!arrayp(d)) {
-    return 0;
-  }
-  coord = r->query_co_ord();
-  size_r = r->query_actual_room_size();
-  if (!arrayp(size_r)) {
-    size_r = r->query_room_size();
-    if (!arrayp(size_r)) {
-      size_r = ({ size_r, size_r, size_r });
-    }
-  }
-  coord_r = allocate(3);
-  for (i = 0; i < 3; i++) {
-    coord_r[i] = coord[i] + 2 * size_r[i] * d[i];
-  }
-  for (i = 0; i < sizeof(_fixed_rooms); i++) {
-    if (in_bbox(coord_r, _fixed_rooms[i]->bbox)) {
-      if (!objectp(_fixed_rooms[i]->ob)) {
-        _fixed_rooms[i]->ob = load_object(_fixed_rooms[i]->path);
-      }
-      msg = evaluate(_fixed_rooms[i]->ob->query_topo_barrier(direc));
-      if (!undefinedp(msg)) {
-        if (!stringp(msg)) {
-          msg = "You can't go that way.\n";
-        }
-        notify_fail(msg);
-        return 0;
-      }
-      return _fixed_rooms[i]->ob;
-    }
-  }
-  bbox_r = bounding_box(coord, size_r);
-  for (i = 0; i < sizeof(_iroom_handlers); i++) {
-    ob = _iroom_handlers[i]->find_room_at_crossing(coord, coord_r);
-    tell_creator("rhinehold", "ob = %O\n", ob);
-    if (objectp(ob )
-        && (ob != r)) {
-      if (_dbg_lvl > 1) {
-        tell_creator(_debugger, "%s::find_room_at_exit()\n"
-                     "  %O->find_room_at_crossing() returned %O\n",
-                     file_name(this_object()), _iroom_handlers[i], ob);
-      }
-      if (!arrayp(ob->query_co_ord())) {
-        return ob;
-      }
-      if (r->query_fixed_room() && in_bbox(ob->query_co_ord(), bbox_r)) {
-        continue;
-      }
-      irooms += ({ ob });
-    }
-  }
-  if ((s = sizeof(irooms)) > 0) {
-    if (s == 1) {
-      return irooms[0];
-    } else {
-      max_dist = 0;
-      max_iroom = -1;
-      for (i = 0; i < s; i++) {
-        coord_ob = irooms[i]->query_co_ord();
-        dist = (coord[0] - coord_ob[0])*(coord[0] - coord_ob[0]) +
-          (coord[1] - coord_ob[1])*(coord[1] - coord_ob[1]);
-        if (dist > max_dist) {
-          max_dist = dist;
-          max_iroom = i;
-        }
-      }
-      if (max_iroom >= 0) {
-        return irooms[max_iroom];
-      }
-    }
-  }
-  for (i = 0; i < sizeof(_area_handlers); i++) {
-    if (objectp(ob = _area_handlers[i]->find_room_at_exit(r, d))) {
-      if (_dbg_lvl > 1) {
-        tell_creator(_debugger, "%s::find_room_at_exit()\n"
-                     "  %O->find_room_at_exit() returned %O\n",
-                     file_name(this_object()), _area_handlers[i], ob);
-      }
-      return ob;
-    }
-  }
-  return 0;
-}
-int goto_room_at_coord(int *coord) {
-  return this_player()->move_with_look(find_room_at_coord(coord));
-}
-string query_text_map(int width) {
-   int x;
-   int y;
-   int maxy;
-   string map;
-   object room;
-   map = "";
-   for (y = 0; y < maxy; y++) {
-      for (x = 0; x < width; x++) {
-         room = find_room_at_coord( ({ x, y, 0 }) );
-         if (!room) {
-            map += " ";
-         } else if (!room->query_room_letter()) {
-            map += "?";
-         } else {
-            map += room->query_room_letter();
-         }
-      }
-      map += "\n";
-   }
-   return map;
-}
-
-==================================================
-FILE: room/punishments/banishment.c
-==================================================
-
-#include <nomic_system.h>
-inherit "/std/room/inherit/punishment_inherit";
-private nosave string _banish_handler;
-void create() {
-   set_short("banishment");
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "banishment");
-   ::create();
-}
-void set_banish_handler(string hand) {
-   _banish_handler = hand;
-}
-string query_banish_handler() {
-   return _banish_handler;
-}
-string query_short(string area, class nomic_case the_case, string type, mixed data) {
-   return ::query_short() + " for " + data + " days";
-}
-void start_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      function finish) {
-   if (sizeof(filter(the_case->people,
-                    (: NOMIC_HANDLER->is_magistrate_of($2, $1) :), area))) {
-      write("You cannot banish a magistrate.\n");
-      return ;
-   }
-   write("How long do you want the person banished from the city for (in "
-         "days, 0 means forever)? ");
-   input_to("days_of_banishment", 0, area, the_case, type, finish);
-}
-void days_of_banishment(string input,
-                        string area,
-                        class nomic_case the_case,
-                        string type,
-                        function finish) {
-   int num;
-   input = lower_case(input);
-   if (input == "" || input[0] == 'q') {
-      write("Aborting banishment.\n");
-      return ;
-   }
-   if (input[0] >= '0' && input[0] <= '9') {
-      if (sscanf(input, "%d", num) == 1) {
-         evaluate(finish, the_case, type, num);
+      if (ob && interactive(ob) && data->state == POKER_STATE_ANTE) {
          return ;
       }
    }
-   write("Invalid input.\n");
-   write("How long do you want the person banished from the city for (in "
-         "days, 0 means forever)? ");
-   input_to("days_of_banishment", 0, area, the_case, type, finish);
+   _poker_phase = POKER_STATE_BET;
+   call_out("deal_cards", 2);
 }
-void complete_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      _banish_handler->banish_person(person, data);
+int is_card_higher(class playing_card card_new, class playing_card card_old) {
+   if (card_new->number == card_old->number) {
+      return 0;
    }
-   return ;
-}
-void suspend_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      _banish_handler->banish_person_suspend(person);
+   if (card_new->number == CARD_NUMBER_ACE) {
+      return 1;
    }
-   return ;
-}
-
-==================================================
-FILE: room/punishments/dismissed.c
-==================================================
-
-#include <nomic_system.h>
-inherit "/std/room/inherit/punishment_inherit";
-void setup() {
-   set_short("dismissed");
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "dismissed");
-}
-
-==================================================
-FILE: room/punishments/fine.c
-==================================================
-
-#include <money.h>
-#include <nomic_system.h>
-#include <player_handler.h>
-inherit "/std/room/inherit/punishment_inherit";
-#define TIMEOUT (4 * 7 * 24 * 60 * 60)
-private mapping _fines;
-private nosave string _money_area;
-private nosave string _save_file;
-class fine_type {
-   int paid;
-   int fines;
-   int last_touched;
-}
-void load_me();
-void setup() {
-   _fines = ([ ]);
-   set_short("fine");
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "fine");
-   seteuid(getuid());
-   load_me();
-}
-void load_me() {
-   if (_save_file) {
-      unguarded((: restore_object( _save_file ) :));
-      call_out("remove_old_fines", 2);
+   if (card_old->number == CARD_NUMBER_ACE) {
+      return 0;
    }
-}
-void save_me() {
-   unguarded((: save_object( _save_file ) :));
-}
-void remove_old_fines() {
-   class fine_type fine;
-   string player;
-   int changed;
-   foreach (player, fine in _fines) {
-      if (!PLAYER_HANDLER->test_user(player)) {
-         map_delete(_fines, player);
-         changed = 1;
-      }
-      if (sizeof(fine) == 2) {
-         fine = new(class fine_type, paid : fine->paid, fines : fine->fines,
-                                last_touched : time());
-         _fines[player] = fine;
-         changed = 1;
-      }
-      if (fine->fines <= 0 && fine->last_touched + TIMEOUT < time()) {
-         map_delete(_fines, player);
-         changed = 1;
-      }
-   }
-   if (changed) {
-      save_me();
-   }
-}
-void set_money_area(string area) {
-   _money_area = area;
-}
-string query_money_area() {
-   return _money_area;
-}
-void set_save_file(string fname) {
-   _save_file = fname;
-}
-string query_save_file() {
-   return _save_file;
-}
-void start_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      function finish) {
-   write("How much do you wish to fine " +
-         query_multiple_short(the_case->people) + "? ");
-   input_to("fine_amount", 0, area, the_case, type, finish);
-}
-string query_short(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   return "fined " +
-          MONEY_HAND->money_value_string(data, _money_area);
-}
-void fine_amount(string amt, string area, class nomic_case the_case,
-                 string type, function finish) {
-   int value;
-   amt = lower_case(amt);
-   if (!strlen(amt) || amt[0] == 'q') {
-      write("Aborting the fine.\n");
-      return ;
-   }
-   value = MONEY_HAND->value_from_string(amt, _money_area);
-   if (value <= 0) {
-      write("You did not specify a positive money value.\n");
-      write("How much do you wish to fine " +
-            query_multiple_short(the_case->people) + "? ");
-      input_to("fine_amount", 0, area, the_case, type, finish);
-      return ;
-   }
-   evaluate(finish, the_case, type, value);
-}
-void complete_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      if (!_fines[person]) {
-         _fines[person] = new(class fine_type);
-      }
-      _fines[person]->fines += data;
-      _fines[person]->last_touched = time();
-   }
-   save_me();
-   return ;
-}
-void suspend_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      if (!_fines[person]) {
-         _fines[person] = new(class fine_type);
-      }
-      _fines[person]->fines -= data;
-      _fines[person]->last_touched = time();
-   }
-   save_me();
-   return ;
-}
-int pay_fine(string person, int amount) {
-   if (_fines[person]) {
-      _fines[person]->paid += amount;
-      _fines[person]->last_touched = time();
-      save_me();
+   if (card_new->number > card_old->number) {
       return 1;
    }
    return 0;
 }
-int query_current_fine(string person) {
-   if (_fines[person]) {
-      return _fines[person]->fines - _fines[person]->paid;
+class hand_type query_hand_type(class playing_card* hand) {
+   int high_num;
+   int num;
+   int id;
+   int i;
+   int j;
+   class playing_card* tmp_hand;
+   class hand_type ret_type;
+   class playing_card tmp_card;
+   ret_type = new(class hand_type);
+   high_num = 0;
+   for (i = 1; i < sizeof(hand); i++) {
+      if (is_card_higher(hand[i], hand[high_num])) {
+         high_num = i;
+      }
    }
-   return 0;
-}
-int query_total_fine(string person) {
-   if (_fines[person]) {
-      return _fines[person]->fines;
+   ret_type->hand_type = HAND_TYPE_HIGH_CARD;
+   ret_type->high_card = hand[high_num];
+   high_num = 1;
+   for (i = 0; i < sizeof(hand) - 1; i++) {
+      num = 1;
+      for (j = 0; j < sizeof(hand) - i - 1; j++) {
+         if (hand[i]->number == hand[i + j + 1]->number) {
+            num++;
+         }
+      }
+      if (num > high_num) {
+         high_num = num;
+         id = hand[i]->number;
+      }
    }
-   return 0;
-}
-int query_total_payments(string person) {
-   if (_fines[person]) {
-      return _fines[person]->paid;
+   tmp_hand = hand;
+   if (high_num > 1) {
+      for (i = 0; i < sizeof(tmp_hand); i++) {
+         if (tmp_hand[i]->number == id) {
+            ret_type->duplicate_1 = tmp_hand[i];
+            tmp_hand = tmp_hand[0..i-1] + tmp_hand[i+1..];
+            i--;
+         }
+      }
    }
-   return 0;
+   if (high_num == 2) {
+      high_num = 1;
+      for (i = 0; i < sizeof(tmp_hand) - 1; i++) {
+         num = 1;
+         for (j = 0; j < sizeof(tmp_hand) - i - 1; j++) {
+            if (tmp_hand[i]->number == tmp_hand[i + j + 1]->number) {
+               num++;
+            }
+         }
+         if (num > high_num) {
+            high_num = num;
+            id = tmp_hand[i]->number;
+         }
+      }
+      if (high_num == 2) {
+         ret_type->hand_type = HAND_TYPE_TWO_PAIR;
+         for (i = 0; i < sizeof(tmp_hand); i++) {
+            if (tmp_hand[i]->number == id) {
+               ret_type->duplicate_2 = tmp_hand[i];
+               tmp_hand = tmp_hand[0..i-1] + tmp_hand[i+1..];
+            }
+         }
+         if (is_card_higher(ret_type->duplicate_2, ret_type->duplicate_1)) {
+            tmp_card = ret_type->duplicate_1;
+            ret_type->duplicate_1 = ret_type->duplicate_2;
+            ret_type->duplicate_2 = tmp_card;
+         }
+         ret_type->kickers = sort_cards(tmp_hand, 3);
+      } else {
+         ret_type->hand_type = HAND_TYPE_PAIR;
+         high_num = 0;
+         for (i = 1; i < sizeof(tmp_hand); i++) {
+            if (is_card_higher(tmp_hand[i], tmp_hand[high_num])) {
+               high_num = i;
+            }
+         }
+         ret_type->kickers = sort_cards(tmp_hand, 3);
+      }
+      return ret_type;
+   } else if (high_num == 3) {
+      if (tmp_hand[0]->number == tmp_hand[1]->number) {
+         ret_type->hand_type = HAND_TYPE_FULL_HOUSE;
+         ret_type->duplicate_2 = tmp_hand[0];
+         ret_type->kickers = ({ });
+      } else {
+         ret_type->hand_type = HAND_TYPE_THREE;
+         ret_type->kickers = sort_cards(tmp_hand, 3);
+      }
+      return ret_type;
+   } else if (high_num == 4) {
+      ret_type->hand_type = HAND_TYPE_FOUR;
+      ret_type->high_card = tmp_hand[0];
+      return ret_type;
+   }
+   for (i = 0; i < sizeof(hand) - 1; i++) {
+      if (hand[i + 1]->suit != hand[0]->suit) {
+         break;
+      }
+   }
+   if (i == sizeof(hand) - 1) {
+      ret_type->hand_type = HAND_TYPE_FLUSH;
+      ret_type->kickers = sort_cards(hand, 3);
+      high_num = 0;
+      for (i = 1; i < sizeof(hand); i++) {
+         if (is_card_higher(hand[i], hand[high_num])) {
+            high_num = i;
+         }
+      }
+      ret_type->high_card = hand[high_num];
+   }
+   tmp_hand = sort_array(hand, (: ((class playing_card)$1)->number -
+                                  ((class playing_card)$2)->number :));
+   if (tmp_hand[0]->number == CARD_NUMBER_ACE) {
+      if (tmp_hand[1]->number == 2) {
+         j = 1;
+      } else {
+         j = 0;
+         tmp_hand = tmp_hand[1..] + ({ tmp_hand[0] });
+      }
+   } else {
+      j = 0;
+   }
+   for (i = j; i < sizeof(tmp_hand) - 1; i++) {
+      if (tmp_hand[i]->number + 1 != tmp_hand[i + 1]->number) {
+         if (tmp_hand[i + 1]->number != CARD_NUMBER_ACE ||
+             tmp_hand[i]->number != CARD_NUMBER_KING) {
+            break;
+         }
+      }
+   }
+   if (i == sizeof(tmp_hand) - 1) {
+      if (ret_type->hand_type == HAND_TYPE_FLUSH) {
+         ret_type->hand_type = HAND_TYPE_STRAIGHT_FLUSH;
+         ret_type->high_card = tmp_hand[<1];
+      } else {
+         ret_type->hand_type = HAND_TYPE_STRAIGHT;
+         ret_type->high_card = tmp_hand[<1];
+      }
+   }
+   if (ret_type->hand_type == HAND_TYPE_HIGH_CARD) {
+      ret_type->kickers = sort_cards(hand, 3);
+   }
+   return ret_type;
 }
-string* query_people_with_fines() {
-   return keys(_fines);
+int is_greator_hand(class hand_type new_hand,
+                    class hand_type old_hand) {
+   int i;
+   if (new_hand->hand_type > old_hand->hand_type) {
+      return 1;
+   }
+   if (new_hand->hand_type < old_hand->hand_type) {
+      return 0;
+   }
+   if (new_hand->hand_type == old_hand->hand_type) {
+      switch (new_hand->hand_type) {
+      case HAND_TYPE_HIGH_CARD :
+         if (is_card_higher(new_hand->high_card,
+                            old_hand->high_card)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->high_card,
+                            new_hand->high_card)) {
+            return 0;
+         }
+         for (i = 1; i <= sizeof(new_hand->kickers); i++) {
+            if (is_card_higher(new_hand->kickers[<i],
+                               old_hand->kickers[<i])) {
+               return 1;
+            } else if (is_card_higher(old_hand->kickers[<i],
+                                      new_hand->kickers[<i])) {
+               return 0;
+            }
+         }
+         break;
+      case HAND_TYPE_FLUSH :
+         for (i = 1; i <= sizeof(new_hand->kickers); i++) {
+            if (is_card_higher(new_hand->kickers[<i],
+                               old_hand->kickers[<i])) {
+               return 1;
+            } else if (is_card_higher(old_hand->kickers[<i],
+                                      new_hand->kickers[<i])) {
+               return 0;
+            }
+         }
+         break;
+      case HAND_TYPE_PAIR :
+         if (is_card_higher(new_hand->duplicate_1,
+                            old_hand->duplicate_1)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_1,
+                            new_hand->duplicate_1)) {
+            return 0;
+         }
+         for (i = 1; i <= sizeof(new_hand->kickers); i++) {
+            if (is_card_higher(new_hand->kickers[<i],
+                               old_hand->kickers[<i])) {
+               return 1;
+            } else if (is_card_higher(old_hand->kickers[<i],
+                                      new_hand->kickers[<i])) {
+               return 0;
+            }
+         }
+         break;
+      case HAND_TYPE_TWO_PAIR :
+         if (is_card_higher(new_hand->duplicate_1,
+                            old_hand->duplicate_1)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_1,
+                            new_hand->duplicate_1)) {
+            return 0;
+         }
+         if (is_card_higher(new_hand->duplicate_2,
+                            old_hand->duplicate_2)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_2,
+                            new_hand->duplicate_2)) {
+            return 0;
+         }
+         if (is_card_higher(new_hand->kickers[0],
+                            old_hand->kickers[0])) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->kickers[0],
+                            new_hand->kickers[0])) {
+            return 0;
+         }
+         break;
+      case HAND_TYPE_THREE :
+         if (is_card_higher(new_hand->duplicate_1,
+                            old_hand->duplicate_1)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_1,
+                            new_hand->duplicate_1)) {
+            return 0;
+         }
+         for (i = 1; i <= sizeof(new_hand->kickers); i++) {
+            if (is_card_higher(new_hand->kickers[<i],
+                               old_hand->kickers[<i])) {
+               return 1;
+            } else if (is_card_higher(old_hand->kickers[<i],
+                                      new_hand->kickers[<i])) {
+               return 0;
+            }
+         }
+         break;
+      case HAND_TYPE_FOUR :
+         if (is_card_higher(new_hand->duplicate_1,
+                            old_hand->duplicate_1)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_1,
+                            new_hand->duplicate_1)) {
+            return 0;
+         }
+         if (is_card_higher(new_hand->kickers[0],
+                            old_hand->kickers[0])) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->kickers[0],
+                            new_hand->kickers[0])) {
+            return 0;
+         }
+         break;
+      case HAND_TYPE_FULL_HOUSE :
+         if (is_card_higher(new_hand->duplicate_1,
+                            old_hand->duplicate_1)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_1,
+                            new_hand->duplicate_1)) {
+            return 0;
+         }
+         if (is_card_higher(new_hand->duplicate_2,
+                            old_hand->duplicate_2)) {
+            return 1;
+         }
+         if (is_card_higher(old_hand->duplicate_2,
+                            new_hand->duplicate_2)) {
+            return 0;
+         }
+         break;
+      case HAND_TYPE_STRAIGHT :
+      case HAND_TYPE_STRAIGHT_FLUSH :
+         if (is_card_higher(new_hand->high_card,
+                            old_hand->high_card)) {
+            return 1;
+         }
+         if (is_card_higher(new_hand->high_card,
+                            old_hand->high_card)) {
+            return 0;
+         }
+         break;
+      }
+   }
+   return TIE;
+}
+void test_hand_type() {
+   class playing_card* other_tmp_hand;
+   class playing_card* tmp_hand;
+   other_tmp_hand = ({ new(class playing_card, suit: CARD_SUIT_HEARTS, number : 11),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 11),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 12),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 13),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 13) });
+   tmp_hand = ({ new(class playing_card, suit: CARD_SUIT_HEARTS, number : 2),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 3),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 4),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 1),
+                 new(class playing_card, suit: CARD_SUIT_HEARTS, number : 5) });
+write(query_hand_type_string(query_hand_type(tmp_hand)) + " --\n" +
+      query_hand_type_string(query_hand_type(other_tmp_hand)));
+printf("%O\n", sizeof(query_hand_type(tmp_hand)->kickers));
+printf("%O\n", sizeof(query_hand_type(other_tmp_hand)->kickers));
+write("Result: " + is_greator_hand(query_hand_type(tmp_hand),
+      query_hand_type(other_tmp_hand)) + "\n");
+}
+void complete_round(int force_end) {
+   string stuff;
+   object ob;
+   class player_data data;
+   string id;
+   string place;
+   string* winner;
+   class hand_type winning_hand_type;
+   class playing_card* winning_hand;
+   int paid;
+   int discard;
+   int result;
+   int num;
+   if (_finished) {
+      return 0;
+   }
+   place = query_money_place();
+   stuff = "";
+   winner = ({ });
+   foreach (id in query_started_player_ids()) {
+      data = query_player_data(id);
+      if ((data->state == POKER_STATE_BET || discard) && !force_end) {
+         if (data->state != POKER_STATE_FOLDED) {
+            data->state = POKER_STATE_DISCARD;
+            data->bet = 0;
+         }
+         discard = 1;
+      } else if (data->state != POKER_STATE_FOLDED) {
+         num++;
+         if (!winning_hand) {
+            winning_hand = data->hand;
+            winning_hand_type = data->hand_type;
+            winner = ({ id });
+         } else {
+            data->hand_type = query_hand_type(data->hand);
+            result = is_greator_hand(data->hand_type, winning_hand_type);
+            if (result == TIE) {
+               winner += ({ id });
+            } else if (result) {
+               winning_hand = data->hand;
+               winning_hand_type = data->hand_type;
+               winner = ({ id });
+            }
+         }
+         stuff += query_player_cap_name(id) + "'s hand (" +
+                  query_hand_type_string(data->hand_type) + "):\n" +
+                  query_hand_string(data->hand, CARD_HAND_SINGLE,
+                                     this_player()->query_cols()) + "\n";
+      }
+   }
+   if (num == 1) {
+      stuff = "All but one person folded so the cards are not revealed.\n";
+   }
+   if (discard) {
+      foreach (id in query_started_player_ids()) {
+         data = query_player_data(id);
+         if (data->state == POKER_STATE_FOLDED) {
+            tell_player(id, "%^BOLD%^Now into the discard phase.%^RESET%^\n"
+               "You have folded.\n");
+         } else {
+            data->bet = 0;
+            tell_player(id, "%^BOLD%^Now into the discard phase.%^RESET%^\n"
+               "Your hand:\n" +
+               query_hand_string(data->hand, CARD_HAND_THREE | CARD_HAND_LETTERS,
+                                    80));
+         }
+      }
+   } else {
+      if (_house_cut) {
+         stuff += "House takes " +
+            MONEY_HAND->money_value_string((_pot * _house_cut) / 100, place) +
+                  ".\n";
+        adjust_float((_pot * _house_cut) / 100);
+        _pot -= (_pot * _house_cut) / 100;
+      }
+      if (sizeof(winner) > 1) {
+         stuff += "Tie for winning between " +
+           query_multiple_short(map(winner, (: query_player_cap_name($1) :))) +
+                  ", they each win " +
+                  MONEY_HAND->money_value_string(_pot / sizeof(winner), place) +
+                  ".\n";
+         paid = _pot / sizeof(winner);
+         foreach (id in winner) {
+            ob = query_player_object(id);
+            if (ob) {
+               ob->adjust_money(MONEY_HAND->create_money_array(paid, place), place);
+               _player_stats[ob->query_name()] += paid;
+            } else {
+               stuff += "Unable to find " + id + " to pay them, money "
+                               "going to the house.\n";
+               adjust_float(paid);
+            }
+         }
+      } else {
+         stuff += "Winner is " +
+           query_multiple_short(map(winner, (: query_player_cap_name($1) :))) +
+                  ", and they win " +
+                  MONEY_HAND->money_value_string(_pot, place) +
+                  ".\n";
+         ob = query_player_object(winner[0]);
+         ob->adjust_money(MONEY_HAND->create_money_array(_pot, place), place);
+         _player_stats[ob->query_name()] += _pot;
+      }
+      tell_all_players("The players reveal their cards as:\n" +
+                       stuff);
+      tell_room(environment(), "The game ends with " + query_multiple_short(winner) +
+                               " as the winner.\n");
+      finish_game(query_multiple_short(winner));
+      _finished = 1;
+   }
+}
+void finish_discard() {
+   string id;
+   class player_data data;
+   foreach (id in query_started_player_ids()) {
+      data = query_player_data(id);
+      if (data->state != POKER_STATE_AFTER_DISCARD &&
+          data->state != POKER_STATE_FOLDED) {
+         return 0;
+      }
+   }
+   _draw_round++;
+   foreach (id in query_started_player_ids()) {
+      data = query_player_data(id);
+      if (data->state == POKER_STATE_AFTER_DISCARD) {
+         if (_draw_round >= _max_draw_rounds) {
+            data->state = POKER_STATE_FINAL_BET;
+         } else {
+            data->state = POKER_STATE_BET;
+         }
+      }
+   }
+   _current_bet = 0;
+   _poker_phase = POKER_STATE_FINAL_BET;
+   call_out("tell_all_players", 0,
+            "Discard round completed.  Now onto the " +
+            (_draw_round >= _max_draw_rounds?"final ":"") + "betting round.\n");
+   next_person_turn();
+}
+int do_ante() {
+   string place;
+   string id;
+   int amount;
+   class player_data data;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   id = find_player_id_of_person(this_player());
+   if (!id) {
+      add_failed_mess("You are not playing.\n");
+      return 0;
+   }
+   data = query_player_data(id);
+   if (data->state != POKER_STATE_ANTE) {
+      add_failed_mess("You have already put in your ante.\n");
+      return 0;
+   }
+   place = query_money_place();
+   amount = _ante_house + _ante_amount;
+   if (this_player()->query_value_in(place) < amount) {
+      add_failed_mess("You do not have the needed " +
+                      MONEY_HAND->money_value_string(amount, place) +
+                      " to meet the ante.\n");
+      return 0;
+   }
+   _player_stats[this_player()->query_name()] -= amount;
+   this_player()->pay_money(MONEY_HAND->create_money_array(amount, place),
+                            place);
+   adjust_float(_ante_house);
+   _pot += _ante_amount;
+   data->state = POKER_STATE_PAID_ANTE;
+   environment()->event_save(this_object());
+   check_for_finish_ante();
+   add_succeeded_mess("$N $V " +
+                      MONEY_HAND->money_value_string(amount, place) +
+                      " on $D.\n");
+   return 1;
+}
+int do_discard(string throw_away) {
+   int i;
+   string id;
+   class player_data data;
+   string* bits;
+   int* new_bits;
+   throw_away = lower_case(throw_away);
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   id = find_player_id_of_person(this_player());
+   if (!id) {
+      add_failed_mess("You are not playing.\n");
+      return 0;
+   }
+   data = query_player_data(id);
+   if (!sizeof(data->hand)) {
+      add_failed_mess("You cannot discard before you have been dealt "
+                      "cards.\n");
+      return 0;
+   }
+   if (data->state != POKER_STATE_DISCARD) {
+      add_failed_mess("You are not in the discard phase.\n");
+      return 0;
+   }
+   if (throw_away && throw_away != "none") {
+      throw_away = lower_case(replace_string(throw_away, " ", ""));
+      bits = explode(throw_away, ",");
+      if (sizeof(filter(bits, (: strlen($1) > 1 :))) > 0) {
+         add_failed_mess("Some of the card references " + throw_away +
+                         " are invalid.  Use a command seperated list of "
+                         "card ids.\n");
+         return 0;
+      }
+      new_bits = map(bits, (: $1[0] - 'a' :));
+      if (sizeof(filter(new_bits, (: $1 < 0 || $1 >= 5 :))) > 0) {
+         add_failed_mess("Some of the card references " + throw_away +
+                         " are invalid.  Use a command seperated list of "
+                         "card ids.\n");
+         return 0;
+      }
+      for (i = 0; i < sizeof(new_bits); i++) {
+         if (member_array(new_bits[i],
+                          new_bits[0..i-1] + new_bits[i+1..]) != -1) {
+            add_failed_mess("You have referenced the card " +
+                            sprintf("%c", 'A' + new_bits[i]) + " twice.\n");
+            return 0;
+         }
+      }
+      new_bits = sort_array(new_bits, (: $2 - $1 :));
+      for (i = 0; i < sizeof(new_bits); i++) {
+         _discard += ({ data->hand[new_bits[i]] });
+         data->hand = data->hand[0..new_bits[i]-1] +
+                      data->hand[new_bits[i]+1..];
+      }
+      i = 5 - sizeof(data->hand) - 1;
+      if (sizeof(_deck) < i) {
+         _deck += _discard;
+         _deck = shuffle_array(_deck);
+         _discard = ({ });
+      }
+      data->hand += _deck[0..i];
+      _deck = _deck[i + 1..];
+      data->hand = sort_cards(data->hand, 3);
+      data->hand_type = query_hand_type(data->hand);
+      add_succeeded_mess(({ "", "$N draw$s " + query_num(sizeof(new_bits)) +
+                                " new card" +
+                               (sizeof(new_bits) > 1?"s":"") + " on $D.\n" }));
+      write("Your new hand (" +
+            query_hand_type_string(data->hand_type) +
+            "):\n" +
+            query_hand_string(data->hand, CARD_HAND_THREE,
+                                  this_player()->query_cols()));
+      data->state = POKER_STATE_AFTER_DISCARD;
+   } else {
+      new_bits = ({ });
+      data->state = POKER_STATE_AFTER_DISCARD;
+      add_succeeded_mess("$N do$es not discard any cards on $D.\n");
+   }
+   finish_discard();
+   return 1;
+}
+int do_check() {
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   if (_poker_phase != POKER_STATE_BET &&
+       _poker_phase != POKER_STATE_FINAL_BET) {
+      add_failed_mess("Not a betting phase.\n");
+      return 0;
+   }
+   if (!is_current_player(this_player())) {
+      add_failed_mess("Not your turn to bet.\n");
+      return 0;
+   }
+   if (_current_bet) {
+      add_failed_mess("You cannot check since betting has started.\n");
+      return 0;
+   }
+   add_succeeded_mess("$N check$s on $D.\n");
+   next_person_turn();
+   return 1;
+}
+int do_call() {
+   class player_data data;
+   int amt;
+   string place;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   if (_poker_phase != POKER_STATE_BET &&
+       _poker_phase != POKER_STATE_FINAL_BET) {
+      add_failed_mess("Not a betting phase.\n");
+      return 0;
+   }
+   if (!is_current_player(this_player())) {
+      add_failed_mess("Not your turn to bet.\n");
+      return 0;
+   }
+   if (!_current_bet) {
+      add_failed_mess("No one has bet anything for you to call.\n");
+      return 0;
+   }
+   place = query_money_place();
+   data = query_player_data(query_current_player());
+   if (_current_bet && data->bet == _current_bet) {
+      call_out("complete_round", 2);
+      if (_poker_phase == POKER_STATE_ANTE) {
+         _poker_phase = POKER_STATE_DISCARD;
+      } else {
+         _poker_phase = POKER_STATE_ANTE;
+      }
+   } else {
+      amt = _current_bet - data->bet;
+      if (this_player()->query_value_in(place) < amt) {
+         add_failed_mess("You do not have the necessary " +
+                         MONEY_HAND->money_value_string(amt, place) +
+                         " to call the bet.\n");
+         return 0;
+      }
+      _player_stats[this_player()->query_name()] -= amt;
+      this_player()->pay_money(MONEY_HAND->create_money_array(amt, place),
+                               place);
+      _pot += amt;
+      data->bet = _current_bet;
+      if (!check_end_round()) {
+         next_person_turn();
+      }
+   }
+   add_succeeded_mess("$N call$s the bet by adding " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " to the pot for a total bet of " +
+                      MONEY_HAND->money_value_string(_current_bet, place) +
+                      " on $D.\n");
+   return 1;
+}
+int do_raise(string amount) {
+   class player_data data;
+   string place;
+   int amt;
+   int raise_amt;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   if (_poker_phase != POKER_STATE_BET &&
+       _poker_phase != POKER_STATE_FINAL_BET) {
+      add_failed_mess("Not a betting phase.\n");
+      return 0;
+   }
+   if (!is_current_player(this_player())) {
+      add_failed_mess("Not your turn to bet.\n");
+      return 0;
+   }
+   place = query_money_place();
+   amt = MONEY_HAND->value_from_string(amount, place);
+   raise_amt = amt;
+   if (!amt) {
+      add_failed_mess("The value " + amount + " is not a valid "
+                      "money amount.\n");
+      return 0;
+   }
+   if (amt < _min_bet) {
+      add_failed_mess("The minimum bet is " +
+                      MONEY_HAND->money_value_string(_min_bet, place) +
+                      ".\n");
+      return 0;
+   }
+   if (amt > _max_bet) {
+      add_failed_mess("The maximum bet is " +
+                      MONEY_HAND->money_value_string(_max_bet, place) +
+                      ".\n");
+      return 0;
+   }
+   data = query_player_data(query_current_player());
+   amt = _current_bet + amt - data->bet;
+   if (this_player()->query_value_in(place) < amt) {
+      add_failed_mess("You do not have the nessessary " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " to raise the bet.\n");
+      return 0;
+   }
+   _player_stats[this_player()->query_name()] -= amt;
+   this_player()->pay_money(MONEY_HAND->create_money_array(amt, place),
+                               place);
+   _current_bet = data->bet + amt;
+   data->bet = _current_bet;
+   _pot += amt;
+   add_succeeded_mess("$N raise$s the bet by " +
+                      MONEY_HAND->money_value_string(raise_amt, place) +
+                      " to " +
+                      MONEY_HAND->money_value_string(_current_bet, place) +
+                      " on $D.\n");
+   next_person_turn();
+   return 1;
+}
+int do_bet(string amount) {
+   class player_data data;
+   string place;
+   int amt;
+   int raise_amt;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   if (_poker_phase != POKER_STATE_BET &&
+       _poker_phase != POKER_STATE_FINAL_BET) {
+      add_failed_mess("Not a betting phase.\n");
+      return 0;
+   }
+   if (!is_current_player(this_player())) {
+      add_failed_mess("Not your turn to bet.\n");
+      return 0;
+   }
+   place = query_money_place();
+   amt = MONEY_HAND->value_from_string(amount, place);
+   if (!amt) {
+      add_failed_mess("The value " + amount + " is not a valid "
+                      "money amount.\n");
+      return 0;
+   }
+   if (amt == _current_bet) {
+      return do_call();
+   }
+   if (amt < _current_bet) {
+      add_failed_mess("You have to bet higher than the current bet of " +
+                      MONEY_HAND->money_value_string(_current_bet, place) +
+                      " money amount.\n");
+      return 0;
+   }
+   amt = amt - _current_bet;
+   raise_amt = amt;
+   if (amt < _min_bet) {
+      add_failed_mess("The minimum bet is " +
+                      MONEY_HAND->money_value_string(_min_bet, place) +
+                      ".\n");
+      return 0;
+   }
+   if (amt > _max_bet) {
+      add_failed_mess("The maximum bet is " +
+                      MONEY_HAND->money_value_string(_max_bet, place) +
+                      ".\n");
+      return 0;
+   }
+   data = query_player_data(query_current_player());
+   amt = _current_bet + amt - data->bet;
+   if (this_player()->query_value_in(place) < amt) {
+      add_failed_mess("You do not have the nessessary " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " to raise the bet.\n");
+      return 0;
+   }
+   _player_stats[this_player()->query_name()] -= amt;
+   this_player()->pay_money(MONEY_HAND->create_money_array(amt, place),
+                               place);
+   _current_bet = data->bet + amt;
+   data->bet = _current_bet;
+   _pot += amt;
+   add_succeeded_mess("$N raise$s the bet by " +
+                      MONEY_HAND->money_value_string(raise_amt, place) +
+                      " to " +
+                      MONEY_HAND->money_value_string(_current_bet, place) +
+                      " on $D.\n");
+   next_person_turn();
+   return 1;
+}
+int do_fold() {
+   class player_data data;
+   string id;
+   int not_folded;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   if (!is_current_player(this_player())) {
+      add_failed_mess("Not your turn to bet.\n");
+      return 0;
+   }
+   data = query_player_data(query_current_player());
+   data->state = POKER_STATE_FOLDED;
+   add_succeeded_mess("$N fold$s on $D.\n");
+   foreach (id in query_started_player_ids()) {
+      data = query_player_data(id);
+      if (data->state != POKER_STATE_FOLDED) {
+         not_folded++;
+      }
+   }
+   if (not_folded == 1) {
+      call_out("complete_round", 0, 1);
+      _poker_phase = POKER_STATE_END;
+   } else if (!check_end_round()) {
+      next_person_turn();
+   }
+   return 1;
+}
+int do_start() {
+   int old_pot;
+   if (!is_open_for("poker", this_player()->query_name())) {
+      add_failed_mess("The poker table is not open.\n");
+      return 0;
+   }
+   if (!is_playing(this_player())) {
+      add_failed_mess("You must be playing the game to start it.\n");
+      return 0;
+   }
+   old_pot = _pot;
+   if (!start_game()) {
+      add_failed_mess("You need at least two people to play poker.\n");
+      return 0;
+   }
+   adjust_float(old_pot);
+   add_succeeded_mess("$N $V a game on $D.\n");
+   return 1;
+}
+int do_finish() {
+   string person;
+   if (!is_game_started()) {
+      add_failed_mess("The game has not started.\n");
+      return 0;
+   }
+   person = find_player_id_of_person(this_player());
+   if (!person) {
+      add_failed_mess("You must actually be playing to finish the game.\n");
+      return 0;
+   }
+   finish_game(0);
+   reset_game();
+   return 1;
+}
+string query_main_status(int hint) {
+   string place;
+   string ret;
+   string name;
+   int amt;
+   place = query_money_place();
+   ret = "$I$0=Poker table:\n"
+          "$I$6=   Maximum bet: " +
+              MONEY_HAND->money_value_string(_max_bet, place) +
+          "\n$I$6=   Minimum bet: " +
+              MONEY_HAND->money_value_string(_min_bet, place) +
+          "\n$I$6=   Ante       : " +
+              MONEY_HAND->money_value_string(_ante_amount, place) +
+          "\n$I$6=   House Ante : " +
+              MONEY_HAND->money_value_string(_ante_house, place) +
+          "\n$I$6=   Draw Rounds: " + _max_draw_rounds +
+          "\n$I$6=   Cut        : " + _house_cut + "%"
+          "\n$I$6=   Revenue    : " +
+              MONEY_HAND->money_value_string(query_revenue(), place) +
+          "\n$I$0=";
+   foreach (name, amt in _player_stats) {
+      ret += sprintf(" %-13s: %s\n" , name,
+                     MONEY_HAND->money_value_string(amt, place));
+   }
+   return ret + "\n";
+}
+int do_set_ante(string str, int ante_game) {
+   string place;
+   int value;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to change the paramaters of "
+                   "$D.\n");
+      return 0;
+   }
+   if (lower_case(str) == "none" && !ante_game) {
+      value = 0;
+   } else {
+      place = query_money_place();
+      value = MONEY_HAND->value_from_string(str, place);
+      if (!value) {
+         add_failed_mess("Unable to parse the string " + str + ".\n");
+         return 0;
+      }
+   }
+   if (ante_game) {
+      _ante_amount = value;
+      add_succeeded_mess("$N set$s the ante amount to play to " +
+          MONEY_HAND->money_value_string(value, place) + " on $D.\n");
+   } else {
+      _ante_house = value;
+      add_succeeded_mess("$N set$s the ante amount for the house to " +
+          MONEY_HAND->money_value_string(value, place) + " on $D.\n");
+   }
+   return 1;
+}
+int do_set_bet(string str, int max_bet) {
+   string place;
+   int value;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to change the paramaters of "
+                   "$D.\n");
+      return 0;
+   }
+   place = query_money_place();
+   value = MONEY_HAND->value_from_string(str, place);
+   if (!value) {
+      add_failed_mess("Unable to parse the string " + str + ".\n");
+      return 0;
+   }
+   if (max_bet) {
+      _max_bet = value;
+      add_succeeded_mess("$N set$s the maximum bet to " +
+          MONEY_HAND->money_value_string(value, place) + " on $D.\n");
+   } else {
+      _min_bet = value;
+      add_succeeded_mess("$N set$s the minimum bet to " +
+          MONEY_HAND->money_value_string(value, place) + " on $D.\n");
+   }
+   return 1;
+}
+int do_set_cut(int percent) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to change the paramaters of "
+                   "$D.\n");
+      return 0;
+   }
+   if (percent < 0) {
+      add_failed_mess("You cannot set the cut less than 0.\n");
+      return 0;
+   }
+   if (percent > 100) {
+      add_failed_mess("You cannot set the cut to greator than 100%.\n");
+      return 0;
+   }
+   _house_cut = percent;
+   add_succeeded_mess("$N set$s the cut to " + percent + "% on $D.\n");
+   return 1;
+}
+int do_set_draw(int draw) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to change the paramaters of "
+                   "$D.\n");
+      return 0;
+   }
+   if (draw < 0) {
+      add_failed_mess("You cannot set the number of draws less than 0.\n");
+      return 0;
+   }
+   if (draw > 5) {
+      add_failed_mess("You cannot set the draw to greator than 5.\n");
+      return 0;
+   }
+   _max_draw_rounds = draw;
+   add_succeeded_mess("$N set$s the number of draw rounds to " + draw + " on $D.\n");
+   return 1;
+}
+int do_rules() {
+   string ret;
+   string place;
+   place = query_money_place();
+   ret = "The rules for this table are:\n";
+   ret += "$I$6=   Maximum amount that can be raised " +
+              MONEY_HAND->money_value_string(_max_bet, place) +
+          "\n$I$6=   Minimum amount that can be raised " +
+              MONEY_HAND->money_value_string(_min_bet, place) +
+          "\n$I$6=   Total ante " +
+              MONEY_HAND->money_value_string(_ante_amount + _ante_house, place) +
+          "\n$I$6=   Cut of the pool : " + _house_cut +
+          "\n$I$6=   Draw Rounds     : " + _max_draw_rounds +
+          "\n$I$6=   House Ante      : " +
+              MONEY_HAND->money_value_string(_ante_house, place);
+   write("$P$Rules$P$" + ret);
+}
+int do_reset() {
+   if (::do_reset()) {
+      _player_stats = ([ ]);
+      add_succeeded_mess("$N clear$s the player stats.\n");
+      return 1;
+   }
+}
+void init() {
+   multiplayer_base::init();
+   commercial::init();
+   add_command("discard", "<string'card'> on <direct:object>",
+               (: do_discard($4[0]) :));
+   add_command("ante", "on <direct:object>",
+               (: do_ante() :));
+   add_command("check", "on <direct:object>",
+               (: do_check() :));
+   add_command("call", "on <direct:object>",
+               (: do_call() :));
+   add_command("bet", "<string'total bet'> on <direct:object>",
+               (: do_bet($4[0]) :));
+   add_command("raise", "<string'raise'> on <direct:object>",
+               (: do_raise($4[0]) :));
+   add_command("fold", "on <direct:object>",
+               (: do_fold() :));
+   add_command("finish", "game on <direct:object>",
+               (: do_finish() :));
+   add_command("start", "game on <direct:object>",
+               (: do_start() :));
+   add_command("rules", "<direct:object>",
+               (: do_rules() :));
+   add_command("rules", "{for|on|of} <direct:object>",
+               (: do_rules() :));
+   if (environment()->is_allowed(this_player()->query_name())) {
+      add_command("set", "draw <number'rounds'> on <direct:object>",
+                  (: do_set_draw($4[0]) :));
+      add_command("set", "cut <number'percentage'> on <direct:object>",
+                  (: do_set_cut($4[0]) :));
+      add_command("set", "ante house <string'amount|none'> on <direct:object>",
+                  (: do_set_ante($4[0], 0) :));
+      add_command("set", "ante game <string'amount'> on <direct:object>",
+                  (: do_set_ante($4[0], 1) :));
+      add_command("set", "minimum bet <string'amount'> on <direct:object>",
+                  (: do_set_bet($4[0], 0) :));
+      add_command("set", "maximum bet <string'amount'> on <direct:object>",
+                  (: do_set_bet($4[0], 1) :));
+   }
+}
+void resign_person(string id) {
+   class player_data data;
+   int not_folded;
+   data = query_player_data(id);
+   if (data && data->state != POKER_STATE_FOLDED) {
+      tell_all_players(query_player_cap_name(id) +
+                       " resigns and folds.\n");
+      data->state = POKER_STATE_FOLDED;
+      foreach (id in query_started_player_ids()) {
+         data = query_player_data(id);
+         if (data->state != POKER_STATE_FOLDED) {
+            not_folded++;
+         }
+      }
+      if (not_folded == 1) {
+         call_out("complete_round", 0, 1);
+         _poker_phase = POKER_STATE_END;
+      }
+   } else {
+      switch (_poker_phase) {
+      case POKER_STATE_ANTE :
+         check_for_finish_ante();
+         break;
+      case POKER_STATE_BET :
+         check_end_round();
+         break;
+      case POKER_STATE_DISCARD :
+         finish_discard();
+         break;
+      }
+   }
+}
+void event_exit(object ob, string mess, object to) {
+   string id;
+   if (userp(ob) && to != environment()) {
+      id = find_player_id_of_person(ob);
+      if (id) {
+         resign_person(id);
+      }
+   }
+}
+void multiplayer_someone_resigns(string id, string name) {
+   resign_person(id);
+}
+mapping query_dynamic_auto_load() {
+   mapping map;
+   map = commercial::query_dynamic_auto_load();
+   multiplayer_base::query_dynamic_auto_load(map);
+   add_auto_load_value(map, BOARD_TAG, "return", _return);
+   add_auto_load_value(map, BOARD_TAG, "ante amount", _ante_amount);
+   add_auto_load_value(map, BOARD_TAG, "house cut", _house_cut);
+   add_auto_load_value(map, BOARD_TAG, "ante house", _ante_house);
+   add_auto_load_value(map, BOARD_TAG, "min bet", _min_bet);
+   add_auto_load_value(map, BOARD_TAG, "max bet", _max_bet);
+   add_auto_load_value(map, BOARD_TAG, "current bet", _current_bet);
+   add_auto_load_value(map, BOARD_TAG, "pot", _pot);
+   add_auto_load_value(map, BOARD_TAG, "deck", _deck);
+   add_auto_load_value(map, BOARD_TAG, "poker phase", _poker_phase);
+   add_auto_load_value(map, BOARD_TAG, "draw round", _draw_round);
+   add_auto_load_value(map, BOARD_TAG, "max draw rounds", _max_draw_rounds);
+   add_auto_load_value(map, BOARD_TAG, "discard", _discard);
+   add_auto_load_value(map, BOARD_TAG, "player stats", _player_stats);
+   return map;
+}
+void init_dynamic_arg(mapping map, object player) {
+   commercial::init_dynamic_arg(map, player);
+   multiplayer_base::init_dynamic_arg(map, player);
+   _return = query_auto_load_value(map, BOARD_TAG, "return");
+   _ante_amount = query_auto_load_value(map, BOARD_TAG, "ante amount");
+   _ante_house = query_auto_load_value(map, BOARD_TAG, "ante house");
+   _house_cut = query_auto_load_value(map, BOARD_TAG, "house cut");
+   _deck = query_auto_load_value(map, BOARD_TAG, "deck");
+   _current_bet = query_auto_load_value(map, BOARD_TAG, "current bet");
+   _pot = query_auto_load_value(map, BOARD_TAG, "pot");
+   _min_bet = query_auto_load_value(map, BOARD_TAG, "min bet");
+   _max_bet = query_auto_load_value(map, BOARD_TAG, "max bet");
+   _poker_phase = query_auto_load_value(map, BOARD_TAG, "poker phase");
+   _draw_round = query_auto_load_value(map, BOARD_TAG, "draw round");
+   _max_draw_rounds = query_auto_load_value(map, BOARD_TAG, "max draw rounds");
+   _discard = query_auto_load_value(map, BOARD_TAG, "discard");
+   _player_stats = query_auto_load_value(map, BOARD_TAG, "player stats");
+   if (!_player_stats) {
+      _player_stats = ([ ]);
+   }
 }
 
 ==================================================
-FILE: room/punishments/lose_citizenship.c
+FILE: room/furniture/shop_base.c
 ==================================================
 
-#include <nomic_system.h>
-inherit "/std/room/inherit/punishment_inherit";
-void setup() {
-   set_short("lose citizenship");
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "lose_citizenship");
-}
-void start_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      function finish) {
-   string* not_citizens;
-   string* magistrates;
-   not_citizens = filter(the_case->people,
-                     (: !NOMIC_HANDLER->is_citizen_of($2, $1) :), area);
-   if (sizeof(not_citizens)) {
-      write(query_multiple_short(not_citizens) + " cannot lose "
-            "their citizenship since they are not citizens.\n");
-      return ;
-   }
-   magistrates = filter(the_case->people,
-                    (: NOMIC_HANDLER->is_magistrate_of($2, $1) :), area);
-   if (sizeof(magistrates)) {
-      write(query_multiple_short(magistrates) + " cannot lose "
-            "their citizenship since they are magistrates.\n");
-      return ;
-   }
-   evaluate(finish, the_case, type, 0);
-}
-void complete_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string citizen;
-   foreach (citizen in the_case->people) {
-      NOMIC_HANDLER->remove_citizen(area, citizen);
-   }
-   return ;
-}
-void suspend_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string citizen;
-   foreach (citizen in the_case->people) {
-      NOMIC_HANDLER->add_citizen(area, citizen);
-   }
-   return ;
-}
-
-==================================================
-FILE: room/punishments/not_guilty.c
-==================================================
-
-#include <nomic_system.h>
-inherit "/std/room/inherit/punishment_inherit";
-void setup() {
-   set_short("not guilty");
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "not_guilty");
-}
-
-==================================================
-FILE: room/punishments/title.c
-==================================================
-
-#include <money.h>
-#include <nomic_system.h>
-#include <player_handler.h>
-#include <player.h>
-inherit "/std/room/inherit/punishment_inherit";
-private nosave string* _titles;
+inherit "/std/room/furniture/commercial";
+inherit "/std/shops/inherit/player_craft_shop_base";
+#define SAVE_TIME 1
+private int _save_call;
+private int _last_saved;
+private string _counter_short;
+#define OBJECT_TAG "shop base"
 void create() {
-   _titles = ({ });
-   set_description_file(NOMIC_PUNISHMENT_DOCS_DIR + "title");
-   set_short("title");
-   ::create();
+   player_craft_shop_base::create();
+   set_shop_use_types(({ "use", "buy" }));
+   commercial::create();
+   set_commercial_name("craft shop");
 }
-void set_titles(string* titles) {
-   _titles = titles;
+int query_player_craft_shop() {
+   return 1;
 }
-string* query_titles() {
-   return _titles;
+int disallow_sale_here(object room) {
+   object* obs;
+   obs = room->find_commercial_items(query_commercial_name());
+   return sizeof(obs);
 }
-void start_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      function finish) {
-   int i;
-   for (i = 0; i < sizeof(_titles); i++) {
-      write(sprintf("%c) %s\n", i + 'A', _titles[i]));
+int query_royalty(string person) {
+   return commercial::query_royalty(person);
+}
+string query_craft_shop_save_dir() {
+   return environment()->query_save_dir() + "craft_shop";
+}
+void adjust_royalty(string person, int amount) {
+   commercial::adjust_royalty(person, amount);
+}
+string query_parcel_post() {
+   return commercial::query_parcel_post();
+}
+void reset_weekly_status() {
+   player_craft_shop_base::reset_weekly_status();
+}
+string query_weekly_status_string() {
+   return player_craft_shop_base::query_weekly_status_string();
+}
+void load_me() {
+  string fname, tmp;
+#ifdef USE_RAMDISK
+  tmp = replace_string(query_save_dir() + "craft_shop_file", "/save/",
+                       "/save/ramdisk/");
+  if(unguarded((: file_size($(tmp) = ".o.gz") :)) > 0 ||
+     unguarded((: file_size($(tmp) = ".o") :)) > 0) {
+    fname = tmp;
+  }
+#endif
+  if(!fname) {
+    fname = query_save_dir() + "craft_shop_file";
+  }
+   unguarded( (: restore_object($(fname)) :));
+#ifdef USE_RAMDISK
+   tmp = replace_string(query_craft_shop_save_dir(), "/save/",
+                        "/save/ramdisk/");
+   unguarded( (: mkdir($(tmp)) :));
+#endif
+   unguarded( (: mkdir(query_craft_shop_save_dir()) :));
+   reload_shop();
+   add_property("place", environment()->query_property("place"));
+}
+void init() {
+   player_craft_shop_base::init();
+   commercial::init();
+}
+void do_save() {
+  string fname;
+  string dir;
+   _save_call = 0;
+   if (environment() && query_save_dir()) {
+#ifdef USE_RAMDISK
+     dir = replace_string(query_save_dir(), "/save/",
+                            "/save/ramdisk/");
+     if (file_size(dir) == -2) {
+        fname = dir + "craft_shop_file";
+     }
+#endif
+     if(!fname) {
+       fname = query_save_dir() + "craft_shop_file";
+     }
+     debug_printf("Saving to %O\n", fname);
+     unguarded( (: save_object($(fname), 2) :));
    }
-   write("Which title do you wish " +
-         query_multiple_short(the_case->people) + " to have? ");
-   input_to("choose_title", 0, area, the_case, type, finish);
 }
-string query_short(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   return "set to a title of " + data[0] + " for " + data[1] + " hours";
+void dest_me() {
+   do_save();
+   player_craft_shop_base::dest_me();
+   commercial::dest_me();
 }
-void choose_title(string title, string area, class nomic_case the_case,
-                 string type, function finish) {
-   int i;
-   int pos;
-   if (!strlen(title) || title[0] == 'q') {
-      write("Aborting the title setting.\n");
-      return ;
+string query_commercial_information() {
+   return "This shop can have a maximum of " + query_maximum_inventory_size() +
+          " items for sale.  "
+          "You can only have "
+          "one shop counter in any room, more than one will not be "
+          "able to be bought.";
+}
+void event_save(object ob) {
+   if (!_save_call) {
+      if(_last_saved > time() - SAVE_TIME) {
+         _save_call = call_out("do_save", SAVE_TIME - (time() - _last_saved));
+      } else {
+         _save_call = call_out("do_save", SAVE_TIME);
+      }
+#ifdef DEBUG
+      debug_printf("Adding call_out");
+#endif
    }
-   title = lower_case(title);
-   if (strlen(title) == 1) {
-      pos = title[0] = 'a';
-      if (pos >= 0 && pos < sizeof(_titles)) {
-         title = _titles[pos];
+}
+mapping query_commercial_options() {
+   return ([
+    "counter type" : ([
+       "polished hardwood counter" : 500000,
+       "shiny polished counter" : 150000,
+       "unfinished pine counter" : 0,
+      ]),
+   "stockroom size" : ([
+       "50" : 0,
+       "100" : 1000000,
+       "150" : 2500000,
+      ]),
+   ]);
+}
+void set_commercial_option(string type, string name) {
+   string* bits;
+   int size;
+   switch (type) {
+   case "counter type" :
+      _counter_short = name;
+      set_short(_counter_short);
+      bits = explode(lower_case(_counter_short), " ");
+      add_adjective(bits[0..<2]);
+      add_alias(bits[<1]);
+      break;
+   case "stockroom size" :
+      sscanf(name, "%d", size);
+      set_maximum_waiting_queue_size(size);
+      break;
+   }
+}
+mapping query_dynamic_auto_load() {
+   mapping map;
+   map = ::query_dynamic_auto_load();
+   add_auto_load_value(map, OBJECT_TAG, "stocksize", query_maximum_waiting_queue_size());
+   add_auto_load_value(map, OBJECT_TAG, "counter short", _counter_short);
+}
+void init_dynamic_arg(mapping map, object player) {
+   string* bits;
+   int size;
+   commercial::init_dynamic_arg(map, player);
+   size = query_auto_load_value(map, OBJECT_TAG, "stocksize");
+   _counter_short = query_auto_load_value(map, OBJECT_TAG, "counter short");
+   if (size) {
+      set_maximum_waiting_queue_size(size);
+   }
+   if (_counter_short) {
+      bits = explode(lower_case(_counter_short), " ");
+      add_adjective(bits[0..<2]);
+      add_alias(bits[<1]);
+   }
+}
+
+==================================================
+FILE: room/furniture/sink_inherit.c
+==================================================
+
+#include <effect.h>
+inherit "/std/room/furniture/surface";
+#define WET_EFFECT "/std/effects/other/wetness"
+#define SOAP_EFFECT "/std/effects/healing/antiseptic_soap"
+int water = 0;
+int dirt = 0;
+string* dirt_messages = ({
+    "clear",
+    "almost clear",
+    "soapy",
+    "foamy",
+    "slightly dirty",
+    "fairly dirty",
+    "dirty",
+    "very dirty",
+    "muddy"
+});
+void zap_bad_effects( object who );
+int do_wash(object *indirect_obs );
+void create(){
+    ::create();
+    add_property( "no recycling", 1 );
+    this_object()->add_extra_look( this_object() );
+}
+string extra_look() {
+    object *stuff;
+    string answer = "";
+    stuff = all_inventory( this_object() );
+    if (water) {
+        if (dirt >= sizeof(dirt_messages)) {
+            dirt = sizeof(dirt_messages) - 1;
+        }
+        answer = answer + "It's about three quarters full of " +
+            dirt_messages[dirt] + " water.\n";
+    }
+    if( sizeof( stuff ) ) {
+        answer = answer + "It has "+ query_multiple_short( stuff ) +" in it.\n";
+    }
+   return answer;
+}
+string long_status() {
+    return "";
+}
+void init(){
+    ::init();
+    add_command( "fill", "<direct:object>");
+    add_command( "empty", "<direct:object>");
+    add_command( "splash", "<indirect:living:here>");
+    add_command( "wash", "<indirect:living:here>");
+}
+void wet_everyone_in() {
+    object *victims;
+    if (!water) {
+        return;
+    }
+    victims = filter(all_inventory(environment(this_object())),
+        (: living($1) :) );
+    foreach( object victim in victims ) {
+        if (victim -> query_position_type() == "in" &&
+            victim -> query_position_on() == "the "+this_object()->short()) {
+            victim->add_effect( WET_EFFECT, 500 );
+        }
+    }
+}
+void reset() {
+    wet_everyone_in();
+}
+int do_fill() {
+    object player;
+    player=this_player();
+    if (water) {
+        player->add_failed_mess(this_object(), "The " + this_object()->short() + " is "
+            "already full of water.\n");
+        return 0;
+    }
+    add_succeeded_mess( "", ({ }) );
+    tell_object(player, "You fill the " + this_object()->short() + " with clean water.\n" );
+    tell_room(environment(player), player->short()+" fills "
+        "the " + this_object()->short() + " with clean water.\n", player );
+    water=1;
+    dirt=0;
+    wet_everyone_in();
+    return 1;
+}
+int do_empty() {
+    object player;
+    player=this_player();
+    if (!water) {
+        player->add_failed_mess(this_object(), "The " + this_object()->short() + " is "
+            "already as empty as it gets.\n");
+        return 0;
+    }
+    add_succeeded_mess( "", ({ }) );
+    tell_object(player, "You reach into the " + this_object()->short() + " and "
+                "pull the plug, allowing the water to drain away.\n" );
+    tell_room(environment(player), player->short()+" reaches into "
+        "the " + this_object()->short() + " and pulls the plug, allowing "
+        "the water to flow away.\n", player );
+    water=0;
+    dirt=0;
+    return 1;
+}
+int do_splash( object *indirect_obs ) {
+    if (!water) {
+        this_player()->add_failed_mess(this_object(), "It's not a bad idea,  "
+            "but maybe you'd need some water in the " + this_object()->short() +
+            "before you can splash.\n");
+        return 0;
+    }
+    if ( sizeof( indirect_obs ) ) {
+        add_succeeded_mess( "$N splash$es $I.\n", indirect_obs );
+        return 1;
+    }
+    this_player()->add_succeeded_mess( this_object(),
+        "$N splash$es $oself.\n", ({ }) );
+    return 1;
+}
+int do_wash( object *indirect_obs ) {
+    if (!water) {
+        this_player()->add_failed_mess(this_object(), "It's not a bad idea,  "
+            "but maybe you'd need some water in the " + this_object()->short() +
+            "before you can wash.\n");
+        return 0;
+    }
+    if (dirt >= sizeof(dirt_messages) - 1) {
+        this_player()->add_failed_mess(this_object(), "The water in the " +
+            this_object()->short() +
+            " looks so muddy, it probably would just soil anyone.  Maybe " +
+            " it would be a better idea to empty it and fill it again " +
+            " with fresh water.\n");
+        return 0;
+    }
+    if ( sizeof( indirect_obs ) ) {
+        foreach( object victim in indirect_obs ) {
+            call_out( (: zap_bad_effects( $1 ) :), 0, victim );
+        }
+        add_succeeded_mess( "$N wash$es $I using a bar of pleasant smelling soap.\n", indirect_obs );
+        return 1;
+    }
+    call_out( (: zap_bad_effects( $1 ) :), 0, this_player() );
+    this_player()->add_succeeded_mess( this_object(),
+        "$N wash$es $oself using a bar of pleasant smelling soap.\n", ({ }) );
+    return 1;
+}
+void zap_bad_effects( object who ) {
+    int i, flag, *enums;
+    class effect *effs;
+    dirt++;
+    effs = (class effect *)who->query_effs();
+    enums = (int *)who->effects_matching( "body.smell" );
+    i = sizeof( enums );
+    if ( !random(dirt) && i ) {
+        i = random( i );
+        flag = 1;
+        write( "The antiseptic power of the soap defeats "+
+          (string)effs[ enums[ i ] ]->ob_name->smell_string( who,
+            effs[ enums[ i ] ]->arg ) +".\n" );
+        who->delete_effect( enums[ i ] );
+        dirt ++;
+    }
+    enums = who->effects_matching("pie.cream");
+    if (!random(dirt) && sizeof(enums)) {
+        tell_object(who, "The cream washes right off your body.\n");
+        who->delete_effect(enums[0]);
+        dirt ++;
+    }
+    enums = (int *)who->effects_matching( "misc.ketchup" );
+    i = sizeof( enums );
+    if ( !random(dirt) && i ) {
+        i = random( i );
+        flag = 1;
+        write( "The soap rinses the ketchup off your face.\n" );
+        who->delete_effect( enums[ i ] );
+        dirt ++;
+    }
+    enums = who->effects_matching("exploded.apples");
+    if (!random(dirt) && sizeof(enums)) {
+        tell_object(who, "The apples wash right off your body.\n");
+        who->delete_effect(enums[0]);
+        dirt ++;
+    }
+    enums = (int *)who->effects_matching("object.label");
+    if (!random(dirt) && sizeof(enums)) {
+        tell_object(who, "The labels stuck on you peel off in "
+          "the water.\n");
+        who->delete_effect(enums[0]);
+        dirt ++;
+    }
+    enums = who->effects_matching("body.frog-adhesive");
+    if (!random(dirt) && sizeof(enums)) {
+        tell_object(who, "The frog adhesive washes off in the water.\n");
+        who->delete_effect(enums[0]);
+        dirt ++;
+    }
+    if (!random(dirt)) {
+        who->add_effect( SOAP_EFFECT, 10000 );
+    }
+    who->add_effect( WET_EFFECT, 250 );
+}
+
+==================================================
+FILE: room/furniture/storage.c
+==================================================
+
+#include <move_failures.h>
+#include <position.h>
+#include <tasks.h>
+inherit "/obj/cont_save";
+inherit "/std/basic/trap";
+inherit "/std/room/furniture/inherit/furniture_base";
+private nosave string _drawer_mess;
+private nosave mixed *_drawers;
+private nosave int _biggest;
+private nosave int _drawers_inside;
+#undef DEBUG
+void create() {
+   do_setup++;
+   furniture_base::create();
+   cont_save::create();
+   _drawer_mess = "a drawer in $ob_short$";
+   _drawers = ({ });
+   add_alias( "furniture" );
+   add_plural( "furniture" );
+   set_opaque();
+   do_setup--;
+   if ( !do_setup ) {
+     this_object()->setup();
+   }
+   set_no_all(1);
+}
+string query_drawer_mess() { return _drawer_mess; }
+void set_drawer_mess( string words ) { _drawer_mess = words; }
+mixed *query_drawers() { return _drawers; }
+void add_drawer( string type, int amount ) {
+   if ( !type || ( type == "" ) || ( amount < 1 ) ) {
+      return;
+   }
+   _drawers += ({ type, amount });
+   set_max_weight(query_max_weight() + amount);
+   if ( amount > _biggest ) {
+      _biggest = amount;
+   }
+}
+void set_drawers_inside(int i) { _drawers_inside = i; }
+int query_drawers_inside() { return _drawers_inside; }
+varargs int move( mixed dest, string messin, string messout ) {
+  int i, w;
+  object from;
+  if (!move_check(dest)) {
+     write(the_short() + " resists being picked up and shocks you slightly.\n");
+     return MOVE_INVALID_DEST;
+  }
+  w = (int)this_object()->query_complete_weight() * 5;
+  if ( from = environment() ) {
+    from->add_weight( -w );
+  }
+  if(!dest) {
+    return MOVE_INVALID_DEST;
+  }
+  if (!( dest->add_weight( w ) ) ) {
+    if ( from ) {
+      from->add_weight( w );
+    }
+    return MOVE_TOO_HEAVY;
+  }
+  if ( stringp( dest ) ) {
+    dest = find_object( dest );
+  }
+  i = ::move( dest, messin, messout );
+  if ( i != MOVE_OK ) {
+    if ( from ) {
+      from->add_weight( w );
+    }
+    dest->add_weight( -w );
+  } else if (query_light_needs_inform()) {
+    if ( from ) {
+      inform_of_light_level_change(from);
+    }
+    inform_of_light_level_change(dest);
+  }
+  return i;
+}
+int get(mixed dest) {
+  if(!move_check(dest)) {
+    write("You feel it would be wrong to take " + the_short() + ".\n");
+    return 2;
+  }
+  return ::get(dest);
+}
+string long( string word, int dark ) {
+   int i;
+   string ret, *sizes;
+   mapping types;
+  ret = ::long( word, dark );
+   if ( sizeof( _drawers ) && !dark &&
+        (!query_closed() || !_drawers_inside)) {
+     types = ([ ]);
+     for ( i = 0; i < sizeof( _drawers ); i += 2 ) {
+       types[ _drawers[ i ] ]++;
+     }
+     sizes = m_indices( types );
+     for ( i = 0; i < sizeof( sizes ); i++ ) {
+       sizes[ i ] = query_num( types[ sizes[ i ] ] ) +" "+ sizes[ i ] +
+         " drawer"+ ( types[ sizes[ i ] ] > 1 ? "s" : "" );
+     }
+     ret += "It has "+ query_multiple_short( sizes ) +".\n";
+   }
+   return ret;
+}
+int test_remove(object thing, int flag, mixed dest) {
+  int result;
+  mixed *stuff;
+  object thief;
+  result = ::test_remove(thing, flag, dest);
+  if(result && environment() && this_player()) {
+    thief = this_player();
+    if(thief->query_caster())
+      thief = find_player(thief->query_caster());
+    else if(thief->query_owner())
+      thief = thief->query_owner();
+    stuff = thing->query_property("dropped");
+    if(function_exists("test_occupier", environment()) &&
+       !environment()->test_occupier(thief->query_name()) &&
+       (!sizeof(stuff) || stuff[0] != thief->query_name()) &&
+       thief && environment(thief)) {
+      event(environment(thief), "theft", thief, this_object(), ({ thing }));
+    }
+#ifdef DEBUG
+    if(base_name(environment()) != "/room/rubbish")
+      log_file(base_name(environment()) + ".log",
+               "%s %s moved from %s to %s.\n", ctime(time())[4..18],
+               thing->query_short(), this_object()->query_short(),
+               dest->query_short());
+#endif
+    event(environment(), "save");
+  }
+  return result;
+}
+int test_add( object thing, int flag ) {
+  int i;
+  if ( flag )
+    return 0;
+  if(!environment(thing))
+    return 1;
+  if(sizeof(_drawers)) {
+    if ( !_biggest )
+      for ( i = 0; i < sizeof( _drawers ); i+= 2 )
+        if ( _drawers[ i + 1 ] > _biggest )
+          _biggest = _drawers[ i + 1 ];
+    if ( (int)thing->query_complete_weight() > _biggest )
+      return write( (string)thing->the_short() +" is too big "+
+                    "to fit in any of "+ the_short() +"'s drawers.\n" );
+  }
+  event(environment(), "save", this_object());
+  i = ::test_add(thing, flag);
+#ifdef DEBUG
+  if(environment() && base_name(environment()) != "/room/rubbish")
+    log_file(base_name(environment()) + ".log",
+             "%s %s put in %s by %s [%d].\n", ctime(time())[4..18],
+             thing->query_short(), this_object()->query_short(),
+             this_player() ? this_player()->query_name() : "Unknown",
+             i);
+#endif
+  return i;
+}
+private int pick_ok(object player) {
+  mixed owner;
+  if(!environment() ||
+     !function_exists("query_owner", environment()) ||
+     environment()->test_occupier(player->query_name()))
+    return ::pick_unlock(player);
+  owner = environment()->query_owner();
+  if(stringp(owner) && pk_check(player, owner, 1)) {
+    write("You feel it would be wrong to try to break into "+
+          this_object()->query_short() + ".\n");
+    return 0;
+  }
+  return ::pick_unlock(player);
+}
+int pick_unlock(object player) {
+  if(!pick_ok(player))
+    return 0;
+  return ::pick_unlock(player);
+}
+int pick_lock(object player) {
+  if(!pick_ok(player))
+    return 0;
+  return ::pick_lock(player);
+}
+mixed *stats() {
+  int i;
+  mixed *ret;
+  ret = ::stats();
+  for ( i = 0; i < sizeof( _drawers ); i += 2 )
+    ret += ({ ({ _drawers[ i ] +" drawer", _drawers[ i + 1 ] }) });
+  return ret;
+}
+mapping int_query_static_auto_load() {
+  return ([
+           "::" : ::int_query_static_auto_load(),
+           "drawer mess" : _drawer_mess,
+           "drawers" : _drawers,
+           "allowed_positions" : query_allowed_positions(),
+           "trap" : query_trap_data(),
+           "trap armed": query_trap_armed(),
+           ]);
+}
+mapping query_static_auto_load() {
+  return int_query_static_auto_load();
+}
+void init_static_arg( mapping map ) {
+  if ( !mapp( map ) )
+    return;
+  if ( map[ "::" ] )
+    ::init_static_arg( map[ "::" ] );
+  if ( !undefinedp( map[ "drawer mess" ] ) )
+    _drawer_mess = map[ "drawer mess" ];
+  if ( !undefinedp( map[ "drawers" ] ) )
+    _drawers = map[ "drawers" ];
+  if(!undefinedp(map["allowed_positions"]))
+    set_allowed_positions(map["allowed_positions"]);
+  if(!undefinedp(map["trap"]))
+    setup_trap(map["trap"][0],
+                   map["trap"][1],
+                   map["trap"][2],
+                   map["trap"][3],
+                   map["trap"][4]);
+  if(!undefinedp(map["trap armed"]))
+    set_trap_armed(map["trap armed"]);
+}
+string query_help_file_directory() {
+   return "/doc/furniture/";
+}
+mixed query_dynamic_auto_load() {
+   mapping junk;
+   junk = cont_save::query_dynamic_auto_load();
+   if (!junk) {
+      junk = ([ ]);
+   }
+   junk["bonded"] = query_bonded();
+   return junk;
+}
+void init_dynamic_arg(mapping map, object) {
+   cont_save::init_dynamic_arg(map, 0);
+   set_bonded(map["bonded"]);
+}
+
+==================================================
+FILE: room/furniture/surface.c
+==================================================
+
+#include <move_failures.h>
+#include <player.h>
+inherit "/std/object";
+inherit "/std/basic/cute_look";
+inherit "/std/basic/item_chat";
+inherit "/std/room/furniture/inherit/furniture_base";
+private nosave int _loc_weight, _max_weight;
+private nosave string *_shadows;
+private nosave object _player;
+private nosave string *_aliases;
+private nosave int _use_internals;
+void create() {
+  do_setup++;
+  furniture_base::create();
+  object::create();
+  add_alias( "furniture" );
+  add_plural( "furniture" );
+  set_opaque();
+  do_setup--;
+  if ( !do_setup ) {
+    this_object()->setup();
+  }
+  set_no_all(1);
+}
+void init() {
+  string alias;
+  if(_aliases)
+    foreach(alias in _aliases) {
+      add_command(alias, "<indirect:object:me> {in|on|into} <indirect:object>",
+                  (: "/cmds/living/put"->cmd($1, $3, $4) :) );
+    }
+  ::init();
+}
+void set_put_aliases(string *aliases) {
+  _aliases = aliases;
+}
+void set_allow_use_internals(int allow) {
+   _use_internals = allow;
+}
+int query_allow_use_internals() {
+   return _use_internals;
+}
+varargs int move( mixed dest, string messin, string messout ) {
+  int i, w;
+  object from;
+  if (!move_check(dest)) {
+     write(the_short() + " resists being picked up and shocks you slightly.\n");
+     return MOVE_INVALID_DEST;
+  }
+  w = (int)this_object()->query_complete_weight() * 5;
+  if ( from = environment() ) {
+    from->add_weight( -w );
+  }
+  if(!dest) {
+    return MOVE_INVALID_DEST;
+  }
+  if (!( dest->add_weight( w ) ) ) {
+    if ( from ) {
+      from->add_weight( w );
+    }
+    return MOVE_TOO_HEAVY;
+  }
+  if ( stringp( dest ) ) {
+    dest = find_object( dest );
+  }
+  i = ::move( dest, messin, messout );
+  if ( i != MOVE_OK ) {
+    if ( from ) {
+      from->add_weight( w );
+    }
+    dest->add_weight( -w );
+  } else {
+    if (_use_internals) {
+      if (from) {
+        from->remove_use_internal_object(this_object());
+      }
+      dest->add_use_internal_object(this_object());
+    }
+    if (query_light_needs_inform()) {
+      if ( from ) {
+        inform_of_light_level_change(from);
+      }
+      inform_of_light_level_change(dest);
+    }
+  }
+  return i;
+}
+int get(mixed dest) {
+  if(!move_check(dest)) {
+    write("You feel it would be wrong to take " + the_short() + ".\n");
+    return 2;
+  }
+  return ::get(dest);
+}
+int test_remove(object thing, int flag, mixed dest) {
+  mixed *stuff;
+  object thief;
+  if(environment() && this_player()) {
+    thief = this_player();
+    if(thief->query_caster())
+      thief = find_player(thief->query_caster());
+    else if(thief->query_owner())
+      thief = thief->query_owner();
+    stuff = thing->query_property("dropped");
+    if(function_exists("test_occupier", environment()) &&
+       !environment()->test_occupier(thief->query_name()) &&
+       (!sizeof(stuff) || stuff[0] != thief->query_name()) &&
+       thief && environment(thief)) {
+      event(environment(thief), "theft", thief, this_object(), ({ thing }));
+    }
+#ifdef DEBUG
+    if(base_name(environment()) != "/room/rubbish")
+      log_file(base_name(environment()) + ".log",
+               "%s %s moved from %s to %s.\n", ctime(time())[4..18],
+               thing->query_short(), this_object()->query_short(),
+               dest->query_short());
+#endif
+    event(environment(), "save");
+  }
+  return 1;
+}
+int test_add( object thing, int flag ) {
+  if(environment())
+    event(environment(), "save");
+#ifdef DEBUG
+  if(environment() && base_name(environment()) != "/room/rubbish")
+    log_file(base_name(environment()) + ".log",
+             "%s %s put on %s by %s.\n", ctime(time())[4..18],
+             thing->query_short(), this_object()->query_short(),
+             this_player() ? this_player()->query_name() : "Unknown");
+#endif
+  return 1;
+}
+void set_max_weight(int arg) { _max_weight = arg; }
+int query_max_weight() { return _max_weight; }
+int query_loc_weight() { return _loc_weight; }
+int query_has_surface() { return 1; }
+void update_loc_weight() {
+  int i;
+  object *contents;
+  _loc_weight = 0;
+  contents = all_inventory( this_object() );
+  for ( i = 0; i < sizeof( contents ); i++ )
+    _loc_weight += (int)contents[ i ]->query_complete_weight();
+}
+int query_complete_weight() {
+  return ::query_complete_weight() + query_loc_weight();
+}
+int add_weight( int n ) {
+  if ( !_max_weight ) return 1;
+  if ( n + _loc_weight > _max_weight ) return 0;
+  if ( !environment() ) {
+    _loc_weight += n;
+    return 1;
+  }
+  if ( !( environment()->add_weight( n ) ) ) return 0;
+  _loc_weight += n;
+  return 1;
+}
+int transfer_all_to(object dest) {
+  object *ob;
+  int i;
+  ob = all_inventory(this_object());
+  for (i=0;i<sizeof(ob);i++)
+    ob[i]->move(dest);
+  if (first_inventory(this_object())) return 0;
+  return 1;
+}
+string long( string word, int dark ) {
+   object *things;
+   things = (object *)this_object()->find_inv_match( "all", this_player() );
+   if ( !sizeof( things ) )
+      return object::long( word, dark ) +"There is nothing on "+
+            the_short() +".\n";
+   return object::long( word, dark ) + query_contents( "On " +
+            the_short() +" "+ ( sizeof( things ) == 1 ? "is " :
+            "are " ), things );
+}
+object *find_inv_match( string words, object looker ) {
+   int i;
+   object *things;
+   things = all_inventory( this_object() );
+   for ( i = sizeof( things ) - 1; i > -1; i-- ) {
+      if ( !things[ i ]->short( 0 ) ) {
+         things = delete( things, i, 1 );
+         continue;
+      }
+      if ( !looker )
+         continue;
+      if ( !things[ i ]->query_visible( looker ) )
+         things = delete( things, i, 1 );
+   }
+   return things;
+}
+void set_player( object thing ) { _player = thing; }
+object query_player() { return _player; }
+mixed stats() {
+  return ::stats() + ({
+    ({ "loc_weight", query_loc_weight(), }),
+    ({ "max_weight", query_max_weight(), }),
+  });
+}
+mapping int_query_static_auto_load() {
+  return ([
+    "::" : ::int_query_static_auto_load(),
+    "max weight" : _max_weight,
+    "allowed positions" : query_allowed_positions(),
+  ]);
+}
+mapping query_dynamic_auto_load() {
+  mixed inventory;
+  if (!inventory) {
+    catch(inventory = PLAYER_OB->
+        create_auto_load( all_inventory( this_object() ) ) );
+  }
+  return ([ "::" : ::query_dynamic_auto_load(),
+            "inv" : inventory,
+            "bonded" : query_bonded()
+         ]);
+}
+int handle_restore_inventory(object ob) {
+  return (int)ob->move(this_object());
+}
+void init_dynamic_arg( mapping bing ) {
+  function f;
+  if ( bing[ "::" ] ) {
+    ::init_dynamic_arg( bing[ "::" ] );
+  }
+  if ( bing[ "inv" ] ) {
+    f = (: handle_restore_inventory($1) :);
+    if (_player) {
+      _player->load_auto_load_to_inventory( bing["inv"], this_object(),
+                                            _player, f);
+    } else {
+      PLAYER_OB->load_auto_load_to_inventory( bing["inv"], this_object(),
+                                              this_player(), f);
+    }
+  }
+  set_bonded(bing["bonded"]);
+}
+void init_static_arg(mapping bing) {
+  if (bing["::"]) {
+     ::init_static_arg(bing["::"]);
+  }
+  if (!undefinedp(bing["max weight"])) {
+    _max_weight = bing["max weight"];
+  if(!undefinedp(bing["allowed_positions"]))
+    set_allowed_positions(bing["allowed_positions"]);
+  }
+}
+mixed query_static_auto_load() {
+  if ( base_name(this_object()) + ".c" == __FILE__ )
+    return int_query_static_auto_load();
+  return ([ ]);
+}
+void dest_me() {
+  int i;
+  object shadow;
+  for ( i = 0; i < sizeof( _shadows ); i++ ) {
+    if ( shadow = find_object( _shadows[ i ] ) ) {
+      shadow->destruct_shadow( shadow );
+    }
+  }
+  all_inventory()->dest_me();
+  object::dest_me();
+}
+string query_help_file_directory() {
+   return "/doc/furniture/";
+}
+
+==================================================
+FILE: room/furniture/vessel.c
+==================================================
+
+#include <move_failures.h>
+#include <position.h>
+inherit "/obj/vessel";
+inherit "/std/basic/item_chat";
+inherit "/std/room/furniture/inherit/furniture_base";
+void create() {
+   do_setup++;
+   vessel::create();
+   furniture_base::create();
+   add_alias( "furniture" );
+   add_plural( "furniture" );
+   add_property("talisman", "no one");
+   set_opaque();
+   if ( !query_property( "shop type" ) ) {
+      add_property( "shop type", "furniture" );
+   }
+   do_setup--;
+   if ( !do_setup ) {
+     this_object()->setup();
+   }
+   set_no_all(1);
+}
+void init() {
+   item_chat::init();
+}
+varargs int move( mixed dest, string messin, string messout ) {
+  int i, t, f;
+  object from;
+  if(stringp(dest)) {
+    dest = find_object(dest);
+  }
+  if (!move_check(dest)) {
+     write(the_short() + " resists being picked up and shocks you slightly.\n");
+     return MOVE_INVALID_DEST;
+  }
+  if(!dest) {
+    return MOVE_INVALID_DEST;
+  }
+  if(living(dest)) {
+    t = (int)this_object()->query_complete_weight() * 2;
+    if(!(dest->add_weight(t))) {
+      return MOVE_TOO_HEAVY;
+    }
+    debug_printf("Added %d", t);
+  }
+  i = ::move(dest, messin, messout);
+  if(i != MOVE_OK) {
+    dest->add_weight(-t);
+    return i;
+  }
+  from = environment();
+  if(from && living(from)) {
+    f = (int)this_object()->query_complete_weight() * 2;
+    from->add_weight(-f);
+  }
+  return i;
+}
+int get(mixed dest) {
+  if(!move_check(dest)) {
+    write("You feel it would be wrong to take " + the_short() + ".\n");
+    return 2;
+  }
+  return ::get(dest);
+}
+mixed query_static_auto_load() {
+  if ( base_name(this_object()) + ".c" == __FILE__ ) {
+    return int_query_static_auto_load();
+  }
+  return ([ ]);
+}
+mixed query_dynamic_auto_load() {
+   mapping junk;
+   junk = vessel::query_dynamic_auto_load();
+   if (!junk) {
+      junk = ([ ]);
+   }
+   junk["bonded"] = query_bonded();
+   return junk;
+}
+void init_dynamic_arg(mapping map) {
+   vessel::init_dynamic_arg(map);
+   set_bonded(map["bonded"]);
+}
+string query_help_file_directory() {
+   return "/doc/furniture/";
+}
+mixed *stats() {
+   return ::stats() +
+          ({ ({ "bonded", query_bonded() }) });
+}
+
+==================================================
+FILE: room/furniture/inherit/document_handler.c
+==================================================
+
+#include <move_failures.h>
+#include <nroff.h>
+#include <room/newspaper.h>
+#include <room/document_handler.h>
+#define TAG "document__h"
+class document {
+   string title;
+   string fname;
+   string added_by;
+   int time_added;
+   int type;
+}
+private mapping _documents;
+private int _next_doc_id;
+string query_save_dir();
+void save_me();
+int is_open_for(string type, string name);
+void add_auto_load_value(mapping map, string tag, string name, mixed value);
+mixed query_auto_load_value(mapping map, string tag, string name);
+void create() {
+   _documents = ([ ]);
+}
+string query_document_file_name(string id) {
+   if (_documents[id]) {
+      return query_save_dir() + "/" + _documents[id]->fname;
+   }
+   return 0;
+}
+string query_document_data(string id) {
+   string fname;
+   fname = query_document_file_name(id);
+   if (fname) {
+      return unguarded( (: read_file($(fname)) :) );
+   }
+   return 0;
+}
+int is_document(string id) {
+   return _documents[id] != 0;
+}
+string query_document_readable(string id) {
+   string fname;
+   string text;
+   fname = query_document_file_name(id);
+   if (fname) {
+      switch (_documents[id]->type) {
+      case DOCUMENT_PLAIN :
+         text = unguarded( (: read_file($(fname)) :) );
+         break;
+      case DOCUMENT_HTML :
+         text = unguarded( (: NROFF_HAND->cat_file($(fname) + ".nroff", 1) :) );
+         if (!text) {
+            text = unguarded( (: read_file( $(fname)) :) );
+            if (text) {
+               text = NEWSPAPER_HANDLER->convert_html(text);
+               unguarded( (: write_file($(fname) + ".proc", $(text), 1) :) );
+               if (unguarded( (: NROFF_HAND->create_nroff($(fname) + ".proc",
+                           $(fname) + ".nroff")
+:) )) {
+                  text = unguarded( (: NROFF_HAND->cat_file($(fname) +
+                                                            ".nroff") :) )
+;
+               } else {
+                  text = "Unable to make nroff file.\n";
+               }
+            } else {
+               text = "Unable to read the file, opps!\n";
+            }
+         }
+         break;
       }
    }
-   if (member_array(title, _titles) == -1) {
-      write("You did not specify a valid title.\n");
-      for (i = 0; i < sizeof(_titles); i++) {
-         write(sprintf("%c) %s\n", i + 'A', _titles[i]));
+   return text;
+}
+string query_document_html(string id) {
+   string fname;
+   string text;
+   fname = query_document_file_name(id);
+   if (fname) {
+      switch (_documents[id]->type) {
+      case DOCUMENT_PLAIN :
+         text = unguarded( (: read_file($(fname)) :) );
+         text = replace(fname, ({ "&", "&amp;", "<", "&lt;", ">", "&gt;",
+                                  " ", "&nbsp;", "\n", "<br>" }) );
+         break;
+      case DOCUMENT_HTML :
+         text = unguarded( (: read_file($(fname)) :) );
+         if (!text) {
+            text = unguarded( (: read_file( $(fname)) :) );
+            if (text) {
+               text = NEWSPAPER_HANDLER->convert_html(text);
+               unguarded( (: write_file($(fname) + ".proc", $(text), 1) :) );
+               if (unguarded( (: NROFF_HAND->create_nroff($(fname) + ".proc",
+                           $(fname) + ".nroff")
+:) )) {
+                  text = unguarded( (: NROFF_HAND->cat_file($(fname) +
+                                                            ".nroff") :) )
+;
+               } else {
+                  text = "Unable to make nroff file.\n";
+               }
+            } else {
+               text = "Unable to read the file, opps!\n";
+            }
+         }
+         break;
       }
-      write("What title do you want to give " +
-            query_multiple_short(the_case->people) + "? ");
-      input_to("choose_title", 0, area, the_case, type, finish);
-      return ;
    }
-   write("How long do you wish " +
-            query_multiple_short(the_case->people) + " to keep the title " +
-         title +
-         "(this is in hours and is online time, not real time)? ");
-   input_to("choose_timeout", 0, area, the_case, type, finish, title);
+   return text;
 }
-void choose_timeout(string str, string area, class nomic_case the_case,
-                 string type, function finish, string title) {
-   int timeout;
-   if (!strlen(str) || str[0] == 'q') {
-      write("Aborting the title setting.\n");
-      return ;
+void update_document_text(string id, string text) {
+   string fname;
+   fname = query_document_file_name(id);
+   if (fname) {
+      unguarded( (: write_file($(fname), $(text), 1) :));
    }
-   timeout = to_int(str);
-   if (timeout <= 0) {
-      write("The timeout must be greator than 0 hours.\n");
-      write("How long do you wish " +
-            query_multiple_short(the_case->people) + " to keep the title " +
-            title + "?");
-      input_to("choose_timeout", 0, area, the_case, type, finish, title);
-      return ;
-   }
-   if (timeout > 30) {
-      write("The timeout must be less than 30 hours.\n");
-      write("How long do you wish " +
-            query_multiple_short(the_case->people) + " to keep the title " +
-            title + "?");
-      input_to("choose_timeout", 0, area, the_case, type, finish, title);
-      return ;
-   }
-   evaluate(finish, the_case, type, ({ title, timeout }));
 }
-void complete_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      PLAYER_TITLE_HANDLER->set_forced_title_on_player(person, data[0], data[1] * (60 * 60));
+void delete_document(string id) {
+   string fname;
+   fname = query_document_file_name(id);
+   if (fname) {
+      unguarded( (: rm($(fname) + ".proc") :));
+      unguarded( (: rm($(fname) + ".nroff.o") :));
+      unguarded( (: rm($(fname)) :));
+      map_delete(_documents, id);
+      save_me();
    }
-   return ;
 }
-void suspend_punishment(string area,
-                      class nomic_case the_case,
-                      string type,
-                      mixed data) {
-   string person;
-   foreach (person in the_case->people) {
-      PLAYER_TITLE_HANDLER->remove_forced_title(person, data[0]);
+string add_document(string title, string text, string person, int type) {
+   class document bing;
+   string id;
+   id = _next_doc_id + "";
+   bing = new(class document);
+   bing->title = title;
+   bing->added_by = person;
+   bing->type = type;
+   bing->time_added = time();
+   bing->fname = id + ".txt";
+   _next_doc_id++;
+   _documents[id] = bing;
+   update_document_text(id, text);
+   save_me();
+   return id;
+}
+int do_list() {
+   string ret;
+   class document info;
+   string id;
+   if (!is_open_for("document_view", this_player()->query_name())) {
+      add_failed_mess("You cannot list documents on $I.\n",
+                      ({ this_object() }));
+      return 0;
    }
-   return ;
+   if (!sizeof(_documents)) {
+      add_failed_mess("Cannot find any documents to list on $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   ret = "";
+   foreach (id, info in _documents) {
+      ret += "$I$3=" + id + ") " + info->title + " [" + info->added_by +
+             "] - " + ctime(info->time_added)[4..9] + " " +
+             ctime(info->time_added)[<4..] + "\n";
+   }
+   write("$P$Documents$P$" + ret);
+   add_succeeded_mess(({ "", "$N lists the documents in $I.\n" }),
+                      ({ this_object() }));
+   return 1;
+}
+int do_display(string id) {
+   string ret;
+   class document info;
+   if (!is_open_for("document_view", this_player()->query_name())) {
+      add_failed_mess("You cannot view documents on $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   ret = query_document_readable(id);
+   if (!ret) {
+      add_failed_mess("Cannot find the document " + id + " on $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   info = _documents[id];
+   ret = "Document #" + id + " " + info->title + " [" + info->added_by +
+             "] - " + ctime(info->time_added)[4..9] + " " +
+             ctime(info->time_added)[<4..] + "\n" + ret;
+   write("$P$Document " + id + "$P$" + ret);
+   add_succeeded_mess(({ "", "$N reads a document from $I.\n" }),
+                      ({ this_object() }));
+   return 1;
+}
+int do_add_document(string title, int type) {
+   if (!is_open_for("document_add", this_player()->query_name())) {
+      add_failed_mess("You cannot add documents to $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   this_player()->do_edit("", "finish_edit", this_object(), 0,
+                          ({ title, type }));
+   return 1;
+}
+void finish_edit(string str, mixed* args) {
+   string title;
+   int type;
+   title = args[0];
+   type = args[1];
+   if (!str || str == "") {
+      write("Abandoning adding the document.\n");
+      return ;
+   }
+   add_document(title, str, this_player()->query_cap_name(), type);
+   write("Added the document into the collection.\n");
+}
+int do_delete_document(string id) {
+   if (!is_open_for("document_delete", this_player()->query_name())) {
+      add_failed_mess("You cannot delete documents from $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   if (!is_document(id)) {
+      add_failed_mess("The document " + id + " does not exist in $I.\n",
+                      ({ this_object() }));
+      return 0;
+   }
+   delete_document(id);
+   add_succeeded_mess("$N delete$s a document from $I.\n", ({ this_object() }));
+   return 1;
+}
+mapping query_dynamic_auto_load(mapping map) {
+   if (file_name(this_object()) != "/std/room/furniture/inherit/document_handler" && map) {
+      add_auto_load_value(map, TAG, "documents", _documents);
+      add_auto_load_value(map, TAG, "doc id", _next_doc_id);
+      return map;
+   }
+}
+void init_dynamic_arg(mapping map) {
+   if (file_name(this_object()) != "/std/room/furniture/inherit/document_handler" && map) {
+      _documents = query_auto_load_value(map, TAG, "documents");
+      if (!_documents) {
+         _documents = ([ ]);
+      }
+      _next_doc_id = query_auto_load_value(map, TAG, "doc id");
+   }
+}
+void init_object() {
+   add_command("list", "documents [from] <direct:object>", (: do_list() :));
+   add_command("view", "document <string'id'> [from] <direct:object>",
+                (: do_display($4[0]) :));
+   add_command("add", "documents {html|plain} called <string:quoted'title'> to <direct:object>",
+               (: do_add_document($4[1], ($4[0] == "html"?DOCUMENT_HTML:DOCUMENT_PLAIN)) :));
+   add_command("delete", "document <string'id'> [from] <direct:object>",
+                (: do_delete_document($4[0]) :));
+}
+void init_room() {
+   add_command("list", "[documents]", (: do_list() :));
+   add_command("view", "[document] <string'id'>",
+                (: do_display($4[0]) :));
+   add_command("add", "[document] {html|plain} called <string:quoted'title'>",
+               (: do_add_document($4[1], ($4[0] == "html"?DOCUMENT_HTML:DOCUMENT_PLAIN)) :));
+   add_command("delete", "[document] <string'id'>",
+                (: do_delete_document($4[0]) :));
 }

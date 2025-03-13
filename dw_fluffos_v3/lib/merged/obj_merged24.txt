@@ -1,1868 +1,2566 @@
-# Total Tokens: 19176
-# Total Files Merged: 11
-# Total Characters: 63953
+# Total Tokens: 24391
+# Total Files Merged: 15
+# Total Characters: 81353
 
-erit/error_handler.c
+.c
 ==================================================
 
-#include <db.h>
-#include <error_handler.h>
-#define SAVE_FILE "/save/handlers/error_handler"
-#define ERROR_SUMMARY_FIELDS "id, entrydate, filename, type, category, name, reporter, status, directory"
-#define ERROR_DETAILS_FIELDS ERROR_SUMMARY_FIELDS \
-                      ", report, runtime"
-#define ERROR_REPLY_TIMEOUT (60 * 60 * 24 * 7 * 4)
-void finish_update(int type, mixed data, function finished, string query);
-private string _db;
-private string _user;
-private string _password;
-void create() {
-   unguarded( (: restore_object(SAVE_FILE) :) );
-   DB_HANDLER->make_sql_request(_db, _user, _password,
-                 "delete from error_replies where senddate < " +
-                 (time() - ERROR_REPLY_TIMEOUT), (: 1 :));
-}
-protected void setup_error_handler(string user, string db, string password) {
-   _user = user;
-   _db = db;
-   _password = password;
-   save_object(SAVE_FILE);
-}
-protected string build_sql_query(string select_rows, class error_query query) {
-   string* restrict;
-   string name;
-   string tmp;
-   restrict = ({ });
-   if (query->id != 0) {
-      restrict += ({ "id = " + query->id });
-   }
-   if (query->dir) {
-      if (query->dir[<1] == '/') {
-         query->dir = query->dir[0..<2];
-      }
-      if (query->recursive) {
-         restrict += ({ "directory like '" + query->dir + "%'" });
-      } else {
-         restrict += ({ "directory = '" + query->dir + "'" });
-      }
-   }
-   if (query->assigned_to) {
-      restrict += ({ "AssignedTo = '" + query->assigned_to + "'" });
-   }
-   if (query->reporter) {
-      restrict += ({ "Reporter = '" + query->reporter + "'" });
-   }
-   if (query->file_name) {
-      restrict += ({ "FileName = '" + query->file_name + "'" });
-   }
-   if (sizeof(query->type)) {
-      tmp = "Type in (";
-      foreach (name in query->type) {
-         tmp += "'" + name + "',";
-      }
-      tmp = tmp[0..<2] + ")";
-      restrict += ({ tmp });
-   }
-   if (sizeof(query->status)) {
-      tmp = "Status in (";
-      foreach (name in query->status) {
-         tmp += "'" + name + "',";
-      }
-      tmp = tmp[0..<2] + ")";
-      restrict += ({ tmp });
-   }
-   if (sizeof(query->category)) {
-      tmp = "Category in (";
-      foreach (name in query->category) {
-         tmp += "'" + name + "',";
-      }
-      tmp = tmp[0..<2] + ")";
-      restrict += ({ tmp });
-   }
-   if (sizeof(restrict)) {
-      tmp = "select " + lower_case(select_rows) + " from errors where " +
-             implode(restrict, " and ");
-      switch (query->order_by) {
-      case ERROR_ORDER_BY_FILENAME :
-         tmp += " order by filename, entrydate";
-         break;
-      case ERROR_ORDER_BY_DATE :
-         tmp += " order by entrydate";
-         break;
-      case ERROR_ORDER_BY_REPORTER :
-         tmp += " order by reporter, entrydate";
-         break;
-      case ERROR_ORDER_BY_DIRECTORY :
-      default :
-         tmp += " order by directory, filename, entrydate";
-         break;
-      }
-      return tmp + " limit 150";
-   }
-   return 0;
-}
-string build_sql_update(int id, string field, mixed value) {
-   string ret;
-   ret = "update errors set " + field + " = ";
-   if (stringp(value)) {
-      ret += "'" + value + "'";
-   } else {
-      ret += "" + value;
-   }
-   ret += " where id = " + id;
-   return ret;
-}
-class error_forward create_error_forward(mapping map) {
-   class error_forward newy;
-   newy = new(class error_forward);
-   newy->date = map["forwarddate"];
-   newy->forwarder = map["forwarder"];
-   newy->old_directory = map["olddirectory"];
-   return newy;
-}
-class error_comment create_error_comment(mapping map) {
-   class error_comment newy;
-   newy = new(class error_comment);
-   newy->date = map["commentdate"];
-   newy->commenter = map["commenter"];
-   newy->comment = map["comment"];
-   return newy;
-}
-class error_summary create_error_summary(mapping map) {
-   class error_summary newy;
-   newy = new(class error_summary);
-   newy->id = map["id"];
-   newy->entry_date = map["entrydate"];
-   newy->filename = map["filename"];
-   newy->category = map["category"];
-   newy->assigned_to = map["assignedto"];
-   newy->reporter = map["reporter"];
-   newy->status = map["status"];
-   newy->type = map["type"];
-   newy->directory = map["directory"];
-   return newy;
-}
-class error_details create_error_details(mapping map) {
-   class error_details newy;
-   newy = new(class error_details);
-   newy->summary = create_error_summary(map);
-   newy->fix_date = map["fixdate"];
-   newy->fixer = map["fixer"];
-   newy->report = map["report"];
-   newy->runtime = map["runtime"];
-   return newy;
-}
-class error_complete create_error_complete(class error_details details) {
-   class error_complete newy;
-   newy = new(class error_complete);
-   newy->details = details;
-   newy->comments = ({ });
-   newy->forwards = ({ });
-   newy->replies = ({ });
-   return newy;
-}
-class error_replies create_error_replies(mapping map) {
-   class error_replies reply;
-   reply = new(class error_replies);
-   reply->id = map["id"];
-   reply->bug_id = map["bug_id"];
-   reply->sender = map["sender"];
-   reply->status = map["status"];
-   reply->recipient = map["recipient"];
-   reply->senddate = map["senddate"];
-   reply->subject = map["subject"];
-   reply->message = map["message"];
-   return reply;
-}
-void finish_summary(int type, mixed data, function finished, string query) {
-   class error_summary* errors;
-   mapping map;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, type, data, query);
-   } else {
-      errors = ({ });
-      foreach (map in data) {
-         errors += ({ create_error_summary(map) });
-      }
-      evaluate(finished, type, errors, query);
-   }
-}
-void finish_forwards(int type, mixed data, function finished,
-                     class error_complete* errors, string query) {
-   mapping map;
-   class error_complete detail;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, DB_SUCCESS, errors, query);
-   } else {
-      foreach (map in data) {
-         foreach (detail in errors) {
-            if (detail->details->summary->id == map["id"]) {
-                 detail->forwards += ({ create_error_forward(map) });
-            }
-         }
-      }
-      evaluate(finished, type, errors, query);
-   }
-}
-void finish_details_error_replies(int type, mixed data, function finished,
-                     class error_complete* errors, string ids, string query) {
-   mapping map;
-   class error_complete detail;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, DB_SUCCESS, errors, query);
-   } else {
-      foreach (map in data) {
-         foreach (detail in errors) {
-            if (detail->details->summary->id == map["bug_id"]) {
-               detail->replies += ({ create_error_replies(map) });
-            }
-         }
-      }
-      DB_HANDLER->make_sql_request(_db, _user, _password,
-                     "select id,forwarddate,forwarder,olddirectory from "
-                     "forwards where id in " + ids +
-                     " order by forwarddate",
-                     (: finish_forwards($1, $2, $(finished), $(errors), $(query)) :));
-   }
-}
-void finish_comments(int type, mixed data, function finished,
-                     class error_complete* errors, string ids, string query) {
-   mapping map;
-   class error_complete detail;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, DB_SUCCESS, errors, query);
-   } else {
-      foreach (map in data) {
-         foreach (detail in errors) {
-            if (detail->details->summary->id == map["id"]) {
-                 detail->comments += ({ create_error_comment(map) });
-            }
-         }
-      }
-      DB_HANDLER->make_sql_request(_db, _user, _password,
-                     "select * from "
-                     "error_replies where bug_id in " + ids +
-                     " order by senddate",
-                     (: finish_details_error_replies($1, $2, $(finished), $(errors), $(ids), $(query)) :));
-   }
-}
-void finish_details(int type, mixed data, function finished, string query) {
-   class error_complete* errors;
-   mapping map;
-   string str;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, type, data, query);
-   } else {
-      errors = ({ });
-      str = "(";
-      foreach (map in data) {
-         errors += ({ create_error_complete(create_error_details(map)) });
-         str += map["id"] + ",";
-      }
-      str = str[0..<2] + ")";
-      DB_HANDLER->make_sql_request(_db, _user, _password,
-                     "select commentdate,commenter,comment,id "
-                     "from comments where id in " + str +
-                     " order by commentdate desc",
-                     (: finish_comments($1, $2, $(finished), $(errors), $(str), $(query)) :));
-   }
-}
-void finish_forward_query(int type, mixed data, function finished,
-                          string user, string newdir) {
-   class error_complete error;
-   mapping map;
-   string str;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, type, data);
-   } else {
-      map = data[0];
-      error = create_error_complete(create_error_details(map));
-      if (error->details->summary->directory != newdir) {
-         str = "insert into forwards (id,forwarddate,forwarder,olddirectory) " +
-               "values (" + error->details->summary->id + ", " + time() + ", '" +
-               db_escape(user) + "', '" +
-               db_escape(error->details->summary->directory) +
-               "')";
-         DB_HANDLER->make_sql_request(_db, _user, _password,
-                     str, (: 1 :));
-         str = build_sql_update(error->details->summary->id, "directory", newdir);
-         DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                                 (: finish_update($1, $2, $(finished), $(str)) :));
-      } else {
-         evaluate(finished, type, data);
-      }
-   }
-}
-void finish_status_query(int type, mixed data, function finished,
-                         string status,
-                         int nomail, string user, string subject,
-                         string message) {
-   class error_complete error;
-   mapping map;
-   string str;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, type, data);
-   } else {
-      map = data[0];
-      error = create_error_complete(create_error_details(map));
-      if (!nomail) {
-         str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
-               "values (" +
-               error->details->summary->id + ", 'NEW', '" + user + "', '" +
-               error->details->summary->reporter + "', " +
-               time() + ", '" +
-               "Change status from " + error->details->summary->status +
-               " to " + status +
-               "\n" + db_escape(message) + "', '" + db_escape(subject) + "')";
-         DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                 (: 1 :) );
-      }
-      str = build_sql_update(error->details->summary->id, "status", status);
-      if (!str) {
-         return 0;
-      }
-      DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                            (: finish_update($1, $2, $(finished), $(str)) :));
-   }
-}
-void finish_update(int type, mixed data, function finished, string query) {
-   evaluate(finished, type, data, query);
-}
-void finish_error_replies(int type, mixed data, function finished, string query) {
-   class error_replies* replies;
-   mapping map;
-   if (type != DB_SUCCESS) {
-      evaluate(finished, type, data);
-   } else {
-      replies = ({ });
-      foreach (map in data) {
-         replies += ({ create_error_replies(map) });
-      }
-      evaluate(finished, type, replies);
-   }
-}
-int do_query_bug_summary(class error_query query, function finished) {
-   string str;
-   str = build_sql_query(ERROR_SUMMARY_FIELDS,
-                         query);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                                   (: finish_summary($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_query_bug_details(int bug_id, function finished) {
-   string str;
-   class error_query query;
-   query = new(class error_query);
-   query->id = bug_id;
-   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                               (: finish_details($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_query_open_bugs_in_dir(string dir, function finished) {
-   class error_query query;
-   query = new(class error_query);
-   query->dir = dir;
-   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
-   return do_query_bug_summary(query, finished);
-}
-int do_query_open_bugs_for_fname(string fname, function finished) {
-   class error_query query;
-   query = new(class error_query);
-   query->file_name = fname;
-   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
-   return do_query_bug_summary(query, finished);
-}
-int do_query_open_bugs_by_reporter(string reporter, function finished) {
-   class error_query query;
-   query = new(class error_query);
-   query->reporter = reporter;
-   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
-   return do_query_bug_summary(query, finished);
-}
-int do_change_type(int id, string type, function finished) {
-   string str;
-   str = build_sql_update(id, "type", type);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                               (: finish_update($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_change_category(int id, string category, function finished) {
-   string str;
-   str = build_sql_update(id, "category", category);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                               (: finish_update($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_assign_bug_to(int id, string assigned_to, function finished) {
-   string str;
-   str = build_sql_update(id, "assignedto", assigned_to);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                               (: finish_update($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_change_status(int id, string status, int nomail, string subject,
-                     string user, string message, function finished) {
-   string str;
-   class error_query query;
-   query = new(class error_query, id : id);
-   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-             (: finish_status_query($1, $2, $(finished), $(status),
-                                    $(nomail), $(user), $(subject),
-                                     $(message)) :));
-   return 1;
-}
-int do_forward(int id, string user, string dir, function finished) {
-   string str;
-   class error_query query;
-   if (!strlen(dir)) {
-      return 0;
-   }
-   if (dir[0] != '/') {
-      dir = "/" + dir;
-   }
-   if (dir[<1] == '/') {
-      dir = dir[0..<2];
-   }
-   if (file_size(dir) != -2 || dir == "/") {
-      return 0;
-   }
-   query = new(class error_query, id : id);
-   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
-   if (!str) {
-      return 0;
-   }
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-             (: finish_forward_query($1, $2, $(finished), $(user), $(dir)) :));
-   return 1;
-}
-int do_comment(int id, string user, string comment, function finished) {
-   string str;
-   str = "insert into comments (id,commentdate,commenter,comment) values (" +
-         id + ", " + time() + ", '" + user + "', '" + db_escape(comment) +
-         "')";
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                             (: finish_update($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_error_replies(string recipient, int only_new, function finished) {
-   string str;
-   str = "select * from error_replies where recipient = '" + recipient +
-         "'";
-   if (only_new) {
-      str += " and status = 'NEW'";
-   } else {
-      str += " and status != 'DELETED'";
-   }
-   str += " order by senddate";
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                      (: finish_error_replies($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_status_error_reply(int id, string status, function finished) {
-   string str;
-   str = "update error_replies set status = '" + status + "' where id = " +
-         id;
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-                      (: finish_update($1, $2, $(finished), $(str)) :));
-   return 1;
-}
-int do_add_error_reply(int bug_id, string from, string to, string subject, string message) {
-   string str;
-   str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
-         "values (" + bug_id + ", 'NEW', '" + from + "', '" + to + "', " +
-         time() + ", '" +
-         db_escape(message) + "', '" + db_escape(subject) + "')";
-   DB_HANDLER->make_sql_request(_db, _user, _password, str,
-           (: 1 :) );
-   return 1;
-}
-
-==================================================
-FILE: handlers/inherit/nomic_rules.c
-==================================================
-
-#include <nomic_system.h>
-private mapping _rules;
-void save_me();
-int query_can_change_rule(string area, class nomic_rule rule);
-class nomic_rule find_nomic_rule(string area, string creator, string text);
-void create() {
-   _rules = ([ ]);
-}
-int add_nomic_rule(string area, int type, string creator, string text) {
-   int bing;
-   class nomic_rule nomic_rule;
-   if (!_rules[area]) {
-      return NOMIC_ERROR;
-   }
-   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
-      return NOMIC_ERROR;
-   }
-   if (find_nomic_rule(area, creator, text)) {
-      return NOMIC_ERROR;
-   }
-   nomic_rule = new(class nomic_rule);
-   bing = _rules[area]->new_type_num[type];
-   nomic_rule->id = bing;
-   nomic_rule->creator = creator;
-   nomic_rule->type = type;
-   nomic_rule->text = text;
-   nomic_rule->date_created = time();
-   nomic_rule->amendments = ({ });
-   _rules[area]->rules += ({ nomic_rule });
-   _rules[area]->new_type_num[type] = bing + 1;
-   save_me();
-   return bing;
-}
-protected int add_nomic_rule_class(string area,
-                                   class nomic_rule new_rule,
-                                   int type) {
-   int bing;
-   if (!_rules[area]) {
-      return NOMIC_ERROR;
-   }
-   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
-      return NOMIC_ERROR;
-   }
-   if (find_nomic_rule(area, new_rule->creator, new_rule->text)) {
-      return NOMIC_ERROR;
-   }
-   bing = _rules[area]->new_type_num[type];
-   new_rule->id = bing;
-   new_rule->type = type;
-   _rules[area]->rules += ({ new_rule });
-   _rules[area]->new_type_num[type] = bing + 1;
-   save_me();
-   return bing;
-}
-protected int move_nomic_rule(string area, class nomic_rule rule,
-                              int type) {
-   int bing;
-   int i;
-   if (!_rules[area]) {
-      return NOMIC_ERROR;
-   }
-   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
-      return NOMIC_ERROR;
-   }
-   bing = _rules[area]->new_type_num[type];
-   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
-      if (_rules[area]->rules[i]->id == rule->id) {
-         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
-            return NOMIC_ERROR;
-         }
-         _rules[area]->rules[i]->id = bing;
-         ((class nomic_rule)_rules[area]->rules[i])->type = type;
-         _rules[area]->new_type_num[type] = bing + 1;
-         save_me();
-         return bing;
-      }
-   }
-   return NOMIC_ERROR;
-}
-int change_nomic_rule(string area, class nomic_rule rule) {
-   int i;
-   if (!_rules[area]) {
-      return 0;
-   }
-   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
-      if (_rules[area]->rules[i]->id == rule->id) {
-         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
-            return NOMIC_ERROR;
-         }
-         rule->type = ((class nomic_rule)_rules[area]->rules[i])->type;
-         rule->id = ((class nomic_rule)_rules[area]->rules[i])->id;
-         _rules[area]->rules[i] = rule;
-         save_me();
-         return 1;
-      }
-   }
-   return 0;
-}
-int remove_nomic_rule(string area, int id) {
-   class nomic_rule nomic_rule;
-   if (!_rules[area]) {
-      return NOMIC_ERROR;
-   }
-   foreach (nomic_rule in _rules[area]->rules) {
-      if (nomic_rule->id == id) {
-         if (!query_can_change_rule(area, nomic_rule)) {
-            return NOMIC_ERROR;
-         }
-         _rules[area]->rules -= ({ nomic_rule });
-         save_me();
-         return 1;
-      }
-   }
-   return 0;
-}
-int int_remove_nomic_rule(string area, int id) {
-   class nomic_rule nomic_rule;
-   if (!_rules[area]) {
-      return NOMIC_ERROR;
-   }
-   foreach (nomic_rule in _rules[area]->rules) {
-      if (nomic_rule->id == id) {
-         _rules[area]->rules -= ({ nomic_rule });
-         save_me();
-         return 1;
-      }
-   }
-   return 0;
-}
-class nomic_rule query_nomic_rule(string area, int id) {
-   class nomic_rule nomic_rule;
-   if (!_rules[area]) {
-      return 0;
-   }
-   foreach (nomic_rule in _rules[area]->rules) {
-      if (nomic_rule->id == id) {
-         return copy(nomic_rule);
-      }
-   }
-   return 0;
-}
-class nomic_rule* query_all_nomic_rules(string area) {
-   if (!_rules[area]) {
-      return ({ });
-   }
-   return copy(_rules[area]->rules);
-}
-class nomic_rule find_nomic_rule(string area, string creator, string text) {
-   class nomic_rule rule;
-   if (!_rules[area]) {
-      return 0;
-   }
-   foreach (rule in _rules[area]->rules) {
-      if (rule->creator == creator && rule->text == text) {
-         return rule;
-      }
-   }
-   return 0;
-}
-int create_area(string area) {
-   class nomic_area new_area;
-   if (_rules[area]) {
-       return 0;
-   }
-   new_area = new(class nomic_area);
-   new_area->new_type_num = NOMIC_DEFAULT_TYPE_NUMS;
-   new_area->rules = ({ });
-   _rules[area] = new_area;
-   return 1;
-}
-int query_type_number(string name) {
-   switch (lower_case(name)) {
-   case "immutable" :
-      return NOMIC_TYPE_IMMUTABLE;
-   case "general" :
-      return NOMIC_TYPE_GENERAL;
-   case "citizen" :
-      return NOMIC_TYPE_CITIZEN;
-   default :
-      return NOMIC_ERROR;
-   }
-}
-string query_type_name(int type_no) {
-   switch (type_no) {
-   case NOMIC_TYPE_IMMUTABLE :
-      return "immutable";
-   case NOMIC_TYPE_GENERAL :
-      return "general";
-   case NOMIC_TYPE_CITIZEN :
-      return "citizen";
-   default :
-      return "error";
-   }
-}
-int query_can_change_rule(string area, class nomic_rule rule) {
-   return rule->type != NOMIC_TYPE_IMMUTABLE;
-}
-string rule_as_string(int indent, class nomic_rule rule) {
-   string ret;
-   class nomic_amendment amend;
-   ret = "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
-          (rule->id?rule->id+"":"(" +
-          NOMIC_HANDLER->query_type_name(rule->type) + ")") + " by " +
-          capitalize(rule->creator) + " (" +
-          ctime(rule->date_created) + "):\n" + rule->text +
-          "\n";
-   foreach (amend in rule->amendments) {
-      ret += "$I$" + (indent + 10) + "=" + sprintf("%*s", indent + 3, "") +
-             capitalize(amend->amender) + " (" +
-             ctime(amend->date_amended) + "):\n" +
-             amend->text + "\n";
-   }
-   return ret;
-}
-
-==================================================
-FILE: handlers/inherit/player_council.c
-==================================================
-
-inherit "/obj/handlers/inherit/nomic_rules";
-inherit "/obj/handlers/inherit/case_control";
-inherit "/obj/handlers/inherit/citizen_elections";
-#define NOMIC_SYSTEM_NO_CLASSES
-#include <nomic_system.h>
-#include <player.h>
-private mapping _motions;
-private mapping _new_citizens;
-private int _completion_id;
-void save_me();
-class nomic_motion find_motion(string area, int rule_no, int type);
-void update_immutables(string area);
-void send_council_inform(string area, int only_magistrates,
-                         string mess);
-string motion_as_string(int indent, string area, class nomic_motion motion, int brief);
-void create() {
-   _motions = ([ ]);
-   _new_citizens = ([ ]);
-   citizen_elections::create();
-   nomic_rules::create();
-   case_control::create();
-   _completion_id = call_out("check_for_completions",
-       (time() - time() % (24 * 60 * 60) + (24 * 60 * 60) + (2 * 60)) - time());
-}
-void create_area(string area) {
-   citizen_elections::create_area(area);
-   nomic_rules::create_area(area);
-   case_control::create_area(area);
-   _motions[area] = ({ });
-   _new_citizens[area] = ({ });
-   update_immutables(area);
-}
-void update_immutables(string area) {
-   string tmp;
-   string type;
-   string file;
-   int int_type;
-   class nomic_rule rule;
-   foreach (rule in query_all_nomic_rules(area)) {
-      if (rule->type == NOMIC_TYPE_IMMUTABLE) {
-         remove_nomic_rule(area, rule->id);
-      }
-   }
-   foreach (file in get_dir(NOMIC_RULE_DEFAULT_DIR)) {
-      if (file_size(NOMIC_RULE_DEFAULT_DIR + "/" + file) > 0) {
-         tmp = read_file(NOMIC_RULE_DEFAULT_DIR + "/" + file);
-         type = explode(tmp, "\n")[0];
-         tmp = implode(explode(tmp, "\n")[1..], "\n");
-         switch (type) {
-         case "immutable" :
-            int_type = NOMIC_TYPE_IMMUTABLE;
-            break;
-         case "citizen" :
-            int_type = NOMIC_TYPE_CITIZEN;
-            break;
-         case "general" :
-            int_type = NOMIC_TYPE_GENERAL;
-            break;
-         default :
-            int_type = -1;
-            printf("Ignoring file " + file + "\n");
-            break;
-         }
-         if (int_type != -1) {
-            add_nomic_rule(area, int_type, area + " administrator", tmp);
-         }
-      }
-   }
-   save_me();
-}
-private int query_next_motion_id(string area) {
-   int num;
-   class nomic_motion fluff;
-   num = 1;
-   foreach (fluff in _motions[area]) {
-      if (num <= fluff->identifier) {
-         num = fluff->identifier + 1;
-      }
-   }
-   return num;
-}
-int add_create_rule_motion(string area, int type, string text,
-                          string creator) {
-   class nomic_motion fluff;
-   if (!is_magistrate_of(area, creator)) {
-      return 0;
-   }
-   fluff = new(class nomic_motion);
-   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_ADD;
-   fluff->rule = new(class nomic_rule);
-   fluff->rule->creator = creator;
-   fluff->rule->text = text;
-   fluff->rule->type = type;
-   fluff->rule->amendments = ({ });
-   fluff->rule->date_created = time();
-   fluff->comments = ({ });
-   fluff->voted = ({ });
-   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
-   fluff->date_added = time();
-   fluff->date_event = time();
-   fluff->yes_votes = 0;
-   fluff->no_votes = 0;
-   fluff->added_by = creator;
-   fluff->identifier = query_next_motion_id(area);
-   _motions[area] += ({ fluff });
-   save_me();
-   send_council_inform(area, 1, creator + " added a new rule motion");
-   post_magistrate_message(area, "New: Create rule motion",
-              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
-   return 1;
-}
-int add_move_rule_type_motion(string area, int rule_no, int type,
-                              string creator) {
-   class nomic_motion fluff;
-   class nomic_rule bing;
-   bing = query_nomic_rule(area, rule_no);
-   if (!bing) {
-      return 0;
-   }
-   if (bing->type == type) {
-      return 0;
-   }
-   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_MOVE);
-   if (fluff) {
-      return 0;
-   }
-   fluff = new(class nomic_motion);
-   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_MOVE;
-   fluff->rule = bing;
-   fluff->new_rule_type = type;
-   fluff->comments = ({ });
-   fluff->voted = ({ });
-   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
-   fluff->date_added = time();
-   fluff->date_event = time();
-   fluff->yes_votes = 0;
-   fluff->no_votes = 0;
-   fluff->added_by = creator;
-   fluff->identifier = query_next_motion_id(area);
-   _motions[area] += ({ fluff });
-   save_me();
-   send_council_inform(area, 1, creator + " added a move rule motion");
-   post_magistrate_message(area, "New: Move rule motion",
-              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
-   return 1;
-}
-int add_amend_rule_motion(string area, int rule_no, string amendment,
-                           string creator) {
-   class nomic_motion fluff;
-   class nomic_rule bing;
-   class nomic_amendment amend;
-   bing = query_nomic_rule(area, rule_no);
-   if (!bing) {
-      return 0;
-   }
-   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_AMEND);
-   if (fluff) {
-      return 0;
-   }
-   fluff = new(class nomic_motion);
-   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_AMEND;
-   amend = new (class nomic_amendment);
-   amend->amender = creator;
-   amend->text = amendment;
-   amend->date_amended = time();
-   bing->amendments += ({ amend });
-   fluff->rule = bing;
-   fluff->comments = ({ });
-   fluff->voted = ({ });
-   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
-   fluff->date_added = time();
-   fluff->date_event = time();
-   fluff->yes_votes = 0;
-   fluff->no_votes = 0;
-   fluff->added_by = creator;
-   fluff->identifier = query_next_motion_id(area);
-   _motions[area] += ({ fluff });
-   save_me();
-   send_council_inform(area, 1, creator + " added an add rule motion");
-   post_magistrate_message(area, "New: Ammend rule motion",
-              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
-   return 1;
-}
-int remove_rule_motion(string area, int rule_no, string creator) {
-   class nomic_motion fluff;
-   class nomic_rule bing;
-   bing = query_nomic_rule(area, rule_no);
-   if (!bing) {
-      return 0;
-   }
-   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_REMOVE);
-   if (fluff) {
-      return 0;
-   }
-   fluff = new(class nomic_motion);
-   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_REMOVE;
-   fluff->rule = bing;
-   fluff->comments = ({ });
-   fluff->voted = ({ });
-   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
-   fluff->date_added = time();
-   fluff->date_event = time();
-   fluff->yes_votes = 0;
-   fluff->no_votes = 0;
-   fluff->added_by = creator;
-   fluff->identifier = query_next_motion_id(area);
-   _motions[area] += ({ fluff });
-   save_me();
-   send_council_inform(area, 1, creator + " added a remove rule motion");
-   post_magistrate_message(area, "New: Remove rule motion",
-              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
-   return 1;
-}
-class nomic_motion query_motion(string area, int id) {
-   class nomic_motion fluff;
-   if (!_motions[area]) {
-      return 0;
-   }
-   foreach (fluff in _motions[area]) {
-      if (fluff->identifier == id) {
-         return fluff;
-      }
-   }
-   return 0;
-}
-class nomic_motion* query_all_motions(string area) {
-   if (!_motions[area]) {
-      return ({ });
-   }
-   return copy(_motions[area]);
-}
-class nomic_motion find_motion(string area, int rule_no, int type) {
-   class nomic_motion motion;
-   foreach (motion in _motions[area]) {
-      if (motion->rule->id == rule_no &&
-          motion->motion_type == type) {
-         return motion;
-      }
-   }
-   return 0;
-}
-int comment_on_motion(string area, int id, string comment_text,
-                            string commenter) {
-   class nomic_comment comment;
-   class nomic_motion bing;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW &&
-       bing->state != NOMIC_STATE_COUNCIL_VOTE) {
-      return 0;
-   }
-   comment = new(class nomic_comment);
-   comment->text = comment_text;
-   comment->commenter = commenter;
-   comment->date_commented = time();
-   bing->comments += ({ comment });
-   save_me();
-   return 1;
-}
-int amend_motion(string area, int id, string amend_text,
-                    string amender) {
-   class nomic_motion bing;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW) {
-      return 0;
-   }
-   switch (bing->motion_type) {
-   case NOMIC_MOTION_TYPE_RULE_ADD :
-      bing->rule->text = amend_text;
-      break;
-   case NOMIC_MOTION_TYPE_RULE_REMOVE :
-   case NOMIC_MOTION_TYPE_RULE_MOVE :
-      return 0;
-   case NOMIC_MOTION_TYPE_RULE_AMEND :
-      bing->rule->amendments[<1]->text = amend_text;
-   }
-   save_me();
-   return 1;
-}
-int vote_for_motion(string area, int id, int vote_type, string voter) {
-   class nomic_motion bing;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   if (member_array(voter, bing->voted) != -1) {
-      return 0;
-   }
-   if (bing->state != NOMIC_STATE_COUNCIL_VOTE &&
-       bing->state != NOMIC_STATE_CITIZEN_VOTE) {
-      return 0;
-   }
-   switch (vote_type) {
-   case NOMIC_VOTE_YES :
-      bing->yes_votes++;
-      break;
-   case NOMIC_VOTE_NO :
-      bing->no_votes++;
-      break;
-   case NOMIC_VOTE_ABSTAIN :
-      bing->abstain_votes++;
-      break;
-   default :
-      return 0;
-   }
-   bing->voted += ({ voter });
-   save_me();
-   return 1;
-}
-int has_voted_for_motion(string area, int id, string voter) {
-   class nomic_motion bing;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   return member_array(voter, bing->voted) != -1;
-}
-int* query_votes_for_motion(string area, int id) {
-   class nomic_motion bing;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   return ({ bing->yes_votes, bing->no_votes, bing->abstain_votes });
-}
-private void remove_motion(string area, class nomic_motion motion) {
-   int i;
-   for (i = 0; i < sizeof(_motions[area]); i++) {
-      if (_motions[area][i] == motion) {
-         _motions[area] = _motions[area][0..i-1] + _motions[area][i+1..];
-      }
-   }
-}
-void send_council_inform(string area, int only_magistrates,
-                         string mess) {
-   object *obs;
-   if (only_magistrates) {
-      obs = filter(users(), (: is_magistrate_of($2, $1->query_name()) :), area);
-   } else {
-      obs = filter(users(), (: is_citizen_of($2, $1->query_name()) :), area);
-   }
-   call_other(obs, "event_inform", this_object(), mess, "council");
-}
-int query_completion_time(string area, class nomic_motion motion) {
-   return (motion->date_event - motion->date_event % (24 * 60 * 60) +
-           7 * (24 * 60 * 60));
-}
-int complete_motion(string area, int id) {
-   class nomic_motion bing;
-   class nomic_motion motion;
-   int passed;
-   int new_num;
-   string mess;
-   int only_magistrates;
-   string voting_result;
-   bing = query_motion(area, id);
-   if (!bing) {
-      return 0;
-   }
-   passed = bing->yes_votes > bing->no_votes;
-   voting_result = "Voting Results:\n"
-                   "    Yes: " + bing->yes_votes + "\n"
-                   "     No: " + bing->no_votes + "\n"
-                   "Abstain: " + bing->abstain_votes + "\n";
-   mess = "Motion added by " + bing->added_by + " to ";
-   switch (bing->motion_type) {
-   case NOMIC_MOTION_TYPE_RULE_ADD :
-      mess += "add a new rule";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_REMOVE :
-      mess += "remove rule " + bing->rule->id;
-      break;
-   case NOMIC_MOTION_TYPE_RULE_MOVE :
-      mess += "move rule " + bing->rule->id;
-      break;
-   case NOMIC_MOTION_TYPE_RULE_AMEND :
-      mess += "amend rule " + bing->rule->id;
-      break;
-   }
-   if (passed || bing->state == NOMIC_STATE_COUNCIL_REVIEW) {
-      switch (bing->state) {
-      case NOMIC_STATE_COUNCIL_REVIEW :
-         bing->yes_votes = 0;
-         bing->no_votes = 0;
-         bing->abstain_votes = 0;
-         bing->voted = ({ });
-         bing->state = NOMIC_STATE_COUNCIL_VOTE;
-         mess += " is open for magistrates to vote";
-         only_magistrates = 1;
-         post_magistrate_message(area, "Motion now in voting phase",
-              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
-         break;
-      case NOMIC_STATE_COUNCIL_VOTE :
-         bing->yes_votes = 0;
-         bing->no_votes = 0;
-         bing->abstain_votes = 0;
-         bing->voted = ({ });
-         bing->state = NOMIC_STATE_CITIZEN_VOTE;
-         bing->comments = ({ });
-         mess += " is open for citizens to vote";
-         post_magistrate_message(area, "Law passed onto citizens",
-                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
-                              "\n\n" + voting_result);
-         post_citizen_message(area, "New motion for voting on",
-              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
-         break;
-      case NOMIC_STATE_CITIZEN_VOTE :
-         switch (bing->motion_type) {
-         case NOMIC_MOTION_TYPE_RULE_ADD :
-            add_nomic_rule_class(area, bing->rule, bing->motion_type);
-            break;
-         case NOMIC_MOTION_TYPE_RULE_AMEND :
-            change_nomic_rule(area, bing->rule);
-            break;
-         case NOMIC_MOTION_TYPE_RULE_MOVE :
-            new_num = move_nomic_rule(area, bing->rule, bing->new_rule_type);
-            foreach (motion in _motions[area]) {
-               if (motion->rule->id == bing->rule->id) {
-                  motion->rule->id = new_num;
-               }
-            }
-            break;
-         case NOMIC_MOTION_TYPE_RULE_REMOVE :
-            remove_nomic_rule(area, bing->rule->id);
-            break;
-         }
-         remove_motion(area, bing);
-         mess += " is now law";
-         post_citizen_message(area, "New Law!",
-                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)));
-         post_magistrate_message(area, "New Law!",
-                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
-                    "\n\n" + voting_result);
-         break;
-      }
-      bing->date_event = time();
-   } else {
-      if (bing->state == NOMIC_STATE_COUNCIL_VOTE) {
-         mess += " not passed by the magistrates";
-         only_magistrates = 1;
-         post_magistrate_message(area, "Law not passed onto citizens",
-                              rule_as_string(0, bing->rule) + "\n\n" +
-                              voting_result);
-      } else {
-         mess += " not ratified by the citizens";
-         only_magistrates = 0;
-         post_citizen_message(area, "Law not passed",
-                              rule_as_string(0, bing->rule));
-         post_magistrate_message(area, "Law not passed",
-                              rule_as_string(0, bing->rule) + "\n\n" +
-                              voting_result);
-      }
-      remove_motion(area, bing);
-   }
-   save_me();
-   send_council_inform(area, only_magistrates, mess);
-   return 1;
-}
-void check_for_completions() {
-   string area;
-   class nomic_motion* bits;
-   class nomic_motion motion;
-   foreach (area, bits in _motions) {
-      foreach (motion in bits) {
-         if (query_completion_time(area, motion) < time()) {
-            complete_motion(area, motion->identifier);
-         }
-      }
-   }
-   remove_call_out(_completion_id);
-   _completion_id = call_out("check_for_completions",
-            (time() - time() % (24 * 60 * 60) + (24 * 60 * 60)) - time());
-   update_recently_closed_cases();
-}
-string motion_as_string(int indent, string area, class nomic_motion motion,
-                        int brief) {
-   string ret;
-   class nomic_comment comment;
-   ret = "";
-   switch (motion->motion_type) {
-   case NOMIC_MOTION_TYPE_RULE_ADD :
-      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
-             motion->identifier + ") Add new rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_REMOVE :
-      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
-             motion->identifier + ") Remove rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_MOVE :
-      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
-             motion->identifier + ") Transmogrify rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_AMEND :
-      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
-             motion->identifier + ") Amend rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "\n";
-      break;
-   }
-   ret += rule_as_string(5 + indent, motion->rule);
-   if (sizeof(motion->comments)) {
-      if (!brief) {
-         ret += "$I$" + (indent + 5) + "=     Comments:\n";
-         foreach (comment in motion->comments) {
-            ret += "$I$" + (indent + 11) + "=" + sprintf("%*s", indent + 3, "") +                capitalize(comment->commenter) + " (" +
-                   ctime(comment->date_commented) + "):\n" +
-                   comment->text + "\n";
-         }
-      } else {
-         ret += "$I$0=" + sprintf("%*s", indent, "") + "     " +
-                 sizeof(motion->comments) + " Comments.\n";
-      }
-   } else {
-      ret += "$I$0=" + sprintf("%*s", indent, "") + "     No Comments.\n";
-   }
-   switch (motion->state) {
-   case NOMIC_STATE_COUNCIL_REVIEW :
-      ret += "$I$0=" + sprintf("%*s", indent, "") +
-             "The item is currently being reviewed by the magistrates.\n";
-      break;
-   case NOMIC_STATE_COUNCIL_VOTE :
-      ret += "$I$0=" + sprintf("%*s", indent, "") +
-             "The item is currently being voted on by the magistrates.\n";
-      break;
-   case NOMIC_STATE_CITIZEN_VOTE :
-      ret += "$I$0=" + sprintf("%*s", indent, "") +
-             "The item is currently being ratified by the citizens.\n";
-      break;
-   }
-   ret += "$I$0=" + sprintf("%*s", indent, "") +
-          "The item will go onto the next stage at " +
-          ctime(query_completion_time(area, motion)) +
-          ".\n";
-   return ret;
-}
-string rule_as_html(class nomic_rule rule) {
-   string ret;
-   class nomic_amendment amend;
-   ret = "<i><b>" + (rule->id?rule->id+"":"(" +
-          NOMIC_HANDLER->query_type_name(rule->type) + ")") + "</b> by " +
-          capitalize(rule->creator) + " (" +
-          ctime(rule->date_created) + "):</i>\n"
-          "<p style=\"margin-left: 30pt;margin-top: 5pt\">\n" +
-          replace_string(rule->text, "\n", "<br>") +
-          "<br>\n";
-   foreach (amend in rule->amendments) {
-      ret += "<i><b>Ammendment</b> by " + capitalize(amend->amender) + " (" +
-             ctime(amend->date_amended) + "):</i>\n"
-             "<p style=\"margin-left: 60pt;margin-top: 5pt\">\n" +
-             replace_string(amend->text, "\n", "<br>") +
-             "\n</p>\n";
-   }
-   ret += "</p>\n";
-   return ret;
-}
-string motion_as_html(string area, class nomic_motion motion) {
-   string ret;
-   class nomic_comment comment;
-   ret = "";
-   switch (motion->motion_type) {
-   case NOMIC_MOTION_TYPE_RULE_ADD :
-      ret += "<b>" + motion->identifier + ") Add new rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "</b>\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_REMOVE :
-      ret += "<b>" + motion->identifier + ") Remove rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "</b>\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_MOVE :
-      ret += "<b>" + motion->identifier + ") Transmogrify rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "</b>\n";
-      break;
-   case NOMIC_MOTION_TYPE_RULE_AMEND :
-      ret += "<b>" + motion->identifier + ") Amend rule; added by " +
-             capitalize(motion->added_by) + " at " +
-             ctime(motion->date_added) + "</b>\n";
-      break;
-   }
-   ret += "<ul>" + rule_as_html(motion->rule) + "</ul>";
-   if (sizeof(motion->comments)) {
-      ret += "<b>Comments:</b><br>\n";
-      foreach (comment in motion->comments) {
-         ret += ctime(comment->date_commented) + "):<br>\n" +
-                comment->text + "<p>\n";
-      }
-   }
-   switch (motion->state) {
-   case NOMIC_STATE_COUNCIL_REVIEW :
-      ret += "The item is currently being reviewed by the magistrates.\n";
-      break;
-   case NOMIC_STATE_COUNCIL_VOTE :
-      ret += "The item is currently being voted on by the magistrates.\n";
-      break;
-   case NOMIC_STATE_CITIZEN_VOTE :
-      ret += "The item is currently being ratified by the citizens.\n";
-      break;
-   }
-   ret += "<br>The item will go onto the next stage at " +
-          ctime(query_completion_time(area, motion)) +
-          ".\n";
-   return ret;
-}
-
-==================================================
-FILE: handlers/terrain_things/dungeon_maker.c
-==================================================
-
-#include <dirs.h>
-#include <terrain.h>
-#define END 0
-#define TWO 1
-#define FOUR 2
-#define ROOM 3
-#define HALF 0
-#define FULL 1
-#define DIRS ({ "north", "northeast", "east", "southeast", \
-      "south", "southwest", "west", "northwest" })
+#include <library.h>
+#define DEFAULT_PANS ([ \
+  "left" : ([ ]), \
+  "middle" : ([ \
+  "very small" : ({ "1/9", 1 }), \
+  "small" : ({ "1/3", 3 }), \
+  "medium" : ({ "1", 9 }), \
+  "large" : ({ "3", 27 }), \
+  "very large" : ({ "9", 81 }) ]), \
+  "right" : ([ ]) ])
 inherit "/std/object";
-int max, size, *clear, *c_probs, *p_probs, *r_probs, *start;
-string terrain_name, *passage_files, *room_files;
-object easel;
-mixed *passages, *room_entries;
+private nosave int balance;
+private nosave string *doing;
+private nosave mapping pans;
+void setup();
+void init();
+string *query_doing();
+mapping query_pans();
+string long( string words, int dark );
+string pans_look();
+void recalculate_balance();
+int reset_weights();
+string weight_string( int weight );
+int weigh_something( object* obs );
+int figure_it_out();
+int move_a_specific_weight( string weight_size, string pan_to );
+int move_a_weight( string weight_size, string pan_from, string pan_to );
+void it_is_balanced( object person );
 void setup() {
-   set_name( "box" );
-   set_short( "green box" );
-   add_adjective( "green" );
-   set_long( "This is a green box.  It's quite featureless but, strangely "+
-         "enough, something tells you it's a dungeon generator.\n" );
-   reset_get();
-   start = allocate( 3 );
-   passages = ({ });
-   room_entries = ({ });
+  set_name( "balance" );
+  set_short( "weighing balance" );
+  add_adjective( "weighing" );
+  add_alias( ({ "pan", "pans", "weight", "weights" }) );
+  set_weight( 200 );
+  reset_get();
+  doing = ({ });
+  pans = DEFAULT_PANS;
 }
-void dest_me() {
-   if ( easel )
-      easel->dest_me();
-   ::dest_me();
-}
-int query_max_locations() { return max; }
-void set_max_locations( mixed arg ) { max = to_int( arg ); }
-int *query_junction_clearance() { return clear; }
-void set_junction_clearance( mixed *args ) {
-   int i;
-   clear = allocate( sizeof( args ) );
-   for ( i = 0; i < sizeof( args ); i++ )
-      clear[ i ] = to_int( args[ i ] );
-}
-int *query_continue_probabilities() { return c_probs; }
-void set_continue_probabilities( mixed *args ) {
-   int i;
-   c_probs = allocate( sizeof( args ) );
-   for ( i = 0; i < sizeof( args ); i++ )
-      c_probs[ i ] = to_int( args[ i ] );
-}
-int *query_passage_probabilities() { return p_probs; }
-void set_passage_probabilities( mixed *args ) {
-   int i;
-   p_probs = allocate( sizeof( args ) );
-   for ( i = 0; i < sizeof( args ); i++ )
-      p_probs[ i ] = to_int( args[ i ] );
-}
-int *query_room_probabilities() { return r_probs; }
-void set_room_probabilities( mixed *args ) {
-   int i;
-   r_probs = allocate( sizeof( args ) );
-   for ( i = 0; i < sizeof( args ); i++ )
-      r_probs[ i ] = to_int( args[ i ] );
-}
-int *query_start_co_ord() { return start; }
-void set_start_co_ord( mixed *args ) {
-   int i;
-   if ( sizeof( args ) != 3 )
-      return;
-   for ( i = 0; i < sizeof( args ); i++ )
-      start[ i ] = to_int( args[ i ] );
-}
-string query_terrain_name() { return terrain_name; }
-void set_terrain_name( string word ) { terrain_name = word; }
-string *query_passage_files() { return passage_files; }
-void set_passage_files( string *words ) { passage_files = words; }
-string *query_room_files() { return room_files; }
-void set_room_files( string *words ) { room_files = words; }
-object query_easel() { return easel; }
-mixed *query_passages() { return passages; }
-mixed *query_room_entries() { return room_entries; }
-int do_generate(string);
 void init() {
-   add_command( "generate", "<word'terrainname'>", (:do_generate($4[0]):));
+  add_command("weigh", "<indirect:object:me'thing(s)'> on <direct:object>",
+    (:this_object()->weigh_something($1):));
+  add_command("reset", "weights on balance", (: reset_weights() :));
+  add_command("figure", "", (:this_object()->figure_it_out():));
+  add_command("move",
+          "<string'size'> weight to <string'position'> pan",
+          (:this_object()->move_a_specific_weight($4[0], $4[1]):));
 }
-void mark_passage( int *co_ord ) {
-   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] ) / size,
-         ( start[ 0 ] - co_ord[ 0 ] ) / size }), ({ "#" }) );
+string *query_doing() { return doing; }
+mapping query_pans() { return pans; }
+string long( string words, int dark ) {
+  int i, j;
+  string long;
+  string *bits;
+  string *places;
+  string *weights;
+  if (!words) {
+    words = "balance";
+  }
+  bits = explode( words, " " );
+  switch ( bits[ sizeof( bits ) - 1 ] ) {
+    case "balance" :
+      return "This is a largish bronze balance, securely bolted in "
+        "place.  The main part of the balance is a long arm which "
+        "pivots at its centre.  There is a pan hanging from each "
+        "end of the arm such that it will be level when the weights "
+        "in the pans are equal.  A third pan is fixed to a stationary "
+        "part of the balance where the weights can be held when not "
+        "in use.\n" + pans_look() + "You could probably use the balance "
+        "to weigh something.\nThere appears to be something "
+        "written on it.\n";
+    case "pan" :
+    case "pans" :
+      return "There are three pans.  One pan hangs from the left end of "
+        "the arm, one from the right end and there is a third pan "
+        "in the middle.\n"+ pans_look();
+    case "weight" :
+    case "weights" :
+      long = "There are weights of many different sizes in the pans.  "
+        "They are:\n";
+      bits = ({ });
+      places = m_indices( pans );
+      for ( i = 0; i < sizeof( places ); i++ ) {
+        if ( !m_sizeof( pans[ places[ i ] ] ) ) {
+          continue;
+        }
+        weights = m_indices( pans[ places[ i ] ] );
+        for ( j = 0; j < sizeof( weights ); j++ ) {
+          if ( sizeof( doing ) ) {
+            if ( doing[ 1 ] == weights[ j ] ) {
+              continue;
+            }
+          }
+          bits += ({ add_a( weights[ j ] ) + " weight marked with \""
+            + pans[ places[ i ] ][ weights[ j ] ][ 0 ] +" lb\"" });
+        }
+      }
+      long += "    " + implode( bits[ 0 .. sizeof( bits ) - 2 ],
+        ",\n    " ) +",\n  and "+ bits[ sizeof( bits ) - 1 ] + ".\n";
+      long += "The weights can be moved from one pan to another and "
+        "reset back to their starting positions.\n";
+      return long;
+  }
+  return "You're not quite sure what you're looking at.\n";
 }
-void mark_room( int *co_ord, string room ) {
-   int width;
-   width = (int)room->query_room_size();
-   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] - width - size / 2 ) / size,
-         ( start[ 0 ] - co_ord[ 0 ] - width - size / 2 ) / size }),
-         (string *)easel->make_block( ( 2 * width ) / size + 2 ) );
+string pans_look() {
+  int i;
+  int j;
+  string pans_status;
+  string *places;
+  string *weights;
+  pans_status = "";
+  places = m_indices( pans );
+  for ( i = 0; i < sizeof( places ); i++ ) {
+    pans_status += "The "+ places[ i ] +" pan ";
+    if ( !m_sizeof( pans[ places[ i ] ] ) )
+      pans_status += "is empty.\n";
+    else {
+      weights = m_indices( pans[ places[ i ] ] );
+      for ( j = 0; j < sizeof( weights ); j++ )
+        weights[ j ] = add_a( weights[ j ] ) +" weight";
+      pans_status += "holds "+ query_multiple_short( weights ) +".\n";
+    }
+  }
+  switch ( balance ) {
+    case -1 :
+      pans_status += "The left pan hangs lower than the right pan.\n";
+      break;
+    case 0 :
+      pans_status += "The left pan hangs level with the right pan.\n";
+      break;
+    case 1 :
+      pans_status += "The left pan hangs higher than the right pan.\n";
+      break;
+  }
+  return pans_status;
 }
-int do_generate( string word ) {
-   int i;
-   string data, direc, *lines;
-   mixed *parameters;
-   if ( easel )
-      return notify_fail( "The generator is working on "+
-            terrain_name +".\n" );
-   if ( file_size( word ) < 0 )
-      return notify_fail( "File "+ word +" does not exist.\n" );
-   lines = explode( read_file( word ), "\n" );
-   for ( i = 0; i < sizeof( lines ); i++ ) {
-      if ( lines[ i ] == "" )
-         continue;
-       if ( lines[ i ][ 0 .. 0 ] == "#" )
-         continue;
-      parameters = explode( lines[ i ], " " );
-      if ( !stringp( parameters[ 0 ] ) ) {
-         printf( "%s line %d: %O is not a string.\n", word, i,
-               parameters[ 0 ] );
-         continue;
-      }
-      if ( sizeof( parameters ) == 2 )
-         call_other( this_object(), "set_"+ parameters[ 0 ],
-               parameters[ 1 ] );
-      else
-         call_other( this_object(), "set_"+ parameters[ 0 ],
-               parameters[ 1 .. sizeof( parameters ) - 1 ] );
-      printf( "Set %s to %O.\n", parameters[ 0 ], call_other( this_object(),
-            "query_"+ parameters[ 0 ] ) );
-   }
-   if ( file_size( RESTORE_PATH + terrain_name +".o" ) > 0 )
-      return notify_fail( "Terrain "+ terrain_name +" already exists.\n" );
-   easel = clone_object( "/obj/misc/easel" );
-   set_long( "This is a green box.  It's quite featureless but, strangely "+
-         "enough, something tells you it's a dungeon generator.\nIt seems "+
-         "to be humming quietly but in a very powerful way.\n" );
-   write( "Working on "+ terrain_name +".\n" );
-   direc = DIRS[ random( 8 ) ];
-   for ( i = 0; i < 4; i++ )
-      passages += ({ ({ DIRS[ ( member_array( direc, DIRS ) + 2 * i ) % 8 ],
-            passage_files[ random( sizeof( passage_files ) ) ],
-            start, 0, 0, 1 + clear[ 0 ] + random( clear[ 1 ] ) }) });
-   size = 2 * (int)passage_files[ 0 ]->query_room_size();
-   TERRAIN_MAP->add_floating_location( terrain_name, passage_files[ 0 ],
-         start, 0 );
-   call_out( "process_passages", 2 );
-   return 1;
+void recalculate_balance() {
+  int i;
+  int j;
+  int old_balance;
+  string *places;
+  string *weights;
+  mapping pan_weights;
+  pan_weights = ([ ]);
+  places = m_indices( pans );
+  for ( i = 0; i < sizeof( places ); i++ ) {
+    pan_weights[ places[ i ] ] = 0;
+    if ( !m_sizeof( pans[ places[ i ] ] ) ) {
+      continue;
+    }
+    weights = m_indices( pans[ places[ i ] ] );
+    for ( j = 0; j < sizeof( weights ); j++ ) {
+      pan_weights[ places[ i ] ] +=
+        pans[ places[ i ] ][ weights[ j ] ][ 1 ];
+    }
+  }
+  old_balance = balance;
+  if ( pan_weights[ "left" ] > pan_weights[ "right" ] ) {
+    balance = -1;
+  } else {
+    if ( pan_weights[ "left" ] == pan_weights[ "right" ] ) {
+      balance = 0;
+    } else {
+      balance = 1;
+    }
+  }
+  if ( old_balance == balance ) {
+    switch ( balance ) {
+      case -1 :
+        tell_room( environment(), "The arm rocks a bit but steadies, "
+          "with the left pan still hanging lowest.\n" );
+        break;
+      case 1 :
+        tell_room( environment(), "The arm rocks a bit but steadies, "
+          "with the right pan still hanging lowest.\n" );
+        break;
+    }
+    return;
+  }
+  switch ( balance ) {
+    case -1 :
+      tell_room( environment(), "The arm of the balance tips and the "
+        "left pan ends up hanging lowest.\n" );
+      break;
+    case 0 :
+      tell_room( environment(), "The arm of the balance levels out, "
+        "with the left and right pans hanging level.\n" );
+      break;
+    case 1 :
+      tell_room( environment(), "The arm of the balance tips and the "
+        "right pan ends up hanging lowest.\n" );
+      break;
+  }
 }
-void stop_working() {
-   tell_room( environment(), "The box stops humming as it extrudes an "+
-         "easel from a slot in one side.\n" );
-   easel->add_shape( ({ 0, 0 }), ({ "@" }) );
-   write_file( "/open/"+ terrain_name +".map",
-         implode( (string *)easel->query_lines(), "\n" ) );
-   easel->move( environment() );
-   easel = 0;
-   passages = ({ });
-   room_entries = ({ });
-   set_long( "This is a green box.  It's quite featureless but, strangely "+
-         "enough, something tells you it's a dungeon generator.\n" );
+int reset_weights() {
+  pans = DEFAULT_PANS;
+  if (sizeof(doing)) {
+    pans[ "left" ][ doing[ 1 ] ] = ({ "?", 1 + random( 121 ) });
+  }
+  add_succeeded_mess("$N $V the weights on $D.\n");
+  recalculate_balance();
+  return 1;
 }
-int *shift_in( int *co_ord, string direc, string from, string to ) {
-   int i, delta, *new_co_ord, *vector;
-   delta = (int)from->query_room_size() + (int)to->query_room_size();
-   new_co_ord = allocate( 3 );
-   vector = STD_ORDERS[ member_array( direc, STD_ORDERS ) + 1 ];
-   for ( i = 0; i < 3; i++ )
-      new_co_ord[ i ] = co_ord[ i ] - delta * vector[ i ];
-   return new_co_ord;
+string weight_string( int weight ) {
+  int wholes;
+  int ninths;
+  wholes = weight / 9;
+  ninths = weight % 9;
+  if ( wholes && ninths ) {
+    return wholes + " " + ninths + "/9 lb";
+  }
+  if ( wholes ) {
+    return wholes + " lb";
+  }
+  return ninths + "/9 lb";
 }
-void process_passages() {
-   int i, j, k, prob, straight, *co_ord, *new_co_ord;
-   string direc, new_direc, type, new_type;
-   mixed *last;
-   if ( !sizeof( passages ) ) {
-      tell_room( environment(), "No passages to process.\n" );
-      return stop_working();
-   }
-   if ( max < 1 ) {
-      tell_room( environment(), "Reached maximum.\n" );
-      return stop_working();
-   }
-   max--;
-   direc = passages[ 0 ][ 0 ];
-   type = passages[ 0 ][ 1 ];
-   co_ord = passages[ 0 ][ 2 ];
-   last = passages[ 0 ][ 3 .. 4 ];
-   straight = passages[ 0 ][ 5 ];
-   passages = delete( passages, 0, 1 );
-   call_out( "process_passages", 2 );
-   for ( i = 0; i < 3; i++ ) {
-      new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 + i ) % 8 ];
-      new_co_ord = shift_in( co_ord, new_direc, type, type );
-      if ( sizeof( (mixed *)TERRAIN_MAP->
-            member_floating_locations( new_co_ord ) ) ) {
-         tell_room( environment(), "Passage already at "+ new_co_ord[ 0 ] +
-               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
-               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
-               co_ord[ 2 ] +".\n" );
-         return;
+int weigh_something( object* obs ) {
+  int i;
+  int info;
+  int weight;
+  object person;
+  if ( sizeof( doing ) ) {
+    person = find_player( doing[ 0 ] );
+    if ( person == this_player() ) {
+      add_failed_mess( "Hold your horses, you're trying to get the hang "
+        "of it still.\n" );
+      return 0;
+    }
+    if ( person && ( environment( person ) == environment() ) ) {
+      add_failed_mess( (string)person->one_short() + " is using "
+        "the balance at the moment.  Come back when "
+        + (string)person->query_pronoun() + " has finished.\n" );
+      return 0;
+    }
+    doing = ({ });
+    pans = DEFAULT_PANS;
+  }
+  info = (int)LIBRARY->query_player_quest_info(
+    (string)this_player()->query_name(), "balance" );
+  switch ( info ) {
+    case 0 :
+      add_failed_mess( "You don't know how the balance works to weigh "
+        "anything.\nTry looking at the balance, the pans and "
+        "the weights, and then maybe you can figure it out.\n" );
+      return 0;
+    case 1 :
+      add_failed_mess( "You're still not too sure how the balance works "
+        "to weigh anything.\nTry looking at the balance, the pans and "
+        "the weights, and then maybe you can figure it out.\n" );
+      return 0;
+    case 2 :
+      add_failed_mess( "You're very nearly sure how the balance works, "
+        "but maybe you should try to figure it out once more before "
+        "you weigh anything.\n" );
+      return 0;
+  }
+  for ( i = 0; i < sizeof( obs ); i++ ) {
+    weight = obs[ i ]->query_complete_weight();
+    if ( !weight ) {
+      write( obs[ i ]->the_short() + " doesn't weigh anything.\n" );
+      continue;
+    }
+    if ( weight > 121 ) {
+      write( obs[ i ]->the_short() +
+        " is heavier than all the weights available put together.\n" );
+      continue;
+    }
+    write( obs[ i ]->the_short() +
+      " weighs "+ weight_string( weight ) +".\n" );
+  }
+  add_succeeded_mess(({ "", "$N $V $I on $D.\n" }), obs);
+  return 1;
+}
+int figure_it_out() {
+  int info;
+  object person;
+  if ( sizeof( doing ) ) {
+    person = find_player( doing[ 0 ] );
+    if ( person == this_player() ) {
+      notify_fail( "You're already engaged in figuring out how the "
+        "balance can be used to weigh something.\n" );
+      return 0;
+    }
+    if ( person && ( environment( person ) == environment() ) ) {
+      notify_fail( (string)person->one_short() + " is using "
+        "the balance at the moment.  Come back when "
+        + (string)person->query_pronoun() + " has finished.\n" );
+      return 0;
+    }
+    doing = ({ });
+    pans = DEFAULT_PANS;
+  }
+  info = (int)LIBRARY->query_player_quest_info(
+    (string)this_player()->query_name(), "balance" );
+  if ( info > 2 ) {
+    write( "You already know how the balance works.\n" );
+    return 1;
+  }
+  doing = ({ (string)this_player()->query_name(), ({ "red", "green",
+    "blue" })[ info ] });
+  write( "You see " + add_a( doing[ 1 ] ) + " weight in the middle pan "
+    "that you hadn't noticed before.  Maybe you could use this to "
+    "experiment, so you place it in the left pan.\n" );
+  say( (string)this_player()->one_short() + " moves "
+    + add_a( doing[ 1 ] ) + " weight from the middle pan to the "
+    "left pan.\n" );
+  pans[ "left" ][ doing[ 1 ] ] = ({ "?", 1 + random( 121 ) });
+  recalculate_balance();
+  return 1;
+}
+int move_a_specific_weight( string weight_size, string pan_to ) {
+  object person;
+  string pan_from;
+  if ( sizeof( doing ) ) {
+    person = find_player( doing[ 0 ] );
+    if ( !person ) {
+      doing = ({ });
+    } else {
+      if ( person != this_player() ) {
+        if ( environment( person ) == environment() ) {
+          add_failed_mess( (string)person->one_short() + " is "
+            "using the balance at the moment.  Come back when "
+            + (string)person->query_pronoun() + " has finished.\n" );
+          return 0;
+        } else {
+          doing = ({ });
+          pans = DEFAULT_PANS;
+        }
       }
-      for ( j = 0; j < sizeof( room_entries ); j++ ) {
-         for ( k = 0; k < 3; k++ )
-            if ( new_co_ord[ k ] != room_entries[ j ][ k ] )
-               break;
-         if ( k < 3 )
-            continue;
-         tell_room( environment(), "Room entry at "+ new_co_ord[ 0 ] +
-               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; "+
-               "joining passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
-               co_ord[ 2 ] +".\n" );
-         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
-               0 );
-         mark_passage( new_co_ord );
-         room_entries = delete( room_entries, j, 1 );
-         return;
+    }
+  }
+  if ( !pans[ pan_to ] ) {
+    add_failed_mess( "There is a left pan, a middle pan and a right pan, "
+      "but no " + pan_to + " pan.\n" );
+    return 0;
+  }
+  foreach (pan_from in keys(pans)) {
+    if ( pans[ pan_from ][ weight_size ] ) {
+      return move_a_weight(weight_size, pan_from, pan_to);
+    }
+  }
+  add_failed_mess("Unable to find the " + weight_size + " weight.\n");
+  return 0;
+}
+int move_a_weight( string weight_size, string pan_from, string pan_to ) {
+  if ( pan_from == pan_to ) {
+    add_failed_mess( "The " + weight_size + " weight is already in the "
+      + pan_to + " pan.\n" );
+    return 0;
+  }
+  if ( sizeof( doing ) ) {
+    if ( weight_size == doing[ 1 ] ) {
+      notify_fail( "You don't feel like moving the " + doing[ 1 ]
+        + " weight since that's what you're trying to weigh.\n" );
+      return 0;
+    }
+  }
+  pans[ pan_to ][ weight_size ] = pans[ pan_from ][ weight_size ];
+  pans[ pan_from ] = m_delete( pans[ pan_from ], weight_size );
+  write( "You move the "+ weight_size +" weight from the "+ pan_from
+    + " pan to the "+ pan_to + " pan.\n" );
+  say( (string)this_player()->one_short() + " moves "
+    + add_a( weight_size ) +" weight from the "+ pan_from + " pan "
+    "of the balance to the " + pan_to + " pan.\n" );
+  recalculate_balance();
+  if ( sizeof( doing ) && !balance ) {
+    call_out( "it_is_balanced", 0, this_player() );
+  }
+  return 1;
+}
+void it_is_balanced( object person ) {
+  int info;
+  tell_object( person, "You feel a small surge of self-esteem to have found "
+    "that the "+ doing[ 1 ] +" weight weighs "
+    + weight_string( pans[ "left" ][ doing[ 1 ] ][ 1 ] ) +".\n" );
+  info = (int)LIBRARY->query_player_quest_info( (string)person->query_name(),
+    "balance" );
+  info++;
+  switch ( info ) {
+    case 1 :
+      tell_object( person, "You've made a good start at working out "
+        "how the balance operates.  You think you should practice "
+        "with it a couple of times more to get the hang of it, "
+        "though.\n" );
+      person->adjust_xp( 5000 );
+      break;
+    case 2 :
+      tell_object( person, "You're definitely getting to understand how "
+        "the balance operates.  You think you should practice with "
+        "it once more to get used to it completely, though.\n" );
+      person->adjust_xp( 10000 );
+      break;
+    case 3 :
+      tell_object( person, "You're now adept at using the balance and "
+        "can use it to weigh anything.\n" );
+      if ( interactive( person ) ) {
+        if ( !LIBRARY->query_quest_done( (string)person->query_name(),
+          "balance quest" ) ) {
+          LIBRARY->set_quest( (string)person->query_name(),
+            "balance quest" );
+        }
       }
-      if ( (int)easel->query_at( ({ ( new_co_ord[ 1 ] - start[ 1 ] ) / size,
-            ( start[ 0 ] - new_co_ord[ 0 ] ) / size }) ) != 32 ) {
-         tell_room( environment(), "Something at "+ new_co_ord[ 0 ] +
-               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
-               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
-               co_ord[ 2 ] +".\n" );
-         return;
-      }
+      break;
+    case 4:
+      info--;
+      break;
+    default :
+      tell_object( person, "Something has gone wrong with the balance.  "
+        "Please contact Wodan about it.\n" );
+  }
+  LIBRARY->set_player_quest_info( (string)person->query_name(), "balance",
+    info );
+  tell_object( person, "You put all the weights back into the middle "
+    "pan.\n" );
+  tell_room( environment(), (string)person->the_short() +
+     " seems satisfied with "+ (string)person->query_objective() +"self, "
+    "and returns all of the weights to the middle pan.\n", person );
+  doing = ({ });
+  pans = DEFAULT_PANS;
+}
+
+==================================================
+FILE: misc/bank_credit_note.c
+==================================================
+
+inherit "/std/object";
+#include <money.h>
+#define OBJECT_TAG "credit note"
+private int _id;
+private int _amount;
+private string _franchise;
+private string _bank;
+void setup() {
+   set_name("note");
+   set_short("bank credit note");
+   add_adjective( ({ "bank", "credit" }) );
+   set_long("A small piece of paper which looks like some sort of "
+            "bank transaction slip.\n");
+   set_value(0);
+   set_weight(1);
+}
+void setup_read_messages() {
+   string extra;
+   string place;
+   place = query_property("place");
+   if (_amount < 0) {
+     extra = "Agrees to pay " +
+             MONEY_HAND->money_value_string(-_amount, place) +
+             " to the master bank.\n";
+   } else {
+     extra = "Slip for a withdrawl of " +
+             MONEY_HAND->money_value_string(-_amount, place) +
+             " from the master bank.\n";
    }
-   prob = random( 100 );
-   if ( prob < p_probs[ END ] ) {
-      tell_room( environment(), "Passage going "+ direc +" ends at "+
-            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
-      return;
-   }
-   prob -= p_probs[ END ];
-   if ( ( prob < p_probs[ TWO ] ) && !straight ) {
-      if ( random( 100 ) >= c_probs[ HALF ] + c_probs[ FULL ] ) {
-         tell_room( environment(), "Passage branching "+ direc +" and " );
-         new_co_ord = shift_in( co_ord, direc, type, type );
-         TERRAIN_MAP->add_floating_location( terrain_name, type,
-               new_co_ord, 0 );
-         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
-               clear[ 0 ] + random( clear[ 1 ] ) }) });
-         mark_passage( new_co_ord );
-         if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
-            direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
-                  6 * random( 2 ) ) % 8 ];
-         else
-            direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
-                  4 * random( 2 ) ) % 8 ];
-         type = passage_files[ random( sizeof( passage_files ) ) ];
-         new_co_ord = shift_in( co_ord, direc, type, type );
-         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
-               0 );
-         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
-               clear[ 0 ] + random( clear[ 1 ] ) }) });
-         mark_passage( new_co_ord );
-         tell_room( environment(), direc +" from "+
-               co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
-         return;
-      }
-      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 1 ) % 8 ];
-      else
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 2 ) % 8 ];
-      type = passage_files[ random( sizeof( passage_files ) ) ];
-      new_co_ord = shift_in( co_ord, new_direc, type, type );
-      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
-      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
-            clear[ 0 ] + random( clear[ 1 ] ) }) });
-      mark_passage( new_co_ord );
-      tell_room( environment(), "Passage branching "+ new_direc +" and " );
-      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 ) % 8 ];
-      else
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 ) % 8 ];
-      type = passage_files[ random( sizeof( passage_files ) ) ];
-      new_co_ord = shift_in( co_ord, new_direc, type, type );
-      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
-      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
-            clear[ 0 ] + random( clear[ 1 ] ) }) });
-      mark_passage( new_co_ord );
-      tell_room( environment(), new_direc +" from "+
-            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
-      return;
-   }
-   prob -= p_probs[ TWO ];
-   if ( ( prob < p_probs[ FOUR ] ) && !straight ) {
-      tell_room( environment(), "Crossroads from "+ direc +" at "+
-            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
-      for ( i = 0; i < 3; i++ ) {
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 + 2 * i ) % 8 ];
-         type = passage_files[ random( sizeof( passage_files ) ) ];
-         new_co_ord = shift_in( co_ord, new_direc, type, type );
-         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
-               0 );
-         passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
-               clear[ 0 ] + random( clear[ 1 ] ) }) });
-         mark_passage( new_co_ord );
-      }
-      return;
-   }
-   prob -= p_probs[ FOUR ];
-   if ( ( prob < p_probs[ ROOM ] ) && !straight ) {
-      prob = random( 100 );
-      new_type = room_files[ 0 ];
-      for ( i = 1; i < sizeof( room_files ); i++ )
-         if ( prob < r_probs[ FULL + i ] ) {
-            new_type = room_files[ i ];
-            break;
-         } else
-            prob -= r_probs[ FULL + i ];
-      new_co_ord = shift_in( co_ord, direc, type, new_type );
-      tell_room( environment(), "Room at "+ new_co_ord[ 0 ] +", "+
-            new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +".\n" );
-      TERRAIN_MAP->add_floating_location( terrain_name, new_type,
-            new_co_ord, 0 );
-      mark_room( new_co_ord, new_type );
-      mark_passage( co_ord );
-      for ( i = 1; i < 8; i++ ) {
-         new_direc = DIRS[ ( member_array( direc, DIRS ) + 4 + i ) % 8 ];
-         type = passage_files[ random( sizeof( passage_files ) ) ];
-         co_ord = shift_in( new_co_ord, new_direc, new_type, type );
-         if ( i % 2 ) {
-            if ( random( 100 ) < r_probs[ HALF ] ) {
-               tell_room( environment(), "Passage leaving room to "+
-                     new_direc +".\n" );
-               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
-                     0 );
-               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
-                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
-               mark_passage( co_ord );
-            } else
-               room_entries += ({ co_ord });
-         } else {
-            if ( random( 100 ) < r_probs[ FULL ] ) {
-               tell_room( environment(), "Passage leaving room to "+
-                     new_direc +".\n" );
-               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
-                     0 );
-               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
-                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
-               mark_passage( co_ord );
-            } else
-               room_entries += ({ co_ord });
+   add_read_mess("Credit note #" + _id + " for the bank " +
+                    _bank + " from the franchise " +
+                    _franchise->query_address() + ".\n\n" + extra,
+                    0, "common", 0);
+}
+void set_credit_num(int num) {
+   _id = num;
+}
+int query_credit_num() {
+   return _id;
+}
+void set_bank_name(string bank) {
+   _bank = bank;
+}
+string query_bank_name() {
+   return _bank;
+}
+void set_franchise(string franchise) {
+   _franchise = franchise;
+}
+string query_franchise() {
+   return _franchise;
+}
+void set_amount(int amount) {
+   _amount = amount;
+}
+int query_amount() {
+   return _amount;
+}
+int is_valid_note() {
+   object bank;
+   object* obs;
+   object ob;
+   int ret;
+   bank = load_object(query_franchise());
+   obs = bank->find_commercial_items("bank");
+   if (sizeof(obs)) {
+      foreach (ob in obs) {
+         ret = ob->is_valid_note(query_credit_num());
+         if (ret) {
+            return 1;
          }
       }
-      return;
    }
-   prob = random( 100 );
-   if ( ( prob < c_probs[ HALF ] ) && !straight ) {
-      direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
-             6 * random( 2 ) ) % 8 ];
-      straight = clear[ 0 ] + random( clear[ 1 ] );
-   } else {
-      prob -=  c_probs[ HALF ];
-      if ( ( prob < c_probs[ FULL ] ) && !straight ) {
-         direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
-               4 * random( 2 ) ) % 8 ];
-         straight = clear[ 0 ] + random( clear[ 1 ] );
+   return 0;
+}
+int do_process() {
+   object bank;
+   object* obs;
+   object ob;
+   int ret;
+   bank = load_object(query_franchise());
+   obs = bank->find_commercial_items("bank");
+   if (sizeof(obs)) {
+      foreach (ob in obs) {
+         ret = ob->process_note(query_credit_num());
+         if (ret) {
+            return 1;
+         }
       }
    }
-   if ( straight > 0 )
-      straight--;
-   new_co_ord = shift_in( co_ord, direc, type, type );
-   tell_room( environment(), "Passage goes "+ direc +" from "+
-         co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
-   TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
-   passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
-         straight }) });
-   mark_passage( new_co_ord );
+   return 0;
+}
+mixed* stats() {
+   return ::stats() +
+          ({ ({ "credit amount", query_amount() }),
+             ({ "franchise", query_franchise() }),
+             ({ "credit id", query_credit_num() }), });
+}
+mapping query_dynamic_auto_load() {
+   mapping map;
+   map = ::query_dynamic_auto_load();
+   add_auto_load_value(map, OBJECT_TAG, "amount", query_amount());
+   add_auto_load_value(map, OBJECT_TAG, "franchise", query_franchise());
+   add_auto_load_value(map, OBJECT_TAG, "id", query_credit_num());
+   add_auto_load_value(map, OBJECT_TAG, "bank", query_bank_name());
+   return map;
+}
+void init_dynamic_arg(mapping map) {
+   ::init_dynamic_arg(map);
+   set_amount(query_auto_load_value(map, OBJECT_TAG, "amount"));
+   set_franchise(query_auto_load_value(map, OBJECT_TAG, "franchise"));
+   set_credit_num(query_auto_load_value(map, OBJECT_TAG, "id"));
+   set_bank_name(query_auto_load_value(map, OBJECT_TAG, "bank"));
 }
 
 ==================================================
-FILE: handlers/terrain_things/logroom.c
+FILE: misc/beeswax_candle.c
 ==================================================
 
-#include <terrain.h>
-#define SAVE_FILE RESTORE_PATH +"logroom"
-inherit "/std/room";
-mapping locations;
+inherit "/std/lightable";
 void setup() {
-   set_short( "limbo" );
-   set_light( 50 );
-   set_long( "You are between worlds, surrounded by raw potentiality and "+
-         "not a lot else.\n" );
-   add_item( "potentiality", "Well, it's sort of potentially something and "+
-         "potentially nothing, and it can't quite decide at the moment.  "+
-         "With any luck, though, you won't be here long enough to find "+
-         "out...\n" );
-   add_exit( "drum", "/d/am/am/mendeddrum", "path" );
-   locations = ([ ]);
-   if ( file_size( SAVE_FILE +".o" ) )
-      unguarded((: restore_object, SAVE_FILE :));
+   set_name( "candle" );
+   set_short( "beeswax candle" );
+   add_adjective( "beeswax" );
+   set_long( "This is a small candle, like you'd "
+         "see on a birthday cake.  It is quite soft and "
+         "squidgy.\n" );
+   set_fuel_messages( ({
+         "It is almost burnt to a stub.", 10,
+         "It is more than halfway burnt.", 50,
+         "It is not yet halfway burnt.", 85,
+	 "It is almost new.", 99,
+         "It is new.", 100
+         }) );
+   set_empty_mess( "is burnt to a stub." );
+   set_max_fuel( 900 );
+   set_fuel( 900 );
+   set_brightness( 60 );
+   set_value( 400 );
+   set_hold_required( 1 );
+   add_property( "no recycling", 1 );
+   new_weapon( 10 );
+   set_weight( 1 );
+   set_hide_cond( 1 );
 }
-void save_this() {
-  unguarded((: save_object, SAVE_FILE :));
+
+==================================================
+FILE: misc/board.c
+==================================================
+
+#include <mail.h>
+#include <board.h>;
+inherit "/std/object";
+string board_name;
+mapping being_written;
+int action_pri;
+class info_written {
+   string subject;
+   int note_num;
 }
-void player_quitting( object player, object place ) {
-   if ( player->query_property( "guest" ) )
-      return;
-   locations[ (string)player->query_name() ] =
-         ({ (string)place->query_property( "terrain name" ),
-         (int *)place->query_co_ord() });
-   save_this();
-   call_out( "check_quitted", 5, (string)player->query_name() );
+int do_read_next();
+int do_read_new();
+int do_read(int num);
+int do_followup(int num);
+int do_reply(int num);
+int do_eat(int num);
+int do_post(string str);
+void setup() {
+   set_name("board");
+   set_short("bulletin board");
+   add_adjective("bulletin");
+   set_main_plural("boards");
+   reset_get();
+   add_property("there", "mounted on one wall");
+   add_property("survive fire", 1);
+   add_help_file("board");
+   board_name = "frog";
+   being_written = ([ ]);
+   action_pri = 0;
 }
-void check_quitted( string word ) {
-   if ( !find_player( word ) )
-      return;
-   if ( locations[ word ] )
-      locations = m_delete( locations, word );
-   save_this();
+string query_plural() {
+   mixed *stuff;
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   switch (sizeof(stuff)) {
+   case 0:
+      return pluralize(::short(0))+" [ Empty ]";
+   case 1:
+      return pluralize(::short(0))+" [ 1 note ]";
+   }
+   return pluralize(::short(0))+" [ "+sizeof(stuff)+" notes ]";
 }
-void event_enter( object player, string words, object thing ) {
-   object location;
-   mixed *data;
-   data = locations[ (string)player->query_name() ];
-   if ( !data ) {
-      player->move( (string)player->query_start_pos(),
-            "$N enter$s the game." );
+string short(int dark) {
+   mixed *stuff;
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   switch (sizeof(stuff)) {
+   case 0:
+      return ::short(dark)+" [ Empty ]";
+   case 1:
+      return ::short(dark)+" [ 1 note ]";
+   default:
+      return ::short(dark)+" [ "+sizeof(stuff)+" notes ]";
+   }
+}
+string the_date(int i) {
+   return ctime(i)[4..9];
+}
+int do_subjects(string search) {
+   int i, size;
+   mixed *stuff;
+   string ret;
+   mapping news_rc;
+   search = lower_case(search);
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   if (!sizeof(stuff)) {
+      add_failed_mess("The board is completely empty.\n");
+      return 0;
+   }
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (!news_rc) {
+      news_rc = ([ ]);
+   }
+   ret = "";
+   size = sizeof(stuff);
+   for (i=0; i < size; i++) {
+     if(search != "" && strsrch(lower_case(stuff[i][B_SUBJECT]), search) == -1)
+       continue;
+     if (news_rc[board_name] < stuff[i][B_TIME]) {
+       ret += sprintf("N %2d: %-=*s\n", i+1,
+                      (int)this_player()->query_cols()-6,
+                      stuff[i][B_SUBJECT]+" ("+
+                      stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+     } else {
+       ret += sprintf("  %2d: %-=*s\n", i+1,
+                      (int)this_player()->query_cols()-6,
+                      stuff[i][B_SUBJECT]+" ("+
+                      stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+     }
+   }
+   this_player()->set_finish_func(0);
+   this_player()->more_string(ret);
+   return 1;
+}
+string long(string str, int dark) {
+   int i,newones, size;
+   mixed *stuff;
+   string ret;
+   mapping news_rc;
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   ret = "A bulletin board ("+board_name+").\n";
+   if (!sizeof(stuff)) {
+      return ret+"The board is completely empty.\n";
+   }
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (!news_rc) {
+      news_rc = ([ ]);
+   }
+   newones = 0;
+   size = sizeof(stuff);
+   for (i = 0; i < size; i++) {
+      if (news_rc[board_name] < stuff[i][B_TIME]) {
+         ret += sprintf("N %2d: %-=*s\n", i+1,
+                     (int)this_player()->query_cols()-6,
+                     stuff[i][B_SUBJECT]+" ("+
+                     stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+         newones +=1;
+      } else if (news_rc[board_name] < stuff[i][B_TIME]+(2*24*60*60)) {
+         ret += sprintf("  %2d: %-=*s\n", i+1,
+                     (int)this_player()->query_cols()-6,
+                     stuff[i][B_SUBJECT]+" ("+
+                     stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+      }
+   }
+   if (!newones) {
+      ret += "\nNo new messages\n";
+   }
+   return ret;
+}
+void add_commands() {
+   add_command("read", "[new]", (: do_read_new :));
+   add_command("r", "[new]", (: do_read_new :));
+   add_command("read", "<number>", (: do_read($4[0]) :));
+   add_command("r", "<number>", (: do_read($4[0]) :));
+   add_command("read", "next", (: do_read_next :));
+   if (!this_player()->query_property("guest")) {
+      add_command("post", "<string'subject'>", (: do_post($4[0]) :));
+      add_command("note", "<string'subject'>", (: do_post($4[0]) :));
+      add_command("eat", "<number'message number'>", (: do_eat($4[0]) :));
+      add_command("followup", "<number'message number'>",
+                  (: do_followup($4[0]) :));
+      add_command("reply", "<number'message number'>", (: do_reply($4[0]) :));
+   }
+   add_command("subjects", "", (: do_subjects("") :));
+   add_command("subjects", "<string'search'>", (: do_subjects($4[0]) :));
+}
+void init() {
+  if (!present("board master", this_player())) {
+    add_commands();
+  }
+}
+void mark_mine(mixed *stuff, mapping news_rc) {
+   int i;
+   string their_name;
+   i = sizeof(stuff)-1;
+   their_name = this_player()->query_name();
+   while (i > 0 && stuff[i][B_TIME] > news_rc[board_name])
+      i--;
+   while ((i+1) < sizeof(stuff) && lower_case(stuff[i+1][B_NAME]) == their_name)
+      i++;
+   if (i >= sizeof(stuff)) {
+      news_rc[board_name] = stuff[sizeof(stuff)-1][B_TIME];
       return;
    }
-   location = (object)TERRAIN_MAP->find_location( data[ 0 ],
-         data[ 1 ] );
-   player->move( location );
-   locations = m_delete( locations, (string)player->query_name() );
-   save_this();
+   if (news_rc[board_name] > stuff[i][B_TIME])
+      return;
+   news_rc[board_name] = stuff[i][B_TIME];
+}
+int do_read_next()  {
+   mapping  news_rc;
+   mixed   *stuff;
+   string   their_name, sub, next_sub;
+   int      num, last_time;
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (undefinedp(news_rc["last board"])  ||
+       news_rc["last board"] != board_name)
+   {
+      add_failed_mess("You have not read a note on this board yet!\n");
+      return 0;
+   }
+   stuff = BOARD_HAND->get_subjects(board_name);
+   num = sizeof(stuff);
+   their_name = this_player()->query_name();
+write("last time: " + ctime(news_rc["last time"]) + "\n");
+   last_time = news_rc["last time"];
+   while (num  &&  stuff[num - 1][B_TIME] > last_time)  {
+      num--;
+   }
+   sub = news_rc["last sub"];
+   sscanf(sub, "Re:#%*d %s", sub);
+   for (++num; num <= sizeof(stuff); num++)  {
+      next_sub = stuff[num - 1][B_SUBJECT];
+      sscanf(next_sub, "Re:#%*d %s", next_sub);
+      if (next_sub == sub)  {
+         return do_read(num);
+      }
+   }
+   add_failed_mess("No further notes in the thread \"" + sub + "\".\n");
+   return 0;
+}
+int do_read_new() {
+   int num;
+   string their_name;
+   mapping news_rc;
+   mixed *stuff;
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (!news_rc) {
+      news_rc = ([ ]);
+   }
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   num = sizeof(stuff);
+   their_name = (string)this_player()->query_name();
+   while(num && (stuff[num - 1][B_TIME] > news_rc[board_name])) {
+      num--;
+   }
+   while ((num < sizeof(stuff)) &&
+          (lower_case(stuff[num][B_NAME]) == their_name)) {
+      num++;
+   }
+   if (num == sizeof(stuff)) {
+      add_failed_mess("No unread messages.\n");
+      return 0;
+   }
+   num++;
+   return do_read(num);
+}
+int do_read(int num) {
+   mapping news_rc;
+   mixed *stuff;
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (!news_rc) {
+      news_rc = ([ ]);
+   }
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   if (num < 0) {
+      num = sizeof(stuff) + num + 1;
+   }
+   if (num < 1 || (num > sizeof(stuff))) {
+      add_failed_mess("No note of that number.\n");
+      return 0;
+   }
+   num--;
+   news_rc["last board"] = board_name;
+   news_rc["last time"] = stuff[num][B_TIME];
+   news_rc["last sub"] = stuff[num][B_SUBJECT];
+   if (news_rc[board_name] < stuff[num][B_TIME]) {
+      news_rc[board_name] = stuff[num][B_TIME];
+   }
+   BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
+   this_player()->more_string(sprintf("%s\nNote #%d by %s posted at %s%s\nTitle: "
+                                     "\"%s\"\n\n%s",
+                                     "%^BOLD%^",
+                                     (num + 1),
+                                     stuff[num][B_NAME],
+                                     ctime(stuff[num][B_TIME]),
+                                     "%^RESET%^",
+                                     stuff[num]
+                                     [B_SUBJECT][0..(int)this_player()->
+                                                 query_cols() - 10],
+                                     (string)BOARD_HAND->
+                                       get_message(board_name, num)),
+                             "[Note "+ (num + 1) +"]");
+   add_succeeded_mess("", ({ }));
+   return 1;
+}
+int do_post(string str) {
+   class info_written bing;
+   if (board_name=="announcements" && !this_player()->query_creator()) {
+      add_failed_mess("Sorry. You can't post messages here.  "
+            "It's for announcements "
+            "from the creators only.  If you have a comment or flame, try "
+            "the 'flame' board or the 'frog' board.  Bing\n");
+      return 0;
+   }
+   if (!str) {
+      return 0;
+   }
+   if (this_player()->query_sp() < BOARD_SOCIAL_POINT_COST) {
+      add_failed_mess("You need " + BOARD_SOCIAL_POINT_COST +
+                      " social points to post a note.\n");
+      return 0;
+   }
+   if (!BOARD_HAND->test_can_write(board_name,
+                                   this_object(),
+                                   this_player()->query_name())) {
+      add_failed_mess("You cannot write to this board.\n");
+      return 0;
+   }
+   bing = new(class info_written);
+   bing->subject = str;
+   bing->note_num = 0;
+   being_written[this_player()->query_name()] = bing;
+   this_player()->do_edit(0, "end_of_thing");
+   add_succeeded_mess(({ "", "$N looks like $r is "
+                                        "contemplating a note.\n" }), ({ }) );
+   return 1;
+}
+void end_of_thing(string body) {
+  class info_written bing;
+  if (body && body != "" &&
+      being_written[this_player()->query_name()]) {
+    if(board_name != "announcements")
+      body = sprintf( "%-=78s", body ) + this_player()->append_signature();
+    bing = (class info_written)being_written[ this_player()->query_name() ];
+    if ( !BOARD_HAND->add_message( board_name,
+         capitalize( (string)this_player()->query_name() ),
+         bing->subject,
+         body,
+         bing->note_num ) ) {
+      printf( "Error writing message.\n" );
+    } else {
+      printf("Message posted.\n");
+      this_player()->adjust_sp(-50);
+    }
+  } else {
+    printf( "No message posted.\n" );
+  }
+  map_delete(being_written, this_player()->query_name());
+  return ;
+}
+int do_eat(int num) {
+   if (!BOARD_HAND->delete_message(board_name, num-1)) {
+      add_failed_mess("Failed to eat note.\n");
+      return 0;
+   }
+   printf("You viciously tear off and eat note %d.\n", num);
+   say( (string)this_player()->one_short() +
+         " viciously tears off and eats note "+ num +".\n" );
+   event( users(), "inform", (string)this_player()->query_name() +
+         " eats a note off "+ board_name, "message", this_player() );
+   return 1;
+}
+int do_followup(int num) {
+   int i;
+   mixed stuff;
+   string s;
+   class info_written bing;
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   if (num < 0) {
+      num = sizeof(stuff) + num + 1;
+   }
+   if (num < 1 || num > sizeof(stuff)) {
+      add_failed_mess("No note of that number.\n", ({ }));
+      return 0;
+   }
+   if (this_player()->query_sp() < BOARD_SOCIAL_POINT_COST) {
+      add_failed_mess("You need " + BOARD_SOCIAL_POINT_COST +
+                      " social points to post a note.\n");
+      return 0;
+   }
+   if (!stuff[num - 1][B_REPLY_TYPE] &&
+       !BOARD_HAND->test_can_write(board_name,
+                                   this_object(),
+                                   this_player()->query_name())) {
+      add_failed_mess("You cannot followup to this board.\n", ({ }));
+      return 0;
+   }
+   bing = new(class info_written);
+   if (sscanf(stuff[num - 1][B_SUBJECT], "Re:#%d %s", i, s) != 2) {
+      bing->subject = "Re:#1 "+ stuff[num - 1][B_SUBJECT];
+   } else {
+      bing->subject = "Re:#"+ ( i + 1 ) +" "+ s;
+   }
+   bing->note_num = stuff[num - 1][B_NUM];
+   being_written[(string)this_player()->query_name()] = bing;
+   printf("Include original post? (y/[n]) ");
+   input_to("include_post", 0, num - 1, stuff[num - 1]);
+   add_succeeded_mess(({ "", "$N looks like $r is "
+                                        "contemplating a note.\n" }), ({ }) );
+   return 1;
+}
+void include_post(string str, int num, mixed *stuff) {
+  if (!str || str == ""  || lower_case(str)[0] != 'y') {
+    printf("No.\n");
+    this_player()->do_edit(0, "end_of_thing");
+    return;
+  }
+  if (this_player()->query_name() == "macchirton") {
+    printf("No including notes for pointless and repeated abuse.\n");
+    this_player()->do_edit(0, "end_of_thing");
+    return;
+  }
+  this_player()->
+    do_edit("On " + ctime(stuff[B_TIME]) + ", " + stuff[B_NAME] +
+            " wrote:\n> " +
+            replace_string(BOARD_HAND->get_message(board_name, num),
+                                  "\n", "\n> ") + "\n", "end_of_thing");
+}
+int do_reply(int num) {
+   mixed stuff;
+   stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+   if (num < 1 || num > sizeof(stuff)) {
+      add_failed_mess("No note of that number.\n", ({ }));
+      return 0;
+   }
+   MAIL_TRACK->mail(stuff[num-1][B_NAME], stuff[num-1][B_SUBJECT]);
+   add_succeeded_mess(({ "", "$N looks like $r is "
+                                        "contemplating a note.\n" }), ({ }) );
+   return 1;
+}
+void set_board_name(string str) { board_name = str; }
+void set_datafile(string str) { board_name = str; }
+int query_new_messages() {
+   mixed *notes;
+   mapping news_rc;
+   news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if (!news_rc)
+      news_rc = ([ ]);
+   notes = (mixed *)BOARD_HAND->get_subjects(board_name);
+   if (!sizeof(notes))
+      return 0;
+   return (notes[sizeof(notes)-1][B_TIME] > news_rc[board_name]);
 }
 
 ==================================================
-FILE: handlers/terrain_things/sample_passage.c
+FILE: misc/board_mas.c
 ==================================================
 
-inherit "/std/room";
+#include <mail.h>
+#include <board.h>
+inherit "/obj/misc/board";
+int do_store(int num, string str);
+int do_storeall(string str);
+int do_minimum(int num);
+int do_maximum(int num);
+int do_timeout(int num);
+int do_add(string str);
+int do_remove(string str);
+int do_board(string str);
+int do_archive(string str);
+int do_killfile(string str);
+int do_unkillfile(string str);
+int do_transfer(int num, string str);
+int do_summary();
+int do_skip(string str, int move_on);
+int calc_new(object player, string board);
 void setup() {
-   set_short( "dusty corridor" );
-   set_light( 20 );
-   set_room_size( 5 );
-   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
-         "been deserted for a long time.\n" );
-   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
-         "the bottom of the walls." );
+  ::setup();
+  add_alias("board master");
+  action_pri = 3;
+  reset_drop();
+  set_get();
 }
-string query_exit_type( string word ) { return "corridor"; }
+string long(string str, int dark) {
+  int i, irp;
+  mixed *stuff;
+  string ret;
+  mapping news_rc;
+  stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  ret = "A bulletin board ("+board_name+").\n";
+  irp = (int)BOARD_HAND->query_minimum(board_name);
+  if (irp)
+    ret += "Minimum number of messages left by automagic deletion is "+ irp +
+           ".\n";
+  irp = (int)BOARD_HAND->query_maximum(board_name);
+  if (irp)
+    ret += "Maximum number of messages on this board is "+irp+".\n";
+  irp = (int)BOARD_HAND->query_timeout(board_name);
+  if (irp)
+    ret += "Messages will automagically time out in "+ irp +" days.\n";
+  irp = (int)BOARD_HAND->query_archive(board_name);
+  if (irp)
+    ret += "Deleted messages are archived in "+irp+".\n";
+  ret += sprintf("%#-*s\n\n", this_player()->query_cols(),
+                 "read <note number>\npost <subject>\n"+
+                 "boards\n"
+                 "store <note number> <file>\n"
+                 "storeall <file> (optional)\n"
+                 "eat <note number>\n"
+                 "reply <note number>\n"
+                 "followup <note number>\n"
+                 "summary [all]\n"
+                 "next\n"
+                 "prev\n"
+                 "skip [<board name>]\n"
+                 "board <board name>\n"
+                 "timeout <time>\n"
+                 "minimum <num>\n"
+                 "maximum <num>\n"
+                 "archive <name|none>\n"
+                 "security\n"
+                 "sadd <name>\n"
+                 "sremove <name>\n"
+                 "killfile <board name>\n"
+                 "unkillfile <board name>\n"
+                 "listkillfile\ntransfer <note> <board>");
+  if (!sizeof(stuff))
+    return ret+"The board is completely empty.\n";
+  news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+  if (!news_rc)
+    news_rc = ([ ]);
+  for (i=0;i<sizeof(stuff);i++)
+    if (news_rc[board_name] < stuff[i][B_TIME])
+      ret += sprintf("N %2d: %-=*s\n", i+1, (int)this_player()->query_cols()-6,
+             stuff[i][B_SUBJECT]+" ("+
+             stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+    else
+      ret += sprintf("  %2d: %-=*s\n", i+1, (int)this_player()->query_cols()-6,
+             stuff[i][B_SUBJECT]+" ("+
+             stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+  return ret;
+}
+int calc_new(object who, string board) {
+  mapping news_rc;
+  mixed *stuff;
+  int amt;
+  news_rc = BOARD_HAND->query_newsrc(who->query_name());
+  if ( !news_rc )
+    news_rc = ([ ]);
+  stuff = (mixed *)BOARD_HAND->get_subjects(board);
+  if ( !sizeof( stuff ) )
+    return 0;
+  amt = sizeof( filter_array( stuff, (: ( $1[ B_TIME ] > $2 ) &&
+              ( lower_case( $1[ B_NAME ] ) != $3 ) :), news_rc[ board ],
+                              (string)who->query_name() ) );
+  return amt;
+}
+void init() {
+   if (this_player()->query_creator()) {
+      add_commands();
+      add_command("store", "<number> <word>", (: do_store($4[0], $4[1]) :));
+      add_command("storeall", "<word>", (: do_storeall($4[0]) :));
+      add_command("next", "");
+      add_command("prev", "");
+      add_command("new", "");
+      add_command("board", "<string>", (: do_board($4[0]) :));
+      add_command("boards", "");
+      add_command("killfile", "<string>", (: do_killfile($4[0]) :));
+      add_command("unkillfile", "<string>",(: do_unkillfile($4[0]) :));
+      add_command("listkillfile", "");
+      add_command("security", "");
+      add_command("sadd", "<word>", (: do_add($4[0]) :));
+      add_command("sremove", "<word>", (: do_remove($4[0]) :));
+      add_command("timeout", "<number>", (: do_timeout($4[0]) :));
+      add_command("minimum", "<number>", (: do_minimum($4[0]) :));
+      add_command("maximum", "<number>", (: do_maximum($4[0]) :));
+      add_command("archive", "<word>", (: do_archive($4[0]) :));
+      add_command("summary", "");
+      add_command("skip", "", (: do_skip(0, 1) :));
+      add_command("catchup", "", (: do_skip(0, 0) :));
+      add_command("skip", "<string>", (: do_skip($4[0], 1) :));
+      add_command("catchup", "<string>", (: do_skip($4[0], 0) :));
+      add_command("arts", "");
+      add_command("transfer", "<number> <string>",
+                     (: do_transfer($4[0], $4[1]) :));
+   }
+}
+int do_storeall(string file) {
+  mixed *stuff;
+  int i, j, amt, cnt=0;
+  string *boards, their_name;
+  mapping news_rc;
+  seteuid( geteuid( this_player() ) );
+  their_name = this_player()->query_name();
+  boards = (string *)BOARD_HAND->list_of_boards();
+  news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if ( !news_rc )
+      news_rc = ([ ]);
+  if (!write_file(file, "File created on "+ctime(time())+
+                        " - Seattle time\n", 1)) {
+    add_failed_mess("Unable to save the file "+file+"\n");
+    return 0;
+  }
+  for (i=0;i<sizeof(boards);i++) {
+    reset_eval_cost();
+    if (!BOARD_HAND->query_killfile(this_player()->query_name(), lower_case(boards[i]))) {
+      stuff = (mixed *)BOARD_HAND->get_subjects(boards[i]);
+      if (!sizeof(stuff))
+        continue;
+      for (amt=sizeof(stuff)-1;amt >= 0 &&
+                               (stuff[amt][B_TIME] > news_rc[boards[i]] &&
+                               lower_case(stuff[amt][B_NAME]) != their_name);
+                 amt--);
+      if (amt != sizeof(stuff)-1) {
+        write_file(file,"\n----> Bulletin Board Name: "+boards[i]+"\n\n\n");
+        news_rc[boards[i]] = stuff[sizeof(stuff)-1][B_TIME];
+        for(j = amt+1;j<sizeof(stuff);j++) {
+          write_file(file,"***** Note #" +(j+1)+ " by " +stuff[j][B_NAME]+
+       " posted at " +ctime(stuff[j][B_TIME])+ "\nTitle: "+
+       stuff[j][B_SUBJECT][0..(int)this_player()->
+                                                 query_cols() - 10]+"\n\n"+
+                         BOARD_HAND->get_message(boards[i], j)+"\n\n\n");
+          if (cnt == 0)
+             printf("Storing ");
+          cnt++;
+          printf(".");
+        }
+      }
+    }
+  }
+  write("\n"+cnt+" new messages are now saved in "+file+"\n");
+  if (cnt == 0) {
+    BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
+  }
+  return 1;
+}
+int do_store(int which, string file) {
+  mixed *stuff;
+  stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  if (which < 1 || which > sizeof(stuff)) {
+    add_failed_mess("Invalid note number.\n");
+    return 0;
+  }
+  which--;
+  file += ".note";
+     seteuid( geteuid( this_player() ) );
+  if (!write_file(file,stuff[which][B_SUBJECT]+"\n\n"+
+                  BOARD_HAND->get_message(board_name, which))) {
+    add_failed_mess("The master object appears and prevents you.\n");
+    return 0;
+  }
+  write("Ok.\n");
+  return 1;
+}
+void set_board_name(string str) { board_name = str; }
+void set_datafile(string str) { board_name = str; }
+int do_next() {
+  int start, i, j, k, found;
+  string *boards;
+  if(calc_new(this_player(), board_name))
+    return do_read_new();
+  boards = (string *)BOARD_HAND->list_of_boards();
+  if ((start = member_array(board_name, boards)) == -1)
+    start = 0;
+  for(i=0; i<sizeof(boards); i++) {
+    j = (i + start) % sizeof(boards);
+    if(!BOARD_HAND->query_killfile(this_player()->query_name(),
+                                     lower_case(boards[j])) &&
+       k = calc_new(this_player(), boards[j])) {
+      found = 1;
+      break;
+    }
+  }
+  if(found) {
+    board_name = boards[j];
+    write("Okay, changed to board "+board_name+" with " + k +
+          " new notes.\n");
+    return do_read_new();
+  } else
+    write("No boards with new messages.\n");
+  return 1;
+}
+int do_prev() {
+  int i;
+  string *boards;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  if ((i = member_array(board_name, boards)) == -1)
+    i = 0;
+  else
+    i = (i-1+sizeof(boards))%sizeof(boards);
+  board_name = boards[i];
+  write("Okay, changed to board "+board_name+".\n");
+  return 1;
+}
+int do_killfile(string arg) {
+    string *bits, board;
+    bits = explode( arg, "," );
+    foreach ( board in bits ) {
+        if ( sizeof( BOARD_HAND->get_subjects( board ) ) ) {
+          BOARD_HAND->set_killfile(this_player()->query_name(),
+                lower_case( board ));
+            tell_object( this_player(), "Board " + board  + " killed.\n" );
+        }
+        else {
+            tell_object( this_player(), "There is no such board " +
+                board + ".\n" );
+        }
+    }
+    return 1;
+}
+int do_unkillfile(string arg) {
+  if (!BOARD_HAND->query_killfile(this_player()->query_name(),
+                                  lower_case( arg ) )) {
+     add_failed_mess("Board "+arg+" is not kill file anyway.\n");
+     return 0;
+  } else {
+    BOARD_HAND->remove_killfile(this_player()->query_name(),
+                                lower_case(arg));
+     write("Board "+arg+" unkilled.\n");
+  }
+  return 1;
+}
+int do_listkillfile() {
+   string *boards;
+   boards = BOARD_HAND->list_killfile(this_player()->query_name());
+   if ( sizeof( boards ) )
+     write("You have the following boards killfiled: "+
+           query_multiple_short( boards ) +".\n" );
+   return 1;
+}
+int do_board(string str) {
+  int i;
+  string *boards;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  i = member_array(str, boards);
+  if (i == -1) {
+    add_failed_mess("The board "+str+" does not exist sorry.\n");
+    return 0;
+  }
+  write("Okay, changed to board "+ str);
+  i = calc_new(this_player(), boards[i]);
+  if(i)
+    write(" with " + i + " new notes.\n");
+  else
+    write(" with no new notes.\n");
+  board_name = str;
+  return 1;
+}
+int do_boards() {
+   write( "The current boards are:\n\""+
+         implode( (string *)BOARD_HAND->list_of_boards(), "\", \"" ) +
+         "\".\n" );
+  return 1;
+}
+int do_security() {
+   write( "The current people in this boards security array are:\n"+
+        implode((string *)BOARD_HAND->query_security(board_name), ", ")+"\n");
+  return 1;
+}
+int do_add(string name) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->add_allowed(board_name, name);
+}
+int do_remove(string name) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->remove_allowed(board_name, name);
+}
+int do_timeout(int i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_timeout(board_name, i);
+}
+int do_minimum(string i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_minimum(board_name, i);
+}
+int do_maximum(int i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_maximum(board_name, i);
+}
+int do_archive(string name) {
+  if (!name)
+    return 0;
+  if (name != "none")
+    return (int)BOARD_HAND->set_archive(board_name, name);
+  return (int)BOARD_HAND->set_archive(board_name);
+}
+varargs int move(object dest, string s1, string s2) {
+  int ret;
+  if (!objectp(dest))
+    return ::move(dest, s1, s2);
+  if (interactive(dest)) {
+    ret = ::move(dest, s1, s2);
+    if (ret)
+      return ret;
+    seteuid(geteuid(dest));
+    return 0;
+  }
+  return ::move(dest, s1, s2);
+}
+mixed query_static_auto_load() {
+  return board_name;
+}
+void init_static_arg(mixed board) {
+  if (stringp(board))
+    board_name = board;
+}
+int do_summary() {
+   int i, no, amt;
+   string *boards;
+   boards = (string *)BOARD_HAND->list_of_boards();
+   for ( i = sizeof( boards ) - 1; i > -1; i-- )
+      if ( !BOARD_HAND->query_killfile(this_player()->query_name(),
+                                      lower_case( boards[ i ] ) ) ) {
+        amt = calc_new(this_player(), boards[i]);
+         if ( amt ) {
+            printf( "The %s board has %d new message%s.\n", boards[ i ],
+                  amt, amt > 1 ? "s" : "" );
+            no++;
+         }
+      }
+   if ( !no )
+      add_failed_mess( "No boards with new messages.\n" );
+   return no;
+}
+int do_new() {
+   int i, amt;
+   string *boards;
+   boards = (string *)BOARD_HAND->list_of_boards();
+   for ( i = sizeof( boards ) - 1; i > -1; i-- )
+     if ( !BOARD_HAND->query_killfile(this_player()->query_name(),
+                                      lower_case( boards[ i ] ) ) ) {
+        amt = calc_new(this_player(), boards[i]);
+         if ( amt ) {
+            board_name = boards[ i ];
+            printf( "The %s board has %d new message%s.\n", boards[ i ],
+                  amt, amt > 1 ? "s" : "" );
+            return 1;
+         }
+      }
+   add_failed_mess( "No boards with new messages.\n" );
+   return 0;
+}
+int do_skip(string str, int move_on) {
+  mapping news_rc;
+  mixed *otherstuff;
+  int i, j, k, start, found;
+  string *boards;
+  if(!str) {
+    str = board_name;
+  }
+  boards = (string *)BOARD_HAND->list_of_boards();
+  if(member_array(str, boards) == -1)
+    return notify_fail("No such board " + str + ".\n");
+  news_rc = BOARD_HAND->query_newsrc(this_player()->query_name());
+   if ( !news_rc )
+      news_rc = ([ ]);
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(str);
+  if (sizeof(otherstuff)) {
+    news_rc[str] = otherstuff[sizeof(otherstuff)-1][B_TIME];
+    BOARD_HAND->set_newsrc(this_player()->query_name(), news_rc);
+  }
+  printf("Marked all of "+str+" as read.\n");
+  if(move_on) {
+    reset_eval_cost();
+    if ((start = member_array(board_name, boards)) == -1)
+      start = 0;
+    for(i=0; i<sizeof(boards); i++) {
+      j = (i + start) % sizeof(boards);
+      if(!BOARD_HAND->query_killfile(this_player()->query_name(),
+                                     lower_case(boards[j])) &&
+         k = calc_new(this_player(), boards[j])) {
+        found = 1;
+        break;
+      }
+    }
+    if(found) {
+      board_name = boards[j];
+      write("Okay, changed to board "+board_name+" with " + k +
+            " new notes.\n");
+    } else
+      write("No boards with new messages.\n");
+  }
+  return 1;
+}
+int do_arts() {
+  int i;
+  mixed *otherstuff;
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  for (i=0;i<sizeof(otherstuff);i++)
+    printf("%2d# %-20s %d\n", i, otherstuff[i][B_NAME], otherstuff[i][B_NUM]);
+  return 1;
+}
+int do_transfer(int num, string str) {
+  string mess;
+  string *boards;
+  mixed *otherstuff;
+  boards = (string *)BOARD_HAND->query_boards();
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  if (member_array(str, boards) == -1) {
+    add_failed_mess("Cannot find the board '"+str+"'.\n");
+    return 0;
+  }
+  if (num < 1 || num > sizeof(otherstuff)) {
+    add_failed_mess("There is no note '"+num+"' on the board '"+
+                        board_name+".\n");
+    return 0;
+  }
+  mess = BOARD_HAND->get_message(board_name, num-1);
+  if (mess && BOARD_HAND->add_message(str, otherstuff[num-1][B_NAME],
+                              otherstuff[num-1][B_SUBJECT],
+                              mess)) {
+    write("Transfered note "+num+" to board '"+str+
+                   "', local copy retained.\n");
+    return 1;
+  }
+  add_failed_mess("Unable to transfer note "+num+" to the board '"+
+                      board_name+", no security privilages?\n");
+  return 0;
+}
 
 ==================================================
-FILE: handlers/terrain_things/sample_passage_1.c
+FILE: misc/board_rab.c
 ==================================================
 
-inherit "/std/room";
+#include <mail.h>
+#include <board.h>
+inherit "/obj/misc/board";
+int do_transfer(int num, string str);
+int do_store(int num, string str);
+int do_storeall(string str);
+int do_minimum(int num);
+int do_maximum(int num);
+int do_timeout(int num);
+int do_add(string str);
+int do_remove(string str);
+int do_board(string str);
+int do_archive(string str);
+int do_killfile(string str);
+int do_unkillfile(string str);
 void setup() {
-   set_short( "dusty corridor" );
-   set_light( 20 );
-   set_room_size( 5 );
-   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
-         "been deserted for a long time.\n" );
-   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
-         "the bottom of the walls." );
+  ::setup();
+  add_alias("board master");
+  action_pri = 3;
+  reset_drop();
+  set_get();
 }
-string query_exit_type( string word ) { return "corridor"; }
+string long(string str, int dark) {
+  int i, irp;
+  mixed *stuff;
+  string ret;
+  mapping news_rc;
+  stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  ret = "A bulletin board ("+board_name+").\n";
+  irp = (int)BOARD_HAND->query_minimum(board_name);
+  if (irp)
+    ret += "Minimum number of messages left by automagic deletion is "+ irp +
+           ".\n";
+  irp = (int)BOARD_HAND->query_maximum(board_name);
+  if (irp)
+    ret += "Maximum number of messages on this board is "+irp+".\n";
+  irp = (int)BOARD_HAND->query_timeout(board_name);
+  if (irp)
+    ret += "Messages will automagically time out in "+ irp +" days.\n";
+  irp = (int)BOARD_HAND->query_archive(board_name);
+  if (irp)
+    ret += "Deleted messages are archived in "+irp+".\n";
+  ret += sprintf("%#-*s\n\n", this_player()->query_cols(),
+                            "read <note number>\npost <subject>\n"+
+                            "boards\n"+
+                            "store <note number> <file>\n"+
+          "storeall <file> (optional)\n"+
+          "eat <note number>\n"+
+                            "reply <note number>\nfollowup <note number>\n"+
+                            "summary [all]\nnext\nprev\nnew\n"+
+                            "board <board name>\n"+
+                            "timeout <time>\nminimum <num>\nmaximum <num>\n"+
+                            "archive <name|none>\n"+
+                            "security\nsadd <name>\nsremove <name>\n"+
+                            "killfile <board name>\nunkillfile <board name>\nlistkillfile\ntransfer <note> <board>");
+  if (!sizeof(stuff))
+    return ret+"The board is completely empty.\n";
+  news_rc = (mapping)this_player()->query_property(NEWS_RC);
+  if (!news_rc)
+    news_rc = ([ ]);
+  for (i=0;i<sizeof(stuff);i++)
+    if (news_rc[board_name] < stuff[i][B_TIME])
+      ret += sprintf("N %2d: %-=*s\n", i+1, (int)this_player()->query_cols()-6,
+             stuff[i][B_SUBJECT]+" ("+
+             stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+    else
+      ret += sprintf("  %2d: %-=*s\n", i+1, (int)this_player()->query_cols()-6,
+             stuff[i][B_SUBJECT]+" ("+
+             stuff[i][B_NAME]+" "+the_date(stuff[i][B_TIME])+")");
+  return ret;
+}
+void init() {
+   if (environment() == this_player() &&
+       this_player()->query_creator()) {
+      add_commands();
+      add_command("store", "<number> <word>", (: do_store($4[0], $4[1]) :));
+      add_command("storeall", "<word>", (: do_storeall($4[0]) :));
+      add_command("next", "");
+      add_command("prev", "");
+      add_command("new", "");
+      add_command("board", "<string>", (: do_board($4[0]) :));
+      add_command("boards", "");
+      add_command("killfile", "<string>", (: do_killfile($4[0]) :));
+      add_command("unkillfile", "<string>",(: do_unkillfile($4[0]) :));
+      add_command("listkillfile", "");
+      add_command("security", "");
+      add_command("sadd", "<word>", (: do_add($4[0]) :));
+      add_command("sremove", "<word>", (: do_remove($4[0]) :));
+      add_command("timeout", "<number>", (: do_timeout($4[0]) :));
+      add_command("minimum", "<number>", (: do_minimum($4[0]) :));
+      add_command("maximum", "<number>", (: do_maximum($4[0]) :));
+      add_command("archive", "<word>", (: do_archive($4[0]) :));
+      add_command("summary", "");
+      add_command("skip", "");
+      add_command("arts", "");
+      add_command("transfer", "<number> <string>",
+                     (: do_transfer($4[0], $4[1]) :));
+   }
+}
+int do_storeall(string file) {
+  int which;
+  mixed *stuff;
+  int i, j, no, amt, cnt=0;
+  string *boards, their_name;
+  mapping news_rc;
+  seteuid( geteuid( this_player() ) );
+  their_name = this_player()->query_name();
+  boards = (string *)BOARD_HAND->list_of_boards();
+  news_rc = (mapping)this_player()->query_property(NEWS_RC);
+  if (!write_file(file, "File created on "+ctime(time())+
+                        " - Seattle time\n", 1)) {
+    add_failed_mess("Unable to save the file "+file+"\n");
+    return 0;
+  }
+  for (i=0;i<sizeof(boards);i++) {
+    if (!this_player()->query_property("news_kill_"+lower_case(boards[i]))) {
+      stuff = (mixed *)BOARD_HAND->get_subjects(boards[i]);
+      if (!sizeof(stuff))
+        continue;
+      for (amt=sizeof(stuff)-1;amt >= 0 &&
+                               (stuff[amt][B_TIME] > news_rc[boards[i]] &&
+                               lower_case(stuff[amt][B_NAME]) != their_name);
+                 amt--);
+      if (amt != sizeof(stuff)-1) {
+        write_file(file,"\n----> Bulletin Board Name: "+boards[i]+"\n\n\n");
+        news_rc[boards[i]] = stuff[sizeof(stuff)-1][B_TIME];
+        for(j = amt+1;j<sizeof(stuff);j++) {
+          write_file(file,"***** Note #" +(j+1)+ " by " +stuff[j][B_NAME]+
+       " posted at " +ctime(stuff[j][B_TIME])+ "\nTitle: "+
+       stuff[j][B_SUBJECT][0..(int)this_player()->
+                                                 query_cols() - 10]+"\n\n"+
+                         BOARD_HAND->get_message(boards[i], j)+"\n\n\n");
+          if (cnt == 0)
+             printf("Storing ");
+          cnt++;
+          printf(".");
+        }
+      }
+    }
+  }
+  add_succeeded_mess(this_object(), ({
+                   "\n"+cnt+" new messages are now saved in "+file+"\n",
+                   "$N appears to scribble something a lot.\n" }), ({ }));
+  if (cnt == 0) {
+    this_player()->add_property(NEWS_RC, news_rc);
+  }
+  return 1;
+}
+int do_store(int which, string file) {
+  mixed *stuff;
+  stuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  if (which < 1 || which > sizeof(stuff)) {
+    add_failed_mess("Invalid note number.\n");
+    return 0;
+  }
+  which--;
+  file += ".note";
+  if (!write_file(file,stuff[which][B_SUBJECT]+"\n\n"+
+                  BOARD_HAND->get_message(board_name, which))) {
+    add_failed_mess("The master object appears and prevents you.\n");
+    return 0;
+  }
+  add_succeeded_mess(this_object(), ({ "Ok.\n", "$N copies some stuff off "
+                                       "the board.\n" }), ({ }) );
+  return 1;
+}
+void set_board_name(string str) { board_name = str; }
+void set_datafile(string str) { board_name = str; }
+int do_next() {
+  int i;
+  string *boards;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  if ((i = member_array(board_name, boards)) == -1)
+    i = 0;
+  else
+    i = (i+1)%sizeof(boards);
+  board_name = boards[i];
+  add_succeeded_mess(this_object(), ({ "Gone to board:"+board_name+".\n",
+                      "$N turns their board over.\n" }), ({ }) );
+  return 1;
+}
+int prev() {
+  int i;
+  string *boards;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  if ((i = member_array(board_name, boards)) == -1)
+    i = 0;
+  else
+    i = (i-1+sizeof(boards))%sizeof(boards);
+  board_name = boards[i];
+  add_succeeded_mess(this_object(), ({ "Gone to board:"+board_name+".\n",
+                      "$N turns their board over.\n" }), ({ }) );
+  return 1;
+}
+int do_killfile(string arg) {
+  this_player()->add_property( "news_kill_" +lower_case( arg ), 1 );
+  add_succeeded_mess(this_object(), ({ "Board "+arg+" killed.\n", "" }), ({}));
+  return 1;
+}
+int do_unkillfile(string arg) {
+  if (!this_player()->query_property( "news_kill_" +lower_case( arg ) )) {
+     add_failed_mess("Board "+arg+" is not kill file anyway.\n");
+     return 0;
+  } else {
+     this_player()->remove_property( "news_kill_" +lower_case( arg ) );
+     add_succeeded_mess(this_object(), ({ "Board "+arg+" unkilled.\n", "" }),
+                       ({ }));
+  }
+  return 1;
+}
+int do_listkillfile(string arg) {
+   string property, s1, *boards=({ });
+   mixed value;
+   foreach ( property, value in this_player()->query_properties() )
+      if ( sscanf(property,"news_kill_%s",s1) == 1 &&
+           value )
+         boards += ({ s1 });
+   if ( sizeof( s1 ) )
+      tell_object( this_player(), "You have the following boards killfiled: "+
+                  query_multiple_short( boards ) +".\n" );
+   add_succeeded_mess(this_object(), "", ({ }));
+   return 1;
+}
+int do_new() {
+  int i, amt;
+  string *boards, their_name;
+  mixed *stuff;
+  mixed otherstuff;
+  mapping news_rc;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  their_name = this_player()->query_name();
+  news_rc = (mapping)this_player()->query_property(NEWS_RC);
+  for (i=0;i<sizeof(boards);i++) {
+    if (!this_player()->query_property("news_kill_"+lower_case(boards[i]))) {
+      stuff = (mixed *)BOARD_HAND->get_subjects(boards[i]);
+      if (!sizeof(stuff))
+        continue;
+      for (amt=sizeof(stuff)-1;amt >= 0 &&
+                               (stuff[amt][B_TIME] > news_rc[boards[i]] &&
+                                lower_case(stuff[amt][B_NAME]) != their_name);
+                 amt--);
+      if (amt != sizeof(stuff)-1) {
+        board_name = boards[i];
+        add_succeeded_mess(this_object(), ({
+          "The "+ boards[ i ] +" board has "+ ( sizeof( stuff ) - amt -
+          1 ) +" new message"+ ( ( ( sizeof( stuff ) - amt ) > 2 ) ? "s" : "" )
+          +".\n", "$N turns over their board.\n" }), ({ }));
+        return 1;
+      }
+    }
+  }
+  add_failed_mess("No boards with new messages.\n");
+  return 0;
+}
+int do_board(string str) {
+  int i;
+  string *boards;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  i = member_array(str, boards);
+  if (i == -1) {
+    add_failed_mess("The board "+str+" does not exist sorry.\n");
+    return 0;
+  }
+  add_succeeded_mess(this_object(), ({ "Okay, changed to board "+ str +".\n",
+                                   "$N turns over their board.\n" }), ({ }));
+  board_name = str;
+  return 1;
+}
+int do_boards() {
+   write( "The current boards are:\n\""+
+         implode( (string *)BOARD_HAND->list_of_boards(), "\", \"" ) +
+         "\".\n" );
+  return 1;
+}
+int do_security() {
+   write( "The current people in this boards security array are:\n"+
+        implode((string *)BOARD_HAND->query_security(board_name), ", ")+"\n");
+  return 1;
+}
+int do_add(string name) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->add_allowed(board_name, name);
+}
+int do_remove(string name) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->remove_allowed(board_name, name);
+}
+int do_timeout(int i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_timeout(board_name, i);
+}
+int do_minimum(string i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_minimum(board_name, i);
+}
+int do_maximum(int i) {
+  if (this_player() != this_player(1) ||
+      !interactive(previous_object()))
+    return 0;
+  return (int)BOARD_HAND->set_maximum(board_name, i);
+}
+int do_archive(string name) {
+  if (!name)
+    return 0;
+  if (name != "none")
+    return (int)BOARD_HAND->set_archive(board_name, name);
+  return (int)BOARD_HAND->set_archive(board_name);
+}
+varargs int move(object dest, string s1, string s2) {
+  int ret;
+  if (!objectp(dest))
+    return ::move(dest, s1, s2);
+  if (interactive(dest)) {
+    ret = ::move(dest, s1, s2);
+    if (ret)
+      return ret;
+    seteuid(geteuid(dest));
+    return 0;
+  }
+  return ::move(dest, s1, s2);
+}
+mixed query_static_auto_load() {
+  return board_name;
+}
+void init_static_arg(mixed board) {
+  if (stringp(board))
+    board_name = board;
+}
+int do_summary(string str) {
+  int i, no, amt;
+  string *boards, their_name;
+  mapping news_rc;
+  mixed *stuff;
+  boards = (string *)BOARD_HAND->list_of_boards();
+  news_rc = (mapping)this_player()->query_property(NEWS_RC);
+  their_name = this_player()->query_name();
+  for (i=0;i<sizeof(boards);i++) {
+    if (!this_player()->query_property("news_kill_"+lower_case(boards[i]))) {
+      stuff = (mixed *)BOARD_HAND->get_subjects(boards[i]);
+      if (!sizeof(stuff))
+        continue;
+      for (amt=sizeof(stuff)-1;amt >= 0 &&
+                               (stuff[amt][B_TIME] > news_rc[boards[i]] &&
+                               lower_case(stuff[amt][B_NAME]) != their_name);
+                 amt--);
+      if (amt != sizeof(stuff)-1) {
+        printf( "The "+ boards[ i ] +" board has "+ ( sizeof( stuff ) - amt -
+          1 ) +" new message"+ ( ( ( sizeof( stuff ) - amt ) > 2 ) ? "s" : "" )
+          +".\n" );
+        no++;
+      } else if (str == "all") {
+        printf("The "+boards[i]+" board has no new messages.\n");
+        no++;
+      }
+    }
+  }
+  if (no) {
+    add_succeeded_mess(this_object(), ({ "", "$N runs their finger over "
+                                             "thier board.\n" }), ({ }));
+  } else {
+    add_failed_mess("No boards with new messages.\n");
+  }
+  return no;
+}
+int do_skip() {
+  mapping news_rc;
+  mixed *otherstuff;
+  news_rc = (mapping)this_player()->query_property(NEWS_RC);
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  if (sizeof(otherstuff)) {
+    news_rc[board_name] = otherstuff[sizeof(otherstuff)-1][B_TIME];
+    this_player()->add_property(NEWS_RC, news_rc);
+  }
+  printf("Marked all of "+board_name+" as read.\n");
+  if (!do_new()) {
+    printf("No new messages.\n");
+  }
+  add_succeeded_mess(this_object(), "", ({ }));
+  return 1;
+}
+int do_arts() {
+  int i;
+  mixed *otherstuff;
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  for (i=0;i<sizeof(otherstuff);i++)
+    printf("%2d# %-20s %d\n", i, otherstuff[i][B_NAME], otherstuff[i][B_NUM]);
+  add_succeeded_mess(this_object(), "", ({ }));
+  return 1;
+}
+int do_transfer(int num, string str) {
+  string mess;
+  string *boards;
+  mixed *otherstuff;
+  int i;
+  boards = (string *)BOARD_HAND->query_boards();
+  otherstuff = (mixed *)BOARD_HAND->get_subjects(board_name);
+  if (member_array(str, boards) == -1) {
+    add_failed_mess("Cannot find the board '"+str+"'.\n");
+    return 0;
+  }
+  if (num < 1 || num > sizeof(otherstuff)) {
+    add_failed_mess("There is no note '"+num+"' on the board '"+
+                        board_name+".\n");
+    return 0;
+  }
+  mess = BOARD_HAND->get_message(board_name, num-1);
+  if (mess && BOARD_HAND->add_message(str, otherstuff[num-1][B_NAME],
+                              otherstuff[num-1][B_SUBJECT],
+                              mess)) {
+    write("Transfered note "+num+" to board '"+str+
+                   "', local copy retained.\n");
+    return 1;
+  }
+  add_failed_mess("Unable to transfer note "+num+" to the board '"+
+                      board_name+", no security privilages?\n");
+  return 0;
+}
 
 ==================================================
-FILE: handlers/terrain_things/sample_passage_2.c
+FILE: misc/boring_stick.c
 ==================================================
 
-inherit "/std/room";
+inherit "/std/held";
+#include <move_failures.h>
+int state;
+void set_state(int state);
 void setup() {
-   set_short( "rock-walled tunnel" );
-   set_light( 20 );
-   set_room_size( 5 );
-   set_long( "You are tunnel with rough-hewn rock walls.  It looks as though "+
-         "it has been deserted for a long time.\n" );
-   add_item( ({ "rough-hewn rock wall", "rock" }), "The walls are rough, "+
-         "where the tunnel was hewn out of the rock." );
+  set_name("stick");
+  set_state(0);
+  set_weight(2);
+  set_value(10);
 }
-string query_exit_type( string word ) { return "corridor"; }
+void init() {
+  this_player()->add_command("turn", this_object(),
+                                "<direct:object> {on|off}");
+  this_player()->add_command("flick", this_object(),
+                                "switch on <direct:object>");
+  this_player()->add_command("press", this_object(),
+                                "switch on <direct:object>");
+  this_player()->add_command("push", this_object(),
+                                "switch on <direct:object>");
+  this_player()->add_command("flick", this_object(),
+                                "<direct:object>");
+  this_player()->add_command("turn", this_object(),
+                                "switch {on|off} on <direct:object>");
+  this_player()->add_command("switch", this_object(),
+                                "<direct:object> {on|off}");
+}
+void set_state(int new_state) {
+  state = new_state;
+  if (state) {
+    set_long(
+"The long straight black stick vibrates slightly in your hands, you "
+"get a nice massage from it.  There is something which looks a bit "
+"like a switch down near the base of the stick.  Flashing lights "
+"rush up and down the side of the stick in a mad progression.\n");
+  } else {
+    set_long(
+"The long straight black stick vibrates slightly in your hands, you "
+"get a nice massage from it.  There is something which looks a bit "
+"like a switch down near the base of the stick.\n");
+  }
+  if (environment())
+    if (state) {
+      if (living(environment()))
+        environment()->add_extra_look(this_object());
+    } else
+      environment()->remove_extra_look(this_object());
+}
+string extra_look() {
+  return capitalize(previous_object()->query_pronoun())+
+         " is surrounded by an aura of bees.\n";
+}
+int do_turn(mixed *indirect_obs, string indir_match,
+            string dir_match, mixed *args, string pattern) {
+  int new_state;
+  new_state = 0;
+  if ("<direct:object> {on|off}" == pattern) {
+    if (args[1] == "on")
+      new_state = 1;
+  } else {
+    if (args[0] == "on")
+      new_state = 1;
+  }
+  if (state == new_state) {
+    this_player()->add_failed_mess(this_object(),
+                   "$D is already turned "+(state?"on":"off")+".\n", ({ }));
+    return 0;
+  }
+  set_state(new_state);
+  this_player()->add_succeeded_mess(this_object(),
+    "$N $V $D "+(state?"on":"off")+".\n", ({ }));
+  return 1;
+}
+int do_flick() {
+  set_state(!state);
+  this_player()->add_succeeded_mess(this_object(),
+    "$N $V the switch on $D to the "+(state?"on":"off")+" position.\n", ({ }));
+  return 1;
+}
+int do_press() {
+  return do_flick();
+}
+int do_push() {
+  return do_flick();
+}
+int do_switch(mixed *indirect_obs, string indir_match,
+              string dir_match, mixed *args, string pattern) {
+  int new_state;
+  if (args[1] == "on")
+    new_state = 1;
+  if (state == new_state) {
+    this_player()->add_failed_mess(this_object(),
+                   "$D is already turned "+(state?"on":"off")+".\n", ({ }));
+    return 0;
+  }
+  set_state(new_state);
+  this_player()->add_succeeded_mess(this_object(),
+    "$N $V $D "+(state?"on":"off")+".\n", ({ }));
+  return 1;
+}
+mapping query_dynamic_auto_load() {
+   return ([ "state" : state,
+             "::" : held::query_dynamic_auto_load()
+          ]);
+}
+void init_dynamic_arg(mapping map) {
+   set_state(map["state"]);
+   if ( map[ "::" ] )
+      held::init_dynamic_arg( map[ "::" ] );
+}
+varargs int move(mixed dest, string str1, string str2) {
+  int ret;
+  object old;
+  old = environment();
+  ret = ::move(dest, str1, str2);
+  if (ret == MOVE_OK) {
+    if (state) {
+      if (old)
+        old->remove_extra_look(this_object());
+      if (living(environment())) {
+        environment()->add_extra_look(this_object());
+      }
+    }
+  }
+  return ret;
+}
 
 ==================================================
-FILE: handlers/terrain_things/sample_room_1.c
+FILE: misc/bug.c
 ==================================================
 
-inherit "/std/room";
+inherit "/std/object";
+int no_shots;
 void setup() {
-   set_short( "small room" );
-   set_light( 20 );
-   set_room_size( 15 );
-   set_long( "You are in a small room.  The walls, floor and ceiling are "+
-         "comprised of large stone blocks.  The room is quite bare.\n" );
-   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
-         "ceiling of the room are formed from large stone blocks." );
-   add_item( "large stone block", "The blocks of stone that make up the "+
-         "surfaces of this room are not too rough, but they were never "+
-         "polished smooth either." );
+   no_shots = 10;
+   set_name( "bug");
+   set_long( "It sits there, happier than a clam, its long black silvery "
+             "legs sticking out the side.  The legs look fixed in place and "
+             "there are some silvery words carved onto the top.  When you "
+             "shake it, it sounds like it has something rattling around "
+             "inside.  There appears to be a spray nozzle at one end.\n");
+   add_read_mess("68000\n", "silver writing", "general", 0);
 }
-string query_exit_type( string word ) { return "corridor"; }
+void init() {
+  add_command("shake", "<direct:object>");
+  add_command("spray", "<indirect:object> with <direct:object>");
+}
+int do_shake() {
+   this_player()->add_succeeded_mess(this_object(),
+      "$N $V $D and you can hear something rattling around inside.\n", ({ }));
+   return 1;
+}
+int do_spray(object *obs) {
+   int i;
+   int done;
+   if (no_shots <= 0) {
+      return 0;
+   }
+   done = 0;
+   for (i = 0; i < sizeof(obs); i++) {
+      if (no_shots > 0 && obs[i] != this_object()) {
+         obs[i]->add_effect("/std/effects/object/bug_effect", 0);
+         no_shots--;
+         this_player()->add_succeeded(obs[i]);
+         done = 1;
+      }
+   }
+   return done;
+}
+mapping query_dynamic_auto_load() {
+   mapping map;
+   map = ([ "::" : ::query_dynamic_auto_load(),
+            "shots" : no_shots ]);
+   return map;
+}
+void init_dynamic_arg(mapping map, object foo) {
+   ::init_dynamic_arg(map["::"]);
+   no_shots = map["shots"];
+}
 
 ==================================================
-FILE: handlers/terrain_things/sample_room_2.c
+FILE: misc/button.c
 ==================================================
 
-inherit "/std/room";
+inherit "std/object";
 void setup() {
-   set_short( "largish room" );
-   set_light( 20 );
-   set_room_size( 25 );
-   set_long( "You are in a largish room.  The walls, floor and ceiling are "+
-         "comprised of large stone blocks.  The room is quite bare.\n" );
-   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
-         "ceiling of the room are formed from large stone blocks." );
-   add_item( "large stone block", "The blocks of stone that make up the "+
-         "surfaces of this room are not too rough, but they were never "+
-         "polished smooth either." );
+   set_name( "button" );
+   set_short( "red button" );
+   add_adjective( "red" );
+   set_long( "This red button destructs all non-user objects in "
+         "the room.  USE WITH EXTREME CAUTION.\n");
+   reset_get();
+   add_property( "there", "embedded into the wall" );
 }
-string query_exit_type( string word ) { return "corridor"; }
+void init() {
+   this_player()->add_command( "press" , this_object() );
+}
+int do_press() {
+   object thing, *things;
+   things = (object *)environment()->query_non_destable();
+   if ( !things )
+      things = ({ this_object() });
+   else
+      things += ({ this_object() });
+   foreach ( thing in all_inventory( environment() ) - things )
+      if ( !userp( thing ) )
+         thing->dest_me();
+   write( "You clean up.\n" );
+   say( (string)this_player()->one_short() +" cleans up.\n" );
+   return 1;
+}
 
 ==================================================
-FILE: handlers/terrain_things/sample_room_3.c
+FILE: misc/camera.c
 ==================================================
 
-inherit "/std/room";
+#include <weather.h>
+inherit "/std/object";
+int  colour;
+int  black_white;
+int  scene;
 void setup() {
-   set_short( "large room" );
-   set_light( 20 );
-   set_room_size( 35 );
-   set_long( "You are in a large room.  The walls, floor and ceiling are "+
-         "comprised of large stone blocks.  The room is quite bare.\n" );
-   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
-         "ceiling of the room are formed from large stone blocks." );
-   add_item( "large stone block", "The blocks of stone that make up the "+
-         "surfaces of this room are not too rough, but they were never "+
-         "polished smooth either." );
+  colour = 2;
+  black_white = 4;
+  scene = 1;
+  set_name( "box" );
+  add_adjective( ({ "heavy" , "black" }) );
+  set_short( "heavy black cube" );
+  set_main_plural( "heavy black cubes" );
+  set_long( "You see a heavy black box with a window on one side.  "
+            "Looking through the window, you notice a tiny demon sitting "
+            "patiently next to a miniscule painter's easel.\n" );
+  set_weight( 10 );
+  add_alias( ({ "cube" , "camera" }) );
+  add_plurals(({ "cubes", "cameras"}));
+  adjust_money( 1 , "gold" );
+  add_help_file("camera");
 }
-string query_exit_type( string word ) { return "corridor"; }
+void init() {
+    add_command("use", "<direct:object> on <indirect:object>");
+    add_command("use", "<direct:object>");
+}
+int query_colour()      { return colour;  }
+int query_black_white() { return black_white;  }
+int do_use(object *obs) {
+  int i;
+  string view;
+  string photo_of;
+  string chars_sorted;
+  string things_sorted;
+  object *players;
+  object *chars;
+  object *things;
+  object  photo;
+  object  env;
+  object *yes;
+  players = ({ });
+  chars = ({ });
+  things = ({ });
+  yes = ({ });
+  view = "";
+  photo_of = "";
+  chars_sorted = "";
+  things_sorted = "";
+  env = environment(this_player()) ;
+  photo_of = "This is a beautiful ";
+  if (env->query_light() < 60) {
+    this_player()->add_failed_mess(this_object(),
+                                   "The little imp whispers: Hey! "
+                                   "Not everyone like you can see "
+                                   "in the dark you know.\n",({ }));
+    return 0;
+  }
+  if (env->query_light() >180) {
+    this_player()->add_failed_mess(this_object(),
+                                   "The little demon said quietly: "
+                                   "Could I have a pair of sunspecs "
+                                   "please! Not too much to ask, is it?\n",
+                                   ({ }));
+    return 0;
+  }
+  if (black_white <= 0) {
+    call_out("out_of_paint", 0, env);
+    this_player()->add_failed_mess(this_object(),
+                                   "The little imp gives up painting "
+                                   "for you.\n",({ }));
+    return 0;
+  }
+  if (colour > 1) {
+    photo_of += "colour ";
+    colour --;
+  } else if (colour == 1) {
+    photo_of += "colour ";
+    call_out("out_of_colour", 2, env);
+    colour --;
+  } else {
+    photo_of += "black and white ";
+    black_white --;
+  }
+  if (sizeof(obs)) {
+    for (i=0;i<sizeof(obs);i++) {
+      if (obs[i]->query_property("player")) {
+        players += ({ obs[i] });
+        this_player()->add_succeeded(obs[i]);
+        yes  += ({ obs[i] });
+      } else if (obs[i]->query_property("npc")) {
+        chars   += ({ obs[i] });
+        this_player()->add_succeeded(obs[i]);
+        yes  += ({ obs[i] });
+      } else {
+        if (environment(obs[i]) != this_player()) {
+          things  += ({ obs[i] });
+          this_player()->add_succeeded(obs[i]);
+          yes  += ({ obs[i] });
+        }
+      }
+    }
+    chars_sorted = query_multiple_short(chars);
+    things_sorted = query_multiple_short(things);
+    if (chars_sorted || things_sorted || sizeof(players)) {
+      scene = 0;
+    }
+  }
+  view = env->query_long();
+  if(view[sizeof(view)-1] != 10)
+    view += "\n";
+  if(env->query_property("location") == "outside" &&
+     !env->query_weather_obscured(WEATHER->query_day())) {
+    view = WEATHER->weather_string(env) + ".  " + view;
+  }
+  photo_of += "picture of " + env->a_short() + ".";
+  if (scene == 0) {
+    if ((sizeof(chars)+sizeof(players)) == 1) {
+      if (sizeof(chars) == 1) {
+        view += capitalize( (string)chars[0]->query_short() ) +
+          " is here smiling.\n";
+      } else if (sizeof(players) == 1) {
+        view += players[0]->one_short() +" is here smiling.\n";
+      }
+    } else if ((sizeof(players)+sizeof(chars)) > 1) {
+      for(i=0;i<sizeof(players);i++) {
+        view += players[i]->one_short() ;
+        if (i < (sizeof(players)-1)) {
+          view += ", ";
+        }
+      }
+      if (chars_sorted != "" && sizeof(players) > 0) {
+        view += ", " + chars_sorted ;
+      } else if (chars_sorted != "") {
+        view += capitalize(chars_sorted) ;
+      }
+      view += " are smiling here.\n";
+    }
+    if (sizeof(things) == 1) {
+      view += "There is a "+ things_sorted +" in the photo.\n";
+    } else if ( sizeof( things ) ) {
+      view += "There are " + things_sorted+" lying here in the photo.\n" ;
+    }
+  }
+  photo = clone_object("/std/object");
+  photo->set_name("glass");
+  photo->add_adjective( ({"tiny", "square"}) );
+  photo->set_short("tiny square of glass");
+  photo->set_main_plural("tiny squares of glass");
+  photo->set_long("/global/events"->convert_message(view));
+  photo->set_read_mess(photo_of);
+  photo->add_property("photographer", (string)this_player()->query_name()) ;
+  photo->move(this_player());
+  if (scene == 0) {
+    this_player()->add_succeeded_mess(this_object(),
+                                      "$N $V $D on $I. After some frantic "
+                                      "sounds of pens scratching and "
+                                      "brushes brushing, a tiny "
+                                      "demon inside hands a piece of painted "
+                                      "glass to $N.\n", yes);
+  } else {
+    this_player()->add_succeeded_mess(this_object(),
+                                      "$N $V $D on the scenery. After some "
+                                      "frantic sounds of pens scratching "
+                                      "and brushes brushing, a "
+                                      "tiny demon inside hands a piece "
+                                      "of painted glass to $N.\n");
+  }
+  return 1;
+}
+mapping query_static_auto_load() {
+  return ([ "colour" : colour,
+          "black_white" : black_white ]);
+}
+void init_static_arg(mapping map) {
+  colour = map["colour"];
+  black_white = map["black_white"];
+}
+void out_of_paint(object room) {
+  tell_object(this_player(), "The tiny demon whispers sarcastically: "
+              "Without any more paints, I can still paint "
+              "you invisible picture if you like!\n");
+  tell_room(room, "The tiny demon in the cube whispers something about "
+            "paints to "+ this_player()->one_short() +".\n",
+            this_player());
+}
+void out_of_colour(object room) {
+  tell_object(this_player(), "The tiny demon whispers: There are no more "
+              "colour paints. This picture is the "
+              "last colour one. I can only do you "
+              "black and white pictures from now!\n");
+  tell_room(room, "The tiny demon in the cube whispers something about "
+            "colour to "+ this_player()->one_short() +".\n",
+            this_player());
+}
+
+==================================================
+FILE: misc/case.c
+==================================================
+
+#define READ "/cmds/living/r_ead"
+inherit "/obj/baggage";
+void setup() {
+  set_name("case");
+  set_long("This is a nice glass display case that looks out of place "
+           "here, you could \"peruse\" things in it perhaps.\n");
+  add_alias("container");
+  add_adjective("display");
+  set_transparent();
+  set_weight(1000);
+  set_main_plural("cases");
+  set_max_weight(500000);
+  reset_get();
+  reset_drop();
+}
+void init() {
+  this_player()->add_command( "peruse", this_object(),
+                              "<indirect:object:direct-obs> in <direct:object>");
+}
+int do_peruse( object *obs ) {
+  obs = filter( obs, (: environment( $1 ) == this_object() :) );
+  if ( !sizeof( obs ) ) {
+    add_failed_mess( "You have to browse something in the display case.\n" );
+    return 0;
+  }
+  if ( sizeof( obs ) > 1 ) {
+    add_failed_mess( "You can only browse 1 thing at a time.\n" );
+    return 0;
+  }
+  write( "You peruse the "+ obs[0]->query_short() +".\n" );
+  write( obs[0]->long() );
+  READ->cmd( ({ obs[0] }) );
+  this_player()->add_succeeded_mess( this_object(), "" );
+  return 1;
+}
+int test_add( object item, int flag ) {
+  if ( base_name( previous_object( 1 ) )[0..4] == "/cmds" ) {
+    if ( this_player()->query_creator() )
+      return 1;
+    else return 0;
+  }
+  return 1;
+}
+int test_remove( object item, int flag ) {
+  if ( base_name( previous_object( 1 ) )[0..4] == "/cmds" ) {
+    if ( this_player()->query_creator() )
+      return 1;
+    else return 0;
+  }
+  return 1;
+}
+void setup_case( string name, string long ) {
+  add_alias( name );
+  set_long( long + "You feel you could \"peruse\" things in it.\n" );
+}
+
+==================================================
+FILE: misc/cash_register.c
+==================================================
+
+#include <money.h>
+inherit "/std/container";
+object shop;
+object query_shop() { return shop; }
+void set_shop( object thing ) { shop = thing; }
+string long( string word, int dark ) {
+   int i;
+   string ret, *coins;
+   object cash;
+   ret = query_long();
+   cash = present( MONEY_ALIAS, this_object() );
+   if ( !cash )
+      return ret +"There is no money in the register.\n";
+   coins = (string *)cash->half_short( 1 );
+   if ( !sizeof( coins ) )
+      return ret +"There is no money in the register.\n";
+   ret += "The register contains:\n";
+   for ( i = 0; i < sizeof( coins ); i++ )
+      ret += "      "+ coins[ i ] +"\n";
+   return ret;
+}
+int test_add( object thing, int flag ) {
+   if ( !thing->id( MONEY_ALIAS ) )
+      return 0;
+   if ( shop )
+      shop->save_register();
+   return 1;
+}
+int test_remove( object thing, int flag ) {
+   if ( shop )
+      shop->save_register();
+   return 1;
+}
+
+==================================================
+FILE: misc/chicken_feather.c
+==================================================
+
+inherit "/std/object";
+void setup() {
+ set_name("feather");
+ set_short("chicken feather");
+ set_main_plural("chicken feathers");
+ add_adjective("chicken");
+ add_plural("feathers");
+ add_adjective("chicken");
+ set_weight(1);
+ set_long("This is a feather that was plucked from a chicken.\n");
+}
+
+==================================================
+FILE: misc/club_badge.c
+==================================================
+
+#include <clubs.h>
+#include <broadcaster.h>
+inherit "/obj/clothing";
+inherit "/std/basic/club_insignia";
+protected int club_members(int online);
+protected int do_recruit(object *players, string club);
+protected int club_chat(string str, int emote);
+protected int club_members(int online);
+protected int club_info();
+protected int do_history();
+private string *extra_adjs;
+void setup() {
+   extra_adjs = ({ });
+   set_name("badge");
+   add_adjective("club");
+   set_type("badge");
+   set_short("club badge");
+   setup_clothing(1000);
+   set_damage_chance(5);
+   set_long("The badge is a nice blue colour with a fringe "
+            "like a bunny rabbit.\n");
+   add_extra_look(this_object());
+}
+string extra_look() {
+   string tmp_name;
+   if (query_club() &&
+       CLUB_HANDLER->is_member_of(query_club(), this_player()->query_name())) {
+      tmp_name = replace(lower_case(query_club()), " ", "_");
+      return "  You feel like the command '" + tmp_name + "' does something.\n";
+   }
+   return "\n";
+}
+void init() {
+   club_insignia::init();
+}
+mapping query_dynamic_auto_load(mapping map) {
+   map = clothing::query_dynamic_auto_load();
+   map = club_insignia::query_dynamic_auto_load(map);
+   map["verSion"] = 1;
+   return map;
+}
+void init_dynamic_arg(mapping map) {
+   if (map["verSion"] != 1) {
+      clothing::init_dynamic_arg(map["::"]);
+   } else {
+      clothing::init_dynamic_arg(map);
+   }
+   club_insignia::init_dynamic_arg(map);
+}
+void set_club(string name) {
+   if (!name) {
+      extra_adjs = ({ });
+      set_short("club badge");
+   } else {
+      if (CLUB_HANDLER->is_club(name)) {
+         name = CLUB_HANDLER->query_club_name(name);
+         extra_adjs = explode(lower_case(name), " ");
+            set_short("club badge");
+      }
+   }
+   ::set_club(name);
+}
+string *parse_command_adjectiv_id_list() {
+   return ::parse_command_adjectiv_id_list() +
+           extra_adjs;
+}
+mixed *stats()
+{
+  return clothing::stats() +
+    club_insignia::stats();
+}
+
+==================================================
+FILE: misc/crystal_phial.c
+==================================================
+
+inherit "/obj/vessel";
+void setup() {
+   set_name( "phial" );
+   set_short( "crystal phial" );
+   add_adjective( "crystal" );
+   set_main_plural( "crystal phials" );
+   set_long( "This is a small tube-like bottle made of some sort of "+
+         "crystal.  A stopper is attached at one end on a bit of wire.\n" );
+   set_weight( 1 );
+   set_value( 1000 );
+   set_max_weight( 1 );
+   set_max_volume( 10 );
+   set_transparent();
+}
+int test_add( object thing, int flag ) {
+   string word;
+   object *things;
+   if ( !this_player() )
+      return ::test_add( thing, flag );
+   things = all_inventory( this_object() );
+   if ( !sizeof( things ) )
+      return ::test_add( thing, flag );
+   word = (string)things[ 0 ]->query_medium_alias();
+   if ( word == (string)thing->query_medium_alias() )
+      return ::test_add( thing, flag );
+   write( "You don't want to contaminate "+ ( stringp( word ) ?
+         (string)things[ 0 ]->the_short() :
+         (string)thing->the_short() ) +", do you?\n" );
+   return 0;
+}
+object query_substance() {
+   object *things;
+   things = all_inventory( this_object() );
+   if ( !sizeof( things ) )
+      return 0;
+   if ( !stringp( (string)things[ 0 ]->query_medium_alias() ) )
+      return 0;
+   return things[ 0 ];
+}
+string short( int dark ) {
+   object thing = query_substance();
+   if ( dark || !objectp( thing ) )
+      return ::short( dark );
+   return ::short( dark ) +" of "+ (string)thing->short( dark );
+}
+string query_plural( int dark ) {
+   object thing = query_substance();
+   if ( dark || !objectp( thing ) )
+      return ::query_plural( dark );
+   return ::query_plural( dark ) +" of "+ (string)thing->short( dark );
+}
+string *parse_command_adjectiv_id_list() {
+   object thing = query_substance();
+   if ( !objectp( thing ) )
+      return ::parse_command_adjectiv_id_list();
+   return ::parse_command_adjectiv_id_list() + ({ "of" }) +
+      (string *)thing->query_adjectives();
+}

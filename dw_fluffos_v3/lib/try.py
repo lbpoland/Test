@@ -16,7 +16,7 @@ def count_chars(content):
     """Count characters excluding newlines."""
     return len(content.replace('\n', ''))
 
-def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=80000, token_limit=120000, separator="=" * 50):
+def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=85000, token_limit=125000, separator="=" * 50):
     """Merge files into output_file(s) in output_dir, splitting when approaching limits."""
     dir_path = Path(source_dir)
     if not dir_path.exists():
@@ -33,11 +33,10 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
     file_count = 0
     outfile = None
     files_in_current = []
-    first_file = True  # Track first file to ensure header
     
     for root, dirs, files in os.walk(source_dir):
         for filename in sorted(files):
-            if filename.lower().endswith(extensions):
+            if filename.lower().endswith(extensions) and filename.strip():  # Ensure non-empty filename
                 filepath = os.path.join(root, filename)
                 
                 try:
@@ -54,40 +53,41 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                 
                 print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
                 
-                if not first_file and (current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit):
-                    if outfile:
-                        outfile.seek(0)
-                        outfile.write(f"# Total Tokens: {current_token_count}\n"
-                                    f"# Total Files Merged: {len(files_in_current)}\n"
-                                    f"# Total Characters: {current_char_count}\n\n")
-                        outfile.close()
-                        print(f"Closed {output_file}: {len(files_in_current)} files, "
-                              f"~{current_token_count} tokens, {current_char_count} chars")
+                # Check limits before writing, close file if exceeded
+                if outfile and (current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit):
+                    outfile.seek(0)
+                    outfile.write(f"# Total Tokens: {current_token_count}\n"
+                                  f"# Total Files Merged: {len(files_in_current)}\n"
+                                  f"# Total Characters: {current_char_count}\n\n")
+                    outfile.close()
+                    print(f"Closed {output_file}: {len(files_in_current)} files, "
+                          f"~{current_token_count} tokens, {current_char_count} chars")
                     current_file_num += 1
                     current_token_count = 0
                     current_char_count = 0
                     files_in_current = []
+                    outfile = None
                 
-                if current_char_count == 0:
+                # Open new file if none exists
+                if not outfile:
                     output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
-                    if outfile:
-                        outfile.close()
                     outfile = open(output_file, 'w', encoding='utf-8')
                     print(f"Starting new file: {output_file}")
                     outfile.write("\n\n\n\n")  # Reserve space for header
-                    first_file = False  # Reset after first file starts
                 
+                # Write file content with header
                 outfile.write(full_entry)
                 current_token_count += tokens_in_file
                 current_char_count += chars_in_file
                 file_count += 1
                 files_in_current.append(filename)
     
+    # Finalize last file
     if outfile:
         outfile.seek(0)
         outfile.write(f"# Total Tokens: {current_token_count}\n"
-                     f"# Total Files Merged: {len(files_in_current)}\n"
-                     f"# Total Characters: {current_char_count}\n\n")
+                      f"# Total Files Merged: {len(files_in_current)}\n"
+                      f"# Total Characters: {current_char_count}\n\n")
         outfile.close()
         print(f"Closed {output_file}: {len(files_in_current)} files, "
               f"~{current_token_count} tokens, {current_char_count} chars")
@@ -101,7 +101,6 @@ def main():
         print(f"Base directory {base_dir} does not exist!")
         return
     
-    # Individual directories for .c files
     c_directories = {
         'cmds': 'cmds_merged.txt',
         'd': 'd_merged.txt',
@@ -110,41 +109,37 @@ def main():
         'std': 'std_merged.txt',
         'secure': 'secure_merged.txt'
     }
-    # .h files from include
     h_directories = {'include': 'include_merged.txt'}
-    # .s files from soul
     s_directories = {'soul': 'soul_merged.txt'}
     
     print("File Extraction and Merging Tool (Optimized for Grok)")
     print("====================================================")
     print("Grok Limits:")
     print("- Maximum Context Window: 128,000 tokens")
-    print("- Safe Cutoff Used: 80,000 chars or 120,000 tokens per file")
+    print("- Safe Cutoff Used: 85,000 chars or 125,000 tokens per file")
     print("- No strict line limit, but monitored")
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
+    print("HELP: If you see an unnamed file block, check for empty or invalid files in the source directory.")
     print("====================================================")
     
-    # Process .c files
     print("\nProcessing .c files:")
     for dir_name, output_file in c_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=80000, token_limit=120000)
+        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=85000, token_limit=125000)
     
-    # Process .h files
     print("\nProcessing .h files:")
     for dir_name, output_file in h_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=80000, token_limit=120000)
+        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=85000, token_limit=125000)
     
-    # Process .s files
     print("\nProcessing .s files:")
     for dir_name, output_file in s_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=80000, token_limit=120000)
+        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=85000, token_limit=125000)
     
     print("\nExtraction and merging complete! All files are in", output_dir)
 

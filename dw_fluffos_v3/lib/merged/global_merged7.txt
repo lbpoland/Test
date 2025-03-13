@@ -1,523 +1,8 @@
-# Total Tokens: 23521
+# Total Tokens: 22405
 # Total Files Merged: 21
-# Total Characters: 78454
+# Total Characters: 74737
 
-==============================================
-
-#include <living.h>
-#include <player.h>
-#include <soul.h>
-inherit "/global/alias";
-inherit "/global/nickname";
-nosave int time_left;
-nosave int tl_updated;
-nosave int doing_it;
-nosave int last_command;
-nosave int bypass_queue;
-nosave int flush_call_id;
-nosave string *queued_commands;
-nosave string in_command;
-nosave mixed interrupt;
-nosave private function cmd = 0;
-#if !efun_defined(add_action)
-protected mixed _process_input(string);
-protected mixed command(string);
-#endif
-void create() {
-  time_left = ROUND_TIME;
-  tl_updated = time();
-  last_command = time();
-  queued_commands = ({ });
-}
-void bypass_queue() { bypass_queue = 1; }
-void no_time_left() {
-  time_left = -ROUND_TIME;
-}
-protected int drunk_check(string str);
-void soul_commands() {
-#if efun_defined(add_action)
-  add_action("lower_check","*", -10000);
-  add_action((:drunk_check:),"*", 10000);
-#endif
-  alias_commands();
-  nickname_commands();
-  history_commands();
-}
-int query_queued_commands() {
-  return sizeof(queued_commands);
-}
-int soul_com_force(string str) {
-  if (file_name(previous_object()) != SOUL_OBJECT)
-    return 0;
-  command(str);
-  return 1;
-}
-void do_soul(string str, mixed bing) {
-  say(str, bing);
-}
-int query_time_left() {
-  time_left += ((time() - tl_updated) / 2) * ROUND_TIME;
-  if(time_left > ROUND_TIME)
-    time_left = ROUND_TIME;
-  tl_updated = time();
-  return time_left;
-}
-int adjust_time_left(int i) {
-   return time_left += i;
-}
-private void do_flush(int first) {
-  int i;
-  string str;
-  if ( ( time_left < 0 ) || !sizeof( queued_commands ) ||
-       ( this_object()->queue_commands(queued_commands[0]) &&
-         !this_object()->query_creator() ) ) {
-    return;
-  }
-  if (!first) {
-    str = queued_commands[0];
-    queued_commands = queued_commands[1..];
-    doing_it = 1;
-    catch(command(str));
-    doing_it = 0;
-    if (!sizeof(queued_commands)) {
-      queued_commands = ({ });
-      doing_alias = ([ ]);
-    }
-    return ;
-  }
-  for (i = 0; (i < 2) && (i < sizeof(queued_commands)); i++) {
-    flush_call_id = call_out((: do_flush(0) :), 1);
-  }
-  flush_call_id = call_out((: do_flush(1) :), 2);
-}
-private void call_interrupt(int time_left, object interupter) {
-   mixed stuff;
-   stuff = interrupt;
-   interrupt = 0;
-   if (pointerp(stuff)) {
-      catch(call_other(stuff[1],
-                       stuff[0],
-                       time_left,
-                       stuff[2],
-                       this_object(),
-                       interupter,
-                       in_command));
-   } else if (functionp(stuff)) {
-      catch(evaluate(stuff,
-                     time_left,
-                     this_object(),
-                     interupter,
-                     in_command));
-   }
-}
-protected void flush_queue() {
-  query_time_left();
-  remove_call_out(flush_call_id);
-  do_flush(1);
-  if (!sizeof(queued_commands)) {
-    if (interrupt && time_left > 0) {
-      call_interrupt(0, this_object());
-    }
-    in_alias_command = 0;
-    doing_alias = ([ ]);
-    if (!sizeof(queued_commands)) {
-      return ;
-    }
-    doing_alias = ([ ]);
-    in_alias_command = 0;
-  }
-}
-void set_interupt_command(mixed func, mixed ob, mixed arg) {
-  if (!functionp(func)) {
-    interrupt = ({ func, ob, arg });
-    if ( !stringp( func ) )
-      interrupt = 0;
-  } else {
-    interrupt = func;
-  }
-}
-mixed *query_interupt_command() {
-   return interrupt;
-}
-void set_interrupt_command(function func) {
-  set_interupt_command(func, 0, 0);
-}
-void remove_queue() {
-   queued_commands = ({ });
-   if ( interrupt && ( time_left < 0 ) ) {
-      call_interrupt(-time_left, this_object());
-   }
-   tell_object( this_object(), "Removed queue.\n" );
-   if (this_object()->query_lord()) {
-     time_left = 0;
-   } else {
-     time_left = -DEFAULT_TIME;
-   }
-}
-void interupt_command(object interupter) {
-   if (interupter) {
-      call_interrupt(-time_left, interupter);
-   }
-}
-void command_override(function func){
-  if(!functionp(func))
-    error("command_override needs a function!");
-  cmd = func;
-}
-protected int drunk_check(string str) {
-   string *rabbit;
-   string *green;
-   string mess;
-   string comm;
-   string arg;
-   if(cmd){
-     object owner = function_owner(cmd);
-     if(owner && owner == environment(this_player())){
-       int res = evaluate(cmd, str);
-       if(res)
-         return res;
-     } else cmd = 0;
-   }
-   if ( in_command == str ) {
-      in_command = 0;
-      sscanf(str, "%s %*s", str);
-      if (is_doing_alias(str)) {
-         this_object()->add_failed_mess(this_object(),
-             "Recursive aliases. Bad "+
-             ({"thing","boy","girl"})[(int)this_object()->query_gender()]+
-                ".\n", ({ }));
-      }
-      return 0;
-   }
-   if ( bypass_queue ) {
-      bypass_queue = 0;
-      return 0;
-   }
-   last_command = time();
-   if ( this_object()->query_property( PASSED_OUT ) ||
-         !interactive( this_object() ) ) {
-      if ( ( str == "quit" ) || ( str == "quit_old" ) ) {
-         return 0;
-      }
-      mess = this_object()->query_passed_out_message();
-      if ( !stringp( mess ) ) {
-         mess = "You are unconscious.  You can't do anything.\n";
-      }
-      write( mess );
-      if ( !this_object()->query_creator() ) {
-         return 1;
-      }
-      write( "On the other hand, you're a creator...\n" );
-   }
-   if ( ( str == "stop" ) || ( str == "restart" ) ) {
-      remove_queue();
-      return 0;
-   }
-   if ( stringp( str ) ) {
-      if ( str[ 0 .. 4 ] == "stop " ) {
-         return 0;
-      }
-   }
-   if ( ( time_left < 0 ) ||
-        (this_object()->queue_commands(str) &&
-         !this_object()->query_creator()) ||
-         ( !doing_it && ( sizeof( queued_commands ) ||
-         ( find_call_out( flush_call_id ) != -1 ) ) ) ) {
-      rabbit = explode(str, " ");
-      if (rabbit[0] != upper_case(rabbit[0])) {
-         write( "Queued command: "+ str +"\n" );
-      }
-      if ( str == "quit" ) {
-         write( "If you are trying to quit and it is queueing things, use "
-               "\"stop\" to stop your commands, and or \"restart\" to start "
-               "your heartbeat.\n" );
-      }
-      if(sizeof(queued_commands) < 256) {
-        if(sizeof(rabbit) > 1 && member_array(str, queued_commands) != -1)
-          time_left -= (DEFAULT_TIME / 2);
-        queued_commands += ({ str });
-      }
-      return 1;
-   }
-   if (interrupt) {
-      call_interrupt(0, this_object());
-   }
-   interrupt = 0;
-   in_command = str;
-   if (sscanf(str, "%s %s", comm, arg) != 2) {
-      comm = str;
-      arg = "";
-   }
-   rabbit = run_alias(comm, arg);
-   if (rabbit) {
-      set_doing_alias(comm);
-      green = queued_commands;
-      queued_commands = ({ });
-      foreach (comm in rabbit) {
-         catch(command(comm));
-      }
-      queued_commands += green;
-#if USE_ADD_ACTION
-   } else if(sizeof(str) > 512) {
-     write("Command too long.\n");
-#endif
-   } else {
-      time_left -= DEFAULT_TIME;
-      command(str);
-   }
-   if (interrupt && time_left >= 0) {
-      call_interrupt(0, this_object());
-   }
-   return 1;
-}
-protected string process_input(string str) {
-  float secs;
-  int t = time_expression{
-    reset_eval_cost();
-    if (str[0] == '.')
-      str = expand_history(str[1..]);
-    else if (str[0] == '^')
-      str = substitute_history(str[1..]);
-    this_object()->add_history(str);
-#if efun_defined(add_action)
-    return str;
-#else
-    _process_input(str);
-  };
-  secs = t/1000000.0;
-  if((secs > 1.0) &&
-     (strlen(str) < 2 || str[0..1] != "su") &&
-     str != "upgrade") {
-    log_file("GARBAGE", "%s command: %s time: %:3f place: %s\n",
-       ctime(time())[4..18], str, secs,
-       file_name(environment()));
-    if(this_object()->query_creator())
-      printf("\nThat command froze the mud for %:3f "
-       "seconds.\n\n", secs);
-  }
-  return 0;
-#endif
-}
-#if !efun_defined(add_action)
-protected mixed _process_input(string str){
-  object ob;
-  int i;
-  string* bits;
-  if(str == "") {
-    return 0;
-  }
-  ob = this_player();
-  efun::set_this_player(this_object());
-  _notify_fail(0);
-  while (str[0] == ' ') {
-    str = str[1..];
-  }
-  if (str == ""){
-      efun::set_this_player(ob);
-      return 0;
-    }
-  while(str[<1] == ' ') {
-    str = str[0..<2];
-  }
-  if (str == ""){
-    efun::set_this_player(ob);
-    return 0;
-  }
-  if (strsrch(str, "%^") != -1) {
-    bits = explode("f" + str + "g", "%^");
-    for (i = 1; i < sizeof(bits); i += 2) {
-      if (bits[i][0..3] != "USER") {
-         bits[i] = "USER_" + bits[i];
-      }
-    }
-    bits[0] = bits[0][1..];
-    bits[<1] = bits[<1][0..<2];
-    str = implode(bits, "%^");
-  }
-  if(!drunk_check(str)) {
-    if(!this_object()->exit_command(str)) {
-      if(!this_object()->cmdAll(str)) {
-        if(!this_object()->new_parser(str)) {
-          if(!this_object()->lower_check(str)){
-            if(!(str = query_notify_fail())){
-              string *responses=({"What?", "Try something else."});
-              receive(responses[random(sizeof(responses))]+"\n");
-            } else {
-              receive(str);
-            }
-            efun::set_this_player(ob);
-            return 0;
-          }
-        }
-      }
-    }
-  }
-  efun::set_this_player(ob);
-  return "bing";
-}
-protected mixed command(string cmd){
-  int time = eval_cost();
-  if(_process_input(cmd))
-    return eval_cost() - time + 1;
-  return 0;
-}
-#endif
-int lower_check(string str) {
-  query_time_left();
-  return (str == "stop");
-}
-
-==================================================
-FILE: pweath.c
-==================================================
-
-#include <weather.h>
-#include <clothing.h>
-#include <playtesters.h>
-#define COMFORTABLE 20
-int temperature;
-string temperature_str;
-int query_wetness()
-{
-   return 0;
-}
-void add_wetness(int arg)
-{
-}
-void dry_out()
-{
-}
-void set_personal_temp(int i)
-{
-   temperature = i;
-}
-void adjust_personal_temp(int i)
-{
-   temperature += i;
-}
-int query_personal_temp()
-{
-   return temperature;
-}
-string query_temp_str()
-{
-   if (!temperature_str || temperature_str == "") {
-      return "quite comfortable";
-   }
-   return temperature_str;
-}
-int calc_personal_temp()
-{
-   mixed tmp;
-   object where,
-    *clothes;
-   string item,
-     zone,
-     type,
-    *types,
-    *zones;
-   int adjustment,
-     room_temp,
-     correction,
-    *enums;
-   if (this_object()->query_property("dead")) {
-      temperature = 0;
-      return 0;
-   }
-   where = environment(this_object());
-   if (!where->query_property("location") &&
-       environment(where) && environment(where)->query_property("location"))
-      where = environment(where);
-   switch (where->query_property("location")) {
-   case "outside":
-      room_temp = (WEATHER->query_temperature(where) - COMFORTABLE);
-      break;
-   default:
-      room_temp = 0;
-   }
-   room_temp += where->query_property("warmth");
-   room_temp -= where->query_property("cooling");
-   adjustment = room_temp;
-   adjustment += this_object()->query_property("warmth");
-   adjustment -= this_object()->query_property("cooling");
-   clothes = filter_array(this_object()->query_wearing(),
-                          (: !$1->id("scabbard") &&
-                             !$1->id("belt") &&
-                             !$1->id("backpack") &&
-                             !$1->id("glasses") && !$1->id("jewellery") :));
-   zones = ({ });
-   foreach(item in clothes) {
-      tmp = item->query_type();
-      if (arrayp(tmp))  types = tmp;
-      else types = ({ tmp });
-      foreach(type in types) {
-         if (CLOTHING_HANDLER->query_equivilant_type(type))
-            type = CLOTHING_HANDLER->query_equivilant_type(type);
-         foreach(zone in CLOTHING_HANDLER->query_zone_names(type)) {
-            if (member_array(zone, zones) == -1) {
-               zones += ({ zone });
-            }
-            tmp = item->query_property("warmth");
-            if (!tmp) {
-               adjustment++;
-            } else if (intp(tmp) && tmp) {
-               adjustment += tmp;
-            }
-            if (room_temp > 0 && item->query_property("cooling")) {
-               adjustment -= item->query_property("cooling");
-            }
-         }
-      }
-   }
-   if (room_temp < 0) {
-      adjustment += sizeof(zones);
-      if (room_temp + sizeof(zones) > 5) {
-         adjustment -= (room_temp + sizeof(zones) - 5);
-      }
-   } else {
-      adjustment -= sizeof(zones);
-      if (room_temp - sizeof(zones) < -5) {
-         adjustment -= (room_temp - sizeof(zones) + 5);
-      }
-   }
-   enums = (int *) this_object()->effects_matching("body.wetness");
-   if (sizeof(enums)) {
-      adjustment -= sqrt(sqrt((int) this_object()->arg_of(enums[0]))) * 2;
-   }
-   if (temperature > room_temp && room_temp >= 0 || temperature > 5) {
-      correction -= (temperature / 5) + 5;
-   }
-   if (temperature < room_temp && room_temp <= 0 || temperature < -5) {
-      correction -= (temperature / 5) - 5;
-   }
-#ifdef 0
-   if ((room_temp < 10 && temperature >= 0) ||
-       (room_temp > 10 && temperature <= 0)) {
-      factor = (ABS(room_temp - temperature) / 10.0);
-      if (factor > 1.0 || factor < 0.0)
-         factor = 1.0;
-   } else {
-      factor = 1.0;
-   }
-   temperature += to_int((adjustment + correction) * factor);
-#endif
-   temperature += (adjustment + correction);
-   temperature_str = (this_object()->query_race_ob())->
-      temperature_effects(this_object(), temperature);
-   return temperature;
-}
-string weather_extra_look()
-{
-   if (stringp(temperature_str) && strlen(temperature_str)) {
-      return capitalize((string) this_object()->query_pronoun()) + " looks " +
-         temperature_str + ".\n";
-   }
-   return "";
-}
-
-==================================================
-FILE: shut.c
-==================================================
+=============================================
 
 inherit "/std/container";
 #include <config.h>
@@ -2798,4 +2283,375 @@ object create_virtual_object(string name, int clone) {
     return 0;
   }
   Error("create_virtual_object() : unknown suffix to " + name + "\n");
+}
+
+==================================================
+FILE: virtual/vr_hand.c
+==================================================
+
+object compile_virtual_room(string filename);
+void parse_object(object room, string command);
+void create()
+{
+  seteuid(getuid(this_object()));
+}
+object compile_virtual_room(string filen)
+{
+  string tmp, tmp2;
+  object new_room;
+  int i;
+  i=3;
+  tmp=read_file(filen, 2, 1);
+  tmp2=tmp[1..strlen(tmp)-2];
+  new_room=clone_object("/"+tmp2);
+  while (read_file(filen, i, 1))
+  {
+    tmp=read_file(filen, i, 1);
+    if(tmp=="") break;
+    parse_object(new_room, tmp);
+    i++;
+  }
+  return new_room;
+}
+void parse_object(object room, string command)
+{
+  string *func_call,s1,s2,s3;
+  int i1,i2,i3,i4;
+  if(!command) return;
+  func_call=explode(command, "#");
+  if((string)func_call[0][0]==";") return;
+  switch (func_call[0])
+  {
+    case "SHORT" :
+      room->set_short(func_call[1]);
+      break;
+    case "LONG" :
+      room->set_long(func_call[1]);
+      break;
+    case "EXIT" :
+      room->add_exit(func_call[1], func_call[2]);
+      break;
+    case "LIGHT" :
+      i1=sscanf(func_call[1], "%d", i2);
+      room->set_light(i2);
+      break;
+    case "ITEM" :
+      room->add_item(explode(func_call[1], ","), explode(func_call[2], ","));
+      break;
+    case "TASTE" :
+      room->add_taste(func_call[1], func_call[2]);
+      break;
+    case "SMELL" :
+      room->add_smell(func_call[1], func_call[2]);
+      break;
+    case "SOUND" :
+      room->add_sound(func_call[1], func_call[2]);
+      break;
+    case "TOUCH" :
+      room->add_feel(func_call[1], func_call[2]);
+      break;
+    case "OBJECT" :
+      room->add_object(func_call[1]);
+      break;
+    case "ACTION" :
+      i2=0;
+      catch(i1=sscanf(func_call[3], "%d", i2));
+      room->action_add(func_call[1], func_call[2], i2);
+      break;
+    case "CODE" :
+      room->set_code_module(func_call[1]);
+      break;
+    case "PROP" :
+      room->add_property(func_call[1], func_call[2]);
+      break;
+    case "COORD" :
+      i1=sscanf(func_call[1], "%d,%d,%d", i2,i3,i4);
+      room->set_co_ord(({i2,i3,i4}));
+      break;
+  }
+  return;
+}
+
+==================================================
+FILE: handlers/more_string.c
+==================================================
+
+#define COLS (int)this_object()->query_cols()
+#define ROWS ( (int)this_object()->query_rows() - 1 )
+class more_string_info {
+   int fsize;
+   int topl;
+   int botl;
+   string last_search;
+   string *the_bit;
+   string finish_func;
+   string more_bit;
+   string stat_line;
+   object finish_ob;
+}
+nosave mixed *_pending_more;
+class more_string_info _current_info;
+int internal_more_string();
+void create() {
+   add_command("Internal_More_String", "<string>", (:internal_more_string:));
+}
+void string_display_file(class more_string_info info) {
+  int i;
+  string stuff;
+  info->botl = info->topl + ROWS;
+  stuff = "";
+  for ( i = info->topl; ( i < info->botl ) && ( i < info->fsize ); i++ ) {
+    stuff += info->the_bit[ i ] +"\n";
+  }
+  efun::tell_object( this_object(), stuff );
+}
+void more_string_status_line(class more_string_info info) {
+   string *frog;
+   string s;
+   int i;
+   int percentage;
+   if (!info->stat_line) {
+      info->stat_line = "$N From $T to $B of $S ($%%) - h for help. ";
+   }
+   s = "";
+   frog = explode(info->stat_line, "$");
+   for (i=0;i<sizeof(frog);i++) {
+      if (frog[i] == "") {
+         s += "$";
+         i ++;
+      } else switch (frog[i][0]) {
+         case 'N' :
+            s += info->more_bit+frog[i][1..];
+            break;
+         case 'T' :
+            s += ( info->topl + 1 ) + frog[ i ][ 1 .. ];
+            break;
+         case 'B' :
+            if (info->botl > info->fsize)
+               s += info->fsize+frog[i][1..];
+            else
+               s += info->botl+frog[i][1..];
+            break;
+         case '%' :
+            percentage = (info->botl*100)/info->fsize;
+            if (percentage > 100) {
+               percentage = 100;
+            }
+            s += percentage + frog[i][1..];
+            break;
+         case 'S' :
+            s += info->fsize + frog[i][1..];
+            break;
+      }
+   }
+   efun::tell_object( this_object(), (string)this_object()->fix_string( s ) );
+   return;
+}
+void string_next_page(string str, class more_string_info info) {
+   int num;
+   int noargs;
+   int i;
+   int redraw;
+   string s1;
+   if (!str) {
+     str = "";
+   }
+   if (sscanf(str,"%d%s", num, str) != 2) {
+     noargs = 1;
+   }
+   s1 = str[1..];
+   if (str == "") {
+      str = "f";
+   }
+   switch(str[0]) {
+      case 'h' :
+         cat("/doc/helpdir/more");
+         break;
+      case 'q' :
+         if (info->finish_func) {
+            if (functionp(info->finish_func)) {
+               evaluate(info->finish_func);
+            } else {
+               call_other(info->finish_ob, info->finish_func);
+            }
+         }
+         info->finish_func = 0;
+         _current_info = 0;
+         return;
+      case 'f' :
+      case 'F' :
+         info->topl += ROWS;
+         redraw = 1;
+         break;
+      case 'b' :
+      case 'B' :
+         info->topl -= ROWS;
+         redraw = 1;
+         break;
+      case '/' :
+         i = info->topl + 4;
+         if (!s1 || s1 == "") {
+            s1 = info->last_search;
+         }
+         if (!s1 || s1 == "") {
+            s1 = "bing!";
+         }
+         for (i = info->topl + 4; i < info->fsize; i++) {
+            if (strsrch(info->the_bit[i], s1) != -1) {
+               if (num-- <= 0) {
+                  break;
+               }
+            }
+         }
+         if (i == info->fsize) {
+            tell_object( this_object(), "Sorry "+ s1 +" not found.\n" );
+         } else {
+            tell_object( this_object(), "Found " + s1 + " on line "+ i +".\n");
+            info->topl = i - 3;
+         }
+         redraw = 1;
+         break;
+      case '?' :
+         if (!s1 || s1 == "") {
+            s1 = info->last_search;
+         }
+         if (!s1 || s1 == "") {
+            s1 = "bing!";
+         }
+         for (i = info->topl + 2; i > 0; i--) {
+            if (strsrch(info->the_bit[i], s1) != -1) {
+               if (num-- <= 0) {
+                  break;
+               }
+            }
+         }
+         if (i == 0) {
+            tell_object(this_object(), "Sorry " + s1 + " not found.\n");
+         } else {
+            info->topl = i - 3;
+         }
+         redraw = 1;
+         break;
+      case 'b' :
+         if (info->topl > 0) {
+            info->topl -= ROWS;
+            redraw = 1;
+            if (info->topl < 0) {
+               info->topl = 0;
+            }
+         }
+         break;
+      case 'g' :
+         info->topl = num;
+         if (info->topl >= info->fsize)
+            info->topl = info->fsize - 2;
+         redraw = 1;
+         break;
+      case 'G' :
+         redraw = 1;
+         if (noargs)
+            info->topl = info->fsize - ROWS;
+         else
+            info->topl = num;
+         if (info->topl > info->fsize)
+            info->topl = info->fsize - 2;
+         break;
+   }
+   if (redraw) {
+      string_display_file(info);
+      if ( info->botl < info->fsize ) {
+         more_string_status_line(info);
+         input_to("string_next_page", 0, info);
+      } else {
+         if (info->finish_func) {
+            if ( info->finish_ob ) {
+               call_other(info->finish_ob, info->finish_func);
+            }
+            info->finish_func = 0;
+         }
+         _current_info = 0;
+      }
+   } else {
+      more_string_status_line(info);
+      input_to("string_next_page", 0, info);
+   }
+}
+varargs int more_string( string text, string bity, int noreline ) {
+  int i, ncols;
+  string *bits;
+  class more_string_info info;
+  if ( this_player() != this_object() ){
+     if ( !_pending_more ) {
+        _pending_more = ({ ({ text, bity, noreline }) });
+     } else {
+        _pending_more += ({ ({ text, bity, noreline }) });
+     }
+     this_object()->ignore_from_history("Internal_More_String something");
+     command( "Internal_More_String something" );
+     return 1;
+  }
+  _current_info = info = new(class more_string_info);
+  if ( bity ) {
+    info->more_bit = bity;
+  } else {
+    info->more_bit = "--- MORE";
+  }
+  info->last_search = "";
+  if ( !stringp( text ) || !strlen( text ) ) {
+    return notify_fail( "Empty string.\n" );
+  }
+  if ( noreline ) {
+    info->the_bit = explode( this_object()->fix_string( text ), "\n" );
+  } else {
+    info->the_bit = ({ });
+    ncols = COLS;
+    bits = explode( text, "\n" );
+    for ( i = 0; i < sizeof( bits ); i++ ) {
+      reset_eval_cost();
+      if ( bits[ i ] == "" ) {
+        info->the_bit += ({ "" });
+      } else {
+        info->the_bit +=
+          explode( this_object()->fix_string( bits[ i ], ncols ), "\n" );
+      }
+    }
+  }
+  info->fsize = sizeof( info->the_bit );
+  info->topl = 0;
+  string_display_file(info);
+  if ( info->botl < info->fsize ) {
+    more_string_status_line(info);
+    input_to( "string_next_page", 0, info );
+  } else {
+      if ( info->finish_func ) {
+         if ( !info->finish_ob ) {
+            info->finish_func = 0;
+            return 1;
+         }
+         call_other( info->finish_ob, info->finish_func );
+         info->finish_func = 0;
+      }
+      _current_info = 0;
+  }
+  return 1;
+}
+varargs void set_finish_func(string str, object ob) {
+  _current_info->finish_func = str;
+  if (!ob) {
+    _current_info->finish_ob = previous_object();
+  } else {
+    _current_info->finish_ob = ob;
+  }
+}
+int internal_more_string() {
+   string text, bity;
+   int noreline;
+   if ( sizeof( _pending_more ) ) {
+      text = _pending_more[ 0 ][ 0 ];
+      bity = _pending_more[ 0 ][ 1 ];
+      noreline = _pending_more[ 0 ][ 2 ];
+      _pending_more = _pending_more[ 1 .. <1 ];
+      more_string( text, bity, noreline );
+   }
+   return 1;
 }

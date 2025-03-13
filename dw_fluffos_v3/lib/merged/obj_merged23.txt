@@ -1,2282 +1,2330 @@
-# Total Tokens: 22478
-# Total Files Merged: 6
-# Total Characters: 74943
+# Total Tokens: 22409
+# Total Files Merged: 15
+# Total Characters: 74740
 
-herit/club_elected.c
+odoc/autodoc_handler.c
 ==================================================
 
-inherit "/obj/handlers/inherit/club_family";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-#include <mail.h>
-#include <board.h>
-#include <player_handler.h>
-private mapping _elections;
-private string *_boards;
-private nosave mapping _discussion_items;
-#define CLUB_PRESIDENT_INDEX          "president"
-#define CLUB_VICE_PRESIDENT_INDEX     "vice-president"
-#define CLUB_TREASURER_INDEX          "treasurer"
-#define CLUB_SECRETARY_INDEX          "secretary"
-#define CLUB_ORDINARY_COMMITTEE_INDEX "committee"
-#define CLUB_BOARD_PREFIX "club "
-#define CLUB_DISCUSS_MESSAGE_VERIFY            1
-#define CLUB_DISCUSS_MESSAGE_COMPLETE          2
-#define CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION 3
-#define CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION  4
-#define CLUB_DISCUSS_MESSAGE_NOMINATION        5
-#define CLUB_MAX_ARCHIVE_SIZE 50
-int is_nomination_accepted(string club_name,
-                           string position,
-                           string person);
-int complete_election(string club_name);
-int start_election(string club_name);
-int holds_position_of(string name, string position, string person);
-string query_position_name(string club_name,
-                           string position);
-int set_position_holder(string club_name,
-                                  string position,
-                                  string person);
-protected int add_archive(string club_name,
-                          string subject,
-                          string thingy);
-string query_club_board_name(string club_name);
-class election_info {
-   string treasurer;
-   string president;
-   string vice_president;
-   string secretary;
-   mapping account_info;
-   mapping positions;
-   int last_election;
-   int election_period;
-   mapping options;
-   class discussion_idea *discussion;
-   class club_archive *archives;
-   string announcement;
-   int announce_time;
-}
-#define CLUB_NOMINATION        1
-#define CLUB_NOMINATION_SECOND 3
-#define CLUB_ELECTION          2
-class election_data {
-   int time_of_event;
-   int state;
-   mapping people;
-   mapping nominated;
-   mapping voted_for;
-   string election_status;
-}
-class account_info {
-   class club_transaction* transactions;
-   string* allowed_people;
-   string* allowed_positions;
-}
-private class election_info query_elected_info(string name);
+#include <autodoc.h>
+#define MAIN_FILE 0
+#define INDEX_FILE 1
+#define SAVE_FILE (SAVE_DIR "main_rubbish")
+string *files;
+int file_pos;
+int something_changed;
+int last_created_index;
+nosave function *filters;
+nosave int call_id;
+nosave mapping summary_map;
+nosave mixed *extra_indexes;
+mapping help_map;
+private void create_nroff_file(object ob, int type);
+private void create_html_file(object ob, int type);
+private void after_thingy(int no_index);
+private void start_processing();
+private void do_parse_next_file();
+private void create_index();
+private void add_to_index(object ob);
+private void load();
+private void save();
+string *query_files();
+int remove_file(string fname);
 void create() {
-   _elections = ([ ]);
-   _boards = ({ });
-   ::create();
-   if (!_boards) {
-      _boards = ({ });
+   seteuid(getuid());
+   filters = ({ (: create_nroff_file($1, $2) :),
+                (: create_html_file($1, $2) :) });
+   file_pos = 0;
+   something_changed = 0;
+   files = ({ });
+   load();
+   do_parse_next_file();
+}
+private void create_nroff_file(mixed ob, int type) {
+   string fname;
+   mixed *stuff;
+   mixed *index_stuff;
+   int i;
+   if (type == MAIN_FILE) {
+      fname = replace(ob->query_file_name(), "/", ".");
+      if (fname[0] == '.') {
+         fname = fname[1..];
+      }
+      rm(NROFF_DOC_DIR + fname);
+      AUTODOC_NROFF->create_nroff_file(ob, NROFF_DOC_DIR + fname);
+   } else if (type == INDEX_FILE) {
+      index_stuff = ob;
+      stuff = map(query_files(), function (string name) {
+           string *bits;
+           bits = explode(name, "/");
+           return ({ bits[sizeof(bits)-1], name });
+        } );
+      stuff = unique_array(index_stuff + stuff, (: lower_case($1[0])[0] :));
+      for (i = 0; i < sizeof(stuff); i++) {
+         fname = NROFF_DOC_DIR + "index_" + lower_case(stuff[i][0][0][0..0]);
+         AUTODOC_NROFF->create_nroff_index_file(stuff[i], fname);
+      }
    }
 }
-protected void create_extra_data(string name) {
-   class election_info e_info;
-   class club_info data;
-   class club_transaction bing;
-   class account_info frog;
-   if (query_club_type(name)== CLUB_ELECTED) {
-      data = (class club_info)query_club_info(name);
-      e_info = new(class election_info);
-      e_info->treasurer = CLUB_TREASURER_INDEX;
-      e_info->president = CLUB_PRESIDENT_INDEX;
-      e_info->vice_president = CLUB_VICE_PRESIDENT_INDEX;
-      e_info->secretary = CLUB_SECRETARY_INDEX;
-      e_info->discussion = ({ });
-      e_info->positions = ([
-                             CLUB_TREASURER_INDEX : CLUB_UNKNOWN_MEMBER,
-                             CLUB_PRESIDENT_INDEX : data->founder,
-                             CLUB_VICE_PRESIDENT_INDEX : CLUB_UNKNOWN_MEMBER,
-                             CLUB_SECRETARY_INDEX : CLUB_UNKNOWN_MEMBER,
-                           ]);
-      e_info->account_info = ([ ]);
-      e_info->last_election = time();
-      e_info->options = ([ ]);
-      e_info->election_period = CLUB_INVALID_TIME;
-      e_info->announcement = "";
-      e_info->archives = ({ });
-      e_info->announce_time = 0;
-      data->extra_data = e_info;
-      set_club_changed(name);
-      bing = new(class club_transaction);
-      bing->date = time();
-      bing->amount = query_balance(name, CLUB_DEFAULT_ACCOUNT_NAME);
-      bing->transaction_type = CLUB_TRANSACTION_START_BALANCE;
-      bing->who = CLUB_CONTROLLER_MEMBER;
-      frog = new(class account_info);
-      frog->transactions = ({ bing });
-      frog->allowed_people = ({ });
-      frog->allowed_positions = ({ CLUB_TREASURER_INDEX,
-                                   CLUB_PRESIDENT_INDEX });
-      e_info->account_info[CLUB_DEFAULT_ACCOUNT_NAME] = frog;
-      set_club_changed(name);
+private void create_html_file(mixed ob, int type) {
+   string fname;
+   mixed *stuff;
+   mixed *index_stuff;
+   int i;
+   mapping chars;
+   if (type == MAIN_FILE) {
+      fname = replace(ob->query_file_name(), "/", ".");
+      if (fname[0] == '.') {
+         fname = fname[1..];
+      }
+      fname += ".html";
+      rm(HTML_DOC_DIR + fname);
+      AUTODOC_HTML->create_html_file(ob, HTML_DOC_DIR + fname);
+   } else if (type == INDEX_FILE) {
+      index_stuff = ob;
+      stuff = map(query_files(), function (string name) {
+           string *bits;
+           bits = explode(name, "/");
+           return ({ bits[sizeof(bits)-1], name, "", summary_map[name] });
+        } );
+      stuff = unique_array(index_stuff + stuff, (: lower_case($1[0])[0] :));
+      chars = ([ ]);
+      for (i = 0; i < sizeof(stuff); i++) {
+         fname = "index_" + lower_case(stuff[i][0][0][0..0]) + ".html";
+         rm(HTML_DOC_DIR + fname);
+         AUTODOC_HTML->create_html_index_file(stuff[i], stuff[i][0][0][0..0],
+                                       HTML_DOC_DIR + fname);
+         reset_eval_cost();
+         chars[capitalize(stuff[i][0][0][0..0])] =  fname;
+      }
+      fname = HTML_DOC_DIR;
+      AUTODOC_HTML->create_main_index(chars, fname);
+   }
+}
+private void after_thingy(int no_index) {
+   int i;
+   if (no_index) {
+      printf("Finished recreating the documentation for %O\n",
+              previous_object()->query_file_name(),
+             previous_object());
+   }
+   if (previous_object()->query_changed()) {
+      something_changed = 1;
+   }
+   if (previous_object()->query_num_failed_tries() > 1) {
+      remove_file(files[file_pos - 1]);
+   } else if (previous_object()->query_changed() || no_index) {
+      for (i = 0; i < sizeof(filters); i++) {
+         call_out((: evaluate($1, $2, $3) :), 0, filters[i],
+                  previous_object(), MAIN_FILE);
+      }
+   }
+   call_out((: $1->dest_me() :), 20, previous_object());
+   save();
+}
+private void do_parse_next_file() {
+   call_id = call_out((: start_processing() :), 60);
+   if (file_pos >= sizeof(files)) {
+      file_pos = 0;
+   }
+   new(AUTODOC_FILE)->parse_file(files[file_pos++], (: after_thingy(0) :));
+}
+private void start_processing() {
+   if (sizeof(files) == 0) {
+      return ;
+   }
+   if (last_created_index + SAVE_INDEX_DELAY < time()) {
+      if (something_changed) {
+         call_out( (: create_index() :), 2);
+      }
+      something_changed = 0;
+      save();
+   }
+   call_id = call_out((: do_parse_next_file() :), 360);
+}
+private string query_short_args_def(mixed *args) {
+   string ret;
+   int i;
+   ret = "";
+   for (i = 0; i < sizeof(args); i += 2) {
+      if (i != 0) {
+         ret += ", ";
+      }
+      ret += implode(args[AUTO_ARGS_TYPE], " ");
+   }
+   return "(" + ret + ")";
+}
+private string *process_stuff(string name,
+                              string fname,
+                              string fn,
+                              mapping docs) {
+   string blue;
+   int i;
+   int end;
+   mixed *ret;
+   mapping fluff;
+   if (name != "create" && name != "setup" && name != "init") {
+      if (help_map[name]) {
+         help_map[name] += ({ fn });
+      } else {
+         help_map[name] = ({ fn });
+      }
+   }
+   if (docs[name]) {
+      if (arrayp(docs[name])) {
+         fluff = docs[name][AUTO_DOCS];
+         ret =  ({ name, fname, query_short_args_def(docs[name][AUTO_ARGS]) });
+      } else {
+         ret = ({ name, fname, "" });
+         fluff = docs[name];
+      }
    } else {
-      ::create_extra_data(name);
-   }
-}
-int change_club_type(string name,
-                     int type) {
-   if (::change_club_type(name, type)) {
-      start_election(name);
-      return 1;
-   }
-   return 0;
-}
-int disband_club(string name) {
-   if (::disband_club(name)) {
-      map_delete(_elections, name);
-      _boards -= ({ query_club_board_name(name) });
-      save_main();
-      return 1;
-   }
-   return 0;
-}
-protected class election_info query_elected_info(string name) {
-   class club_info data;
-   class account_info fluff;
-   if (is_elected_club(name)) {
-      data = (class club_info)query_club_info(name);
-      if (pointerp(data->extra_data->account_info)) {
-         fluff = new(class account_info);
-         fluff->transactions = data->extra_data->account_info;
-         fluff->allowed_people = ({ });
-         fluff->allowed_positions = ({ data->extra_data->president,
-                                       data->extra_data->treasurer });
-         data->extra_data->account_info = ([ CLUB_DEFAULT_ACCOUNT_NAME : fluff ]);
+      ret = ({ name, fname, "" });
+      if (mapp(docs)) {
+         fluff = docs;
+      } else {
+         fluff = ([ ]);
       }
-      return data->extra_data;
    }
-   return 0;
-}
-protected class account_info query_account_info(string name, string account) {
-   class election_info bing;
-   bing = query_elected_info(name);
-   if (bing) {
-      if (!account) {
-         account = CLUB_DEFAULT_ACCOUNT_NAME;
+   if (fluff["main"]) {
+      blue = implode(fluff["main"], "\n");
+      end = strlen(blue);
+      i = strsrch(blue, ".");
+      if (i > 0) {
+         end = i;
       }
-      return bing->account_info[account];
+      i = strsrch(blue, "!");
+      if (i > 0 && i < end) {
+         end = i;
+      }
+      i = strsrch(blue, "?");
+      if (i > 0 && i < end) {
+         end = i;
+      }
+      blue = blue[0..end];
    }
-   return 0;
-}
-int remove_member(string club, string member) {
-   class election_info bing;
-   class account_info fluff;
-   string account;
-   string person;
-   string position;
-   string name;
-   mapping nominations;
-   string *people;
-   if (::remove_member(club, member)) {
-      bing = query_elected_info(club);
-      if (bing) {
-         foreach (account, fluff in bing->account_info) {
-            fluff->allowed_people -= ({ member });
+   ret += ({ blue });
+   if (fluff["index"]) {
+      foreach (blue in fluff["index"]) {
+         blue = replace(blue, ({ " ", "", "\n", "" }));
+         if (help_map[blue]) {
+            help_map[blue] += ({ fn });
+         } else {
+            help_map[blue] = ({ fn });
          }
-         foreach (position, person in bing->positions) {
-            if (person == member) {
-               set_position_holder(club, position, CLUB_UNKNOWN_MEMBER);
-            }
-         }
-      }
-      name = normalise_name(club);
-      if (_elections[name]) {
-         foreach (position, nominations in _elections[name]->nominated) {
-            map_delete(nominations, member);
-            foreach (person, people in nominations) {
-               nominations[person] = people - ({ member });
-            }
-         }
-         foreach (position, nominations in _elections[name]->people) {
-            map_delete(nominations, member);
-         }
-      }
-      return 1;
-   }
-   return 0;
-}
-int query_last_election(string name) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return info->last_election;
-   }
-   return 0;
-}
-int query_next_election(string name) {
-   int bing;
-   bing = query_last_election(name);
-   if (bing) {
-      return bing + CLUB_ELECTION_PERIOD;
-   }
-   return 0;
-}
-int query_minimum_next_election(string name) {
-   int bing;
-   bing = query_last_election(name);
-   if (bing) {
-      return bing + CLUB_MINIMUM_ELECTION_PERIOD;
-   }
-   return 0;
-}
-int is_president_of(string name, string president) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->president, president);
-   }
-   return 0;
-}
-int is_vice_president_of(string name, string vice_president) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->vice_president, vice_president);
-   }
-   return 0;
-}
-int is_secretary_of(string name, string secretary) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->secretary, secretary);
-   }
-   return 0;
-}
-int is_treasurer_of(string name, string treasurer) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->treasurer, treasurer);
-   }
-   return 0;
-}
-int holds_any_position_of(string name, string person) {
-   class election_info info;
-   string pos_name;
-   string per_name;
-   info = query_elected_info(name);
-   if (info) {
-      foreach (pos_name, per_name in info->positions) {
-         if (per_name == person) {
-            return 1;
-         }
+         extra_indexes += ({ ({ blue, fname, "", ret[AUTO_INDEX_SUMMARY] }) });
       }
    }
-   return 0;
+   return ret;
 }
-int holds_position_of(string name, string position, string person) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      position = query_position_name(name, position);
-      return info->positions[position] == person;
-   }
-}
-int create_account(string name, string account) {
-   if (!account) {
-      account = CLUB_DEFAULT_ACCOUNT_NAME;
-   }
-   if (::create_account(name, account)) {
-      class election_info info;
-      class account_info frog;
-      info = query_elected_info(name);
-      if (info) {
-         frog = new(class account_info);
-         frog->transactions = ({ });
-         frog->allowed_people = ({ });
-         frog->allowed_positions = ({ info->president, info->treasurer });
-         info->account_info[account] = frog;
-         set_club_changed(name);
-      }
-      return 1;
-   }
-   return 0;
-}
-int add_money(string name,
-              int amount,
-              int type,
-              string person,
-              string account,
-              string information) {
-   class account_info frog;
-   class club_transaction bing;
-   if (::add_money(name, amount, type, person, account)) {
-      frog = query_account_info(name, account);
-      if (frog) {
-         bing = new(class club_transaction);
-         bing->date = time();
-         bing->amount = amount;
-         bing->transaction_type = type;
-         bing->who = person;
-         bing->information = information;
-         frog->transactions += ({ bing });
-         set_club_changed(name);
-      }
-      return 1;
-   }
-   return 0;
-}
-int remove_money(string name,
-                 int amount,
-                 int type,
-                 string person,
-                 string account,
-                 string information) {
-   class account_info frog;
-   class club_transaction bing;
-   if (::remove_money(name, amount, type, person, account)) {
-      frog = query_account_info(name, account);
-      if (frog) {
-         bing = new(class club_transaction);
-         bing->date = time();
-         bing->amount = -amount;
-         bing->transaction_type = type;
-         bing->who = person;
-         bing->information = information;
-         frog->transactions += ({ bing });
-         set_club_changed(name);
-      }
-      return 1;
-   }
-   return 0;
-}
-class club_transaction* query_transactions(string name, string account) {
-   class account_info frog;
-   class club_transaction bing;
-   class club_transaction old;
+private void create_index() {
    int i;
-   if (is_elected_club(name)) {
-      frog = query_account_info(name, account);
-      if (sizeof(frog->transactions) &&
-          sizeof(frog->transactions[0]) == 4) {
-         for (i = 0; i < sizeof(frog->transactions); i++) {
-            old = frog->transactions[i];
-            bing = new(class club_transaction);
-            bing->who = old->who;
-            bing->transaction_type = old->transaction_type;
-            bing->amount = old->amount;
-            bing->date = old->date;
-            bing->information = 0;
-            frog->transactions[i] = bing;
-            set_club_changed(name);
+   mixed *index_stuff;
+   mixed *rabbit;
+   string fname;
+   string fn;
+   string *bits;
+   object parse;
+   index_stuff = ({ });
+   help_map = ([ ]);
+   extra_indexes = ({ });
+   summary_map = ([ ]);
+   parse = clone_object(AUTODOC_FILE);
+   for (i = 0; i < sizeof(files); i++) {
+      parse->parse_file(files[i], 0, 1);
+      fname = parse->query_file_name();
+      if (fname) {
+         fn = replace(fname, "/", ".");
+         if (fn[0] == '.') {
+            fn = fn[1..];
+         }
+         fn = NROFF_DOC_DIR + fn;
+         bits = explode(fname[0..strlen(fname)-3], "/");
+         rabbit = process_stuff(bits[sizeof(bits) - 1], "", fn,
+                                parse->query_main_docs());
+         if (rabbit[AUTO_INDEX_SUMMARY]) {
+            summary_map[fname] = rabbit[AUTO_INDEX_SUMMARY];
+         } else {
+            map_delete(summary_map, fname);
+         }
+         index_stuff += map(keys(parse->query_public_functions()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_public_functions()) :) );
+         index_stuff += map(keys(parse->query_protected_functions()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_protected_functions()) :) );
+         index_stuff += map(keys(parse->query_class_docs()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_class_docs()) :) );
+         if (sscanf(fname, "%*s.h") == 1) {
+            index_stuff += map(keys(parse->query_define_docs()),
+                               (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_define_docs()) :) );
          }
       }
-      return frog->transactions;
+      reset_eval_cost();
    }
-   return ({ });
-}
-string query_transaction_type_name(int type) {
-   switch (type) {
-      case CLUB_TRANSACTION_UPKEEP :
-         return "upkeep";
-      case CLUB_TRANSACTION_DEPOSIT :
-         return "player deposit";
-      case CLUB_TRANSACTION_INSIGNIA :
-         return "insignia";
-      case CLUB_TRANSACTION_START_BALANCE :
-         return "start balance";
-      case CLUB_TRANSACTION_WITHDRAWL :
-         return "player withdrawl";
-      case CLUB_TRANSACTION_TRANSFER :
-         return "player transfer";
-      default :
-         return "unknown";
+   index_stuff += extra_indexes;
+   extra_indexes = ({ });
+   for (i = 0; i < sizeof(filters); i++) {
+      reset_eval_cost();
+      catch(evaluate(filters[i], index_stuff, INDEX_FILE));
    }
+   summary_map = ([ ]);
+   last_created_index = time();
+   save();
 }
-string* query_account_allowed_people(string club_name, string account) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      return frog->allowed_people;
+int recreate_documentation(string fname) {
+   object ob;
+   if (member_array(fname, files) != -1) {
+      ob = clone_object(AUTODOC_FILE);
+      ob->parse_file(fname, (: after_thingy(1) :));
+      return 1;
    }
-   return ({ });
+   return 0;
 }
-int is_allowed_to_modify_account(string club_name,
-                               string account,
-                               string person) {
-   class account_info frog;
-   string pos;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      if (member_array(person, frog->allowed_people) != -1) {
-         return 1;
-      }
-      foreach (pos in frog->allowed_positions) {
-         if (holds_position_of(club_name, pos, person)) {
-            return 1;
+void recreate_indexes() {
+   unguarded( (: create_index() :));
+}
+int add_file(string fname) {
+   fname = "/" + implode(explode(fname, "/") - ({ "" }), "/");
+   if (member_array(fname, files) == -1) {
+      if (sizeof(unguarded( (: stat($(fname)) :) ))) {
+         files += ({ fname });
+         save();
+         if (sizeof(files) == 1) {
+            start_processing();
+         } else {
+            call_out((: recreate_documentation($1) :), random(60), fname);
          }
-      }
-   }
-   return 0;
-}
-int add_account_allowed_person(string club_name, string account, string person) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(person, frog->allowed_people) == -1) {
-      frog->allowed_people += ({ person });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_account_allowed_person(string club_name, string account, string person) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(person, frog->allowed_people) != -1) {
-      frog->allowed_people -= ({ person });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-string* query_account_allowed_positions(string club_name, string account) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      return frog->allowed_positions;
-   }
-   return ({ });
-}
-int add_account_allowed_position(string club_name, string account, string position) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(position, frog->allowed_positions) == -1) {
-      frog->allowed_positions += ({ position });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_account_allowed_position(string club_name, string account, string position) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(position, frog->allowed_positions) != -1) {
-      frog->allowed_positions -= ({ position });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int set_elected_option(string club_name,
-                       string option,
-                       mixed value) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      data->options[option] = value;
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_elected_option(string club_name,
-                          string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      map_delete(data->options, option);
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-mixed query_elected_option(string club_name,
-                           string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      return data->options[option];
-   }
-   return 0;
-}
-int is_elected_option(string club_name,
-                      string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      return !undefinedp(data->options[option]);
-   }
-   return 0;
-}
-int start_election(string club_name) {
-   string name;
-   string pos;
-   class election_info bing;
-   string *stuff;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      if (!_elections[name]) {
-         bing = query_elected_info(name);
-         _elections[name] = new(class election_data);
-         _elections[name]->people = ([ ]);
-         _elections[name]->nominated = ([ ]);
-         _elections[name]->voted_for = ([ ]);
-         _elections[name]->time_of_event = time() + CLUB_NOMINATION_TIME;
-         _elections[name]->state = CLUB_NOMINATION;
-         foreach (pos, stuff in bing->positions) {
-            _elections[name]->people[pos] = ([ ]);
-            _elections[name]->nominated[pos] = ([ ]);
-            _elections[name]->voted_for[pos] = ({ });
-         }
-         save_main();
-         send_broadcast_message(name,
-                         "An election has just started!  Nominate your "
-                         "favourite person now at the club control centre.");
          return 1;
       }
    }
    return 0;
 }
-int nominate_person(string club_name, string position, string person,
-                    string nominating) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      if (_elections[name] &&
-          (_elections[name]->state == CLUB_NOMINATION ||
-           _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->nominated[position]) {
-            if (!_elections[name]->nominated[position][person]) {
-                _elections[name]->nominated[position][person] = ({ });
-            }
-            if (member_array(nominating,
-                        _elections[name]->nominated[position][person]) == -1) {
-               _elections[name]->nominated[position][person] += ({ nominating });
-               save_main();
-               return 1;
-            }
+int remove_file(string fname) {
+   string fn;
+   string dfn;
+   string *our_files;
+   if (member_array(fname, files) != -1) {
+      files -= ({ fname });
+      file_pos = 0;
+      fn = HTML_DOC_DIR + replace(fname, "/", ".");
+      unguarded((: rm($(fn)) :));
+      fn = NROFF_DOC_DIR + replace(fname, "/", ".");
+      unguarded((: rm($(fn)) :));
+      fn = NROFF_DOC_SINGLE + fname[0..<3] + "/";
+      our_files = get_dir(fn);
+      if (sizeof(our_files)) {
+         foreach (dfn in our_files) {
+            dfn =  fn + dfn;
+            unguarded( (: rm($(dfn)) :) );
          }
       }
+      if (file_size(fn[0..<2]) != -1) {
+         unguarded((: rm($(fn[0..<2])) :));
+      }
+      save();
+      if (!sizeof(files)) {
+         remove_call_out(call_id);
+      }
+      return 1;
    }
    return 0;
 }
-mixed finish_nomination(string club_name) {
+private void load() {
+   unguarded( (: restore_object( SAVE_FILE ) :) );
+}
+private void save() {
+   unguarded( (: save_object( SAVE_FILE ) :) );
+}
+string *query_files() { return files; }
+mapping query_help_map() { return help_map; }
+string query_help_on(string file, string func) {
+   if (file[0] == '/') {
+      file = file[1..];
+   }
+   if (sscanf(file, "%*s.c") == 1) {
+      file = file[0..<3];
+   }
+   file = NROFF_DOC_SINGLE + file + "/" + func;
+   if (file_size(file) > 0) {
+      return file;
+   }
+   return 0;
+}
+mapping query_summary_map() { return summary_map; }
+int is_autodoc_file(string name) {
+   return member_array(name, files) != -1;
+}
+
+==================================================
+FILE: handlers/autodoc/autodoc_html.c
+==================================================
+
+#include <autodoc.h>
+#include <config.h>
+private string query_func_def(mixed *stuff, string func);
+private string query_methods(string *funcs, function data,
+                           int prot);
+private string query_method_description(mapping docs);
+private string create_href(string str);
+private string query_method_summary(string *funcs, object file);
+private string query_defines(string *defs, mapping docs);
+private string query_class_summary(mapping classes);
+private string query_classes(mapping classes);
+private string query_class_def(mixed *stuff, string name);
+private string query_class_description(mapping docs);
+void create() {
+   seteuid(getuid());
+}
+void create_html_file(object file, string output) {
+   int i;
+   mapping stuff;
+   string *pub_funcs;
+   string *pro_funcs;
+   string *defs;
+   string *bits;
    string name;
-   string position_name;
-   mapping position_data;
-   string *data;
-   string person;
-   string *bad_positions;
-   class election_info frog;
-   name = normalise_name(club_name);
-   bad_positions = ({ });
-   if (is_elected_club(name)) {
-      frog = query_elected_info(name);
-      if (_elections[name] &&
-          (_elections[name]->state == CLUB_NOMINATION ||
-           _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-         foreach (position_name,
-                  position_data in _elections[name]->nominated) {
-            _elections[name]->people[position_name] = ([ ]);
-            foreach (person, data in position_data) {
-               if (is_nomination_accepted(club_name, position_name, person)) {
-                  _elections[name]->people[position_name][person] = 0;
-               }
-            }
-            if (sizeof(_elections[name]->people[position_name]) == 0) {
-               bad_positions += ({ position_name });
-            }
-         }
-         if (!sizeof(bad_positions) ||
-             _elections[name]->state == CLUB_NOMINATION_SECOND) {
-            foreach (position_name, position_data in _elections[name]->people) {
-               if (sizeof(position_data) == 1) {
-                  set_position_holder(club_name,
-                                      position_name,
-                                      keys(position_data)[0]);
-                  map_delete(_elections[name]->people, position_name);
-               }
-            }
-            foreach (position_name in bad_positions) {
-               set_position_holder(club_name,
-                                   position_name,
-                                   CLUB_UNKNOWN_MEMBER);
-               map_delete(_elections[name]->people, position_name);
-            }
-            bad_positions = ({ });
-            _elections[name]->state = CLUB_ELECTION;
-            if (!sizeof(_elections[name]->people)) {
-               save_main();
-               complete_election(name);
-            } else {
-               _elections[name]->election_status = 0;
-               _elections[name]->time_of_event = time() +
-                                                CLUB_ELECTION_TIME;
-               set_club_changed(name);
-               save_main();
-               send_broadcast_message(name,
-                            "The nomination period has finished.  Vote "
-                            "for your favourite person for each position now "
-                            "at the club control centre.");
+   string bing;
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   bing = "<html><head><title>";
+   bing += "File " + name +
+           "\n</title></head><body bgcolor=\"#ffffff\" TEXT=\"#000030\" LINK=\"#4a529c\" VLINK=\"#b57339\">";
+   bing += "[ <a href=\"index.html\">Package Index</a></code> | ";
+   bing += "<a href=\"index_std.html\">Mudlib Index</a></code> | ";
+   bing += "<a href=\"index_eff.html\">Effect Index</a></code> ]<br>";
+   stuff = file->query_main_docs();
+   if (stuff["main"]) {
+      bing += "<h2>File " + file->query_file_name() +
+                         "</h2>";
+      bing += implode(stuff["main"], " ");
+      if (stuff["see"]) {
+         bing += "<p><b>See also:</b><br>" +
+                            query_multiple_short(
+                            map(stuff["see"], (: create_href($1) :)));
+      }
+      if (stuff["author"]) {
+         bing += "<p>Written by " +
+                    query_multiple_short(stuff["author"]);
+      }
+      if (stuff["started"]) {
+         bing += "<p>Started " +
+                    query_multiple_short(stuff["started"]);
+      }
+      if (stuff["example"]) {
+         if (sizeof(stuff["example"]) > 1) {
+            for (i = 0; i < sizeof(stuff["example"]); i++) {
+               bing += "<h3>Example " + (i + 1) + "</h3>\n";
+               bing += "<pre>"+stuff["example"][i]+"</pre>\n";
             }
          } else {
-            _elections[name]->election_status = "No one has accepted "
-                           "nominations for " +
-                           query_multiple_short(bad_positions);
-            save_main();
-         }
-         return bad_positions;
-      }
-   }
-   return 0;
-}
-int vote_for_person(string club_name,
-                    string position,
-                    string person,
-                    string voter) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_club(name)) {
-      if (_elections[name] &&
-          _elections[name]->state == CLUB_ELECTION) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->voted_for[position] &&
-             member_array(voter,
-                          _elections[name]->voted_for[position]) == -1) {
-            if (!undefinedp(_elections[name]->people[position][person])) {
-               _elections[name]->people[position][person]++;
-               _elections[name]->voted_for[position] += ({ voter });
-               save_main();
-               return 1;
-            }
+            bing +=  "<h3>Example</h3>\n<pre>" + stuff["example"][0] +
+                             "</pre>\n";
          }
       }
+      if (stuff["changed"]) {
+         bing += "<h3>Change history</h3>\n<dl>" +
+                            implode(map(stuff["changed"], function (string str) {
+                   string start;
+                   string rest;
+                   if (sscanf(str, "%s\n%s", start, rest) == 2) {
+                      return "<dt>" + start + "<dd>" + rest;
+                   }
+                   return "<dd>" + str;
+             } ), "\n") + "</dl>\n";
+      }
+   }
+   if (sizeof(file->query_inherits())) {
+      bing += "<hr><h2>Inherits</h2>\n";
+      bing += "This class inherits the following classes " +
+                         query_multiple_short(
+               map(keys(file->query_inherits()), (: create_href :)));
+   }
+   if (sizeof(file->query_includes())) {
+      bing += "<hr><h2>Includes</h2>\n";
+      bing += "This class includes the following files " +
+                         query_multiple_short(
+               map(file->query_includes(), (: create_href :)));
+   }
+   if (sizeof(file->query_class_docs())) {
+       bing += query_class_summary(file->query_class_docs());
+   }
+   pub_funcs = keys(file->query_public_functions());
+   pro_funcs = keys(file->query_protected_functions());
+   bing += query_method_summary(pub_funcs + pro_funcs, file);
+   if (sizeof(pub_funcs)) {
+      bing += "<hr><h2>Public Functions</h2>\n";
+      bing += "These are functions that everyone can "
+                         "access.<p><dl>\n.";
+      bing += query_methods(pub_funcs, (: $(file)->query_public_functions()[$1] :),
+                    0);
+      bing += "</dl>\n";
+   }
+   if (sizeof(pro_funcs)) {
+      bing += "<hr><h2>Protected Functions</h2>\n";
+      bing += "These are functions that only "
+                         "objects inheriting the class can access.<p>\n";
+      bing += query_methods(pro_funcs, (: $(file)->query_protected_functions()[$1] :),
+                    1);
+      bing +=  "\n";
+   }
+   if (sscanf(name, "%*s.h") == 1 &&
+       sizeof(file->query_define_docs())) {
+      defs = sort_array(keys(file->query_define_docs()),
+                        (: strcasecmp($1, $2) :));
+      bing +=  "<hr><h2>Defines</h2>\n";
+      query_defines(defs, file->query_define_docs());
+      bing = "";
+   }
+   if (sizeof(file->query_class_docs())) {
+      bing += "<hr><h2>Classes</h2>\n";
+      bing += "These are nice data types for dealing with...  Data!"
+                         "<p>\n";
+      bing += query_classes(file->query_class_docs());
+   }
+   write_file(output, bing, 1);
+   bing = "/www/footer"->www_function(output);
+   write_file(output, bing + "</body></html>");
+}
+void create_html_index_file(string *index, string letter, string output) {
+   int i;
+   string name;
+   string bing;
+   bing = "<html><head><title>\nIndex of " + letter +
+                      "\n</title></head><body bgcolor=\"#ffffff\" TEXT=\"#000030\" LINK=\"#4a529c\" VLINK=\"#b57339\">\n";
+   bing += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                       "pics/dw4.gif\">\n"
+                      "<p align=right><code><a href=\"index.html\">"
+                      "Main Index</a></code></p>\n"
+                      "<h2>Index of " + letter + "</h2>\n"
+                      "<h3><i>Letters can change the world, remove the l "
+                      "from world and you have word</i></h3>\n"
+                      "<br clear=both>\n"
+                      "<hr><dl>\n";
+   index = sort_array(index, (: strcasecmp($1[0], $2[0]) ? strcasecmp($1[0], $2[0]) :
+                                        strcasecmp($1[1], $2[1]) :) );
+   for (i = 0; i < sizeof(index); i++) {
+      name = replace(index[i][AUTO_INDEX_FILE_NAME], "/", ".");
+      if (name[0] == '.') {
+         name = name[1..];
+      }
+      if (sscanf(index[i][AUTO_INDEX_NAME], "%*s.%*s") == 2) {
+         bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                            "height=6 width=6 alt=\" . \"><b><a href=\"" +
+                            name + ".html\">" + index[i][AUTO_INDEX_NAME] +
+                            "</a></b>.\n";
+      } else {
+         bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                            "height=6 width=6 alt=\" . \"><b><a href=\"" +
+                            name + ".html#" + index[i][AUTO_INDEX_NAME] +
+                            "\">" + index[i][AUTO_INDEX_NAME] + "</a></b>" +
+                            index[i][AUTO_INDEX_ARGS] +
+                            "; <a href=\"" + name + ".html\">" +
+                            index[i][AUTO_INDEX_FILE_NAME] + "</a>\n";
+      }
+      if (index[i][AUTO_INDEX_SUMMARY]) {
+         bing += "<dd>"+index[i][AUTO_INDEX_SUMMARY]+"\n";
+      }
+      reset_eval_cost();
+   }
+   write_file(output, bing + "</dl>", 1);
+   write_file(output, "/www/footer"->www_function(output) + "</body></html>");
+}
+private string bing_cre;
+private string bing_eff;
+private string bing_index;
+void create_main_index(mapping chars, string output_dir) {
+   int i;
+   string output_index;
+   string output_eff;
+   string output_cre;
+   string *files;
+   mixed *stuff;
+   string str;
+   string fname;
+   string *index;
+   mapping summaries;
+   function write_all;
+   string bing_file;
+   string fluff;
+   summaries = AUTODOC_HANDLER->query_summary_map();
+   output_index = output_dir + "index_std.html";
+   output_eff = output_dir + "index_eff.html";
+   output_cre = output_dir + "index_cre.html";
+   bing_cre = "";
+   bing_eff = "";
+   bing_file = "";
+   bing_index = "";
+   rm (output_eff);
+   rm (output_index);
+   rm (output_cre);
+   write_all = (: bing_eff += $1,
+                  bing_cre += $1,
+                  bing_index += $1 :);
+   evaluate(write_all, "<html><head><title>\n");
+   evaluate(write_all, "" + mud_name() + " autodoc index\n</title></head>\n"
+                            "<body bgcolor=\"#ffffff\" TEXT=\"#000030\" "
+                             "LINK=\"#4a529c\" VLINK=\"#b57339\">\n");
+   bing_index += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "/pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Documentation</h2>\n"
+                      "<h3><i>Where cabbages evaporate in the sun</i></h3>\n"
+                      "<br clear=both>\n";
+   bing_eff += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "/pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Effect Documentation</h2>\n"
+                      "<h3><i>Where your consequences are vanquished</i></h3>\n"
+                      "<br clear=both>\n";
+   bing_cre += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Creator Documentation</h2>\n"
+                      "<h3><i>Blue fluff?  No red and scruffy!</i></h3>\n"
+                      "<br clear=both>\n";
+   evaluate(write_all, "<h2>Function index</h2>\n");
+   files = AUTODOC_HANDLER->query_files();
+   files = sort_array(files, (: strcasecmp :) );
+   index = sort_array(keys(chars), (: strcasecmp :) );
+   for (i = 0; i < sizeof(index); i++) {
+      if (i > 0) {
+         evaluate(write_all, ", ");
+      }
+      evaluate(write_all, "<a href=\"" + chars[index[i]] + "\">" + index[i] +
+                         "</a>\n");
+   }
+   bing_index += ", <a href=\"index_eff.html\">Effects</a>";
+   bing_index += ", <a href=\"index_cre.html\">Creator</a>";
+   bing_eff += ", <a href=\"index.html\">Main</a>";
+   bing_eff += ", <a href=\"index_cre.html\">Creator</a>";
+   bing_cre += ", <a href=\"index.html\">Main</a>";
+   bing_cre += ", <a href=\"index_eff.html\">Effects</a>";
+   evaluate(write_all, "<hr><h2>Class index</h2>\n");
+   evaluate(write_all, "<dl>\n");
+   stuff = unique_array(files, (: $1[0..strsrch($1, "/", -1)] :));
+   for (i = 0; i < sizeof(stuff); i++) {
+      str = stuff[i][0][0..strsrch(stuff[i][0], "/", -1)];
+      if (str[0..12] == "/std/effects/") {
+         bing_eff += "<dt><img src=\"images/cyan-ball.gif\" height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      } else if (str[0..2] == "/w/") {
+         bing_cre += "<dt><img src=\"images/cyan-ball.gif\" "
+                            "height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      } else {
+         bing_index += "<dt><img src=\"images/cyan-ball.gif\" height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      }
+   }
+   evaluate(write_all, "</dl>\n");
+   for (i = 0; i < sizeof(stuff); i++) {
+      fluff = "";
+      str = stuff[i][0][0..strsrch(stuff[i][0], "/", -1)];
+      fluff += "<h2><a name=\"" + str + "\">" + str + "</a></h2>\n<dl>\n";
+      reset_eval_cost();
+      foreach (str in stuff[i]) {
+         fname = replace(str, "/", ".")[1..];
+         fluff += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                            "height=6 width=6><a href=\"" + fname + ".html\">" +
+                            str[strsrch(str, "/", -1) + 1..] + "</a>\n";
+         if (summaries[str]) {
+            fluff += "<dd>" + summaries[str] + "\n";
+         }
+      }
+      fluff += "</dl>\n";
+      if (stuff[i][0][0..12] == "/std/effects/") {
+         bing_eff += fluff;
+      } else if (stuff[i][0][0..2] == "/w/") {
+         bing_cre += fluff;
+      } else {
+         bing_index += fluff;
+      }
+   }
+   write_file(output_eff, bing_eff, 1);
+   write_file(output_eff,
+              "/www/footer"->www_function(output_eff) + "</body></html");
+   write_file(output_index, bing_index, 1);
+   write_file(output_index,
+              "/www/footer"->www_function(output_index) + "</body></html");
+   write_file(output_cre, bing_cre, 1);
+   write_file(output_cre,
+              "/www/footer"->www_function(output_cre) + "</body></html");
+}
+private string query_classes(mapping classes) {
+   string name;
+   string *names;
+   string bing;
+   names = sort_array(keys(classes), (: strcasecmp :) );
+   bing = "<dl>\n";
+   foreach (name in names) {
+      reset_eval_cost();
+      bing += "<dt><a name=\"class_" + name + "\">\n";
+      bing += "<img src=\"images/cyan-ball.gif\" width=12 "
+                         "height=12 alt=\" * \">";
+      bing += "<b>" + name +
+              "</b></a><pre>\n" +
+              query_class_def(classes[name], name) + "\n</pre>";
+      if (classes[name][AUTO_CLASS_DOCS]["main"]) {
+         bing += query_class_description(classes[name][AUTO_CLASS_DOCS]);
+      }
+      bing += "\n";
+   }
+   return bing + "</dl>\n";
+}
+private string query_methods(string *funcs, function data,
+                           int prot) {
+   int i;
+   mixed *stuff;
+   string bing;
+   funcs = sort_array(funcs, (: strcasecmp($1, $2) :));
+   bing = "";
+   for (i = 0; i < sizeof(funcs); i++) {
+      reset_eval_cost();
+      stuff = evaluate(data, funcs[i]);
+      bing += "<dt><a name=\"" + funcs[i] + "\">\n";
+      if (prot) {
+        bing += "<img src=\"images/magenta-ball.gif\" width=12 "
+                           "height=12 alt=\" * \">";
+      } else {
+        bing += "<img src=\"images/cyan-ball.gif\" width=12 "
+                           "height=12 alt=\" * \">";
+      }
+      bing += "<b>" + funcs[i] +
+                         "</b></a><pre>\n" +
+                         query_func_def(stuff, funcs[i]) +
+                         "\n</pre>";
+      if (stuff[AUTO_DOCS]["main"]) {
+         bing += query_method_description(stuff[AUTO_DOCS]);
+      }
+      bing += "\n";
+   }
+   return bing;
+}
+private string query_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   int pad;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += sprintf(",\n%-"+pad+"s", "");
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_class_def(mixed *stuff, string name) {
+   string ret;
+   int pad;
+   int i;
+   ret = "class " + name + " {\n";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_CLASS_MEMBERS]); i++) {
+      ret += sprintf("%-" + pad + "s", "");
+      ret += implode(stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_TYPE], " ") +
+             " " + stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_NAME] + ";\n";
+   }
+   ret += "}\n";
+   return ret;
+}
+private string query_method_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string bing;
+   bing = "";
+   if (docs["main"]) {
+      bing += "<dd>" + implode(docs["main"], " ")
+                         +"<p>\n";
+   }
+   if (docs["param"] || docs["return"] || docs["see"] || docs["example"]) {
+      bing += "<dd><dl>\n";
+   }
+   if (docs["param"]) {
+      bing += "<dt><b>Parameters:</b>\n";
+      for (i = 0; i < sizeof(docs["param"]); i++) {
+         if (sscanf(docs["param"][i], "%s %s", name, desc) == 2) {
+            bing += "<dd>" + name + " - " + (desc) + "\n";
+         }
+      }
+   }
+   if (docs["return"]) {
+      bing += "<dt><b>Returns:</b>\n<dd>" + implode(docs["return"], " ") +
+                         "\n";
+   }
+   if (docs["see"]) {
+      bing += "<dt><b>See also:</b>\n<dd>" +
+                         query_multiple_short(
+                         map(docs["see"], (: create_href($1) :)));
+   }
+   if (docs["example"]) {
+      bing += "<dt><b>Example:</b>\n<dd><pre>" +
+                 implode(docs["example"], "</pre><dd><pre>\n") +
+                        "</pre>";
+   }
+   if (docs["param"] || docs["return"] || docs["see"] || docs["example"]) {
+      bing += "</dl>\n";
+   }
+   return bing;
+}
+private string query_class_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string bing;
+   bing = "";
+   if (docs["main"]) {
+      bing += "<dd>" + implode(docs["main"], " ")
+                         +"<p>\n";
+   }
+   if (docs["member"] || docs["see"]) {
+      bing += "<dl>\n";
+   }
+   if (docs["member"]) {
+      bing += "<dt><b>Members:</b>\n";
+      for (i = 0; i < sizeof(docs["member"]); i++) {
+         if (sscanf(docs["member"][i], "%s %s", name, desc) == 2) {
+            bing += "<dd>" + name + " - " +
+                               (desc) + "\n";
+         }
+      }
+   }
+   if (docs["see"]) {
+      bing += "<dt><b>See also:</b>\n<dd>" +
+                         query_multiple_short(
+                         map(docs["see"], (: create_href($1) :)));
+   }
+   if (docs["member"] || docs["see"]) {
+      bing += "</dl>\n";
+   }
+   return bing;
+}
+private string create_href(string str) {
+   string name;
+   string ref_name;
+   string func;
+   if (sscanf(str, "%s#%s", name, func) == 2) {
+      ref_name = replace(name, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      return "<a href=\"" + ref_name + ".c.html#" + func + "\">" +
+             name + "->" + func + "()</a>";
+   } else if (sscanf(str, "%s->%s", name, func) == 2) {
+      sscanf(func, "%s(%*s)", func);
+      ref_name = replace(name, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      return "<a href=\"" + ref_name + ".c.html#" + func + "\">" + str + "</a>";
+   } else if (sscanf(str, "%s()", func) == 1) {
+      return "<a href=\"#" + func + "\">" + str + "</a>";
+   } else if (str[0..4] == "http:") {
+      return "<a href=\"" + str + "\">" + str + "</a>";
+   } else {
+      ref_name = replace(str, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      if (sscanf(str, "%*s.%*s") != 2) {
+         ref_name += ".c";
+         str += ".c";
+      }
+      if (member_array(str, AUTODOC_HANDLER->query_files()) != -1) {
+         return "<a href=\"" + ref_name + ".html\">" + str + "</a>";
+      }
+      return str;
    }
 }
-int complete_election(string club_name) {
-   string name;
-   string position;
-   mapping people;
-   string person_name;
-   int count;
-   int max_count;
-   string *max_people;
-   mapping elected_positions;
+private string query_short_args_def(mixed *args) {
+   string ret;
+   int i;
+   ret = "";
+   for (i = 0; i < sizeof(args); i += 2) {
+      if (i != 0) {
+         ret += ", ";
+      }
+      ret += implode(args[i + AUTO_ARGS_TYPE], " ");
+   }
+   return "(" + ret + ")";
+}
+private string query_short_desc(mapping docs) {
+   mixed main;
    int pos;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       _elections[name]->state = CLUB_ELECTION) {
-      elected_positions = ([ ]);
-      foreach (position, people in _elections[name]->people) {
-         max_count = 0;
-         max_people = ({ });
-         if (sizeof(people) > 1) {
-            foreach (person_name, count in people) {
-               if (count > max_count) {
-                  max_count = count;
-                  max_people = ({ person_name });
-               } else if (count == max_count) {
-                  max_people += ({ person_name });
-               }
-            }
-         } else {
-            max_people = keys(people);
-         }
-         if (sizeof(max_people) == 0) {
-           _elections[name]->election_status = "No one has voted for "
-             "the position of " + position;
-           return 0;
-         }
-         pos = random(sizeof(max_people));
-         person_name = max_people[pos];
-         elected_positions[position] = person_name;
-      }
-      frog = query_elected_info(name);
-      foreach (position, person_name in elected_positions) {
-         set_position_holder(club_name, position, person_name);
-      }
-      frog->last_election = time();
-      set_club_changed(name);
-      touch_club(name);
-      map_delete(_elections, name);
-      save_main();
-      send_broadcast_message(name, "The election has finished!");
-      return 1;
-   }
-   return 0;
-}
-int is_election_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name]) {
-      return 1;
-   }
-}
-int is_nomination_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       (_elections[name]->state == CLUB_NOMINATION ||
-        _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-      return 1;
-   }
-}
-int is_voting_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       _elections[name]->state == CLUB_ELECTION) {
-      return 1;
-   }
-}
-string *query_valid_positions(string club_name) {
-   string name;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      frog = query_elected_info(club_name);
-      return keys(frog->positions);
-   }
-   return ({ });
-}
-string *query_committee(string club_name) {
-   string name;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      frog = query_elected_info(club_name);
-      return values(frog->positions);
-   }
-   return ({ });
-}
-int is_valid_position(string club_name,
-                      string position) {
-   string *pos;
-   pos = map(query_valid_positions(club_name), (: lower_case :));
-   return (member_array(lower_case(position), pos) != -1);
-}
-int is_basic_position(string club_name,
-                      string position) {
-   class election_info frog;
-   if (is_club(club_name) &&
-       is_valid_position(club_name, position)) {
-      frog = query_elected_info(club_name);
-      position = query_position_name(club_name, position);
-      return (position == frog->president) ||
-             (position == frog->vice_president) ||
-             (position == frog->secretary) ||
-             (position == frog->treasurer);
-   }
-   return 0;
-}
-string query_position_name(string club_name,
-                           string position) {
-   string *pos;
-   string *real_pos;
-   int i;
-   real_pos = query_valid_positions(club_name);
-   pos = map(real_pos, (: lower_case :));
-   i = member_array(lower_case(position), pos);
-   if (i == -1) {
+   int tmp_pos;
+   main = docs["main"];
+   if (!main) {
       return 0;
    }
-   return real_pos[i];
-}
-string query_position_members(string club_name, string position) {
-   class election_info frog;
-   if (is_elected_club(club_name) &&
-       is_valid_position(club_name, position)) {
-      position = query_position_name(club_name, position);
-      frog = query_elected_info(club_name);
-      if (frog->positions[position]) {
-         return frog->positions[position];
-      }
+   main = implode(main, " ");
+   pos = strlen(main);
+   tmp_pos = strsrch(main, ".");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
    }
-   return "not found";
-}
-int create_position_in_club(string name,
-                            string position) {
-   class election_info frog;
-   if (is_elected_club(name) &&
-       !is_voting_in_progress(name) &&
-       !is_valid_position(name, position)) {
-      frog = query_elected_info(name);
-      frog->positions[position] = CLUB_UNKNOWN_MEMBER;
-      set_club_changed(name);
-      if (is_nomination_in_progress(name)) {
-         name = normalise_name(name);
-         _elections[name]->nominated[position] = ([ ]);
-         _elections[name]->voted_for[position] = ({ });
-         _elections[name]->people[position] = ([ ]);
-         save_main();
-      }
-      return 1;
+   tmp_pos = strsrch(main, "?");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
    }
-   return 0;
-}
-int remove_position_in_club(string name,
-                            string position) {
-   class election_info frog;
-   class account_info green;
-   string account;
-   if (is_elected_club(name) &&
-       is_valid_position(name, position) &&
-       !is_voting_in_progress(name) &&
-       !is_basic_position(name, position)) {
-      position = query_position_name(name, position);
-      frog = query_elected_info(name);
-      map_delete(frog->positions, position);
-      set_club_changed(name);
-      if (is_nomination_in_progress(name)) {
-         name = normalise_name(name);
-         map_delete(_elections[name]->nominated, position);
-         map_delete(_elections[name]->voted_for, position);
-         map_delete(_elections[name]->people, position);
-         save_main();
-      }
-      foreach (account, green in frog->account_info) {
-         green->allowed_positions -= ({ position });
-      }
-      send_observer_event("club_event_remove_position",
-                          name,
-                          position);
-      return 1;
+   tmp_pos = strsrch(main, "!");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
    }
-   return 0;
+   return main[0..pos];
 }
-int change_position_name_in_club(string name,
-                                 string position,
-                                 string new_position) {
-   class election_info frog;
-   class account_info green;
-   string account;
-   int pos;
-   if (is_elected_club(name) &&
-       !is_valid_position(name, new_position) &&
-       !is_voting_in_progress(name) &&
-       is_valid_position(name, position)) {
-      position = query_position_name(name, position);
-      frog = query_elected_info(name);
-      frog->positions[new_position] = frog->positions[position];
-      map_delete(frog->positions, position);
-      if (frog->president == position) {
-         frog->president = new_position;
-      } else if (frog->vice_president == position) {
-         frog->vice_president = new_position;
-      } else if (frog->secretary == position) {
-         frog->secretary = new_position;
-      } else if (frog->treasurer == position) {
-         frog->treasurer = new_position;
-      }
-      set_club_changed(name);
-      name = normalise_name(name);
-      if (is_nomination_in_progress(name)) {
-         _elections[name]->nominated[new_position] =
-                                         _elections[name]->nominated[position];
-         map_delete(_elections[name]->nominated, position);
-         _elections[name]->voted_for[new_position] =
-                                         _elections[name]->voted_for[position];
-         map_delete(_elections[name]->voted_for, position);
-         _elections[name]->people[new_position] =
-                                         _elections[name]->people[position];
-         map_delete(_elections[name]->people, position);
-         save_main();
-      }
-      foreach (account, green in frog->account_info) {
-         pos = member_array(position, green->allowed_positions);
-         if (pos != -1) {
-            green->allowed_positions[pos] = new_position;
-         }
-      }
-      send_observer_event("club_event_change_position_name",
-                          name,
-                          position,
-                          new_position);
-      return 1;
-   }
-   return 0;
-}
-int set_position_holder(string club_name,
-                                  string position,
-                                  string person) {
-   class election_info info;
-   info = query_elected_info(club_name);
-   if (info) {
-      if (is_valid_position(club_name, position)) {
-         if (is_member_of(club_name, person) ||
-             person == CLUB_UNKNOWN_MEMBER) {
-            position = query_position_name(club_name, position);
-            info->positions[position] = person;
-            set_club_changed(club_name);
-            send_observer_event("club_event_position_holder",
-                                club_name,
-                                position,
-                                person);
-            return 1;
-         }
-      }
-   }
-   return 0;
-}
-int has_person_voted(string club_name,
-                    string position,
-                    string person) {
+private string query_class_summary(mapping classes) {
+   string *names;
    string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->voted_for[position]) {
-            return (member_array(person,
-                              _elections[name]->voted_for[position]) != -1);
-         } else {
-            return 1;
-         }
+   string short_desc;
+   string bing;
+   names = sort_array(keys(classes), (: strcasecmp :));
+   bing = "<hr><h2>Class Index</h2>\n";
+   bing += "<dl>";
+   foreach (name in names) {
+      bing += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                         "height=6 width=6 alt=\" o \">\n";
+      bing += "<a href=\"#class_" + name + "\"><b>" + name +
+                         "</b></a>\n";
+      short_desc = query_short_desc(classes[name][AUTO_CLASS_DOCS]);
+      if (short_desc) {
+         bing += "<dd>" + short_desc + "\n";
       }
    }
-   return 0;
+   bing += "</dl>";
+   return bing;
 }
-int has_nominated_person(string club_name,
-                         string position,
-                         string nominated,
-                         string by) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      position = query_position_name(club_name, position);
-      if (_elections[name] &&
-          _elections[name]->nominated[position][nominated]) {
-         return (member_array(by,
-                      _elections[name]->nominated[position][nominated]) != -1);
-      }
-   }
-}
-string *query_nominated_for(string club_name,
-                            string position) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (is_voting_in_progress(club_name)) {
-            if (_elections[name]->people[position]) {
-               return keys(_elections[name]->people[position]);
-            }
-            return ({ });
-         } else if (is_nomination_in_progress(club_name)) {
-            return keys(_elections[name]->nominated[position]);
-         }
-      }
-   }
-   return ({ });
-}
-string *query_nominators_for(string club_name,
-                             string position,
-                             string nominated) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (is_nomination_in_progress(club_name) &&
-            _elections[name]->nominated[position][nominated]) {
-            return _elections[name]->nominated[position][nominated];
-         }
-      }
-   }
-   return ({ });
-}
-int is_nominated_for(string club_name,
-                     string position,
-                     string person) {
-   if (is_valid_position(club_name, position)) {
-      return member_array(person,
-                          query_nominated_for(club_name, position)) != -1;
-   }
-}
-int is_nomination_accepted(string club_name,
-                           string position,
-                           string person) {
-   string *nom;
-   if (is_nominated_for(club_name, position, person)) {
-      nom = query_nominators_for(club_name, position, person);
-      if (sizeof(nom) > 1 &&
-          member_array(person, nom) != -1) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int query_next_event_time(string club_name) {
-   if (is_club(club_name)) {
-      club_name = normalise_name(club_name);
-      if (_elections[club_name]) {
-         return _elections[club_name]->time_of_event;
-      }
-   }
-}
-string query_election_status(string club_name) {
-   if (is_elected_club(club_name)) {
-      if (is_election_in_progress(club_name)) {
-         club_name = normalise_name(club_name);
-         return _elections[club_name]->election_status;
-      }
-   }
-}
-string query_announcement(string club_name) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      return bing->announcement;
-   }
-   return "";
-}
-int query_announcement_time(string club_name) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      return bing->announce_time;
-   }
-   return 0;
-}
-int set_announcement(string club_name,
-                     string announce) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      if (bing->announce_time &&
-          strlen(bing->announcement)) {
-         add_archive(club_name,
-                     "Announcement",
-                     "Announcement on " + ctime(time()) + ":\n\n" +
-                     bing->announcement);
-      }
-      bing->announce_time = time();
-      bing->announcement = announce;
-      set_club_changed(club_name);
-      send_broadcast_message(club_name, "A new announcement has been added.");
-      return 1;
-   }
-   return 0;
-}
-private class club_archive* convert_archives(mixed *archives) {
-   string archive;
-   class club_archive bing;
+private string query_method_summary(string *funcs,
+                                  object file) {
    int i;
-   for (i = 0; i < sizeof(archives); i++) {
-      archive = archives[i];
-      if (stringp(archive)) {
-         bing = new(class club_archive);
-         bing->archive_date = time();
-         bing->subject = "unknown";
-         bing->matter = archive;
-         archives[i] = bing;
-      }
-   }
-   return archives;
-}
-protected int add_archive(string club_name,
-                          string subject,
-                          string thingy) {
-   class election_info data;
-   class club_archive fluff;
-   data = query_elected_info(club_name);
-   if (data) {
-      fluff = new(class club_archive);
-      fluff->subject = subject;
-      fluff->matter = thingy;
-      fluff->archive_date = time();
-      data->archives += ({ fluff });
-      if (sizeof(data->archives) > CLUB_MAX_ARCHIVE_SIZE) {
-         data->archives = data->archives[<CLUB_MAX_ARCHIVE_SIZE..];
-      }
-      if (stringp(data->archives[0])) {
-         data->archives = convert_archives(data->archives);
-      }
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-class club_archive *query_archives(string club_name) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      if (sizeof(data->archives) &&
-          stringp(data->archives[0])) {
-         data->archives = convert_archives(data->archives);
-         set_club_changed(club_name);
-      }
-      return data->archives;
-   }
-   return ({ });
-}
-string *query_boards() {
-   return _boards;
-}
-int query_club_board(string club_name) {
-   string name;
-   name = query_club_board_name(club_name);
-   return member_array(name, _boards) != -1;
-}
-string query_club_board_name(string club_name) {
-   return CLUB_BOARD_PREFIX + normalise_name(club_name);
-}
-int create_club_board(string club_name) {
-   string name;
-   name = query_club_board_name(club_name);
-   if(is_elected_club(club_name) || this_player()->query_director()) {
-      if (BOARD_HAND->is_board(name)) {
-         return 0;
-      }
-      BOARD_HAND->create_board(name,
-                               B_PRIV_ACCESS_RESTRICTED_METHOD |
-                               B_PRIV_NO_INFORM,
-                               "frog");
-      BOARD_HAND->set_method_access_call(name,
-                                         "check_board_post",
-                                         CLUB_HANDLER);
-      BOARD_HAND->set_timeout(10);
-      BOARD_HAND->set_maximum(60);
-      BOARD_HAND->set_minimum(10);
-      _boards += ({ name });
-      save_main();
-      return 1;
-   }
-   return 0;
-}
-int remove_club_board(string club_name) {
-   string name;
-   if (query_club_board(club_name)) {
-      name = query_club_board_name(club_name);
-      BOARD_HAND->delete_board(name);
-      _boards -= ({ name });
-      save_main();
-      return 1;
-   }
-}
-int check_board_post(int type,
-                     string board,
-                     string previous,
-                     string name,
-                     int num) {
-   string club;
-   club = board[strlen(CLUB_BOARD_PREFIX)..];
-   switch (type) {
-   case B_ACCESS_READ :
-      return is_member_of(club, name);
-   case B_ACCESS_WRITE :
-      return is_member_of(club, name);
-   case B_ACCESS_DELETE :
-      return holds_any_position_of(club, name);
-   case B_ACCESS_INFORM :
-      if (!num) {
-         send_broadcast_message(club,
-                                name + " posts a message to the board.");
-      } else {
-         send_broadcast_message(club,
-                                name + " posts a message to the board and " +
-                                num + " message" +
-                                (num > 1?"s":"") + " explode in sympathy.");
-      }
-      return 1;
-   }
-}
-protected void do_mail_committee(string club_name,
-                            string subject,
-                            string body) {
-   string *committee;
-   body += "\n\nYours,\nFindlewoodlwinks\n(Club Handler)\n";
-   committee = query_committee(club_name) - ({ CLUB_UNKNOWN_MEMBER });
-   if (!sizeof(committee)) {
-      if (PLAYER_HANDLER->test_user(query_founder(club_name))) {
-         committee = ({ query_founder(club_name) });
-      } else {
-         return ;
-      }
-   }
-   MAILER->do_mail_message(implode(committee, ","),
-                           "Patricians office",
-                           subject,
-                           "",
-                           body);
-}
-protected void check_elected_information(string name,
-                                         string member,
-                                         int startup) {
-   class election_info data;
-   string position_name;
-   string person;
-   mapping gruff;
-   string *nom;
-   int cre_club;
-   int votes;
-   name = normalise_name(name);
-   data = query_elected_info(name);
-   if (data) {
-      if (!mapp(data->options)) {
-         data->options = ([ ]);
-         set_club_changed(name);
-      }
-      foreach (position_name, person in data->positions) {
-         if (person != CLUB_UNKNOWN_MEMBER &&
-             (!is_member_of(name, person) ||
-              !PLAYER_HANDLER->test_active(person) ||
-              member == person)) {
-            set_position_holder(name, position_name, CLUB_UNKNOWN_MEMBER);
+   mixed *stuff;
+   string short_desc;
+   int prot;
+   string bing;
+   bing = "";
+   if (sizeof(funcs)) {
+      bing += "<hr><h2>Method index</h2>\n<dl>";
+      funcs = sort_array(funcs, (: strcasecmp :) );
+      for (i = 0; i < sizeof(funcs); i++) {
+         if (file->query_public_functions()[funcs[i]]) {
+            stuff = file->query_public_functions()[funcs[i]];
+            prot = 0;
+         } else if (file->query_protected_functions()[funcs[i]]) {
+            stuff = file->query_protected_functions()[funcs[i]];
+            prot = 1;
+         }
+         if (prot) {
+           bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                              "height=6 width=6 alt=\" o \">\n";
+         } else {
+           bing += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                              "height=6 width=6 alt=\" o \">\n";
+         }
+         bing += "<a href=\"#" + funcs[i] + "\"><b>" + funcs[i] +
+                            "</b></a>" + query_short_args_def(stuff[AUTO_ARGS])
+;
+         short_desc = query_short_desc(stuff[AUTO_DOCS]);
+         if (short_desc) {
+            bing += "<dd>" + short_desc + "\n";
          }
       }
-      if (query_next_election(name) < time() ||
-          _elections[name]) {
-         if (!_elections[name]) {
-            start_election(name);
-         } else {
-            switch (_elections[name]->state) {
-               case CLUB_NOMINATION_SECOND :
-               case CLUB_NOMINATION :
-                  if (_elections[name]->time_of_event < time()) {
-                     if (sizeof(finish_nomination(name))) {
-                        _elections[name]->time_of_event = time() +
-                                                          CLUB_ELECTION_TIME;
-                        _elections[name]->state = CLUB_NOMINATION_SECOND;
-                        save_main();
+      bing += "</dl>";
+   }
+   return bing;
+}
+private string query_defines(string *defs, mapping docs) {
+   int i;
+   string bing;
+   bing = "";
+   for (i = 0; i < sizeof(defs); i++) {
+      bing +=  "<dt><a name=\"" + defs[i] + "\">\n";
+      bing += "<img src=\"images/red-ball.gif\" width=12 "
+                         "height=12 alt=\" * \"><b>" + defs[i] + "</b></a>\n";
+      if (docs[defs[i]]["main"]) {
+         bing += query_method_description(docs[defs[i]]);
+      }
+   }
+   return bing;
+}
+
+==================================================
+FILE: handlers/autodoc/autodoc_nroff.c
+==================================================
+
+#include <autodoc.h>
+private void write_single_description(string func, mixed *stuff,
+                                      string output, string fn);
+private string query_methods(string *funcs, function data,
+                           string base_single, string fn);
+private string query_func_def(mixed *stuff, string func);
+private string query_method_description(mapping docs);
+private string parse_string(string inp);
+string convert_html(string text, int depth, int preformat, int edge_width);
+private string query_defines(mapping defines);
+private string query_class_def(mixed *stuff, string name);
+private string query_class_description(mapping docs);
+private void write_single_class_description(string func, mixed *stuff,
+                                            string output, string fn);
+private string query_classes(string base_single,
+                           mapping classes,
+                           string fn);
+void create() {
+   seteuid(getuid());
+}
+void create_nroff_file(object file, string output) {
+   mapping stuff;
+   string *funcs;
+   string *bits;
+   string name;
+   string base_single;
+   string *files;
+   string ret;
+   int pos;
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   ret = "";
+   ret += ".DT\n";
+   ret += name + "\n" + mud_name() + " autodoc help\n" + name + "\n\n";
+   stuff = file->query_main_docs();
+   if (stuff["main"]) {
+      ret += ".SH Description\n";
+      ret += convert_html(implode(stuff["main"], " "), 5, 0, 5);
+      ret += ".SP 10 5\n";
+      if (stuff["author"]) {
+         ret += "\n\nWritten by " +
+                    parse_string(query_multiple_short(stuff["author"]));
+      }
+      if (stuff["started"]) {
+         ret += "\n\nStarted " +
+                    parse_string(query_multiple_short(stuff["started"]));
+      }
+      ret += "\n.EP\n\n";
+      if (stuff["see"]) {
+         ret += "\n\n.SH See also\n.SP 5 5\n" +
+                            query_multiple_short(stuff["see"]) + "\n.EP\n";
+      }
+      if (stuff["changed"]) {
+         ret += ".SH Change history\n.SP 5 5\n" +
+                            parse_string(implode(stuff["changed"], "\n\n")) +
+                            "\n.EP\n\n";
+      }
+      if (stuff["example"]) {
+        ret += ".SH Example\n.SI 5\n" +
+               parse_string(implode(stuff["example"], "\n")) + "\n.EI\n";
+      }
+   }
+   if (sizeof(file->query_inherits())) {
+      ret += ".SH Inherits\n.SP 5 5\n";
+      ret += "This class inherits the following classes " +
+                         query_multiple_short(keys(file->query_inherits())) +
+                         ".\n.EP\n\n";
+   }
+   if (sizeof(file->query_includes())) {
+      ret += ".SH Includes\n.SP 5 5\n";
+      ret += "This class includes the following files " +
+                         query_multiple_short(file->query_includes()) +
+                         ".\n.EP\n\n";
+   }
+   funcs = filter(keys(file->query_public_functions()),
+                  (: $1 != "create" && $1 != "setup" &&
+                   !$(file)->query_public_functions()[$1][AUTO_DOCS]["ignore"] :));
+   base_single = file->query_file_name();
+   pos = strsrch(base_single, ".", -1);
+   if (pos > 0) {
+      base_single = base_single[0..pos-1];
+   }
+   base_single = NROFF_DOC_SINGLE + base_single + "/";
+   files = get_dir(base_single + "*");
+   if (pointerp(files)) {
+      foreach (name in files) {
+         if (file_size(base_single + name) >= 0) {
+            rm(base_single + name);
+         }
+      }
+   }
+   if (sizeof(file->query_class_docs())) {
+      ret += ".SH Classes\n\n";
+      ret += query_classes(base_single,
+                    file->query_class_docs(),
+                    file->query_file_name());
+      ret += "\n";
+   }
+   if (sizeof(funcs)) {
+      ret += ".SH Public Functions\n" +
+                         ".SP 5 5\nThese are functions that everyone can "
+                         "access.\n.EP\n\n";
+      ret += query_methods(funcs,
+                    (: $(file)->query_public_functions()[$1] :),
+                    base_single,
+                    file->query_file_name());
+      ret += "\n";
+   }
+   funcs = filter(keys(file->query_protected_functions()),
+                  (: !$(file)->query_protected_functions()[$1][AUTO_DOCS]["ignore"] :));
+   if (sizeof(funcs)) {
+      ret += ".SH Protected Functions\n"
+                         ".SP 5 5\nThese are functions that only "
+                         "objects inheriting the class can access.\n.EP\n\n";
+      ret += query_methods(funcs, (: $(file)->query_protected_functions()[$1] :),
+                    base_single, file->query_file_name());
+      ret += "\n";
+   }
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   if (sscanf(name, "%*s.h") == 1 &&
+       sizeof(file->query_define_docs())) {
+      ret += ".SH Defines\n";
+      ret += query_defines(file->query_define_docs());
+      ret += "";
+   }
+   write_file(output, ret);
+}
+private string query_defines(mapping docs) {
+   string name;
+   string *names;
+   string ret;
+   names = sort_array(keys(docs), (: strcasecmp :));
+   ret = "";
+   foreach (name in names) {
+      ret += ".SI 3\n* %^BOLD%^" + name + "%^RESET%^\n" +
+                         ".EI\n";
+      if (docs[name]["main"]) {
+         ret += query_method_description(docs[name]);
+      }
+      ret += "\n";
+   }
+   return ret;
+}
+private string query_classes(string base_single,
+                           mapping classes,
+                           string fn) {
+   string name;
+   string *names;
+   string ret;
+   names = sort_array(keys(classes), (: strcasecmp :) );
+   ret = "";
+   foreach (name in names) {
+      reset_eval_cost();
+      ret += ".SI 3\n* %^BOLD%^" + name + "%^RESET%^\n";
+      ret += query_class_def(classes[name], name) + "\n.EI\n";
+      if (classes[name][AUTO_CLASS_DOCS]["main"]) {
+         ret += query_class_description(classes[name][AUTO_CLASS_DOCS]);
+         write_single_class_description(name,
+                                        classes[name],
+                                        base_single + name,
+                                        fn);
+      }
+      ret += "\n";
+   }
+   return ret;
+}
+private string query_methods(string *funcs,
+                           function data,
+                           string base_single,
+                           string fn) {
+   int i;
+   mixed *stuff;
+   string ret;
+   funcs = sort_array(funcs, (: strcmp($1, $2) :));
+   ret = "";
+   for (i = 0; i < sizeof(funcs); i++) {
+      stuff = evaluate(data, funcs[i]);
+      ret += ".SI 3\n* %^BOLD%^" + funcs[i] + "%^RESET%^\n" +
+                         ".EI\n.SI 5\n" + query_func_def(stuff, funcs[i]) +
+                         "\n.EI\n";
+      if (stuff[AUTO_DOCS]["main"]) {
+         ret += query_method_description(stuff[AUTO_DOCS]);
+         write_single_description(funcs[i], stuff, base_single + funcs[i], fn);
+      }
+      ret += "\n";
+   }
+   return ret;
+}
+private string query_class_def(mixed *stuff, string name) {
+   string ret;
+   int pad;
+   int i;
+   ret = "class " + name + " {\n";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_CLASS_MEMBERS]); i++) {
+      ret += sprintf("%-" + pad + "s", "");
+      ret += implode(stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_TYPE], " ") +
+             " " + stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_NAME] + ";\n";
+   }
+   ret += "}\n";
+   return ret;
+}
+private string query_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += ", ";
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_long_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   int pad;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += sprintf(",\n%-"+pad+"s", "");
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_class_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string ret;
+   ret = "";
+   if (docs["main"]) {
+      ret += convert_html(implode(docs["main"], " "), 7, 0, 5);
+   }
+   if (docs["member"]) {
+      ret += ".SI 7\n%^BOLD%^Members:%^RESET%^\n.EI\n";
+      for (i = 0; i < sizeof(docs["member"]); i++) {
+         if (sscanf(docs["member"][i], "%s %s", name, desc) == 2) {
+            ret +=  ".SP 9 5\n" + name + " - " +
+                               parse_string(desc) + "\n.EP\n";
+         }
+      }
+   }
+   return ret;
+}
+private string query_method_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string ret;
+   ret = "";
+   if (docs["main"]) {
+      ret += convert_html(implode(docs["main"], " "), 7, 0, 5);
+   }
+   if (docs["param"]) {
+      ret += ".SI 7\n%^BOLD%^Parameters:%^RESET%^\n.EI\n";
+      for (i = 0; i < sizeof(docs["param"]); i++) {
+         if (sscanf(docs["param"][i], "%s %s", name, desc) == 2) {
+            ret += ".SP 9 5\n" + name + " - " +
+                               parse_string(desc) + "\n.EP\n";
+         }
+      }
+   }
+   if (docs["return"]) {
+      ret +=".SI 7\n%^BOLD%^Returns:%^RESET%^\n.EI\n.SP 9 5\n" +
+                         parse_string(implode(docs["return"], " ")) +
+                         "\n.EP\n";
+   }
+   return ret;
+}
+private void write_single_description(string func, mixed *stuff,
+                                      string output, string fn) {
+   mapping fluff;
+   string blue;
+   int i;
+   int end;
+   string *bits;
+   string name;
+   string desc;
+   string ret;
+   reset_eval_cost();
+   bits = explode(output, "/");
+   blue = "/";
+   for (i = 0; i < sizeof(bits) - 1; i++) {
+      blue += bits[i] + "/";
+      if (file_size(blue) != -2) {
+         mkdir(blue);
+      }
+   }
+   fluff = stuff[AUTO_DOCS];
+   ret = "";
+   ret += ".DT\n" + func + "\n" + mud_name() + " creator help\n" +
+                      func + "\n\n";
+   ret += ".SH Name\n.SP 5 5\n";
+   blue = implode(fluff["main"], "\n");
+   end = strlen(blue);
+   i = strsrch(blue, ".");
+   if (i > 0) {
+      end = i;
+   }
+   i = strsrch(blue, "!");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   i = strsrch(blue, "?");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   ret += "" + func + " - " + replace(blue[0..end], "\n", " ") +
+                      "\n.EP\n\n";
+   ret += ".SH Syntax\n.SI 5\n" + query_long_func_def(stuff, func) +
+                      "\n.EI\n\n";
+   if (fluff["param"]) {
+      ret += ".SH Parameters\n.SI 5\n";
+      for (i = 0; i < sizeof(fluff["param"]); i++) {
+         if (sscanf(fluff["param"][i], "%s %s", name, desc) == 2) {
+            ret += "%^BOLD%^" + name + "%^RESET%^ - " +
+                               (desc) + "\n";
+         }
+      }
+      ret += ".EI\n\n";
+   }
+   if (fluff["return"]) {
+      ret += ".SH Returns\n.SI 5\n";
+      ret += implode(fluff["return"], " ");
+      ret += ".EI\n\n";
+   }
+   ret += ".SH Defined in\n.SI 5\n" + fn + "\n.EI\n\n";
+   ret += ".SH Description\n" + convert_html(blue, 5, 0, 5) + "\n";
+   if (fluff["example"]) {
+      i = 1;
+      foreach (blue in fluff["example"]) {
+         ret += ".SH Example " + i + "\n.SI 5\n" +
+                            parse_string(blue) + "\n.EI\n\n";
+         i++;
+      }
+   }
+   if (fluff["see"]) {
+      ret += ".SH See also\n.SP 5 5\n" +
+                         implode(fluff["see"], ", ") + "\n.EP\n\n";
+   }
+   write_file(output, ret);
+}
+private void write_single_class_description(string func, mixed *stuff,
+                                            string output, string fn) {
+   mapping fluff;
+   string blue;
+   int i;
+   int end;
+   string *bits;
+   string name;
+   string desc;
+   string ret;
+   reset_eval_cost();
+   bits = explode(output, "/");
+   blue = "/";
+   for (i = 0; i < sizeof(bits) - 1; i++) {
+      blue += bits[i] + "/";
+      if (file_size(blue) != -2) {
+         mkdir(blue);
+      }
+   }
+   fluff = stuff[AUTO_DOCS];
+   ret = "";
+   ret += ".DT\n" + func + "\n" + mud_name() + " creator help\n" +
+                      func + "\n\n";
+   ret +=  ".SH Name\n.SP 5 5\n";
+   blue = implode(fluff["main"], "\n");
+   end = strlen(blue);
+   i = strsrch(blue, ".");
+   if (i > 0) {
+      end = i;
+   }
+   i = strsrch(blue, "!");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   i = strsrch(blue, "?");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   ret += "" + func + " - " + replace(blue[0..end], "\n", " ") +
+                      "\n.EP\n\n";
+   ret += ".SH Definition\n.SI 5\n" +
+              query_class_def(stuff, func) +
+                      "\n.EI\n\n";
+   if (fluff["member"]) {
+      ret += ".SH Members\n.SI 5\n";
+      for (i = 0; i < sizeof(fluff["member"]); i++) {
+         if (sscanf(fluff["member"][i], "%s %s", name, desc) == 2) {
+            ret += "%^BOLD%^" + name + "%^RESET%^ - " +
+                               (desc) + "\n";
+         }
+      }
+      ret += ".EI\n\n";
+   }
+   ret += ".SH Defined in\n.SI 5\n" + fn + "\n.EI\n\n";
+   ret += ".SH Description\n" + convert_html(blue, 5, 0, 5) + "\n";
+   if (fluff["example"]) {
+      i = 1;
+      foreach (blue in fluff["example"]) {
+         ret += ".SH Example " + i + "\n.SI 5\n" +
+                            parse_string(blue) + "\n.EI\n\n";
+         i++;
+      }
+   }
+   if (fluff["see"]) {
+      ret += ".SH See also\n.SP 5 5\n" +
+                         implode(fluff["see"], ", ") + "\n.EP\n\n";
+   }
+   write_file(output, ret);
+}
+private string parse_string(string str) {
+   return replace(str, ({ "<p>", "\n\n", "<br>", "\n\n",
+                          "<b>", "%^BOLD%^", "</b>", "%^RESET%^",
+                          "<i>", "%^CYAN%^", "</i>", "%^RESET%^",
+                          "<pre>", "\n\n", "</pre>", "\n\n" }));
+}
+#define LIST_NONE 0
+#define LIST_DYNAMIC 1
+#define LIST_ORDERED 2
+#define LIST_UNORDERED 3
+#define LIST_TYPE 0
+#define LIST_DEPTH 1
+#define LIST_START 2
+#define LIST_ADDITIONAL 3
+#define LIST_NUM 4
+string convert_html(string text, int depth, int preformat, int edge_width) {
+   string ret;
+   string *bits;
+   mixed *lists;
+   string* before_centers;
+   string start;
+   string new_start;
+   string additional;
+   string add;
+   int i;
+   string tag;
+   string rest;
+   ret = "";
+   if (text[0] == '.') {
+      text = " " + text;
+   }
+   bits = explode("#" + text, "<");
+   bits[0] = bits[0][1..];
+   start = ".SP " + depth + " " + edge_width;
+   ret = start + "\n" + bits[0];
+   additional = "";
+   lists = ({ ({ LIST_NONE, depth, start, additional }) });
+   before_centers = ({ });
+   for (i = 1; i < sizeof(bits); i++) {
+         if (sscanf(bits[i], "%s>%s", tag, rest) == 2) {
+            new_start = start;
+            add = 0;
+            switch (lower_case(tag)) {
+               case "p" :
+                  ret += "\n\n" + additional;
+                  break;
+               case "br" :
+                  ret += "\n.E" + start[2..2] + "\n" + start + "\n" + additional;
+                  break;
+               case "dl" :
+                  lists += ({ ({ LIST_DYNAMIC, depth, start, additional }) });
+                  break;
+               case "/dl" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "u" :
+                  ret += "_";
+                  break;
+               case "/u" :
+                  ret += "_";
+                  break;
+               case "center" :
+                  before_centers += ({ start });
+                  new_start = ".SC";
+                  break;
+               case "/center" :
+                  new_start = before_centers[<1];
+                  before_centers = before_centers[0..<2];
+                  break;
+               case "ol" :
+                  lists += ({ ({ LIST_ORDERED, depth, start, additional, 1 }) });
+                  break;
+               case "/ol" :
+                  if (lists[<1][LIST_TYPE] == LIST_ORDERED) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "ul" :
+                  lists += ({ ({ LIST_UNORDERED, depth, start, additional }) });
+                  break;
+               case "/ul" :
+                  if (lists[<1][LIST_TYPE] == LIST_UNORDERED) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "dd" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     new_start = ".SP " + (lists[<1][LIST_DEPTH] + 3) + " " +
+                                 edge_width;
+                     depth = lists[<1][LIST_DEPTH] + 3;
+                     start = start[0..3];
+                     additional = "";
+                  }
+                  break;
+               case "dt" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     new_start = ".SP " + (lists[<1][LIST_DEPTH] + 0) + " " +
+                                 edge_width;
+                     depth = lists[<1][LIST_DEPTH] + 0;
+                     start = start[0..3];
+                     additional = "";
+                  }
+                  break;
+               case "li" :
+                  if (lists[<1][LIST_TYPE] != LIST_DYNAMIC) {
+                     switch (lists[<1][LIST_TYPE]) {
+                        case LIST_ORDERED :
+                           new_start = ".SO " + (lists[<1][LIST_DEPTH] + 1) +
+                                 " 3 -" + (6 + lists[<1][LIST_DEPTH]);
+                           add = "\n\t" + (lists[<1][LIST_NUM]++) + ". \t";
+                           additional = "\t\t";
+                           depth = (lists[<1][LIST_DEPTH] + 3);
+                           break;
+                        case LIST_UNORDERED :
+                           new_start = ".SO " + (lists[<1][LIST_DEPTH] + 1) +
+                                 " 2 -" + (5 + lists[<1][LIST_DEPTH]);
+                           add = "\n\t*\t";
+                           additional = "\t\t";
+                           depth = (lists[<1][LIST_DEPTH] + 3);
+                           break;
                      }
                   }
                   break;
-               case CLUB_ELECTION :
-                  if (_elections[name]->time_of_event < time()) {
-                     complete_election(name);
-                  }
+               case "pre" :
+                  preformat++;
+                  break;
+               case "b" :
+                  ret += "%^BOLD%^";
+                  break;
+               case "i" :
+                  ret += "%^CYAN%^";
+                  break;
+               case "/b" :
+               case "/i" :
+                  ret += "%^RESET%^";
+                  break;
+               case "/pre" :
+                  preformat--;
+                  break;
+               case "code" :
+               case "/code" :
+                  break;
+               default :
+                  rest = "<" + tag + ">" + rest;
                   break;
             }
-         }
-      }
-      if (_elections[name] &&
-          startup) {
-         cre_club = is_creator_club(name);
-         foreach (position_name, gruff in _elections[name]->people) {
-            foreach (person, votes in gruff) {
-               if ((!cre_club &&
-                    PLAYER_HANDLER->test_creator(person)) ||
-                   !is_member_of(name, person) ||
-                   !PLAYER_HANDLER->test_user(person)) {
-                  map_delete(gruff, person);
-               }
+            if (new_start != start) {
+               ret += "\n.E" + start[2..2] + "\n" + new_start + "\n";
+               start = new_start;
             }
-         }
-         foreach (position_name,
-                  gruff in _elections[name]->nominated) {
-            foreach (person, nom in gruff) {
-               if ((!cre_club &&
-                    PLAYER_HANDLER->test_creator(person)) ||
-                   !is_member_of(name, person) ||
-                   !PLAYER_HANDLER->test_user(person)) {
-                  map_delete(gruff, person);
-               }
+            if (add) {
+               ret += add;
             }
-         }
-      }
-   }
-}
-
-==================================================
-FILE: handlers/inherit/club_family.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_personal";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-#include <player_handler.h>
-private nosave mapping _valid_relationships;
-private nosave mapping _gender_relationship;
-private void add_valid_relationship(string relation,
-                                    string relation2,
-                                    int flags);
-private void add_gender_relationship(string region,
-                                     string relationship,
-                                     string male,
-                                     string female);
-string* query_gender_relationships(string relationship);
-class family_info {
-   mapping relationships;
-   string *never_join;
-   string tmp;
-   int tmp2;
-}
-#define CLUB_INTERFAMILY_FLAG 1
-#define CLUB_JOIN_FAMILY_FLAG 2
-class relationship_type_data {
-   string opposite;
-   int flags;
-}
-void create() {
-   _valid_relationships = ([ ]);
-   _gender_relationship = ([ ]);
-   ::create();
-   add_valid_relationship("spouse",
-                          "spouse",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "spouse",
-                           "husband",
-                           "wife");
-   add_valid_relationship("lover",
-                          "lover",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "lover",
-                           "lover",
-                           "lover");
-   add_valid_relationship("sibling",
-                          "sibling",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "sibling",
-                           "brother",
-                           "sister");
-   add_valid_relationship("sibling-in-law",
-                          "sibling-in-law",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "sibling-in-law",
-                           "brother-in-law",
-                           "sister-in-law");
-   add_valid_relationship("parent-in-law",
-                          "child-in-law",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "parent-in-law",
-                           "father-in-law",
-                           "mother-in-law");
-   add_gender_relationship("Ankh-Morpork",
-                           "child-in-law",
-                           "son-in-law",
-                           "daughter-in-law");
-   add_valid_relationship("child",
-                          "parent",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "child",
-                          "son",
-                          "daughter");
-   add_gender_relationship("Ankh-Morpork",
-                           "parent",
-                           "father",
-                           "mother");
-   add_valid_relationship("grandparent",
-                          "grandchild",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "grandparent",
-                           "grandfather",
-                           "grandmother");
-   add_gender_relationship("Ankh-Morpork",
-                           "grandchild",
-                           "grandson",
-                           "granddaughter");
-   add_valid_relationship("godchild",
-                          "godparent",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "godchild",
-                           "godson",
-                           "goddaughter");
-   add_gender_relationship("Ankh-Morpork",
-                           "godparent",
-                           "godfather",
-                           "godmother");
-   add_valid_relationship("uncle",
-                          "niece",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "uncle",
-                           "uncle",
-                           "aunt");
-   add_gender_relationship("Ankh-Morpork",
-                           "niece",
-                           "nephew",
-                           "niece");
-   add_valid_relationship("cousin",
-                          "cousin",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "cousin",
-                           "cousin",
-                           "cousin");
-   add_valid_relationship("master",
-                          "maid",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "maid",
-                           "butler",
-                           "maid");
-   add_gender_relationship("Ankh-Morpork",
-                           "master",
-                           "master",
-                           "mistress");
-   add_valid_relationship("apprentice",
-                          "tutor",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "apprentice",
-                           "apprentice",
-                           "apprentice");
-   add_gender_relationship("Ankh-Morpork",
-                           "tutor",
-                           "tutor",
-                           "tutor");
-   add_valid_relationship("guardian",
-                          "ward",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "guardian",
-                           "guardian",
-                           "guardian");
-   add_gender_relationship("Ankh-Morpork",
-                           "ward",
-                           "ward",
-                           "ward");
-   add_valid_relationship("ex-spouse",
-                          "ex-spouse",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "ex-spouse",
-                           "ex-husband",
-                           "ex-wife");
-}
-protected void create_extra_data(string name) {
-   class family_info f_info;
-   class club_info data;
-   data = (class club_info)query_club_info(name);
-   if (query_club_type(name) == CLUB_FAMILY) {
-      f_info = new(class family_info);
-      f_info->relationships = ([ ]);
-      f_info->never_join = ({ });
-      data->extra_data = f_info;
-   } else {
-      ::create_extra_data(name);
-   }
-   set_club_changed(name);
-}
-int query_club_cost_per_period(string club_name) {
-   if (is_club(club_name)) {
-      if (is_family(club_name)) {
-         return FAMILY_COST_PER_YEAR +
-              sizeof(query_members(club_name)) * FAMILY_COST_PER_MEMBER_PER_YEAR;
-      } else {
-         return ::query_club_cost_per_period(club_name);
-      }
-   }
-   return 0;
-}
-private class family_info query_family_info(string name) {
-   class club_info data;
-   if (is_family(name)) {
-      data = (class club_info)query_club_info(name);
-      return data->extra_data;
-   }
-}
-void add_valid_relationship(string relation1,
-                            string relation2,
-                            int flags) {
-   class relationship_type_data frog;
-   frog = new(class relationship_type_data);
-   frog->opposite = relation2;
-   frog->flags = flags;
-   _valid_relationships[relation1] = frog;
-   frog = new(class relationship_type_data);
-   frog->opposite = relation1;
-   frog->flags = flags;
-   _valid_relationships[relation2] = frog;
-}
-string query_opposite_relationship(string relation) {
-   if (_valid_relationships[relation]) {
-      return _valid_relationships[relation]->opposite;
-   }
-   return 0;
-}
-int is_valid_relationship(string str) {
-   return _valid_relationships[str] != 0;
-}
-int is_valid_interfamily_relationship(string str) {
-   class relationship_type_data frog;
-   frog = _valid_relationships[str];
-   if (frog) {
-      if (frog->flags & CLUB_INTERFAMILY_FLAG) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int is_valid_join_family_relationship(string str) {
-   class relationship_type_data frog;
-   frog = _valid_relationships[str];
-   if (frog) {
-      if (frog->flags & CLUB_JOIN_FAMILY_FLAG) {
-         return 1;
-      }
-   }
-   return 0;
-}
-string *query_all_valid_relationships() {
-   return keys(_valid_relationships);
-}
-private void add_gender_relationship(string region,
-                                     string relationship,
-                                     string male,
-                                     string female) {
-   _gender_relationship[male] = relationship;
-   _gender_relationship[female] = relationship;
-   if (!mapp(_gender_relationship[relationship])) {
-      _gender_relationship[relationship] = ([ ]);
-   }
-   _gender_relationship[relationship][region] = ({ male,
-                                                   female });
-}
-string query_ungendered_relationship(string relationship) {
-   if (stringp(_gender_relationship[relationship])) {
-      return _gender_relationship[relationship];
-   }
-   if (mapp(_gender_relationship[relationship])) {
-      return relationship;
-   }
-   return 0;
-}
-string *query_all_relationships() {
-   return keys(_gender_relationship);
-}
-string query_relationship_gender(string relationship,
-                                 int female,
-                                 string region) {
-   string rel;
-   rel = query_ungendered_relationship(relationship);
-   if (!rel ||
-       female < 0 ||
-       female > 1) {
-      return 0;
-   }
-   if (!region || !_gender_relationship[rel][region]) {
-      region = "Ankh-Morpork";
-   }
-   return _gender_relationship[rel][region][female];
-}
-private void real_add_relationship(string name,
-                                   string person,
-                                   string dest,
-                                   string relationship) {
-   class family_info womble;
-   class relationship_data plum;
-   womble = query_family_info(name);
-   if (!womble->relationships[person]) {
-      womble->relationships[person] = ({ });
-   }
-   plum = new(class relationship_data);
-   plum->related_to = dest;
-   plum->relationship = relationship;
-   womble->relationships[person] += ({ plum });
-   set_club_changed(name);
-}
-private void real_remove_relationship(string name,
-                                      string person,
-                                      string dest,
-                                      string relationship) {
-   class family_info womble;
-   int i;
-   womble = query_family_info(name);
-   for (i = 0; i < sizeof(womble->relationships[person]); i++) {
-      if (womble->relationships[person][i]->related_to == dest &&
-          womble->relationships[person][i]->relationship == relationship) {
-         womble->relationships[person] = womble->relationships[person][0..i-1] +
-                                         womble->relationships[person][i+1..];
-         set_club_changed(name);
-      }
-   }
-}
-int add_relationship(string name,
-                     string person,
-                     string dest_name,
-                     string dest,
-                     string relationship) {
-   if (is_family(name) &&
-       is_family(dest_name) &&
-       is_member_of(name, person) &&
-       is_member_of(dest_name, dest) &&
-       is_valid_relationship(relationship)) {
-      real_add_relationship(name,
-                            person,
-                            dest,
-                            relationship);
-      real_add_relationship(dest_name,
-                            dest,
-                            person,
-                            query_opposite_relationship(relationship));
-      save_club(name);
-      return 1;
-   }
-   return 0;
-}
-class relationship_data *query_relationships(string name,
-                                             string person) {
-   class family_info womble;
-   if (is_family(name)) {
-      womble = query_family_info(name);
-      if (womble->relationships[person]) {
-         return womble->relationships[person];
-      }
-   }
-   return ({ });
-}
-int move_family_member(string curr_family,
-                       string person,
-                       string dest_family) {
-  class relationship_data *stuff;
-  class family_info womble;
-  if (is_family(curr_family) &&
-      is_family(dest_family) &&
-      is_member_of(curr_family, person)) {
-    stuff = query_relationships(curr_family,
-                                person);
-    womble = query_family_info(curr_family);
-    map_delete(womble->relationships, person);
-    set_club_changed(curr_family);
-    remove_member(curr_family, person);
-    add_member(dest_family, person);
-    womble = query_family_info(dest_family);
-    womble->relationships[person] = stuff;
-    set_club_changed(dest_family);
-    return 1;
-  }
-  return 0;
-}
-string *query_relationships_to(string name,
-                               string person,
-                               string related) {
-   class relationship_data frog;
-   string *relationships;
-   relationships = ({ });
-   foreach (frog in query_relationships(name, person)) {
-      if (frog->related_to == related) {
-         relationships += ({ frog->relationship });
-      }
-   }
-   return relationships;
-}
-int is_relationship(string name,
-                    string person,
-                    string related,
-                    string relationship) {
-   class relationship_data frog;
-   foreach (frog in query_relationships(name, person)) {
-      if (frog->related_to == related &&
-          frog->relationship == relationship) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int remove_relationship(string name,
-            string person,
-                        string dest_name,
-      string dest,
-      string relationship) {
-   if (is_relationship(name, person, dest, relationship)) {
-      real_remove_relationship(name,
-                   person,
-             dest,
-             relationship);
-      if (dest_name) {
-         real_remove_relationship(dest_name,
-                      dest,
-                person,
-                      query_opposite_relationship(relationship));
-      }
-      return 1;
-   }
-   return 0;
-}
-protected void check_family_information(string name,
-                                        string member,
-                                        int startup) {
-   class family_info fam_data;
-   string family;
-   fam_data = query_family_info(name);
-   if (fam_data) {
-      if (member &&
-         fam_data->relationships[member]) {
-         family = PLAYER_HANDLER->test_family(member);
-         if (!family ||
-              normalise_name(family) != name) {
-            if (find_player(member)) {
-               find_player(member)->set_family_name(family);
+            if (preformat) {
+               ret += replace(rest, "\n", "\n.E" + start[2..2] + "\n" +
+                                    start + "\n" + additional);
             } else {
-               log_file("CLUB", ctime(time()) +
-                                ": removed " +
-                                member + " from " + family +
-                                " family deficent.\n");
-               remove_member(name, member);
-            }
-         }
-         if (!undefinedp(fam_data->relationships)) {
-            map_delete(fam_data->relationships, member);
-            set_club_changed(name);
-         }
-      }
-   }
-}
-
-==================================================
-FILE: handlers/inherit/club_inherit.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_discuss";
-#define __CLUBS_H_NO_CLASSES
-#define __MAIL_H_NO_CLASSES
-#include <mail.h>
-#include <clubs.h>
-#include <player_handler.h>
-#include <broadcaster.h>
-#include <player.h>
-#include <top_ten_tables.h>
-#include <library.h>
-#include <player_handler.h>
-private nosave int _callout_id;
-private nosave int _test_callout_id;
-private string _current_test_club;
-private int _last_test_time;
-protected void check_extra_information(string name, string person, int startup);
-void check_clubs(int startup);
-class top_ten_tables {
-   int num;
-   int qp;
-   int age;
-   int start_time;
-   int gender;
-   int single_gender;
-   int rels;
-   int no_pks;
-   mapping guild;
-}
-protected void setup_call_check_clubs(int time, int startup) {
-   remove_call_out(_callout_id);
-   _callout_id = call_out("check_clubs", time, startup);
-}
-private void send_low_balance_mail(string club) {
-   string *to;
-   string bit;
-   switch (query_club_type(club)) {
-      case CLUB_FAMILY :
-         to = query_members(club);
-         bit = "family";
-         break;
-      case CLUB_PERSONAL :
-         to = ({ query_founder(club) });
-         bit = "club";
-         to -= ({ "unknown" });
-         if (!sizeof(to)) {
-            to = query_members(club);
-         }
-         break;
-      case CLUB_ELECTED :
-         to = query_committee(club) - ({ CLUB_UNKNOWN_MEMBER });
-         if (!sizeof(to)) {
-            to = ({ query_members(club) });
-         }
-         bit = "club";
-         break;
-   }
-   to = filter(to, (: PLAYER_HANDLER->test_user($1) :));
-   if (sizeof(to)) {
-      MAILER->do_mail_message(implode(to, ","),
-                           "Patricians office",
-                           "The " + bit + " has fees due.",
-                           "",
-                           sprintf("%-=80s\n", "Morning,\n\n"
-                           "This is a reminder from the Patrician's Office "
-                           "the " + bit + " '" + query_club_name(club) +
-                           "' is currently in remission and "
-                           "its balance will need to be updated before "
-                           "the next "
-                           "pay period or your " + bit + " will be "
-                           "disbanded.\n\nYours happily,\nThe Patrician."));
-   }
-}
-private void send_disband_mail(string club) {
-   string *to;
-   string bit;
-   switch (query_club_type(club)) {
-      case CLUB_FAMILY :
-         to = query_members(club);
-         bit = "family";
-         break;
-      case CLUB_PERSONAL :
-         to = ({ query_founder(club) });
-         bit = "club";
-         break;
-      case CLUB_ELECTED :
-         to = query_committee(club) - ({ CLUB_UNKNOWN_MEMBER });
-         if (!sizeof(to)) {
-            to = ({ query_members(club) });
-         }
-         bit = "club";
-         break;
-   }
-   MAILER->do_mail_message(implode(to, ","),
-                           "Patricians office",
-                           "The " + bit + " has been disbanded.",
-                           "",
-                           sprintf("%-=80s\n", "Morning,\n\n"
-                           "This is a message from the patricians "
-                           "office to you that your " + bit +
-                           " '" + query_club_name(club) +
-                           "' has been disbanded for having its fees "
-                           "in remission."
-                           "\n\nYours happily,\nThe Patrician."));
-}
-protected void check_extra_information(string name,
-                                       string member,
-                                       int startup) {
-   if (is_elected_club(name)) {
-      check_elected_information(name, member, startup);
-   } else if (is_family(name)) {
-      check_family_information(name, member, startup);
-   }
-}
-protected void check_club_members(string club_name,
-                                string* members,
-                                class top_ten_tables top_info) {
-   int i;
-   int tmp;
-   string member;
-   string str;
-   string flip;
-   class relationship_data *rels;
-   class relationship_data frog;
-   for (i = 0; i < 1 && i < sizeof(members); i++) {
-      member = members[i];
-      if (!PLAYER_HANDLER->test_user(member)) {
-         log_file("CLUB", ctime(time()) + ": removed " + member +
-                          " from " + club_name + " for not existing.\n");
-         remove_member(club_name, member);
-      } else if (!PLAYER_HANDLER->test_creator(member) &&
-                 !PLAYER_HANDLER->test_property(member, "no score")) {
-         top_info->num++;
-         top_info->qp += LIBRARY->query_quest_points(member);
-         tmp = -PLAYER_HANDLER->test_age(member) / (60 * 60);
-         top_info->rels += sizeof(CLUB_HANDLER->query_relationships(club_name, member));
-         top_info->age += tmp;
-         top_info->start_time += PLAYER_HANDLER->test_start_time(member) / (60 * 60);
-         str = PLAYER_HANDLER->test_guild(member);
-         if (str &&
-             str != "") {
-            if (top_info->guild[str]) {
-               top_info->guild[str]++;
-            } else {
-               if (file_size(str + ".c") > 0) {
-                  flip = str->query_real_guild_object();
-                  if (flip) {
-                     str = flip;
-                  }
-                  top_info->guild[str]++;
+               rest = replace(rest, "\n", " ");
+               while (strlen(rest) && rest[0] == ' ') {
+                  rest = rest[1..];
                }
+               while (strsrch(rest, "  ") != -1) {
+                  rest = replace_string(rest, "  ", " ");
+               }
+               ret += rest;
             }
-         }
-         if (PLAYER_HANDLER->test_player_killer(member)) {
-            top_info->no_pks++;
-         }
-         if (!top_info->gender) {
-            top_info->gender = PLAYER_HANDLER->test_gender(member);
-         }
-         if (top_info->single_gender != -1 &&
-             PLAYER_HANDLER->test_gender(member) != top_info->gender) {
-            top_info->single_gender = -1;
-         }
-      }
-      if (is_family(club_name)) {
-         check_family_information(club_name, member, 0);
-         rels = CLUB_HANDLER->query_relationships(club_name, member);
-         foreach (frog in rels) {
-            if (!PLAYER_HANDLER->test_family(frog->related_to)) {
-               log_file("CLUB", ctime(time()) + ": removed relationship " +
-                          member +
-                          " <-> " + frog->related_to + " (" +
-                          frog->relationship + ") for loosing their "
-                          "family.\n");
-            }
-         }
-      }
-   }
-   members = members[1..];
-   if (!sizeof(members)) {
-      if (!sizeof(query_members(club_name))) {
-         disband_club(club_name);
-      } else if (top_info->num > 3) {
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_LARGEST_FAMILY,
-                                         top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_OLDEST_FAMILY,
-                                         top_info->age / top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_QUEST_POINTS,
-                                         top_info->qp / top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_GUILD,
-                                         top_info->guild);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_PKS,
-                                         top_info->no_pks);
-         if (top_info->single_gender != -1) {
-            TOP_TEN_HANDLER->inform_of_club(club_name,
-                                            is_family(club_name),
-                                            TOP_TEN_SINGLE_GENDER,
-                                            top_info->num);
          } else {
-            TOP_TEN_HANDLER->inform_of_club(club_name,
-                                            is_family(club_name),
-                                            TOP_TEN_SINGLE_GENDER,
-                                            0);
+            ret += ">" + bits[i];
          }
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_OLDEST_LOGONS,
-                                         top_info->start_time / top_info->num);
-      }
-      top_info = new(class top_ten_tables);
-      top_info->guild = ([ ]);
-      i = member_array(_current_test_club, query_clubs());
-      if (i < sizeof(query_clubs())) {
-         _current_test_club = query_clubs()[i+1];
-         _test_callout_id = call_out("check_club_members", 60, _current_test_club, query_members(_current_test_club), top_info);
-      } else {
-         _current_test_club = 0;
-         _test_callout_id = 0;
-      }
-      save_main();
-   } else {
-      _test_callout_id = call_out("check_club_members", 60, club_name, members, top_info);
+   }
+   ret += "\n.E" + start[2..2] + "\n";
+   return ret;
+}
+
+==================================================
+FILE: rings/high_gp_ring.c
+==================================================
+
+#define GP_AWARD 250
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 750 );
+    set_value_info( "artifact", 15000 );
+    set_weight( 1 );
+    set_enchant( 5 );
+    add_property( "artifact form", ([
+        "ring of power" : 6
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 75 );
+    set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of power"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
+}
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
+    return 1;
+}
+
+==================================================
+FILE: rings/invisibility.c
+==================================================
+
+inherit "/obj/ring";
+void setup() {
+   set_name( "ring" );
+   set_short( "clear crystal ring" );
+   add_adjective( ({ "clear", "crystal" }) );
+   set_main_plural( "clear crystal rings" );
+   set_long( "The ring is made from a colourless stone that seems to refract "+
+         "light in a strange way.  The outer edge has eight sides.\n" );
+   set_material( "calcite" );
+   set_value( 200 );
+   set_value_info( "artifact", 5000 );
+   set_weight( 1 );
+   set_enchant( 2 );
+   add_property( "no recycling", 1 );
+   add_property( "fluff'n'stuff", 1 );
+   add_property( "artifact form", ([
+      "ring of invisibility" : 2
+   ]) );
+   adjust_charges( 1 + random( 7 ) );
+   set_level( 60 );
+   set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of invisibility"; }
+void zap( object dummy, object person, object ring ) {
+   person->add_effect( "/std/effects/magic/invisibility",
+         roll_MdN( 7, (int)ring->query_level() ) );
+}
+
+==================================================
+FILE: rings/low_gp_ring.c
+==================================================
+
+#define GP_AWARD 50
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 250 );
+    set_value_info( "artifact", 5000 );
+    set_weight( 1 );
+    set_enchant( 3 );
+    add_property( "artifact form", ([
+        "ring of energy" : 4
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 25 );
+    set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of energy"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
+}
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
+    return 1;
+}
+
+==================================================
+FILE: rings/med_gp_ring.c
+==================================================
+
+#define GP_AWARD 150
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 500 );
+    set_value_info( "artifact", 10000 );
+    set_weight( 1 );
+    set_enchant( 4 );
+    add_property( "artifact form", ([
+        "ring of vigour" : 5
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 50 );
+    set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of vigour"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
+}
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
+    return 1;
+}
+
+==================================================
+FILE: rings/recall.c
+==================================================
+
+#include <drinks.h>
+#include <cwc.h>
+#include <config.h>
+inherit "/obj/ring";
+void setup() {
+  set_name( "ring" );
+  set_short( "blue crystal ring" );
+  add_adjective( ({ "blue", "crystal" }) );
+  set_main_plural( "blue crystal rings" );
+  set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+  set_material( "sapphire" );
+  set_value( 500 );
+  set_value_info( "artifact", 10000 );
+  set_weight( 1 );
+  set_enchant( 3 );
+  add_property( "artifact form", ([
+    "ring of recall" : 3
+  ]) );
+  adjust_charges( 1 + random( 11 ) );
+  set_level( 30 );
+  set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of recall"; }
+string find_start_location( object person ) {
+    string pos;
+    if ( file_name( environment( person ) )[0..19] == "/d/cwc/Bes_Pelargic/" ) {
+        return CWC_START_LOCATION;
+    }
+    pos = person->query_start_pos();
+    if ( pos[ 0..19 ] == "/d/cwc/Bes_Pelargic/" && file_name( environment( person ) )[ 0..19 ] != "/d/cwc/Bes_Pelargic/" ) {
+        return CONFIG_START_LOCATION;
+    }
+    return pos;
+}
+void zap( object dummy, object person, object ring ) {
+   string place;
+   place = query_property( "destination" );
+   if ( !place ) {
+      call_out( "move_person", 0, person, find_start_location( person ) );
+   }
+   else {
+      call_out( "move_person", 0, person, place );
    }
 }
-private nosave int _specific_callout_id = 0;
-private nosave string *_clubs_to_check = ({ });
-protected void check_specific_club(string club_name, int startup) {
-    class club_info bing;
-    bing = (class club_info)query_club_info(club_name);
-    if (bing->last_touched < time() - CLUB_TIMEOUT) {
-        disband_club(club_name);
-        return;
+int failed_zap( object dummy, object person, object ring ) {
+  person->add_succeeded_mess( ring, "$N $V $D, but nothing happens.\n", ({ }) );
+  return 1;
+}
+void move_person( object person, string place ) {
+  tell_creator( "taffyd", "%O, %s\n", person, place );
+  if ( !find_object( place ) )
+    place->force_load();
+  if ( !find_object( place ) ) {
+    tell_object( person, "Please contact a creator and ask that \""+ place +
+        "\" be checked.  You are also owed a charge on this ring.\n" );
+    return;
+  }
+  if ( environment( person ) == find_object( place ) ) {
+    tell_object( person, "You momentarily feel dislocated from reality; "+
+        "the feeling passes, but something has changed...\n" );
+    person->adjust_volume( D_ALCOHOL, ( 500 + random( 500 ) ) * ( 1 -
+        2 * random( 2 ) ) );
+    return;
+  }
+  tell_object( person, "You suddenly feel as if something yanks you "+
+      "across the dimensions.\n" );
+  person->move_with_look( place, "A spot of blue appears, enlarges and "+
+      "turns into $N.", "$N shrinks and becomes red, then disappears "+
+      "altogether." );
+}
+
+==================================================
+FILE: plants/inherit/grain.c
+==================================================
+
+#include <move_failures.h>
+#include <state_change.h>
+#define TO this_object()
+#define TP this_player()
+#define THRESHOLD 5
+inherit "/obj/food";
+int _max_strip;
+void create() {
+  do_setup++;
+  ::create();
+  do_setup--;
+  set_name( "grain" );
+  set_short( "broken grain" );
+  set_long( "This is some funky, but broken, grain.\n" );
+  _max_strip = THRESHOLD;
+  remove_help_file( "food" );
+  add_help_file( "grain" );
+  add_alias( "plant" );
+  add_plural( "plants" );
+  set_collective();
+  set_amount( 1 );
+  set_weight_unit( ({ 1, 10 }) );
+  set_eat_mess( ({
+    "$N choke down $D. It absorbs all the moisture from your mouth and sticks "
+      "in your throat.  Looks like you just aren't designed to eat unmilled "
+      "grain.\n",
+    "$N chokes down $D, coughing and rubbing $p throat unhappily.\n"
+  }) );
+  if ( ! do_setup ) {
+    TO->setup();
+    TO->reset();
+  }
+}
+void init() {
+  ::init();
+  TP->add_command( "chew", TO );
+  TP->add_command( "strip", TO );
+}
+void set_max_strippable( int num ) {
+  _max_strip = num;
+}
+int query_max_strippable() {
+  return _max_strip;
+}
+int do_chew() {
+  int size;
+  size = query_amount();
+  if ( ! size ) {
+    add_failed_mess( "You can't chew thin air.\n" );
+    return 0;
+  }
+  if ( size > 1 ) {
+    add_failed_mess( "You can't chew more than one " + short(0)
+      + " at a time.\n" );
+    return 0;
+  }
+  TP->set_position( "idly chewing " + TO->a_short() );
+  add_succeeded_mess(
+    "$N place$s $D between $p teeth, and chew$s it idly.\n" );
+  return 1;
+}
+int do_strip() {
+  int i;
+  object stripped;
+  if ( query_amount() > query_max_strippable() ) {
+    add_failed_mess( "That's far too much $D for you to strip by hand.  "
+      "Perhaps you should look for a tool of some kind.\n" );
+    return 0;
+  }
+  stripped = STATE_CHANGE->transform( TO, "thresh" );
+  if ( ! objectp( stripped ) ) {
+    add_failed_mess( "For some reason, you can't strip $D.\n" );
+    return 0;
+  }
+  i = stripped->move( TP );
+  if ( i != MOVE_OK ) {
+    stripped->move( environment( TP ) );
+    add_succeeded_mess( "$N strip$s the grain from $D with $p fingers, "
+      "spilling some onto the "
+      + ( environment( TP )->query_property( "location" ) == "inside" ? "floor"
+      : "ground" ) + ".\n" );
+  } else {
+    add_succeeded_mess( "$N strip$s the grain from $D with $p fingers.\n" );
+  }
+  move( "/room/rubbish" );
+  return 1;
+}
+mapping query_static_auto_load() {
+  return int_query_static_auto_load();
+}
+
+==================================================
+FILE: gatherables/plant.c
+==================================================
+
+inherit "/obj/gatherable";
+void setup() {
+    set_name("plant");
+    set_short("hidden plant");
+    set_long("There are all sorts of herbs and flowers here.  Use "
+             "\"gather\" to collect specific types.\n");
+    set_get_failure_mess("There are all sorts of flowers and herbs "
+                         "around here.  Use \"gather\" to get "
+                         "specific varieties.\n");
+}
+
+==================================================
+FILE: gatherables/rock.c
+==================================================
+
+inherit "/obj/gatherable";
+void setup() {
+    set_name("rock");
+    set_short("hidden rock");
+    set_long("There are rocks of all shapes and sizes here.  Use "
+             "\"gather\" to collect specific types.\n");
+    set_get_failure_mess("There are all sorts of rocks and minerals "
+                         "around here.  Use \"gather\" to get "
+                         "specific varieties.\n");
+}
+
+==================================================
+FILE: misc/abscond_trigger.c
+==================================================
+
+#define CLASS "fighting.combat.special.abscond"
+#include <effect.h>
+inherit "/std/object";
+void init() {
+   if( !environment()
+    || file_name( environment( this_object() ) ) == "/room/rubbish" ) {
+      return;
+   }
+   if( this_player()
+    && this_player() == query_property( "abscond player" ) ) {
+      this_player()->submit_ee2( this_player()->effects_matching(CLASS)[0],
+                                 "after_command", 0, EE_REMOVE );
+   }
+}
+
+==================================================
+FILE: misc/active_toy.c
+==================================================
+
+inherit "/std/object";
+inherit "/std/basic/item_chat";
+string hug, pet, cuddle, fondle, snuggle, squeeze, spank;
+void set_hug( string words ) { hug = words; }
+void set_pet( string words ) { pet = words; }
+void set_cuddle( string words ) { cuddle = words; }
+void set_fondle( string words ) { fondle = words; }
+void set_snuggle( string words ) { snuggle = words; }
+void set_squeeze( string words ) { squeeze = words; }
+void set_spank( string words ) { spank = words; }
+void init() {
+   item_chat::init();
+   this_player()->add_command( "hug", this_object() );
+   this_player()->add_command( "pet", this_object() );
+   this_player()->add_command( "cuddle", this_object() );
+   this_player()->add_command( "fondle", this_object() );
+   this_player()->add_command( "snuggle", this_object() );
+   this_player()->add_command( "squeeze", this_object() );
+   this_player()->add_command( "spank", this_object() );
+}
+int do_hug() {
+  if (!sizeof (hug)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( hug,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_pet() {
+  if (!sizeof (pet)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( pet,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_cuddle() {
+  if (!sizeof (cuddle)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( cuddle,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_fondle() {
+  if (!sizeof (fondle)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( fondle,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_snuggle() {
+  if (!sizeof (snuggle)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( snuggle,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_squeeze() {
+  if (!sizeof (squeeze)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( squeeze,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+int do_spank() {
+  if (!sizeof (spank)) {
+    return 0;
+  }
+   this_player()->add_succeeded_mess( this_object(), replace_string( spank,
+         "$poss_short$", poss_short() ), ({ }) );
+   return 1;
+}
+mapping query_static_auto_load() {
+   return ([
+      "::" : int_query_static_auto_load(),
+      "hug" : hug,
+      "pet" : pet,
+      "cuddle" : cuddle,
+      "fondle" : fondle,
+      "snuggle" : snuggle,
+      "squeeze" : squeeze,
+      "spank" : spank
+   ]);
+}
+mapping query_dynamic_auto_load() {
+   mapping tmp;
+   tmp = ([ "::" : object::query_dynamic_auto_load(),
+            "chat" : item_chat::query_dynamic_auto_load(),
+          ]);
+   return tmp;
+}
+void init_dynamic_arg(mapping map) {
+   if ( !map )
+      return;
+   if (map["::"])
+      object::init_dynamic_arg(map["::"]);
+   if (map["chat"])
+      item_chat::init_dynamic_arg(map["chat"]);
+}
+void init_static_arg( mapping map ) {
+   if ( !map )
+      return;
+   if ( map[ "::" ] )
+      ::init_static_arg( map[ "::" ] );
+   hug = map[ "hug" ];
+   pet = map[ "pet" ];
+   cuddle = map[ "cuddle" ];
+   fondle = map[ "fondle" ];
+   snuggle = map[ "snuggle" ];
+   squeeze = map[ "squeeze" ];
+   spank = map[ "spank" ];
+}
+
+==================================================
+FILE: misc/al_receipt.c
+==================================================
+
+#include <virtual.h>
+#include <player.h>
+#include <move_failures.h>
+#include <armoury.h>
+inherit "/std/object";
+private int _timestamp;
+private string _obname;
+private string _obpath;
+private string _virt_name;
+private mixed _static_save;
+void setup()
+{
+   set_name("receipt");
+   set_short( "missing item receipt" );
+   _obname = "unknown object";
+   _obpath = "***";
+   set_value(5);
+   set_weight(1);
+   add_adjective(({"missing", "item"}));
+   add_property("writeable", 1);
+   add_property("sale_value", 1);
+   add_property("paper", 1);
+   add_property("nosteal", 1);
+   set_max_size(1000);
+   _timestamp = time();
+}
+void init() {
+    this_player()->add_command("kiss", this_object());
+}
+void set_obname(string s) { _obname = s; }
+void set_object(string s) { _obpath = s; }
+void set_obpath(string s) { set_object(s); }
+void set_virtobname(string s) { _virt_name = s; }
+void set_virtname(string s) { set_virtobname(s); }
+void set_static_save(mixed m) {
+  mixed p;
+  _static_save = m;
+  if (_obname != "unknown object") {
+    return;
+  }
+  p = m[0];
+  while (mapp(p)) {
+    if (!undefinedp(p["short"])) {
+      _obname = p["short"];
+      return;
     }
-    if (!pointerp(query_members(club_name))) {
-        disband_club(club_name);
-        return;
-    }
-    if (query_time_fees_due(club_name) < time()) {
-        if (query_balance(club_name, CLUB_DEFAULT_ACCOUNT_NAME) < 0) {
-            send_disband_mail(club_name);
-            disband_club(club_name);
-            return;
+    p = p["::"];
+  }
+}
+void setup_receipt(object ob) {
+   mixed* bits;
+   bits = AUTO_LOAD_OB->fragile_auto_str_ob(ob);
+   set_obname(ob->query_name());
+   set_object(bits[1]);
+   set_static_save(bits[2]);
+   set_value(ob->query_value());
+   if(_obpath == "/obj/misc/al_receipt") {
+     log_file("BAD_RECEIPTS", "%s: set by %s\n",
+              ctime(time())[4..18], base_name(previous_object()));
+     call_out("dest_me", 2);
+   }
+}
+void being_sold()
+{
+    call_out("dest_me", 4);
+}
+string long(string str, int light)
+{
+   return "This is a receipt for your missing " + _obname + ".  You can either "
+      "sell it for something which may be close to replacement value (and may
+not), "
+      "or give it to a creator and ask very nicely to have it replaced.\n"
+      "You can also try kissing it - who knows, you may get lucky.\n";
+}
+mapping query_dynamic_auto_load()
+{
+   return ([ "::" : ::query_dynamic_auto_load(),
+             "obname" : _obname,
+             "obpath" : _obpath,
+             "obvalue" : value,
+             "virt" : _virt_name,
+             "timestamp" : _timestamp,
+             "static" : _static_save ]);
+}
+void init_dynamic_arg(mapping arg, object) {
+   _obname = arg["obname"];
+   if ( stringp( _obname ) ) {
+      add_adjective( explode( lower_case( _obname ), " " ) );
+   }
+   _obpath = arg["obpath"];
+   set_value(arg["obvalue"]);
+   _virt_name = arg["virt"];
+   _timestamp = arg["timestamp"];
+   _static_save = arg["static"];
+   ::init_dynamic_arg(arg["::"]);
+   if(_obpath == "/obj/misc/al_receipt") {
+     call_out("dest_me", 2);
+   }
+}
+string query_obname() { return _obname; }
+string query_obpath() { return _obpath; }
+int query_timestamp() { return _timestamp; }
+string query_virt_obname() { return _virt_name; }
+mixed query_static_save() { return _static_save; }
+int query_missing_item_receipt() {
+   return 1;
+}
+mixed *stats()
+{
+  mixed *stuff;
+  stuff = ::stats() + ({
+      ({ "obname", _obname }),
+      ({ "obpath", _obpath }),
+      ({ "timestamp", _timestamp + " (" + ctime(_timestamp) + ")" }),
+   });
+  if (_virt_name)
+    stuff += ({ ({ "virtname", _virt_name }) });
+  return stuff;
+}
+int do_kiss() {
+    object thing;
+    if (sizeof(_static_save) < 2) {
+        if (this_player()->query_creator()) {
+            write("This receipt has no auto-load information, possibly "
+                  "because the object was broken when the player logged "
+                  "out.  It will have to be replaced by hand.\n");
+        } else {
+            write("Sorry, but this object is too broken to repair "
+                  "with a kiss.  You'll have to contact a creator.\n");
         }
-        if (remove_money(club_name, query_club_cost_per_period(club_name),
-            CLUB_TRANSACTION_UPKEEP, "Club Dues",
-            CLUB_DEFAULT_ACCOUNT_NAME, 0)) {
-            int tmp;
-            bing = (class club_info)query_club_info(club_name);
-            tmp = bing->last_paid;
-            bing->last_paid = query_time_fees_due(club_name);
-            set_club_changed(club_name);
-            if (query_balance(club_name, CLUB_DEFAULT_ACCOUNT_NAME) < 0) {
-               reset_eval_cost();
-               send_low_balance_mail(club_name);
+        return 1;
+    }
+    if ((query_cloned_by() != this_player()->query_name())
+        && !this_player()->query_creator()) {
+        write("The receipt whispers: I don't belong to you!\n");
+        return 1;
+    }
+    if (_virt_name) {
+       _virt_name = CLONER->other_file( _virt_name );
+       if (file_size(_virt_name) <= 0) {
+          _virt_name = ARMOURY->remap_file_path(_virt_name);
+       }
+       if (file_size(_virt_name) <= 0) {
+           write("The receipt whispers: Sorry, I'm still broken.  "
+                 "Try again some other time, or contact a creator.\n");
+           return 1;
+       }
+    }
+    if ( !catch( thing = (object)CLONER->clone( _obpath ) ) ) {
+        if ( thing ) {
+            thing->init_static_arg(_static_save[0]);
+            thing->init_dynamic_arg(_static_save[1]);
+            if (!thing->move( environment(this_object()) )
+                || !thing->move( environment(environment(this_object())) )) {
+                thing->add_property(VIRTUAL_NAME_PROP, _virt_name);
+                write(the_short() + " suddenly transforms itself into " +
+                      thing->a_short() + ".\n");
+                tell_room(environment(this_player()),
+                          this_player()->the_short() +
+                          " kisses a piece of paper, which suddenly "
+                          "transforms into " + thing->a_short() + ".\n",
+                          ({ this_player() }));
+                this_player()->add_succeeded_mess(this_object(), "", ({ }));
+                move("/room/rubbish");
+            } else {
+                write("The receipt whispers: I'm going to need some "
+                      "creator help.\n");
+                thing->dest_me();
             }
+        } else {
+            write("The receipt whispers: Sorry, I'm still broken.  "
+                  "Try again some other time, or contact a creator.\n");
         }
+    } else {
+        write("The receipt whispers: Sorry, I'm still broken.  "
+              "Try again some other time, or contact a creator.\n");
     }
-    call_out( (: check_extra_information :),  1,  club_name, 0,  startup);
+    return 1;
 }
-protected void check_specific_clubs( int startup, int pos ) {
-    string club_name;
-    if ( pos >= sizeof( _clubs_to_check ) ) {
-        _clubs_to_check = ({ });
-        _specific_callout_id = 0;
-        pos = 0;
-        return;
-    }
-    club_name = _clubs_to_check[ pos ];
-    tell_creator( "taffyd", "Checking club %s (%d)\n", club_name, pos );
-    check_specific_club(club_name, startup);
-    _specific_callout_id = call_out( (: check_specific_clubs :), 10, startup, ++pos );
-}
-void check_clubs(int startup) {
-   class top_ten_tables blue;
-   setup_call_check_clubs(24 * 60 * 60, 0);
-   if ( !_specific_callout_id ) {
-       _clubs_to_check = query_clubs();
-        _specific_callout_id = call_out( (: check_specific_clubs :), 0,
-            startup, 0 );
-   }
-   remove_call_out(_test_callout_id);
-   if (!_current_test_club &&
-       _last_test_time + 7 * 24 * 60 * 60 < time()) {
-      if (sizeof(query_clubs()) > 0) {
-         _current_test_club = query_clubs()[0];
+varargs int move(mixed dest, string messin, string messout)  {
+   if (!objectp(dest))  {
+      if (!stringp(dest)  ||  (dest = find_object(dest)) == 0)  {
+         return MOVE_EMPTY_DEST;
       }
-      _last_test_time = 0;
-      save_main();
    }
-   if (_current_test_club) {
-      blue = new(class top_ten_tables);
-      blue->guild = ([ ]);
-      _test_callout_id = call_out("check_club_members",
-                                 60,
-                                 _current_test_club,
-                                 query_members(_current_test_club),
-                                 blue);
+   if (::move(dest, messin, messout) != MOVE_OK)  {
+      if (environment(dest))  {
+         return move(environment(dest), messin, messout);
+      }
+      else  {
+         return MOVE_INVALID_DEST;
+      }
    }
-}
-#ifdef OLD_CHECK_CODE
-protected void check_specific_club(string club_name, int extra_space,
-                                   int startup) {
-}
-#endif
-
-==================================================
-FILE: handlers/inherit/club_personal.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_basic";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-class personal_info {
-}
-protected void create_extra_data(string name) {
-   class personal_info p_info;
-   class club_info data;
-   data = (class club_info)query_club_info(name);
-   if (query_club_type(name) == CLUB_PERSONAL) {
-         p_info = new(class personal_info);
-      data->extra_data = p_info;
-      set_club_changed(name);
-   } else {
-      ::create_extra_data(name);
-   }
-}
-private class personal_info query_personal_info(string name) {
-   class club_info data;
-   if (is_personal_club(name)) {
-      data = (class club_info)query_club_info(name);
-      return data->extra_data;
-   }
-   return 0;
+   return MOVE_OK;
 }
 
 ==================================================
-FILE: handlers/inherit/craft_skills.c
+FILE: misc/animusser.c
 ==================================================
 
 #include <skills.h>
-private string *_craft_skill_tree;
-void add_craft_skill(string name);
-void create() {
-   _craft_skill_tree = ({ });
-   add_craft_skill("crafts.smithing.gold");
-   add_craft_skill("crafts.smithing.silver");
-   add_craft_skill("crafts.smithing.black.tool");
-   add_craft_skill("crafts.smithing.black.weapon");
-   add_craft_skill("crafts.smithing.black.armour");
-   add_craft_skill("crafts.smithing.gem.cutting");
-   add_craft_skill("crafts.smithing.gem.polishing");
-   add_craft_skill("crafts.smithing.gem.setting");
-   add_craft_skill("crafts.mining.gem");
-   add_craft_skill("crafts.mining.ore.panning");
-   add_craft_skill("crafts.mining.mineral");
-   add_craft_skill("crafts.hunting.tracking");
-   add_craft_skill("crafts.hunting.fishing");
-   add_craft_skill("crafts.hunting.trapping");
-   add_craft_skill("crafts.carpentry.furniture");
-   add_craft_skill("crafts.carpentry.coopering");
-   add_craft_skill("crafts.carpentry.turning");
-   add_craft_skill("crafts.carpentry.whittling");
-   add_craft_skill("crafts.pottery.forming.throwing");
-   add_craft_skill("crafts.pottery.forming.shaping");
-   add_craft_skill("crafts.pottery.glazing");
-   add_craft_skill("crafts.pottery.staining");
-   add_craft_skill("crafts.pottery.firing");
-   add_craft_skill("crafts.materials.leatherwork");
-   add_craft_skill("crafts.materials.weaving");
-   add_craft_skill("crafts.materials.spinning");
-   add_craft_skill("crafts.materials.needlework");
-   add_craft_skill("crafts.materials.dyeing");
-   add_craft_skill("crafts.husbandry.plant.edible");
-   add_craft_skill("crafts.husbandry.plant.herbal");
-   add_craft_skill("crafts.husbandry.plant.milling");
-   add_craft_skill("crafts.husbandry.plant.tree");
-   add_craft_skill("crafts.husbandry.animal.grooming");
-   add_craft_skill("crafts.husbandry.animal.breeding");
-   add_craft_skill("crafts.culinary.cooking");
-   add_craft_skill("crafts.culinary.baking");
-   add_craft_skill("crafts.culinary.butchering");
-   add_craft_skill("crafts.culinary.preserving");
-   add_craft_skill("crafts.culinary.brewing");
-   add_craft_skill("crafts.culinary.distilling");
-   add_craft_skill("crafts.arts.design");
-   add_craft_skill("crafts.arts.calligraphy");
-   add_craft_skill("crafts.arts.drawing");
-   add_craft_skill("crafts.arts.painting");
-   add_craft_skill("crafts.arts.printing");
-   add_craft_skill("crafts.arts.sculpture");
-   add_craft_skill("crafts.points");
+inherit "/std/object";
+string *skill_names;
+mapping new_skills, old_skills;
+void setup() {
+   set_name( "lever" );
+   set_short( "blue lever" );
+   add_adjective( "blue" );
+   set_long( "This blue lever is apparently an animus recalculation "+
+         "device.  You're not totally sure how you know this, but "+
+         "there you are.  You could pull it to have your animus "+
+         "recalculated, I suppose.\n" );
+   reset_get();
+   skill_names = ({ });
+   new_skills = ([ ]);
+   old_skills = ([ ]);
 }
-private mixed *add_craft_skill_int(string *bits,
-                                   mixed *arr) {
-   int pos;
-   pos = member_array(bits[0], arr);
-   if (pos == -1) {
-      pos = sizeof(arr);
-      arr += ({ bits[0], 0, 0, ({ }) });
-   }
-   if (sizeof(bits) > 1) {
-      arr[pos + SKILL_BIT] = add_craft_skill_int(bits[1..],
-                                                 arr[pos + SKILL_BIT]);
-   }
-   return arr;
+void init() {
+   this_player()->add_command( "pull", this_object() );
 }
-private void add_craft_skill(string name) {
-   string *bits;
-   bits = explode(name, ".");
-   _craft_skill_tree = add_craft_skill_int(bits, _craft_skill_tree);
+int find_level( string skill ) {
+   int i, sublevel, total;
+   string *others;
+   others = (string *)SKILL_OB->query_immediate_children( skill );
+   if ( !sizeof( others ) )
+      if ( undefinedp( old_skills[ skill ] ) )
+         return (int)this_player()->query_skill( skill );
+      else
+         return old_skills[ skill ];
+   for ( i = 0; i < sizeof( others ); i++ ) {
+      sublevel = find_level( others[ i ] );
+      total += sublevel;
+      new_skills[ others[ i ] ] = sublevel;
+      skill_names -= ({ others[ i ] });
+   }
+   return total / sizeof( others );
 }
-mixed *query_crafts_skill_tree() {
-   return _craft_skill_tree;
-}
-
-==================================================
-FILE: handlers/inherit/distance_handler.c
-==================================================
-
-#define BAD_ROOM -1
-#define TRAVEL_NOT_ALLOWED -2
-#define BAD_DOMAIN -3
-int* query_co_ord(string room);
-private int difference(int bing, int womble){
-   if (womble > bing) {
-      return womble - bing;
+int do_pull() {
+   int i, adjust;
+   new_skills = ([ ]);
+   old_skills = (mapping)this_player()->query_skills();
+   skill_names = m_indices( old_skills );
+   while ( sizeof( skill_names ) ) {
+      new_skills[ skill_names[ 0 ] ] = find_level( skill_names[ 0 ] );
+      skill_names = delete( skill_names, 0, 1 );
    }
-   return bing - womble;
-}
-private int filename_check(string one, string two){
-   string dom_one;
-   string dom_two;
-   string alpha;
-   log_file("/log/PORTAL", "Unable to get co-ords for %O %O, doing filename based check.\n", one, two);
-   dom_one = explode(one, "/")[1];
-   dom_two = explode(two, "/")[1];
-   alpha = dom_one<dom_two?dom_one+":"+dom_two:dom_two+":"+dom_one;
-   switch(alpha){
-      case "am:am":
-         return 3000;
-      case "am:cwc":
-         return TRAVEL_NOT_ALLOWED;
-      case "am:ram":
-         return 3000000;
-      case "am:klatch":
-         return 1000000;
-      case "am:sur":
-         return 500000;
-      case "am:forn":
-         return TRAVEL_NOT_ALLOWED;
-      case "am:guilds":
-         return 1000;
-      case "cwc:ram":
-      case "cwc:klatch":
-      case "cwc:forn":
-      case "cwc:guilds":
-      case "cwc:sur":
-         return TRAVEL_NOT_ALLOWED;
-      case "cwc:cwc":
-         return 500000;
-      case "forn:forn":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:ram":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:guilds":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:klatch":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:sur":
-         return TRAVEL_NOT_ALLOWED;
-      case "guilds:guilds":
-         return 1000;
-      case "guilds:klatch":
-         return 500000;
-      case "guilds:sur":
-         return 500000;
-      case "guilds:ram":
-         return 1500000;
-      case "klatch:klatch":
-         return 1000;
-      case "klatch:sur":
-         return 3300000;
-      case "klatch:ram":
-         return 4000000;
-      case "ram:ram":
-         return 500000;
-      case "ram:sur":
-         return 900000;
-      case "sur:sur":
-         return 500000;
+   reset_eval_cost();
+   skill_names = m_indices( old_skills );
+   for ( i = 0; i < sizeof( skill_names ); i++ ) {
+      adjust = new_skills[ skill_names[ i ] ] - old_skills[ skill_names[ i ] ];
+      if ( adjust )
+         write( "Adjusting "+ skill_names[ i ] +" by "+ adjust +".\n" );
    }
-   return BAD_DOMAIN;
-}
-int query_distance_from_coords(int* co_ord_one, int* co_ord_two){
-   float x;
-   float y;
-   float z;
-   float distanceplane;
-   float distance;
-   x = difference(co_ord_one[0], co_ord_two[0]);
-   y = difference(co_ord_one[1], co_ord_two[1]);
-   z = difference(co_ord_one[2], co_ord_two[2]);
-   distanceplane = sqrt(pow(x, 2) + pow(y, 2));
-   distance = sqrt(pow(distanceplane, 2) + pow(z, 2));
-   return to_int(distance);
-}
-int query_distance_from_rooms(mixed one, mixed two){
-   mixed co_ord_one;
-   mixed co_ord_two;
-   if (objectp(one)) {
-      one = file_name(one);
-   }
-   if (objectp(two)) {
-      two = file_name(two);
-   }
-   if (one->query_co_ord()) {
-      co_ord_one = one->query_co_ord();
-   } else {
-      co_ord_one = query_co_ord(one);
-   }
-   if (two->query_co_ord()) {
-      co_ord_two = two->query_co_ord();
-   } else {
-      co_ord_two = query_co_ord(two);
-   }
-   if(co_ord_one == 0 || co_ord_two == 0) {
-      return filename_check(one, two);
-   }
-   return query_distance_from_coords(co_ord_one, co_ord_two);
+   this_player()->set_skills( new_skills + ([ ]) );
+   return 1;
 }

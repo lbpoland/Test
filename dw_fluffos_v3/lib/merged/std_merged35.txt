@@ -1,2625 +1,2613 @@
-# Total Tokens: 23119
-# Total Files Merged: 22
-# Total Characters: 77130
+# Total Tokens: 25127
+# Total Files Merged: 44
+# Total Characters: 83886
 
-re/inherit/document_handler.c
+/water.c
 ==================================================
 
 #include <move_failures.h>
-#include <nroff.h>
-#include <room/newspaper.h>
-#include <room/document_handler.h>
-#define TAG "document__h"
-class document {
-   string title;
-   string fname;
-   string added_by;
-   int time_added;
-   int type;
+#define SWIMMING_SKILL "other.movement.swimming"
+#define STAMINA_SKILL "other.health"
+#define BUOYANT_PROP "buoyancy"
+#define ANCHOR_PROP "anchor"
+#define GILLS_PROP "gills"
+#define TROLL_RACE "troll"
+object swimmer;
+int bonus, buoyancy, drown_stage, swimming = 0, recheck_delay = -1;
+string sweep_dir = "";
+void calc_swim_bonus();
+int abs( int i );
+void test_sweep();
+void test_float();
+void test_drown();
+string sweep_string( mixed *dest_other_info, int pos );
+varargs int exit_command( string word, mixed verb, object thing );
+int abs( int i )  {  return i < 0 ? -i : i;  }
+int start_floating();
+int start_swimming();
+void setup_shadow( object this_swimmer )  {
+   shadow( this_swimmer, 1 );
+   swimmer = this_swimmer;
+   calc_swim_bonus();
 }
-private mapping _documents;
-private int _next_doc_id;
-string query_save_dir();
-void save_me();
-int is_open_for(string type, string name);
-void add_auto_load_value(mapping map, string tag, string name, mixed value);
-mixed query_auto_load_value(mapping map, string tag, string name);
-void create() {
-   _documents = ([ ]);
-}
-string query_document_file_name(string id) {
-   if (_documents[id]) {
-      return query_save_dir() + "/" + _documents[id]->fname;
+void event_enter( object ob, string message, object from )  {
+   int old_bonus, old_buoy;
+   if (swimmer) {
+      swimmer->event_enter( ob, message, from );
    }
-   return 0;
-}
-string query_document_data(string id) {
-   string fname;
-   fname = query_document_file_name(id);
-   if (fname) {
-      return unguarded( (: read_file($(fname)) :) );
+   old_bonus = bonus;
+   old_buoy = buoyancy;
+   calc_swim_bonus();
+   if ( bonus != old_bonus )  test_sweep();
+   if ( buoyancy != old_buoy )  {
+      buoyancy += (int)ob->query_property( BUOYANT_PROP );
+      test_float();
    }
-   return 0;
+   return;
 }
-int is_document(string id) {
-   return _documents[id] != 0;
+void event_exit( object ob, string message, object to )  {
+   int old_bonus, old_buoy;
+   if (swimmer) {
+      swimmer->event_exit(ob, message, to);
+   }
+   old_bonus = bonus;
+   old_buoy = buoyancy;
+   calc_swim_bonus();
+   if ( bonus != old_bonus )  test_sweep();
+   if ( buoyancy != old_buoy )  {
+      buoyancy -= (int)ob->query_property( BUOYANT_PROP );
+      test_float();
+   }
+   return;
 }
-string query_document_readable(string id) {
-   string fname;
-   string text;
-   fname = query_document_file_name(id);
-   if (fname) {
-      switch (_documents[id]->type) {
-      case DOCUMENT_PLAIN :
-         text = unguarded( (: read_file($(fname)) :) );
+void calc_swim_bonus()  {
+   float pct;
+   object *held;
+   if ( living( swimmer )  &&
+        ( held = (object *)swimmer->query_holding() ) )  {
+      swimmer->calc_burden();
+      bonus = (int)swimmer->query_skill_bonus( SWIMMING_SKILL ) /
+                            ( sizeof( held - (object *)({ 0 }) ) + 1 );
+      buoyancy = bonus - (int)swimmer->query_loc_weight() +
+                      (int)swimmer->query_property( BUOYANT_PROP );
+      if ( (string)swimmer->query_race() == TROLL_RACE )  buoyancy -= 300;
+      if ( buoyancy < 0  &&  bonus )  {
+         pct = -buoyancy / bonus;
+         if ( pct < 1.0 )  {
+            bonus += buoyancy;
+            buoyancy = 0;
+         }
+         else  {
+            pct -= 1.0;
+            buoyancy *= pct;
+            bonus = 0;
+         }
+      }
+   } else  {
+      if (swimmer) {
+         bonus = (int)swimmer->query_property( ANCHOR_PROP );
+         buoyancy = (int)swimmer->query_property( BUOYANT_PROP ) -
+                    (int)swimmer->query_weight();
+      }
+   }
+   return;
+}
+void add_property( string prop, mixed val, int time )  {
+   if (swimmer) {
+      swimmer->add_property( prop, val, time );
+   }
+   if ( prop == GILLS_PROP  &&  val > 0 )  remove_call_out("do_drown");
+   if ( prop == BUOYANT_PROP  &&  val )  {
+      calc_swim_bonus();
+      test_float();
+   }
+   return;
+}
+void remove_property( string prop )  {
+   if (swimmer) {
+     swimmer->remove_property( prop );
+   }
+   if ( prop == GILLS_PROP )  test_drown();
+   else if ( prop == BUOYANT_PROP )  {
+      calc_swim_bonus();
+      test_float();
+   }
+   return;
+}
+int add_skill_level( string skill, int lev )  {
+   int lvl;
+   if ( living(swimmer) )  {
+      lvl = (int)swimmer->add_skill_level( skill, lev );
+      if ( skill == SWIMMING_SKILL  &&  lev )  {
+         calc_swim_bonus();
+         test_sweep();
+         test_float();
+      }
+      return lvl;
+   }
+   else return 0;
+}
+varargs int query_skill_bonus( string skill, int use_base_stats ) {
+  if( ( skill == SWIMMING_SKILL ) &&
+      ( !use_base_stats ) &&
+      ( query_verb() != "skills" ) ) {
+    calc_swim_bonus();
+    return bonus;
+  }
+  return swimmer->query_skill_bonus(skill, use_base_stats);
+}
+int query_swim_bonus()  {  return bonus;  }
+int query_buoyancy()  {  return buoyancy;  }
+void test_sweep()  {
+   mapping flows, possible;
+   int total_flow, r, f, s, flow_rate;
+   string *dirs, dir, *dest_dir_info;
+   object room;
+   s = find_call_out( "do_sweep" );
+   room = environment( swimmer );
+   flows = (mapping)room->query_flows();
+   dest_dir_info = (string *)room->query_dest_dir();
+   f = ( 300 - ( evaluate( flows[ sweep_dir ] ) - swimming * bonus ) ) / 30;
+   if ( f < 0 )  f = 0;
+   f += room->query_min_sweep_delay( sweep_dir );
+   if ( s > f )  {
+      remove_call_out( "do_sweep" );
+      call_out( "do_sweep", f,
+                dest_dir_info[ member_array( sweep_dir,
+                                             dest_dir_info ) + 1 ] );
+   }
+   else if ( s == -1  ||
+             (int)room->query_flow( sweep_dir ) - swimming * bonus <= 0 )  {
+      remove_call_out( "do_sweep" );
+      dirs = keys( flows );
+      total_flow = 0;
+      possible = ([ ]);
+      foreach ( dir in dirs )  {
+         flow_rate = evaluate( flows[ dir ] );
+         if ( ( f = flow_rate - swimming * bonus ) > 0  &&  flow_rate > 0)  {
+            total_flow += f;
+            possible += ([ dir : f ]);
+         }
+      }
+      r = random( total_flow );
+      dirs = keys( possible );
+      total_flow = 0;
+      foreach ( dir in dirs )  {
+         if ( r < total_flow + possible[ dir ] )  {
+            sweep_dir = dir;
+            f = ( 300 - possible[ dir ] ) / 30;
+            if ( f < 0 )  f = 0;
+            f += room->query_min_sweep_delay( dir );
+            call_out( "do_sweep", f,
+                      dest_dir_info[ member_array( sweep_dir,
+                                                   dest_dir_info ) + 1 ] );
+            return;
+         }
+         else total_flow += possible[ dir ];
+      }
+   }
+   return;
+}
+void test_float()  {
+   object room;
+   int s, t;
+   room = environment( swimmer );
+   if ( buoyancy < 0 )  {
+      remove_call_out( "do_rise" );
+      s = find_call_out( "do_sink" );
+      if ( !( room->query_bottom() ) )  {
+         t = (300 + buoyancy) / 30;
+         if ( s > t )  {
+            remove_call_out( "do_sink" );
+            s = -1;
+         }
+         if ( s == -1 )  {
+            call_out( "do_sink", t + room->query_min_sweep_delay( room->
+                         query_down_dir() ) );
+            swimmer->add_property( "there",
+                                   (string)room->query_nonfloat_mess() );
+         }
+      }
+      else  {
+         swimmer->add_property( "there", (string)room->query_bottom_mess() );
+         if ( s > -1 )  remove_call_out( "do_sink" );
+      }
+   }
+   else if ( buoyancy > bonus )  {
+      remove_call_out( "do_sink" );
+      s = find_call_out( "do_rise" );
+      if ( !( room->query_surface() ) )  {
+         t = (300 - buoyancy) / 30;
+         if ( s > t )  {
+            remove_call_out( "do_rise" );
+            s = -1;
+         }
+         if ( s == -1 )  {
+            call_out( "do_rise", t + room->query_min_sweep_delay( room->
+                         query_up_dir() ) );
+            swimmer->add_property( "there",
+                                   (string)room->query_float_mess() );
+         }
+      }
+      else if ( s > -1 )  remove_call_out( "do_rise" );
+   }
+   else  {
+      remove_call_out( "do_rise" );
+      remove_call_out( "do_sink" );
+      swimmer->add_property( "there", (string)room->query_float_mess() );
+   }
+   return;
+}
+void test_drown()  {
+   int delay;
+   if ( environment( swimmer )->query_surface() )
+      remove_call_out("do_drown");
+   else if ( find_call_out( "do_drown" ) == -1  &&
+             !( swimmer->query_property( GILLS_PROP ) ) )  {
+      delay = (int)swimmer->query_skill_bonus( STAMINA_SKILL ) / 20;
+      if ( delay < 15 )  delay = 15;
+      call_out( "do_drown", delay );
+      drown_stage = 0;
+   }
+   return;
+}
+void do_sweep( string dest )  {
+   mixed *dest_other_info;
+   object room;
+   room = environment(swimmer);
+   if ( environment( swimmer )->query_terrain() )
+      environment( swimmer )->set_destination( sweep_dir );
+   dest_other_info = (mixed *)room->query_dest_other();
+   if ( !( swimmer->query_property("player") ) )
+      swimmer->move( dest,
+                     replace_string( (string)room->query_sweep_in_mess(),
+                                     "$F",sweep_string( dest_other_info,
+                                        member_array( sweep_dir,
+                                          dest_other_info ) + 1 ) ),
+                     replace_string( (string)room->query_sweep_out_mess(),
+                                     "$T", sweep_dir ) );
+   else  {
+      tell_object( swimmer, "The current pulls you " + sweep_dir + ".\n" );
+      swimmer->move_with_look( dest,
+                               replace_string( (string)room->
+                                               query_sweep_in_mess(), "$F",
+                                               sweep_string( dest_other_info,
+                                                 member_array( sweep_dir,
+                                                   dest_other_info ) + 1 ) ),
+                               replace_string( (string)room->
+                                               query_sweep_out_mess(), "$T",
+                                               sweep_dir ) );
+   }
+   return;
+}
+void do_sink()  {
+   string dir;
+   mixed *dest_other_info;
+   int i;
+   object room;
+   room = environment(swimmer);
+   dir = (string)room->query_down_dir();
+   if ( environment( swimmer )->query_terrain() )
+      environment( swimmer )->set_destination( dir );
+   dest_other_info = (mixed *)room->query_dest_other();
+   if ( ( i = member_array( dir, dest_other_info ) ) > -1 )  {
+      if ( !( swimmer->query_property("player") ) )
+         swimmer->move( dest_other_info[ i + 1 ][0],
+                        replace_string( (string)room->query_sink_in_mess(),
+                                        "$F", sweep_string( dest_other_info,
+                                          i + 1 ) ),
+                        replace_string( (string)room->query_sink_out_mess(),
+                                        "$T", dir ) );
+      else  {
+         tell_object( swimmer, "You sink toward the bottom.\n" );
+         swimmer->move_with_look( dest_other_info[ i + 1 ][0],
+                                  replace_string( (string)room->
+                                                          query_sink_in_mess(),
+                                        "$F", sweep_string( dest_other_info,
+                                          i + 1 ) ),
+                                  replace_string( (string)room->
+                                                     query_sink_out_mess(),
+                                                  "$T", dir ) );
+      }
+   }
+   return;
+}
+void do_rise()  {
+   string dir;
+   mixed *dest_other_info;
+   int i;
+   object room;
+   room = environment( swimmer );
+   dir = (string)room->query_up_dir();
+   if ( environment( swimmer )->query_terrain() )
+      environment( swimmer )->set_destination( dir );
+   dest_other_info = (mixed *)room->query_dest_other();
+   if ( ( i = member_array( dir, dest_other_info ) ) > -1 )  {
+      if ( !( swimmer->query_property("player") ) )
+         swimmer->move( dest_other_info[ i + 1 ][0],
+                        replace_string( (string)room->query_float_in_mess(),
+                                        "$F", sweep_string( dest_other_info,
+                                          i + 1 ) ),
+                        replace_string( (string)room->query_float_out_mess(),
+                                        "$T", dir ) );
+      else  {
+         tell_object( swimmer, "You drift toward the surface.\n" );
+         swimmer->move_with_look( dest_other_info[ i + 1 ][0],
+                                  replace_string( (string)room->
+                                                     query_float_in_mess(),
+                                     "$F", sweep_string( dest_other_info,
+                                       i + 1 ) ),
+                                  replace_string( (string)room->
+                                                     query_float_out_mess(),
+                                                  "$T", dir ) );
+      }
+   }
+   return;
+}
+void do_drown()  {
+   string *exits, up;
+   int delay;
+   delay = (int)swimmer->query_skill_bonus( STAMINA_SKILL ) / 5;
+   if ( delay < 15 )  delay = 15;
+   switch ( drown_stage )  {
+      case 0:
+         tell_object( swimmer, "Your lungs start to feel a bit heavy.\n" );
+         tell_room( environment( swimmer ), (string)swimmer->query_short() +
+                    " begins to look a bit uncomfortable.\n", swimmer );
+         call_out( "do_drown", delay );
          break;
-      case DOCUMENT_HTML :
-         text = unguarded( (: NROFF_HAND->cat_file($(fname) + ".nroff", 1) :) );
-         if (!text) {
-            text = unguarded( (: read_file( $(fname)) :) );
-            if (text) {
-               text = NEWSPAPER_HANDLER->convert_html(text);
-               unguarded( (: write_file($(fname) + ".proc", $(text), 1) :) );
-               if (unguarded( (: NROFF_HAND->create_nroff($(fname) + ".proc",
-                           $(fname) + ".nroff")
-:) )) {
-                  text = unguarded( (: NROFF_HAND->cat_file($(fname) +
-                                                            ".nroff") :) )
-;
-               } else {
-                  text = "Unable to make nroff file.\n";
-               }
-            } else {
-               text = "Unable to read the file, opps!\n";
+      case 1:
+         tell_object( swimmer, "Your lungs are starting to burn.\n" );
+         tell_room( environment( swimmer ), (string)swimmer->query_short() +
+                    " starts to look slightly blue.\n", swimmer );
+         call_out( "do_drown", delay );
+         break;
+      case 2:
+         tell_object( swimmer, "Your lungs are fairly bursting.\n" );
+         tell_room( environment( swimmer ), (string)swimmer->query_short() +
+                    " begins to look panicky.\n", swimmer);
+         call_out( "do_drown", delay );
+         break;
+      default:
+         swimmer->adjust_hp( ( 2 - drown_stage ) * 5 *
+                             ( 30 - (int)swimmer->query_con() ) );
+         if ( swimmer->query_hp() > 0 )  {
+            call_out( "do_drown", delay );
+            exits = (string *)environment( swimmer )->query_dest_dir();
+            if ( member_array( up = (string)environment( swimmer )->
+                                            query_up_dir(),
+                               exits ) > -1 )  {
+               tell_object( swimmer, "You panic and try to flee for the "
+                            "surface.\n" );
+               tell_room( environment( swimmer ),
+                          (string)swimmer->query_short() + " panics and madly "
+                          "tries to flee for the surface.\n", swimmer );
+               swimmer->exit_command( up );
+            }
+            else  {
+               up = exits[ random( sizeof( exits ) ) / 2 ];
+               tell_object( swimmer, "You panic and try to flee " + up +
+                            ".\n" );
+               tell_room( environment( swimmer ),
+                          (string)swimmer->query_short() + " panics and tries "
+                          "to flee " + up + ".\n", swimmer );
+               swimmer->exit_command( up );
             }
          }
+         else swimmer->attack_by( environment( swimmer ) );
          break;
-      }
    }
-   return text;
+   ++drown_stage;
+   return;
 }
-string query_document_html(string id) {
-   string fname;
-   string text;
-   fname = query_document_file_name(id);
-   if (fname) {
-      switch (_documents[id]->type) {
-      case DOCUMENT_PLAIN :
-         text = unguarded( (: read_file($(fname)) :) );
-         text = replace(fname, ({ "&", "&amp;", "<", "&lt;", ">", "&gt;",
-                                  " ", "&nbsp;", "\n", "<br>" }) );
-         break;
-      case DOCUMENT_HTML :
-         text = unguarded( (: read_file($(fname)) :) );
-         if (!text) {
-            text = unguarded( (: read_file( $(fname)) :) );
-            if (text) {
-               text = NEWSPAPER_HANDLER->convert_html(text);
-               unguarded( (: write_file($(fname) + ".proc", $(text), 1) :) );
-               if (unguarded( (: NROFF_HAND->create_nroff($(fname) + ".proc",
-                           $(fname) + ".nroff")
-:) )) {
-                  text = unguarded( (: NROFF_HAND->cat_file($(fname) +
-                                                            ".nroff") :) )
-;
-               } else {
-                  text = "Unable to make nroff file.\n";
-               }
-            } else {
-               text = "Unable to read the file, opps!\n";
-            }
+void do_soak()  {
+   swimmer->add_effect("/std/effects/other/wetness", swimmer->query_weight());
+   swimmer->do_soak();
+}
+void cancel_sweep()  {
+   remove_call_out( "do_sweep" );
+   sweep_dir = "";
+   return;
+}
+void dest_water_shadow()  {
+   remove_call_out( "do_sweep" );
+   remove_call_out( "do_rise" );
+   remove_call_out( "do_sink" );
+   remove_call_out( "do_drown" );
+   remove_call_out( "do_soak" );
+   remove_call_out( "test_again" );
+   if (swimmer) {
+      swimmer->remove_property("there");
+   }
+   destruct( this_object() );
+   return;
+}
+object find_water_shadow()  {  return this_object();  }
+int command_shadowed( string verb, string args )  {
+   string my_mess, others_mess;
+   my_mess = 0;
+   if ( !( environment( swimmer )->query_surface() ) )  {
+      if ( verb == "say"  ||  verb == "'" )  {
+         my_mess = "You try to talk, but only generate some bubbles.";
+         others_mess = (string)swimmer->query_short() + " emits a 'glub glub' "
+                       "noise.";
+         if ( !( swimmer->query_property( GILLS_PROP ) ) )  {
+            my_mess += "  In the process you inhale some water.\n";
+            others_mess += "  In the process, " +
+                           (string)swimmer->query_pronoun() + " inhales "
+                           "some water.\n";
+            ++drown_stage;
          }
-         break;
+         else  {
+            my_mess += "\n";
+            others_mess += "\n";
+         }
+      }
+      else if ( verb == "lsay" )  {
+         my_mess = "You try to speak loudly, but can only produce a lot of "
+                   "bubbles.";
+         others_mess = (string)swimmer->query_short() + " produces a sort "
+                       "of 'glooob gloob' sound.";
+         if ( !( swimmer->query_property( GILLS_PROP ) ) )  {
+            my_mess += "  You also inhale a fair amount of water.\n";
+            others_mess += "  " + (string)swimmer->query_pronoun() + "also "
+                           "inhales a fair amount of water.\n";
+            drown_stage += 2;
+         }
+         else  {
+            my_mess += "\n";
+            others_mess += "\n";
+         }
+      }
+      else if ( verb == "shout" )  {
+         my_mess = "You try to shout, but your main effects are a muffled "
+                   "'arrrble' and a lot of bubbles.";
+         others_mess = (string)swimmer->query_short() + " open " +
+                       (string)swimmer->query_possessive() + " mouth and "
+                       "emits a muffled 'arrrble' noise.";
+         if ( !( swimmer->query_property( GILLS_PROP ) ) )  {
+            my_mess += "  You also inhale about a lungful of water.\n";
+            others_mess += "  " + (string)swimmer->query_pronoun() + " sucks "
+                           "in a large amount of water in the process.\n";
+            drown_stage += 3;
+         }
+         else  {
+            my_mess += "\n";
+            others_mess += "\n";
+         }
       }
    }
-   return text;
+   if ( my_mess )  {
+      tell_object( swimmer, my_mess );
+      tell_object( environment( swimmer ), others_mess );
+      return 1;
+   }
+   else return (int)swimmer->command_shadowed( verb, args );
 }
-void update_document_text(string id, string text) {
-   string fname;
-   fname = query_document_file_name(id);
-   if (fname) {
-      unguarded( (: write_file($(fname), $(text), 1) :));
+int *set_hold( object ob, int pos )  {
+   int *other, old_bonus;
+   old_bonus = bonus;
+   other = (int *)swimmer->set_hold( ob, pos );
+   calc_swim_bonus();
+   if ( old_bonus != bonus )  {
+      test_sweep();
+      test_float();
    }
+   return other;
 }
-void delete_document(string id) {
-   string fname;
-   fname = query_document_file_name(id);
-   if (fname) {
-      unguarded( (: rm($(fname) + ".proc") :));
-      unguarded( (: rm($(fname) + ".nroff.o") :));
-      unguarded( (: rm($(fname)) :));
-      map_delete(_documents, id);
-      save_me();
+void do_death( object thing )  {
+   if (swimmer) {
+      swimmer->do_death( thing );
    }
+   remove_call_out( "do_sweep" );
+   remove_call_out( "do_rise" );
+   remove_call_out( "do_sink" );
+   remove_call_out( "do_drown" );
+   remove_call_out( "do_soak" );
+   swimmer->remove_property("there");
+   return;
 }
-string add_document(string title, string text, string person, int type) {
-   class document bing;
-   string id;
-   id = _next_doc_id + "";
-   bing = new(class document);
-   bing->title = title;
-   bing->added_by = person;
-   bing->type = type;
-   bing->time_added = time();
-   bing->fname = id + ".txt";
-   _next_doc_id++;
-   _documents[id] = bing;
-   update_document_text(id, text);
-   save_me();
-   return id;
+void remove_ghost()  {
+  swimmer->remove_ghost();
+  environment( swimmer )->event_enter( swimmer, "", 0 );
+  return;
 }
-int do_list() {
-   string ret;
-   class document info;
-   string id;
-   if (!is_open_for("document_view", this_player()->query_name())) {
-      add_failed_mess("You cannot list documents on $I.\n",
-                      ({ this_object() }));
-      return 0;
+int *set_unhold( object ob )  {
+   int *other, old_bonus;
+   old_bonus = bonus;
+   other = (int *)swimmer->set_unhold( ob );
+   calc_swim_bonus();
+   if ( old_bonus != bonus )  {
+      test_sweep();
+      test_float();
    }
-   if (!sizeof(_documents)) {
-      add_failed_mess("Cannot find any documents to list on $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   ret = "";
-   foreach (id, info in _documents) {
-      ret += "$I$3=" + id + ") " + info->title + " [" + info->added_by +
-             "] - " + ctime(info->time_added)[4..9] + " " +
-             ctime(info->time_added)[<4..] + "\n";
-   }
-   write("$P$Documents$P$" + ret);
-   add_succeeded_mess(({ "", "$N lists the documents in $I.\n" }),
-                      ({ this_object() }));
-   return 1;
+   return other;
 }
-int do_display(string id) {
-   string ret;
-   class document info;
-   if (!is_open_for("document_view", this_player()->query_name())) {
-      add_failed_mess("You cannot view documents on $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   ret = query_document_readable(id);
-   if (!ret) {
-      add_failed_mess("Cannot find the document " + id + " on $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   info = _documents[id];
-   ret = "Document #" + id + " " + info->title + " [" + info->added_by +
-             "] - " + ctime(info->time_added)[4..9] + " " +
-             ctime(info->time_added)[<4..] + "\n" + ret;
-   write("$P$Document " + id + "$P$" + ret);
-   add_succeeded_mess(({ "", "$N reads a document from $I.\n" }),
-                      ({ this_object() }));
-   return 1;
-}
-int do_add_document(string title, int type) {
-   if (!is_open_for("document_add", this_player()->query_name())) {
-      add_failed_mess("You cannot add documents to $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   this_player()->do_edit("", "finish_edit", this_object(), 0,
-                          ({ title, type }));
-   return 1;
-}
-void finish_edit(string str, mixed* args) {
-   string title;
-   int type;
-   title = args[0];
-   type = args[1];
-   if (!str || str == "") {
-      write("Abandoning adding the document.\n");
-      return ;
-   }
-   add_document(title, str, this_player()->query_cap_name(), type);
-   write("Added the document into the collection.\n");
-}
-int do_delete_document(string id) {
-   if (!is_open_for("document_delete", this_player()->query_name())) {
-      add_failed_mess("You cannot delete documents from $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   if (!is_document(id)) {
-      add_failed_mess("The document " + id + " does not exist in $I.\n",
-                      ({ this_object() }));
-      return 0;
-   }
-   delete_document(id);
-   add_succeeded_mess("$N delete$s a document from $I.\n", ({ this_object() }));
-   return 1;
-}
-mapping query_dynamic_auto_load(mapping map) {
-   if (file_name(this_object()) != "/std/room/furniture/inherit/document_handler" && map) {
-      add_auto_load_value(map, TAG, "documents", _documents);
-      add_auto_load_value(map, TAG, "doc id", _next_doc_id);
-      return map;
-   }
-}
-void init_dynamic_arg(mapping map) {
-   if (file_name(this_object()) != "/std/room/furniture/inherit/document_handler" && map) {
-      _documents = query_auto_load_value(map, TAG, "documents");
-      if (!_documents) {
-         _documents = ([ ]);
+int move( mixed dest, string messin, string messout )  {
+   string where, *dest_dir_info;
+   int pos;
+   if ( !swimmer->query_property( "dead" )  &&  living( swimmer ) )  {
+      if ( objectp( dest ) )  where = file_name( dest );
+      else where = dest;
+      dest_dir_info = (string *)environment( swimmer )->query_dest_dir();
+      pos = member_array( where, dest_dir_info ) - 1;
+      if ( pos > -1  &&
+           !(int)environment( swimmer )->
+                    attempt_exit( dest_dir_info[ pos ], swimmer ) )  {
+         notify_fail( "" );
+         return MOVE_NO_DROP;
       }
-      _next_doc_id = query_auto_load_value(map, TAG, "doc id");
    }
+   return swimmer->move( dest, messin, messout );
 }
-void init_object() {
-   add_command("list", "documents [from] <direct:object>", (: do_list() :));
-   add_command("view", "document <string'id'> [from] <direct:object>",
-                (: do_display($4[0]) :));
-   add_command("add", "documents {html|plain} called <string:quoted'title'> to <direct:object>",
-               (: do_add_document($4[1], ($4[0] == "html"?DOCUMENT_HTML:DOCUMENT_PLAIN)) :));
-   add_command("delete", "document <string'id'> [from] <direct:object>",
-                (: do_delete_document($4[0]) :));
+int do_float()  {
+   if ( !swimming )  {
+      tell_object( swimmer, "You are already drifting with the current.\n" );
+   }
+   else  {
+      tell_object( swimmer, "You stop resisting the current.\n" );
+      swimming = 0;
+      test_sweep();
+   }
+   return 1;
 }
-void init_room() {
-   add_command("list", "[documents]", (: do_list() :));
-   add_command("view", "[document] <string'id'>",
-                (: do_display($4[0]) :));
-   add_command("add", "[document] {html|plain} called <string:quoted'title'>",
-               (: do_add_document($4[1], ($4[0] == "html"?DOCUMENT_HTML:DOCUMENT_PLAIN)) :));
-   add_command("delete", "[document] <string'id'>",
-                (: do_delete_document($4[0]) :));
+int do_swim()  {
+   if ( swimming )  {
+      tell_object( swimmer, "You are already fighting the current.\n" );
+   }
+   else  {
+      tell_object( swimmer, "You start to resist the current.\n" );
+      swimming = 1;
+      test_sweep();
+   }
+   return 1;
+}
+void test_again()  {
+   test_float();
+   test_sweep();
+   call_out( "test_again", recheck_delay );
+}
+void update_recheck( int time_out )  {
+   int t;
+   recheck_delay = time_out;
+   if ( time_out == -1 )  {
+      remove_call_out( "test_again" );
+   }
+   else if ( ( t = find_call_out( "test_again" ) ) == -1 )  {
+      call_out( "test_again", time_out );
+   }
+   else if ( time_out < t )  {
+      remove_call_out( "test_again" );
+      call_out( "test_again", time_out );
+   }
+   return;
+}
+string sweep_string( mixed *dest_other_info, int pos )  {
+   if ( pointerp( dest_other_info[pos][5] ) )  {
+      return dest_other_info[pos][5][1];
+   }
+   else  {
+      return dest_other_info[pos][5];
+   }
 }
 
 ==================================================
-FILE: room/furniture/inherit/furniture_base.c
+FILE: shadows/fighting/bob.c
 ==================================================
 
-#include <move_failures.h>
-#include <position.h>
-#include <housing.h>
-#include <room/placement.h>
-void add_property(string name, mixed type);
-mixed query_property(string name);
-string one_short();
-int query_light_needs_inform();
-void inform_of_light_level_change(object ob);
-private nosave mapping _allowed_room_verbs;
-private nosave string *_allowed_positions;
-private nosave string _bonded;
-void create() {
-  _allowed_positions = ({ });
-  if (base_name(this_object()) + ".c" != __FILE__) {
-    if ( !query_property( "shop type" ) ) {
-      add_property( "shop type", "furniture" );
+#include <tasks.h>
+#include <weapon.h>
+#define QUEST_MAX 570
+#define DIFFICULTY 100
+inherit "/std/effect_shadow";
+string *data;
+void set_data( string *words ) { data = words; }
+mapping special_attack( object target ) {
+    int damage;
+    int skill;
+    int difficulty;
+    object *args;
+    args = arg();
+    if((object)environment(target) != (object)environment(player)) {
+        tell_object(player, "Where did "+target->short()+" go?\n");
+        remove_this_effect();
+        return ([ ]);
     }
-    this_object()->set_max_cond(100000);
-    this_object()->set_cond(100000);
-  }
-  if(clonep(this_object()) &&
-     base_name(this_object())[0..14] != "/obj/furnitures" &&
-     base_name(this_object())[0..2] != "/w/" &&
-     strsrch (base_name(this_object()), "_dev") == -1 &&
-     strsrch (base_name(this_object()), "_pt") == -1) {
-    call_out("move", 2, "/room/void");
-  }
-}
-int query_furniture() {
-   return 1;
-}
-void set_allowed_positions(string *positions) {
-   _allowed_positions = positions;
-}
-void remove_allowed_positions( string *positions ){
-  _allowed_positions -= positions;
-}
-string* query_allowed_positions() {
-   return _allowed_positions;
-}
-void set_allowed_room_verbs( mapping allowed ) {
-  _allowed_room_verbs = allowed;
-}
-mapping query_allowed_room_verbs() {
-   return _allowed_room_verbs;
-}
-string query_position_string(string position_type) {
-  if(member_array(position_type, _allowed_positions) != -1) {
-    return one_short();
-  }
-  return 0;
-}
-void set_bonded(string person) {
-   _bonded = person;
-}
-string query_bonded() {
-   return _bonded;
-}
-string query_owner() {
-   return _bonded;
-}
-int is_allowed_to_mess(object player) {
-  mixed *stuff;
-  string occupier;
-  if(environment() && !function_exists("query_owner", environment()))
-    return 1;
-  if(player->query_creator())
-    return 1;
-  if(player->query_caster())
-    player = find_player(player->query_caster());
-  if(player->query_owner())
-    player = player->query_owner();
-  if (player && player->query_name() == _bonded)
-    return 1;
-  stuff = this_object()->query_property("dropped");
-  if(player && sizeof(stuff) && stuff[0] == player->query_name())
-    return 1;
-  if(player && environment()) {
-    if(environment()->test_occupier(player->query_name()))
-      return 1;
-    if(environment()->query_owner() == "For Sale" ||
-       environment()->query_owner() == "Under Offer")
-      return 1;
-    occupier = HOUSING->query_owner(base_name(environment()));
-    if(pk_check(player, occupier, 1))
-      return 0;
-  }
-  return (!_bonded);
-}
-int move_check(object dest) {
-  if (living(dest)) {
-    if (!is_allowed_to_mess(dest)) {
+    if (!sizeof(match_objects_for_existence("bucket", ({ this_player() }))) &&
+        !sizeof(match_objects_for_existence("apple", ({ this_player() })))) {
+       add_failed_mess("You must have an apple and a bucket to use bob.\n");
        return 0;
     }
-  } else if (this_player() && environment()) {
-    if (!(living(environment()) && dest == environment(environment()))) {
-       if (!is_allowed_to_mess(this_player())) {
-          return 0;
-       }
-    }
-  }
-  return 1;
-}
-string query_placement_verb() {
-   return query_property(PLACEMENT_CURRENT_ROOM_VERB);
-}
-string query_placement_other() {
-   return query_property(PLACEMENT_CURRENT_ROOM_OTHER);
-}
-string query_placement_position() {
-   return query_property(PLACEMENT_CURRENT_ROOM_POSITION);
-}
-int query_placement_immovable() {
-   return query_property(PLACEMENT_IMMOVABLE);
-}
-int is_placed() {
-   return query_placement_position() &&
-     stringp(query_placement_verb()) &&
-     stringp(query_placement_other());
-}
-void set_placement_verb(string verb) {
-   add_property(PLACEMENT_CURRENT_ROOM_VERB, verb);
-}
-void set_placement_other(string other) {
-   add_property(PLACEMENT_CURRENT_ROOM_OTHER, other);
-}
-void set_placement_position(string position) {
-   add_property(PLACEMENT_CURRENT_ROOM_POSITION, position);
-}
-int set_placement_immovable() {
-   return query_property(PLACEMENT_IMMOVABLE);
-}
-
-==================================================
-FILE: room/furniture/inherit/one_armed_bandit_inherit.c
-==================================================
-
-#include <money.h>
-int do_slot();
-int do_pull_lever();
-int do_read_dial();
-int set_coin_type( string coin );
-int set_chances( int c1, int c2, int c3, int c4, int c5 );
-int set_prizes( int p1, int p2, int p3, int p4, int p5, int jackpot );
-int* query_prizes();
-int* query_chances();
-string query_coin_type();
-void rollem( object player );
-string my_short();
-private string *animal = ({"albatross", "frog", "hippo", "turtle", "cabbage"});
-private string *adject = ({"A crazy", "A dancing", "A sad", "A floopy", "A bemused",
-    "A sarcastic", "A quizzical", "A startled", "A friendly", "A mindless"});
-private string _coin = "Ankh-Morpork pence", _coin_short = "pence",
-    _coin_pl = "Ankh-Morpork pence";
-private int _busy = 0;
-private int* _chances = ({1,1,1,1,1});
-private int* _prizes = ({2,2,2,2,2,3});
-void init(){
-    this_player()->add_command( "slot", this_object(),
-        _coin_short + " into <direct:object>", (: do_slot() :) );
-    this_player()->add_command( "pull", this_object(),
-        "lever on <direct:object>", (: do_pull_lever() :) );
-    this_player()->add_command( "read", this_object(),
-        "dial on <direct:object>", (: do_read_dial() :) );
-}
-int set_coin_type( string coin ) {
-    if( member_array( coin, MONEY_HAND->query_valid_types() ) == -1 )
-        return 0;
-    _coin = coin;
-    _coin_short = MONEY_HAND->query_aliases_for( coin )[0];
-    _coin_pl = MONEY_HAND->query_main_plural_for( coin );
-    return 1;
-}
-int set_chances( int c1, int c2, int c3, int c4, int c5 ) {
-    if( !( c1 > 0 && c2 > 0 && c3 > 0 && c4 > 0 && c5 > 0 ) )
-        return 0;
-    _chances = ({ c1, ( c1 + c2 ), ( c1 + c2 + c3 ), ( c1 + c2 + c3 + c4 ),
-        ( c1 + c2 + c3 + c4 + c5 ) });
-    return 1;
-}
-int set_prizes( int p1, int p2, int p3, int p4, int p5, int jackpot ) {
-    if( !( p1 > 1 && p2 > 1 && p3 > 1 && p4 > 1 && p5 > 1 && jackpot > 1 ) ||
-        ( jackpot <= p1 || jackpot <= p2 || jackpot <= p3 ||
-        jackpot <= p4 || jackpot <= p5 ) )
-        return 0;
-    _prizes = ({p1, p2, p3, p4, p5, jackpot});
-    return 1;
-}
-int do_slot() {
-    if( member_array( _coin, this_player()->query_money_array() ) == -1 ) {
-        this_player()->add_failed_mess( this_object(),
-            "You need " + add_a( _coin ) + " to play.\n", ({ }) );
+    difficulty += target->query_str() * 10;
+    skill = (int)player->query_skill_bonus("fighting.combat.melee."+ data[1]);
+    damage = 4 + sqrt( damage ) / 2;
+    damage = 2 * damage + 8 * (random(damage)) +
+             2 * damage + 8 * (random(damage));
+    switch( (int)TASKER->perform_task(player, "fighting.combat.melee."+ data[1],
+        difficulty, TM_COMMAND)) {
+    case AWARD :
+        tell_object( player, "%^YELLOW%^"+ replace( ({ "You feel that "+
+              "your skill with a bucket has increased.", "You feel "+
+              "more able to use a bucket.", "You seem to be a step "+
+              "closer to mastering a bucket." })[ random( 3 ) ],
+            "$weapon$", ( args[ 1 ] == player ? "unarmed combat" :
+              (string)args[ 1 ]->a_short() ) ) +"%^RESET%^\n" );
+    case SUCCEED :
+        tell_object( player, "You grab hold of " +
+          (string)target->the_short() + "'s head and shove it down "
+          "into the bucket.\nYou scream out 'Bob for this!'\n"
+          "You try and drown " + target->the_short() + ".\n");
+        tell_room( environment(player),
+          player->the_short() + " grabs hold of " +
+          (string)target->the_short() + "'s head and shoves it down "
+          "into the bucket.\n" + player->the_short() +
+          " scream out 'Bob for this!'\n" +
+          player->the_short() + " tries to drown " + target->the_short() +
+          ".\n", ({ player, }));
+        set_arg(0);
+        break;
+    default:
+        tell_object( player, "You manage to botch your use of a bucket.\n");
+        remove_this_effect();
         return 0;
     }
-    if( _busy == 1 ) {
-        this_player()->add_failed_mess( this_object(),
-            "There is already a coin inserted.\n", ({ }) );
-        return 0;
-    }
-    if( _busy == 2 ) {
-        this_player()->add_failed_mess( this_object(),
-            "The wheels of $D are still spinning.\n", ({ }) );
-        return 0;
-    }
-    this_player()->adjust_money( -1, _coin );
-    this_object()->adjust_money( 1 );
-    _busy = 1;
-    this_player()->add_succeeded_mess( this_object(),
-        "$N insert$s " + add_a( _coin_short ) + " into $D.\n", ({ }) );
-    return 1;
+#ifdef DEBUG
+    tell_creator("ceres", sprintf("Crush: player: %s, weapon: %s (%d), Diff: %d, Dam: %d Ski: %d\n",
+        player->query_name(),
+        args[ 1 ]->query_name(),
+        args[1]->query_enchant(),
+        difficulty, damage, skill));
+#endif
+    remove_this_effect();
+    return ([ args[ 1 ] : ({ damage }) + data ]);
 }
-int do_pull_lever() {
-    if( _busy == 0 ) {
-        this_player()->add_failed_mess( this_object(),
-            "You must put a coin in the slot before you can play.\n", ({ }) );
-        return 0;
-    }
-    if( _busy == 2 ) {
-        this_player()->add_failed_mess( this_object(),
-            "The wheels of $D are already spinning.\n", ({ }) );
-        return 0;
-    }
-    this_player()->add_succeeded_mess( this_object(),
-        ({"You pull the lever.  The pictures behind the windows blur... one by "
-             "one they are replaced by a new picture that appears with a sharp "
-             "click.\n",
-        "$N pull$s the lever on $D and the machine whirs softly.  The sound is "
-        "cut short by three sharp clicks.\n"
-        }), ({ }) );
-    call_out( "rollem", 0, this_player() );
-    _busy = 2;
-    return 1;
-}
-void rollem( object player ) {
-    int a1, a2, a3, c;
-    int adj1 = random( 10 ),
-        adj2 = random( 10 ),
-        adj3 = random( 10 );
-    c = random( _chances[4] );
-    if( c < _chances[0] )
-        a1 = 0;
-    else if( c < _chances[1] )
-        a1 = 1;
-    else if( c < _chances[2] )
-        a1 = 2;
-    else if( c < _chances[3] )
-        a1 = 3;
-    else
-        a1 = 4;
-    c = random( _chances[4] );
-    if( c < _chances[0] )
-        a2 = 0;
-    else if( c < _chances[1] )
-        a2 = 1;
-    else if( c < _chances[2] )
-        a2 = 2;
-    else if( c < _chances[3] )
-        a2 = 3;
-    else
-        a2 = 4;
-    c = random( _chances[4] );
-    if( c < _chances[0] )
-        a3 = 0;
-    else if( c < _chances[1] )
-        a3 = 1;
-    else if( c < _chances[2] )
-        a3 = 2;
-    else if( c < _chances[3] )
-        a3 = 3;
-    else
-        a3 = 4;
-    tell_object( player,
-        "The windows now show these pictures :\n\n"
-         "        " + adject[ adj1 ] + " " + animal[ a1 ] +
-         "    " + adject[ adj2 ] + " " + animal[ a2 ] +
-         "    " + adject[ adj3 ] + " "+animal[ a3 ] + "\n\n" );
-    if( a1 == a2 && a1 == a3 ) {
-        if( adj1 == adj2 && adj1 == adj3 ) {
-            tell_object( player,
-                "WOW!!  A triple " + adject[ adj1 ] + " " + animal[ a1 ] +
-                "!!  You really hit the jackpot this time!\n\n"
-                "Whistles and bells start sounding like crazy, the whole " +
-                this_object()->short() +  " glows with flashing lights.  There "
-                "is a loud tingling as " + _prizes[5] + " " +
-                MONEY_HAND->query_plural_for( _coin ) + " drop into the tray "
-                "of " + my_short() + ".  Slightly stunned you quickly scoop "
-                "it up and cackle with delight.\n" );
-            tell_room( environment( this_object() ),
-                "Whistles and bells start sounding and " + my_short() +
-                " starts to flash with coloured lights.  Someone must have "
-                "won the jackpot...lucky buggers.  As you watch some coins "
-                "drop into the tray at the bottom of " + my_short() + ", " +
-                player->one_short() + " snatches it up and cackles with "
-                "delight.\n", ({player}) );
-            player->adjust_money( _prizes[5] ,_coin );
-            this_object()->adjust_money( -(_prizes[ 5 ]) );
-            _busy = 0;
-            return;
-        }
-        tell_object( player,
-            "Congratulations!  You scored a triple " + animal[ a1 ] + "!\n" );
-        player->adjust_money( _prizes[ a1 ], _coin );
-        tell_object( player,
-            _prizes[ a1 ]+ " " + MONEY_HAND->query_plural_for( _coin ) +
-            " fall into the tray at the bottom of " + my_short() + ".  You "
-            "quickly scoop them up before anyone else can snaffle them.\n" );
-        tell_room( environment( this_object() ),
-            player->one_short() + " deftly scoops some coins from the tray at "
-            "the bottom of " + my_short() + ".\n", ({player}) );
-        this_object()->adjust_money( -(_prizes[ a1 ]) );
-        _busy = 0;
-        return;
-    }
-    tell_object( player,
-        "You didn't win.  Why not have another go and attempt to recoup your "
-        "losses?\n" );
-    _busy = 0;
-}
-int* query_chances() {
-    int* tmp = ({ });
-    tmp += ({ _chances[0] });
-    tmp += ({ _chances[1] - _chances[0] });
-    tmp += ({ _chances[2] - _chances[1] });
-    tmp += ({ _chances[3] - _chances[2] });
-    tmp += ({ _chances[4] - _chances[3] });
-    return tmp;
-}
-int* query_prizes() {
-    return _prizes;
-}
-string query_coin_type() {
-    return _coin;
-}
-string my_short() {
-    return this_object()->the_short();
-}
-int do_read_dial() {
-    string tmp =
-        "Stake        : 1 " + _coin_pl + "\n"
-        "3x Albatross : " + _prizes[0] + " " + _coin_pl + "\n"
-        "3x Frog      : " + _prizes[1] + " " + _coin_pl + "\n"
-        "3x Hippo     : " + _prizes[2] + " " + _coin_pl + "\n"
-        "3x Turtle    : " + _prizes[3] + " " + _coin_pl + "\n"
-        "3x Cabbage   : " + _prizes[4] + " " + _coin_pl + "\n"
-        "JACKPOT      : " + _prizes[5] + " " + _coin_pl + "\n";
-    this_player()->add_succeeded_mess( this_object(),
-        ({tmp, "$N read$s the dial on $D.\n"}), ({ }) );
-    return 1;
+int tasking_done() { return 1; }
+void event_death(object killed, object * others, object killer, string rmess,
+                      string kmess) {
+  object *args;
+  player->event_death(killed, others, killer, rmess, kmess);
+  args = arg();
+  if ( killed == args[ 0 ] ) remove_this_effect();
 }
 
 ==================================================
-FILE: room/furniture/games/card_base.c
+FILE: shadows/fighting/combat.c
 ==================================================
 
-#include <room/card_base.h>
-#define CARD_NUM_MAX CARD_NUMBER_KING
-int is_card_red(class playing_card card);
-class playing_card* make_deck(int number_of_decks,
-                              int number_of_jokers) {
-   class playing_card* deck;
-   class playing_card card;
-   int i;
-   int suit;
-   int num;
-   deck = ({ });
-   for (i = 0; i < number_of_decks; i++) {
-      for (suit = CARD_SUIT_HEARTS; suit <= CARD_SUIT_SPADES; suit++) {
-         for (num = 1; num <= CARD_NUM_MAX; num++) {
-            card = new(class playing_card);
-            card->suit = suit;
-            card->number = num;
-            deck += ({ card });
-         }
-      }
-   }
-   for (i = 0; i < number_of_jokers; i++) {
-      card = new(class playing_card);
-      card->suit = CARD_SUIT_JOKER;
-      deck += ({ card });
-   }
-   return deck;
-}
-class playing_card* shuffle_deck(class playing_card* deck) {
-   class playing_card* new_deck;
-   int pos;
-   int i;
-   for (i = 0; i < 2; i++) {
-      new_deck = ({ });
-      while (sizeof(deck)) {
-         pos = random(sizeof(deck));
-         new_deck += deck[pos..pos];
-         deck = deck[0..pos - 1] + deck[pos+1..];
-      }
-      deck = new_deck;
-   }
-   return deck;
-}
-string query_suit_letter(int suit) {
-   switch (suit) {
-   case CARD_SUIT_SPADES :
-      return "S";
-      break;
-   case CARD_SUIT_HEARTS :
-      return "H";
-      break;
-   case CARD_SUIT_DIAMONDS :
-      return "D";
-      break;
-   case CARD_SUIT_CLUBS :
-      return "C";
-      break;
-   case CARD_SUIT_JOKER :
-      return "J";
-   }
-}
-string query_card_string(class playing_card card) {
-   string ret;
-   string colour;
-   if (card->suit == CARD_SUIT_JOKER) {
-      return "*J*";
-   }
-   ret = query_suit_letter(card->suit) + "%^RESET%^";
-   if (is_card_red(card)) {
-      colour = "%^BOLD%^%^RED%^";
-   } else {
-      colour = "%^BOLD%^";
-   }
-   if (card->number > 10 || card->number == CARD_NUMBER_ACE) {
-      switch (card->number) {
-      case CARD_NUMBER_JACK :
-         ret = colour + "J " + ret;
-         break;
-      case CARD_NUMBER_QUEEN :
-         ret = colour + "Q " + ret;
-         break;
-      case CARD_NUMBER_KING :
-         ret = colour + "K " + ret;
-         break;
-      case CARD_NUMBER_ACE :
-         ret = colour + "A " + ret;
-         break;
-      }
-   } else {
-      ret = sprintf("%s%-2d%s", colour, card->number, ret);
-   }
-   return ret + "%^RESET%^";
-}
-int is_card_red(class playing_card card) {
-   return card->suit == CARD_SUIT_HEARTS || card->suit == CARD_SUIT_DIAMONDS;
-}
-int is_card_black(class playing_card card) {
-   return card->suit == CARD_SUIT_SPADES || card->suit == CARD_SUIT_CLUBS;
-}
-int is_card_joker(class playing_card card) {
-   return card->suit == CARD_SUIT_JOKER;
-}
-string* query_card_three(class playing_card card) {
-   string* lines;
-   if (is_card_red(card)) {
-      lines = allocate(3, "%^BOLD%^%^RED%^");
-   } else {
-      lines = allocate(3, "%^BOLD%^");
-   }
-   switch (card->suit) {
-   case CARD_SUIT_HEARTS :
-      lines[0] += "H  %^RESET%^";
-      lines[2] += "  H%^RESET%^";
-      break;
-   case CARD_SUIT_DIAMONDS :
-      lines[0] += "D  %^RESET%^";
-      lines[2] += "  D%^RESET%^";
-      break;
-   case CARD_SUIT_CLUBS :
-      lines[0] += "C  %^RESET%^";
-      lines[2] += "  C%^RESET%^";
-      break;
-   case CARD_SUIT_SPADES :
-      lines[0] += "S  %^RESET%^";
-      lines[2] += "  S%^RESET%^";
-      break;
-   case CARD_SUIT_JOKER :
-      lines[0] += "J *%^RESET%^";
-      lines[1] += " O %^RESET%^";
-      lines[2] += "* K%^RESET%^";
-      return lines;
-   }
-   if (card->number <= 10 && card->number != CARD_NUMBER_ACE) {
-      if (card->number == 10) {
-         lines[1] += " 10%^RESET%^";
-      } else {
-         lines[1] += " " + card->number + " %^RESET%^";
-      }
-   } else {
-      switch (card->number) {
-      case CARD_NUMBER_KING :
-         lines[1] += " K %^RESET%^";
-         break;
-      case CARD_NUMBER_QUEEN :
-         lines[1] += " Q %^RESET%^";
-         break;
-      case CARD_NUMBER_JACK :
-         lines[1] += " J %^RESET%^";
-         break;
-      case CARD_NUMBER_ACE :
-         lines[1] += " A %^RESET%^";
-         break;
-      }
-   }
-   return lines;
-}
-string* query_card_two(class playing_card card) {
-   string* lines;
-   lines = allocate(2);
-   switch (card->suit) {
-   case CARD_SUIT_HEARTS :
-      lines[0] = "H ";
-      break;
-   case CARD_SUIT_DIAMONDS :
-      lines[0] = "D ";
-      break;
-   case CARD_SUIT_CLUBS :
-      lines[0] = "C ";
-      break;
-   case CARD_SUIT_SPADES :
-      lines[0] = "S ";
-      break;
-   case CARD_SUIT_JOKER :
-      lines[0] = "J*";
-      lines[1] = "*O";
-      return lines;
-   }
-   if (card->number <= 10 && card->number != CARD_NUMBER_ACE) {
-      lines[1] = sprintf("%2d", card->number);
-   } else {
-      switch (card->number) {
-      case CARD_NUMBER_KING :
-         lines[1] = " K";
-         break;
-      case CARD_NUMBER_QUEEN :
-         lines[1] = " Q";
-         break;
-      case CARD_NUMBER_JACK :
-         lines[1] = " J";
-         break;
-      case CARD_NUMBER_ACE :
-         lines[1] = " A";
-         break;
-      }
-   }
-   return lines;
-}
-string query_hand_string(class playing_card* hand, int flags, int cols) {
-   string hand_str;
-   int i;
-   int j;
-   int width;
-   int start_pos;
-   string top;
-   string line;
-   string start;
-   string end;
-   string start_space;
-   string end_space;
-   mixed card_str;
-   if (!sizeof(hand)) {
-      return "No cards\n";
-   }
-   hand_str = "";
-   if (!(flags & CARD_HAND_NO_ADORNMENTS)) {
-      if (flags & CARD_HAND_THREE ||
-          flags & CARD_HAND_SINGLE) {
-         top = "+---+";
-         width = 5;
-      } else {
-         top = "+--+";
-         width = 4;
-      }
-      start = "|";
-      end = "|";
-      start_space = " ";
-      end_space = " ";
-   } else {
-      top = 0;
-      line = "";
-      start = " ";
-      end = " ";
-      start_space = " ";
-      end_space = " ";
-      if (flags & CARD_HAND_THREE ||
-          flags & CARD_HAND_SINGLE) {
-         width = 3;
-      } else {
-         width = 2;
-      }
-   }
-   start_pos = 0;
-   if (flags & CARD_HAND_THREE) {
-      card_str = map(hand, (: query_card_three :));
-   } else if (flags & CARD_HAND_SINGLE) {
-      card_str = map(hand, (: ({ query_card_string($1) }) :));
-   } else {
-      card_str = map(hand, (: query_card_two :));
-   }
-   while (start_pos < sizeof(hand)) {
-      if (top) {
-         line = "";
-         for (i = 0; i + start_pos < sizeof(hand) && (i + 1) * width < cols; i++) {
-            line += top;
-         }
-         line += "\n";
-      }
-      if (flags & CARD_HAND_LETTERS) {
-         for (i = 0; i + start_pos < sizeof(hand) && (i + 1) * width < cols; i++) {
-            if (flags & CARD_HAND_THREE) {
-               hand_str += start_space + sprintf(" %c ", 'A' + i + start_pos) + end_space;
-            } else {
-               hand_str += start_space + sprintf("%c ", 'A' + i + start_pos) + end_space;
-            }
-         }
-      }
-      hand_str += "\n" + line;
-      for (j = 0; j < sizeof(card_str[0]); j++) {
-         for (i = 0; i + start_pos < sizeof(card_str) && (i + 1) * width < cols; i++) {
-            hand_str += start + (card_str[i + start_pos][j]) + end;
-         }
-         hand_str += "\n";
-      }
-      hand_str += line;
-      start_pos += cols / width;
-   }
-   return hand_str;
-}
-private int compare_cards(class playing_card card1, class playing_card card2,
-                          int flags) {
-   if (card1->suit == card2->suit ||
-       (flags & 2)) {
-      if (!(flags & 1)) {
-         return card1->number - card2->number;
-      }
-      if (card1->number == CARD_NUMBER_ACE) {
-         return 1;
-      }
-      if (card2->number == CARD_NUMBER_ACE) {
-         return -1;
-      }
-      return card1->number - card2->number;
-   }
-   return card1->suit - card2->suit;
-}
-class playing_card* sort_cards(class playing_card* deck, int flags) {
-   return sort_array(deck,
-                (: compare_cards($1, $2, $(flags)) :));
-}
-
-==================================================
-FILE: room/furniture/games/multiplayer_base.c
-==================================================
-
-private inherit "/std/basic/auto_load";
-#define LOAD_TAG "multiplayer base"
-class player_info {
-   int number;
-   string cap_name;
-   string name;
-   mixed data;
-}
-private mapping _players;
-private string _winner;
-private string* _ids_when_started;
-private string _current_player;
-private int _minimum_needed;
-private int _maximum_allowed;
-private int _can_join_as_new;
-private int _game_started;
-string* query_currently_playing_ids();
-void delete_gone_players();
-string find_player_id_of_person(object person);
-void create() {
-   _players = ([ ]);
-   _ids_when_started = ({ });
-}
-void reset_game() {
-}
-int start_game() {
-   delete_gone_players();
-   if (sizeof(query_currently_playing_ids()) < _minimum_needed) {
-      return 0;
-   }
-   _winner = 0;
-   _game_started = 1;
-   _ids_when_started = query_currently_playing_ids();
-   _current_player = _ids_when_started[random(sizeof(_ids_when_started))];
-   return 1;
-}
-void finish_game(string winner) {
-   _winner = winner;
-   _game_started = 0;
-}
-string query_winner() {
-   return _winner;
-}
-int is_game_started() {
-   return _game_started;
-}
-int can_join_as_new_player() {
-   return _can_join_as_new;
-}
-void set_can_join_as_new_player(int join) {
-   _can_join_as_new = join;
-}
-int is_person_playing(string id) {
-   if (_players[id]->name) {
-      if (find_player(_players[id]->name) &&
-          is_in_me_or_environment(this_object(),
-                                  find_player(_players[id]->name)) &&
-          interactive(find_player(_players[id]->name))) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int is_playing(object ob) {
-   string id;
-   id = find_player_id_of_person(ob);
-   return id != 0;
-}
-int is_current_player(object ob) {
-   string id;
-   id = find_player_id_of_person(ob);
-   return id == _current_player;
-}
-int add_person_to_game(string id, object person) {
-   class player_info info;
-   if (is_person_playing(id)) {
-      return 0;
-   }
-   info = _players[id];
-   info->name = person->query_name();
-   info->cap_name = person->query_cap_name();
-   return 1;
-}
-int remove_person_object_from_game(object person) {
-   class player_info info;
-   string id;
-   foreach (id, info in _players) {
-      if (find_player(info->name) == person) {
-         info->name = 0;
-         info->cap_name = 0;
-         return 1;
-      }
-   }
-   return 0;
-}
-int remove_person_id_from_game(string id) {
-   if (_players[id]->name) {
-      _players[id]->name = 0;
-      return 1;
-   }
-   return 0;
-}
-void randomise_player_numbers() {
-   string* ids;
-   int num;
-   int pos;
-   ids = keys(_players);
-   num = 0;
-   while (sizeof(ids)) {
-      pos = random(sizeof(ids));
-      _players[ids[pos]]->number = num;
-      ids = ids[0..pos-1] + ids[pos+1..];
-      num++;
-   }
-}
-void add_player_id_type(string id, int number) {
-   _players[id] = new(class player_info);
-   _players[id]->number = number;
-}
-void remove_player_id_type(string id) {
-   map_delete(_players, id);
-}
-class player_info find_player_info_from_number(int num) {
-   class player_info info;
-   string id;
-   foreach (id, info in _players) {
-      if (info->number == num) {
-         return info;
-      }
-   }
-   return 0;
-}
-string find_player_id_from_number(int num) {
-   class player_info info;
-   string id;
-   foreach (id, info in _players) {
-      if (info->number == num) {
-         return id;
-      }
-   }
-   return 0;
-}
-string* query_player_ids() {
-   return keys(_players);
-}
-string* query_currently_playing_ids() {
-   return filter(keys(_players), (: is_person_playing($1) :));
-}
-string* query_started_player_ids() {
-   return _ids_when_started;
-}
-string query_player_cap_name(string id) {
-   if (_players[id] && _players[id]->name) {
-      return _players[id]->cap_name;
-   }
-   return "No one";
-}
-object query_player_object(string id) {
-   return find_player(_players[id]->name);
-}
-string query_player_the_short(string id) {
-   object ob;
-   if (_players[id]->name) {
-      ob = query_player_object(id);
-      if (ob) {
-         return ob->the_short();
-      }
-   }
-   return "No one";
-}
-string query_player_poss_short(string id) {
-   object ob;
-   if (_players[id]->name) {
-      ob = query_player_object(id);
-      if (ob) {
-         return ob->poss_short();
-      }
-   }
-   return "No one";
-}
-void delete_gone_players() {
-   string id;
-   class player_info info;
-   foreach (id, info in _players) {
-      if (info->name) {
-         if (!find_player(info->name) ||
-             !is_in_me_or_environment(this_object(), find_player(info->name))) {
-            info->name = 0;
-         }
-      }
-   }
-}
-void set_minimum_needed(int minimun) {
-   _minimum_needed = minimun;
-}
-int can_start_game() {
-   if (sizeof(query_currently_playing_ids()) > _minimum_needed) {
-      return 1;
-   }
-   return 0;
-}
-string find_next_player(string id) {
-   class player_info info;
-   int start;
-   int cur;
-   string new_id;
-   if (!id) {
-      id = _current_player;
-   }
-   start = _players[id]->number;
-   cur = start;
-   do {
-      cur = (cur + 1) % sizeof(_players);
-      new_id = find_player_id_from_number(cur);
-      info = _players[new_id];
-   } while (((_can_join_as_new && !info->name) ||
-            (!_can_join_as_new &&
-                member_array(new_id, _ids_when_started) == -1)) &&
-            cur != start);
-   return new_id;
-}
-string find_previous_player(string id) {
-   class player_info info;
-   int start;
-   string new_id;
-   int cur;
-   if (!id) {
-      id = _current_player;
-   }
-   start = _players[id]->number;
-   cur = start;
-   do {
-      cur = (cur - 1 + sizeof(_players)) % sizeof(_players);
-      new_id = find_player_id_from_number(cur);
-      info = _players[new_id];
-   } while (((_can_join_as_new && !info->name) ||
-            (!_can_join_as_new &&
-               member_array(new_id, _ids_when_started) == -1)) &&
-            cur != start);
-   return new_id;
-}
-void increment_current_player() {
-   _current_player = find_next_player(_current_player);
-}
-string find_player_id_of_person(object person) {
-   class player_info info;
-   string id;
-   foreach (id, info in _players) {
-      if (find_player(info->name) == person) {
-         return id;
-      }
-   }
-   return 0;
-}
-string query_current_player() {
-   if (!_current_player) {
-      _current_player = find_player_id_from_number(0);
-   }
-   return _current_player;
-}
-string set_current_player(string id) {
-   _current_player = id;
-}
-void tell_player(string id, string message) {
-   object player;
-   player = find_player(_players[id]->name);
-   if (player && (environment(player) == environment() ||
-                  player == environment())) {
-      tell_object(player, message);
-   }
-}
-void tell_current_player(string message) {
-   tell_player(_current_player, message);
-}
-varargs void tell_all_players(string message, string* exclude) {
-   class player_info info;
-   string id;
-   if (!exclude) {
-      exclude = ({ });
-   }
-   foreach (id, info in _players) {
-      if (member_array(id, exclude) == -1) {
-         tell_player(id, message);
-      }
-   }
-}
-mixed query_player_data(string id) {
-   return _players[id]->data;
-}
-void set_player_data(string id, mixed data) {
-   _players[id]->data = data;
-}
-void multiplayer_someone_joins(string id) {
-}
-void multiplayer_someone_resigns(string id, string name) {
-}
-mixed* shuffle_array(mixed *arr) {
-   int i;
-   int pos;
-   mixed* new_arr;
-   for (i = 0; i < 2; i++) {
-      new_arr = ({ });
-      while (sizeof(arr)) {
-         pos = random(sizeof(arr));
-         new_arr += arr[pos..pos];
-         arr = arr[0..pos - 1] + arr[pos + 1..];
-      }
-      arr = new_arr;
-   }
-   return arr;
-}
-int do_join(string id) {
-   if (is_person_playing(id)) {
-      add_failed_mess("Someone is already playing " + id + " on $D.\n");
-      return 0;
-   }
-   if (is_playing(this_player())) {
-      add_failed_mess("You are already playing on $D.\n");
-      return 0;
-   }
-   if (is_game_started() &&
-       !can_join_as_new_player() &&
-       member_array(id, query_started_player_ids()) == -1) {
-      add_failed_mess("You can only take over one of the spots vacated by "
-                      "someone else.\n");
-      return 0;
-   }
-   if (add_person_to_game(id, this_player())) {
-      add_succeeded_mess("$N $V as " + id + " on $D.\n");
-      multiplayer_someone_joins(id);
-      return 1;
-   }
-   add_failed_mess("Some weird error joining game on $D.\n");
-   return 0;
-}
-int do_resign() {
-   string id;
-   id = find_player_id_of_person(this_player());
-   if (remove_person_object_from_game(this_player())) {
-      add_succeeded_mess("$N $V from the game on $D.\n");
-      multiplayer_someone_resigns(id, this_player()->query_cap_name());
-      if (id == query_current_player()) {
-         increment_current_player();
-      }
-      return 1;
-   }
-   add_failed_mess("You are not playing on $D to resign.\n");
-   return 0;
-}
-void init() {
-   string ids;
-   ids = implode(keys(_players), "|");
-   add_command("join", "[game] [as] {" + ids + "} on <direct:object>",
-                (: do_join($4[0]) :));
-   add_command("resign", "[from] [game] on <direct:object>",
-               (: do_resign() :));
-}
-mapping query_dynamic_auto_load(mapping map) {
-   if (!map) {
-      return 0;
-   }
-   add_auto_load_value(map, LOAD_TAG, "players", _players);
-   add_auto_load_value(map, LOAD_TAG, "current player", _current_player);
-   add_auto_load_value(map, LOAD_TAG, "started ids", _ids_when_started);
-   add_auto_load_value(map, LOAD_TAG, "winner", _winner);
-   add_auto_load_value(map, LOAD_TAG, "game started", _game_started);
-   return map;
-}
-void init_dynamic_arg(mapping map, object player) {
-   if (!map) {
-      return ;
-   }
-   _players = query_auto_load_value(map, LOAD_TAG, "players");
-   _current_player = query_auto_load_value(map, LOAD_TAG, "current player");
-   _ids_when_started = query_auto_load_value(map, LOAD_TAG, "started ids");
-   _winner = query_auto_load_value(map, LOAD_TAG, "winner");
-   _game_started = query_auto_load_value(map, LOAD_TAG, "game started");
-}
-
-==================================================
-FILE: liquids/ink.c
-==================================================
-
-int splash_func(object ob) {
-  ob->add_extra_look(this_object());
-  ob->add_property("splashed with", previous_object()->query_liquid_name());
-  return 1;
-}
-int query_ink() { return 1; }
-string extra_look() {
-  return capitalize((string)previous_object()->query_name())+
-         " has been splashed with "+
-         previous_object()->query_property("splashed with");
-}
-
-==================================================
-FILE: shadows/peace_shadow.c
-==================================================
-
+#include <obj_parser.h>
 inherit "/std/effect_shadow";
-#define GCR peacenpc->get_combat_reason()
-#define GER peacenpc->get_escape_reason()
-#define GFR peacenpc->get_fighting_reason()
-#define GMR peacenpc->get_magic_reason()
-#define GOR peacenpc->get_other_reason()
-#define GRR peacenpc->get_ritual_reason()
-#define GSR peacenpc->get_stealth_reason()
-#define TO this_object()
-#define TP this_player()
-object peacenpc;
-void setup_shadow(object person, object thing) {
-    shadow( person, 1 );
-    peacenpc=thing;
-}
-void dest_peace_shadow() { destruct(TO); }
-void event_exit(object ob, string message, object to) {
-    if (ob==peacenpc)
-        dest_peace_shadow();
-}
-void event_move_object(mixed from, mixed to) {
-    dest_peace_shadow();
-}
-int command_shadowed( string verb, string args ) {
-    switch(verb) {
-        case "attack":
-        case "behead":
-        case "berserk":
-        case "bob":
-        case "crush":
-        case "disarm":
-        case "fire":
-        case "guard":
-        case "hack":
-        case "hurl":
-        case "iai":
-        case "impale":
-        case "kill":
-        case "punch":
-        case "riposte":
-        case "slash":
-        case "throw":
-        case "warcry":
-            tell_object(TP, GFR);
-            return 1;
-        case "cast":
-        case "circle":
-        case "educe":
-        case "forget":
-        case "invoke":
-        case "remember":
-        case "scribe":
-        case "scry":
-        case "spellcheck":
-        case "twist":
-        case "use":
-        case "zap":
-            tell_object(TP, GMR);
-            return 1;
-        case "bodyguard":
-        case "bury":
-        case "drag":
-        case "eye":
-        case "fuel":
-        case "hedgehog":
-        case "judge":
-        case "leatherwork":
-        case "mock":
-        case "tempt":
-        case "scathe":
-        case "vurdere":
-            tell_object(TP, GOR);
-            return 1;
-        case "conflagrate":
-        case "consecrate":
-        case "decompose":
-        case "ensumpf":
-        case "envalise":
-        case "imbue":
-        case "perform":
-        case "pray":
-        case "pyroscipate":
-        case "shroud":
-        case "suffuse":
-        case "ventisepelate":
-            tell_object(TP, GRR);
-            return 1;
-        case "abscond":
-        case "ambush":
-        case "case":
-        case "conceal":
-        case "crack":
-        case "disable":
-        case "filch":
-        case "hide":
-        case "inhume":
-        case "lpick":
-        case "palm":
-        case "peek":
-        case "plant":
-        case "probe":
-        case "scope":
-        case "shoplift":
-        case "slip":
-        case "snatch":
-        case "sneak":
-        case "steal":
-        case "unhide":
-            tell_object(TP, GSR);
-            return 1;
-        default:
-            return 0;
-    }
-}
-int run_away() {
-    tell_object(TO, GER);
-}
 
 ==================================================
-FILE: shadows/object/basic_trap.c
+FILE: shadows/fighting/special_attack.c
 ==================================================
 
+#include <tasks.h>
+#define QUEST_MAX 570
+#define INFORM
 inherit "/std/effect_shadow";
-int trap_lock(string type) {
-  if(type != "pick")
-    return 0;
-  tell_object(this_player(), "Trap triggered.\n");
-  return 0;
-}
-
-==================================================
-FILE: shadows/object/death_ward.c
-==================================================
-
-inherit "/std/effect_shadow";
-void event_death( object thing, object *killers, object killer,
-      string room_mess, string killer_mess ) {
-   int damage;
-   object twit;
-   player->event_death( thing, killers, killer, room_mess, killer_mess );
-   if ( thing != (object)player->query_worn_by() )
-      return;
-   tell_room( environment( thing ), (string)player->the_short() +
-         " explodes in a ball of flame!\n" );
-   thing->remove_armour( player );
-   player->move( "/room/rubbish" );
-   foreach ( twit in killers ) {
-      if ( environment( twit ) != environment( thing ) )
-         continue;
-      damage = arg();
-      if ( twit == killer )
-         damage *= 2;
-      damage -= (int)twit->query_ac( "fire", damage );
-      if ( damage > 0 )
-         twit->adjust_hp( -damage );
-      if ( (int)twit->query_hp() < 0 )
-         twit->attack_by( player );
+string *data;
+void set_data( string *words ) { data = words; }
+mapping special_attack( object target ) {
+   int i, damage, skill;
+   object *args;
+   mixed *attacks;
+   args = arg();
+   if (!args) {
+      return 0;
    }
+   if ( !data || ( (string)player->query_combat_attitude() != "offensive" ) ||
+         ( target != args[ 0 ] ) || !args[ 1 ] ) {
+      tell_object( player, "You lose the moment!\n" );
+      set_arg( 0 );
+      remove_this_effect();
+      return ([ ]);
+   }
+   if ( ( (object)args[ 1 ]->query_wielded() != player ) &&
+         ( args[ 1 ] != player ) ) {
+      tell_object( player, "What did you do with "+
+            (string)args[ 1 ]->the_short() +"?\n" );
+      set_arg( 0 );
+      remove_this_effect();
+      return ([ ]);
+   }
+   if((object)environment(target) != (object)environment(player)) {
+     tell_object(player, "Where did "+target->short()+" go?\n");
+     remove_this_effect();
+     return ([ ]);
+   }
+   attacks = (mixed *)args[ 1 ]->weapon_attacks( 100, target );
+   if ( !sizeof( attacks ) )
+   {
+      return 0;
+   }
+   for ( i = 0; i < sizeof( attacks ); i += 4 ) {
+      if (attacks[i + 2] == data[1] ||
+            attacks[i + 2][0..sizeof(data[1])] == data[1] + "-")
+        damage += attacks[ i ];
+   }
+   if ( !damage ) {
+     tell_object( player, "You manage to botch your use of "+
+                  ( args[ 1 ] == player ? "unarmed combat" :
+                    (string)args[ 1 ]->the_short() ) +
+                  " and barely launch a mediocre attack at "+
+                  (string)target->the_short() +".\n" );
+#ifdef INFORM
+    event(environment(player), "inform", (string)player->query_name() +
+          " special manoeuvre failed (no damage)", "combat");
+#endif
+     return 0;
+   }
+   skill = (int)player->query_skill_bonus( "fighting.combat.melee."+
+         data[ 0 ] );
+   switch( (int)TASKER->perform_task(player, "fighting.combat.melee."+data[0],
+                                     damage, TM_COMMAND) ) {
+      case AWARD :
+        tell_object( player, "%^YELLOW%^"+ replace( ({ "You feel that "+
+               "your skill with $weapon$ has increased.", "You feel "+
+               "more able to use $weapon$.", "You seem to be a step "+
+               "closer to mastering $weapon$." })[ random( 3 ) ],
+               "$weapon$", ( args[ 1 ] == player ? "unarmed combat" :
+               (string)args[ 1 ]->a_short() ) ) +"%^RESET%^\n" );
+      case SUCCEED :
+         tell_object( player, "You launch a powerful attack on "+
+               (string)target->the_short() + ( args[ 1 ] == player ? "" :
+               " with "+ (string)args[ 1 ]->the_short() ) +".\n" );
+         damage = sqrt( ((damage*2/3)) * skill ) + ( damage * skill ) /
+           QUEST_MAX;
+#ifdef INFORM
+    event(environment(player), "inform", (string)player->query_name() +
+          " special manoeuvre success, damage: " +damage, "combat");
+#endif
+         break;
+      default :
+        damage = 1;
+         tell_object( player, "You manage to botch your use of "+
+               ( args[ 1 ] == player ? "unarmed combat" :
+               (string)args[ 1 ]->the_short() ) +
+               " and barely launch a mediocre attack at "+
+               (string)target->the_short() +".\n" );
+#ifdef INFORM
+    event(environment(player), "inform", (string)player->query_name() +
+          " special manoeuvre failed", "combat");
+#endif
+   }
+   set_arg( 0 );
    remove_this_effect();
+   return ([ args[ 1 ] : ({ damage }) + data ]);
 }
+int tasking_done() { return 1; }
 
 ==================================================
-FILE: shadows/object/identity_hold.c
+FILE: shadows/attached/single_shoulder.c
 ==================================================
 
-inherit "/std/effect_shadow";
-#include <move_failures.h>
-private int _keep;
-private string _identifier;
-private string* _adjs;
-private object _owner;
-int query_keep() { return _keep; }
-void set_keep_value(int keep) { _keep = keep; }
-void set_keep() { _keep = 1; }
-void reset_keep() {
-   _keep = 0;
-   if (!_identifier)
-      remove_this_effect();
-}
-string query_identifier() { return _identifier; }
-string query_full_identifier() {
-    string tmp;
-    tmp = "";
-    if ( sizeof( _adjs ) ) {
-        tmp += implode( _adjs, " " ) + " ";
-    }
-    if ( _identifier ) {
-       tmp += _identifier;
-    }
-    if ( strlen( tmp ) > 0 ) {
-       return tmp;
-    }
-    return 0;
-}
-void set_identifier( string word ) {
-   string* bits;
-   if (word) {
-      bits = explode(word, " ");
-      _identifier = bits[<1];
-      _adjs = bits[0..<2];
-   } else {
-      _identifier = 0;
-      _adjs = ({ });
-      if (!_keep)
-         remove_this_effect();
-   }
-}
-void set_identity_hold_owner(object ob) {
-   _owner = ob;
-}
-object query_identity_hold_owner() {
-   return _owner;
-}
-string *parse_command_id_list() {
-   string *words;
-   words = (string *)player->parse_command_id_list();
-   if ( ( this_player() == _owner ) && stringp( _identifier ) &&
-         !sizeof( filter_array( previous_object( -1 ),
-         (: $1 && $1->ignore_identifier() :) ) ) ) {
-      words += ({ _identifier });
-   }
-   return words;
-}
-string *parse_command_adjectiv_id_list() {
-   string *words;
-   words = (string *)player->parse_command_adjectiv_id_list();
-   if ( ( this_player() == _owner ) && pointerp( _adjs ) &&
-         !sizeof( filter_array( previous_object( -1 ),
-         (: $1->ignore_identifier() :) ) ) ) {
-      words += _adjs;
-   }
-   return words;
-}
-private void check_move_stuff() {
-   object ob;
-   ob = environment(player);
-   while (ob &&
-          ob != _owner) {
-      ob = environment(ob);
-   }
-   if (ob != _owner) {
-      remove_this_effect();
-   }
-}
-varargs int move( mixed dest, string messin, string messout ) {
-   int flag;
-   flag = player->move( dest, messin, messout );
-   if ( flag == MOVE_OK &&
-        objectp( dest ) ) {
-      call_out((: check_move_stuff :), 2);
-   }
-   return flag;
-}
-
-==================================================
-FILE: shadows/object/newbie_shoes.c
-==================================================
-
-#include <move_failures.h>
 #include "path.h"
 inherit "/std/effect_shadow";
-int query_orthopaedic_shoes() { return 1; }
-string query_msgin()
-{
-return "$N stagger$s clumsily from $F.";
+private int test_sash( object thing ) {
+   return (string)thing->query_type() == "sash" &&
+          sizeof(thing->query_pockets());
 }
-string query_msgout()
-{
-return "$N stagger$s $T clumsily.";
-}
-int move(mixed dest, string inmsg, string outmsg)
-{
-  int ret;
-  ret = player->move(dest, inmsg, outmsg);
-  if (ret == MOVE_OK) {
-    tell_object( player, "You wince as spikes seem to drive themselves "
-      "into the balls of your feet, but you get there eventually.\n" );
-  }
-  return ret;
-}
-int test_for_effect( object thing ) {
-   return member_array( EFFECTS +"newbie_shoes",
+private int test_for_effect( object thing ) {
+   return member_array( EFFECTS +"single_shoulder",
       (string *)thing->query_wear_effects() ) != -1;
 }
-void taken_off(object what, string eff)
-{
-  if (eff != EFFECTS + "newbie_shoes")
-    player->taken_off(what, eff);
+void check_handicap() {
+   int new_arg;
+   mixed old_arg;
+   object *things;
+   things = (object *)player->query_wearing() - ({ 0 });
+   old_arg = arg();
+   if (objectp(old_arg)) {
+      old_arg = 0;
+   }
+   new_arg = sizeof( filter_array( things, (: test_sash :), this_object() ) ) *
+         sizeof( filter_array( things, (: test_for_effect :), this_object() ) );
+   if ( !new_arg ) {
+      remove_this_effect();
+      return;
+   }
+   new_arg /= 2;
+   if ( old_arg == new_arg ) {
+      return;
+   }
+   player->adjust_bonus_dex( old_arg - new_arg );
+   set_arg( new_arg );
+}
+void now_worn( object thing ) {
+   player->now_worn( thing );
+   if ( find_call_out( "check_handicap" ) == -1 ) {
+      call_out( "check_handicap", 0 );
+   }
+}
+void now_removed( object thing ) {
+   player->now_removed( thing );
+   if ( find_call_out( "check_handicap" ) == -1 ) {
+      call_out( "check_handicap", 0 );
+   }
+}
+
+==================================================
+FILE: shadows/attached/talker_response.c
+==================================================
+
+class response {
+    string  sender;
+    string *triggers;
+    string *responses;
+    int     probability;
+    int     delay;
+}
+inherit "/std/effect_shadow";
+public          object  query_listener      ( );
+public  varargs void    query_responses     ( string );
+public  varargs void    add_respond_to_talker_with( string, string,
+                                                        string *, int, int );
+public          int     delete_response     ( string, string, string * );
+public          void    receive             ( string, string, string,
+                                                        object * );
+public          void    process_response    ( string *, string * );
+private varargs int     register_listener   ( object );
+private         int     compare_arrays      ( mixed *, mixed *);
+mapping responses = ([ ]);
+object listener;
+private varargs int register_listener(object target) {
+  if(objectp(target)) {
+    listener = target;
+  }
+  else
+    listener = this_object()->arg_of(this_object()->
+                                effects_matching("object.talker.response")[0]);
+  if(!objectp(listener))
+    this_object()->delete_effect(this_object()->
+                                effects_matching("object.talker.response")[0]);
+  return 1;
+}
+public object query_listener() {
+  return listener;
+}
+public varargs void query_responses(string key) {
+  if(stringp(key)) {
+    class response *womble = responses[key];
+    foreach(class response cabbage in womble) {
+      printf("Channel: %s\n\tChatter: %s\n", key, cabbage->sender);
+      printf("\tTrigger:\n");
+      foreach(string trigger in cabbage->triggers)
+        printf("\t\t\"%s\"\n",trigger);
+      printf("\tResponse:\n");
+      foreach(string resp in cabbage->responses)
+        printf("\t\t\"%s\"\n", resp);
+      printf("\tProbability:\t%d\n\tDelay:\t%d\n\n",
+             cabbage->probability, cabbage->delay);
+    }
+    return;
+  } else {
+    foreach(string nextkey in keys(responses)) {
+      query_responses(nextkey);
+    }
+    return;
+  }
+}
+public varargs void add_respond_to_talker_with(string channel, string sender,
+                                               string *trigger,
+                                               string *response, int probability,
+                                               int delay ) {
+  class response new_item;
+  if(!listener)
+    register_listener();
+  if (!channel || !sender || !trigger || !response ){
+    listener->call_out("do_command", 3, "'Err. I haven't been setup "
+                       "correctly in regards to my talker!");
+    return;
+  }
+  channel = lower_case(channel);
+  if (undefinedp(responses[channel]))
+    responses[channel] = ({});
   else {
-    remove_this_effect();
+      foreach(class response item in responses[channel]) {
+        if(item->sender == sender && item->triggers - trigger == ({}) &&
+           item->responses - response == ({}) && item->probability == probability)
+            return;
+      }
   }
+  if(!probability)
+    probability = 10;
+  if(!delay)
+    delay = 1;
+  if(delay == -1)
+    delay = 0;
+  if(probability > 100)
+    probability = 100;
+  new_item = new(class response, sender : sender, triggers : trigger,
+                 responses : response, probability : probability, delay : delay);
+  responses[channel] += ({ new_item });
+  return;
 }
-
-==================================================
-FILE: shadows/object/no_save.c
-==================================================
-
-inherit "/std/effect_shadow";
-mixed query_auto_load() {
-   return 0;
-}
-mixed query_dynamic_auto_load() {
-   return 0;
-}
-mixed query_static_auto_load() {
-   return 0;
-}
-
-==================================================
-FILE: shadows/object/owned_weapon.c
-==================================================
-
-inherit "/std/effect_shadow";
-mixed set_holder( object thing, int pos ) {
-   this_object()->remove_hide_invis( "concealed" );
-   if ( objectp( thing ) )
-      if ( !thing->query_corpse() &&
-            ( (string)thing->query_name() != arg() ) )
-         return 0;
-   return (mixed)player->set_holder( thing, pos );
-}
-string query_owner(){
-   return (string) arg();
-}
-
-==================================================
-FILE: shadows/object/swim_fins.c
-==================================================
-
-inherit "/std/effect_shadow";
-int query_skill_bonus(string skill, int true) {
-  if ((skill != "other.movement.swimming") || true)
-    return player->query_skill_bonus(skill);
-  return player->query_skill_bonus(skill)+50;
-}
-
-==================================================
-FILE: shadows/object/talker.c
-==================================================
-
-#include "path.h"
-#include <talker.h>
-#include <network.h>
-#include <term.h>
-#include <playtesters.h>
-#include <language.h>
-#include <cmds/options.h>
-#define EMOTE_ENABLED 1
-#define BEEP sprintf("%c",7)
-#define CTRL sprintf("%c", 13)
-inherit "/std/effect_shadow";
-int do_talker_control(mixed *args, string pattern);
-int do_chat(string message, string pattern, string verb);
-int handle_status_command(string mode, class talker_args args);
-int handle_verbose_command(string mode, class talker_args args);
-int handle_history_command(string channel, class talker_args args);
-int handle_colour_list(mixed *colour_args, class talker_args args);
-int handle_colour_command(string channel, string new_colour, class talker_args args);
-int handle_colour_on_off_command( string str_status, class talker_args args);
-int handle_colour_toggle_command( class talker_args args);
-int handle_echo_command( string mode, class talker_args args);
-void init() {
-  mixed args;
-  object where;
-  string channel;
-  where = environment(player);
-#ifdef DEBUG
-  tell_creator("taffyd", "%O, %O, %O.\n", player, this_player(), where);
-#endif
-  if( !where )
-    return;
-  if (!living(where)) {
-    player->init();
-    return;
-  }
-  args = arg();
-  if (!classp(args)) {
-    args = new(class talker_args, status : 0, channels : ({ "one" }),
-               verbose : 1, local_echo : 0, colour : 0 );
-    set_arg(args);
-  }
-  where->add_command("talker", player,
-                     ({ON_PATTERN,
-                         VERBOSE_PATTERN,
-                         CHANNEL_PATTERN,
-                         DELETE_CHANNEL_PATTERN,
-                         HISTORY_PATTERN,
-                         HISTORY_CHANNEL_PATTERN,
-                         LIST_PATTERN,
-                         LIST_CHANNEL_PATTERN,
-                         LIST_CHANNEL_PATTERN_BRIEF,
-                         SET_COLOUR_PATTERN,
-                         COLOUR_ON_OFF_PATTERN,
-                         COLOUR_LIST,
-                         TOGGLE_COLOUR_PATTERN,
-                         NEW_CHANNEL_PATTERN,
-                         ECHO_PATTERN,
-                         "delete <string'channel'> from <direct:object'talker'>",
-                         "help" }),
-                     (: do_talker_control($4, $5) :) );
-  where->add_command("chat", player,
-                     ({ "<string'message'>" }),
-                     (: do_chat($4[0], $5, $6) :) );
-#ifdef EMOTE_ENABLED
-  where->add_command("chat:", player,
-                     ({ "<string'message'>" }),
-                     (: do_chat(":" + $4[0], $5, $6) :) );
-#endif
-  if ( !( EFFECTS + "talker" )->valid( args->channels, where ) ) {
-    args->channels = ({ "one" });
-    set_arg(args);
-  }
-  foreach (channel in args->channels) {
-#ifdef DEBUG
-    tell_creator("taffyd", "Adding channel. %O.\n", channel);
-#endif
-    where->add_command(lower_case(channel), player,
-                       "<string'message'>", (: do_chat($4[0], $5, $6) :) );
-#ifdef EMOTE_ENABLED
-    where->add_command( lower_case(channel) + ":", player,
-                        "<string'message'>",
-                        (: do_chat(":" + $4[0], $5, $6) :) );
-#endif
-  }
-  player->init();
-}
-object query_player() {
-  if(player && environment(player) && living(environment(player)))
-    return environment(player);
+public int delete_response( string channel, string sender, string *triggers ) {
+  if( sizeof(responses[channel]) !=
+      sizeof(responses[channel]   = responses[channel] -
+             filter(filter(responses[channel], (: $1->sender == $(sender) :)),
+                    (: compare_arrays( $1->triggers, $(triggers) ) :)) ) )
+    return 1;
   return 0;
 }
-int do_talker_control(mixed *args, string pattern) {
-  class talker_args t_args;
-  int position;
-  string full_name;
-#ifdef DEBUG
-  tell_creator("taffyd", "Args to talker control is %O. Pattern is %O.\n",
-               args, pattern);
-#endif
-  t_args = arg();
-  switch (pattern) {
-  case ON_PATTERN:
-    return handle_status_command(args[0], t_args);
-  case VERBOSE_PATTERN:
-    return handle_verbose_command(args[0], t_args);
-  case CHANNEL_PATTERN:
-    if ( !t_args->status ) {
-      tell_object(this_player(), "The eyes are asleep.\n");
-      return 1;
-    }
-    tell_object(this_player(), "You may use the following channels:\n" +
-                (string)( EFFECTS +"talker" )->channels() +
-                "You are on channel(s) " +
-                query_multiple_short( t_args->channels ) + ".\n" );
-    return 1;
-    break;
-  case ECHO_PATTERN:
-    return handle_echo_command( args[0], t_args );
-  case "delete <string'channel'> from <direct:object'talker'>":
-    add_succeeded_mess( ({ "", "" }) );
-  case DELETE_CHANNEL_PATTERN:
-    if ( !t_args->status ) {
-      tell_object(this_player(),  "The eyes are asleep.\n");
-      return 1;
-    }
-    full_name = (EFFECTS + "talker")->normalise_name( args[ 0 ] );
-    if ( !(EFFECTS +"talker")->valid( full_name ) ) {
-      tell_object(this_player(), "The eyes are not aware of that "
-                  "channel.\n");
-      return 1;
-    }
-    position = member_array(full_name, t_args->channels);
-    if (position == -1) {
-      tell_object(this_player(), "The eyes are not listening to "
-                  "that channel.\n");
-      return 1;
-    }
-    if (sizeof(t_args->channels) > 1) {
-      t_args->channels = t_args->channels[0..position-1] +
-        t_args->channels[position+1..];
-      tell_object(this_player(), "The eyes sigh with relief as they "
-                  "can now ignore what happens on "
-                  "channel \"" + full_name + "\".\n");
-    }
-    else {
-      tell_object(this_player(), "The eyes are bored with not listening "
-                  "to any channel at all, and add channel \"one\" to their "
-                  "list again.\n");
-      t_args->channels = ({ "one" });
-    }
-    set_arg(t_args);
-    break;
-  case NEW_CHANNEL_PATTERN:
-    if ( !t_args->status ) {
-      tell_object(this_player(),  "The eyes are asleep.\n");
-      return 1;
-    }
-    full_name = (EFFECTS + "talker")->normalise_name( args[ 0 ] );
-    (EFFECTS+"talker")->clear_cache(this_player()->query_name());
-    if ( ( EFFECTS +"talker" )->valid( full_name ) ) {
-      if ( member_array( full_name, t_args->channels ) != -1 ) {
-        tell_object(this_player(), "The eyes frown at you; they are "
-                    "already listening to that channel.\n");
-        return 1;
-      }
-      tell_object(this_player(),  "You whisper to " +
-                  player->the_short() + " and the eyes add "
-                  "channel \""+ full_name +"\" to the list.\n");
-      t_args->channels += ({ full_name });
-      set_arg(t_args);
-      this_object()->init();
-    } else {
-      tell_object(this_player(), "You whisper to " +
-                  player->the_short() + ", but the eyes "
-                  "refuse to give you that channel.\n");
-      return 1;
-    }
-    break;
-  case SET_COLOUR_PATTERN:
-  case SET_COLOUR_FULL_PATTERN:
-    args[ 0 ] = (EFFECTS+"talker")->normalise_name( args[0] );
-    return handle_colour_command( args[0], args[1], t_args );
-  case COLOUR_ON_OFF_PATTERN:
-    return handle_colour_on_off_command( args[0], t_args );
-  case TOGGLE_COLOUR_PATTERN:
-    return handle_colour_toggle_command(t_args);
-  case COLOUR_LIST:
-    return handle_colour_list( args, t_args );
-    break;
-  case HISTORY_CHANNEL_PATTERN:
-    args[ 0 ] = (EFFECTS+"talker")->normalise_name( args[0] );
-    return handle_history_command(args[0], t_args);
-  case HISTORY_PATTERN:
-    return handle_history_command("one", t_args);
-  case LIST_PATTERN:
-  case LIST_CHANNEL_PATTERN:
-  case LIST_CHANNEL_PATTERN_BRIEF:
-    if ( !t_args->status ) {
-      tell_object(this_player(),  "The eyes are asleep.\n");
-      return 1;
-    }
-    if (sizeof(args) == 1) {
-      args[ 0 ] = (EFFECTS + "talker")->normalise_name( args[ 0 ] );
-      tell_object(this_player(), "The following people are using "
-                  "channel \""+ args[0] + "\":\n" +
-                  ( EFFECTS +"talker" )->list( args[0],
-                                 pattern == LIST_CHANNEL_PATTERN_BRIEF) );
-    } else
-      tell_object(this_player(), "The following people are using "
-                  "talkers:\n" + (string)( EFFECTS +"talker" )->list() );
-    return 1;
-    break;
-  case "help":
-  default:
-    write( "Talker commands:\n\n"
-           "help               : give this help file\n"
-           "on|off             : switch talker on or off\n"
-           "brief              : make talker use shorter messages\n"
-           "verbose            : make talker use longer messages\n"
-           "channels           : list valid channels\n"
-           "<channel>          : switch to <channel> if valid\n"
-           "delete <channel>   : switch <channel> off if valid\n"
-           "list [channel]     : list users of the talker\n"
-           "history [channel]  : show chat history of <channel>\n"
-           "Prefix commands with \"talker\" to use, e.g. "
-           "\"talker help\".  For a more detailed description type "
-           "\"help talker\".\n" );
-    break;
-  }
-  return 1;
-}
-int handle_history_command(string channel, class talker_args args) {
-  mixed *history;
-  string result;
-  if (!args->status) {
-    tell_object(this_player(), "The eyes are asleep.\n");
-    return 1;
-  }
-  if (!channel)
-    channel = "one";
-  if ( !( EFFECTS +"talker" )->valid( channel ) ) {
-    tell_object(this_player(), "The eyes are not aware of that "
-                "channel.\n");
-    return 1;
-  }
-  tell_object(this_player(), "You whisper to " + player->the_short() +
-              ", asking for the last few chats on channel " + channel + ".\n");
-  history = HIST->query_chat_history(lower_case( channel ) );
-  if ( !arrayp( history ) || !sizeof( history ) ) {
-    tell_object(this_player(), "The eyes mutter that nothing has "
-                "been said on this channel, or it is not being remembered.\n");
-    return 1;
-  }
-  result = "$P$Channel " + channel + "$P$The eyes mutter about your bad "
-    "memory.\n";
-  result += implode(map(history, (: "$I$5=$C$" + $1[0] + ($1[1] ? $1[1] : "") +
-                                  "%^RESET%^" :)), "\n");
-  tell_object(this_player(), result);
-  return 1;
-}
-string query_colour_status( class talker_args args ) {
-  if ( !mapp( args->colour ) ) {
-    return "off";
-  }
-  return args->colour[ "status" ];
-}
-int set_colour_status( class talker_args args, string status ) {
-  if ( !args->colour ) {
-    args->colour = DEFAULT_COLOUR_SETTINGS;
-  } else {
-    if ( stringp( args->colour ) ) {
-      args->colour = DEFAULT_COLOUR_WITH( args->colour );
-    }
-  }
-  args->colour[ "status" ] = status;
-  set_arg( args );
-  return 1;
-}
-int set_channel_colour(class talker_args args, string channel, string colour) {
-  if ( !channel || !colour )
-    return 0;
-  if ( !mapp( args->colour ) ) {
-    args->colour = DEFAULT_COLOUR_WITH(colour);
-  }
-  args->colour[ channel ] = colour;
-  set_arg( args );
-  return 1;
-}
-varargs string query_channel_colour( class talker_args args, string channel ) {
-  string colour;
-  if ( !mapp( args ) ) {
-    return DEFAULT_COLOUR;
-  }
-  if ( colour = args->colour[ channel ] ) {
-    return colour;
-  } else {
-    if ( colour = args->colour[ "default" ] ) {
-      return colour;
-    }
-  }
-  return DEFAULT_COLOUR;
-}
-int handle_colour_toggle_command( class talker_args args ) {
-  if ( query_colour_status( args ) == "on" ) {
-    return handle_colour_on_off_command( "off", args );
-  }
-  return handle_colour_on_off_command( "on", args );
-}
-int handle_colour_on_off_command( string str_status, class talker_args args ) {
-  string status;
-  status = query_colour_status( args );
-  switch( str_status ) {
-  case "on":
-    if ( status == "on" ) {
-      add_failed_mess( "Talker colours for $D are already on!\n" );
-      return -1;
-    }
-    set_colour_status( args, "on" );
-    add_succeeded_mess( ({ "The eyes on $D flash with " +
-                             query_channel_colour( args, "default" ) +
-                             "colour%^RESET%^.\n", "" }) );
-    break;
-  case "off":
-    if ( status == "off" ) {
-      add_failed_mess("Talker colours for $D have already been turned off!\n");
-      return -1;
-    }
-    set_colour_status( args, "off" );
-    add_succeeded_mess( ({ "The eyes on $D blink sadly.\n", "" }) );
-    break;
-  default:
-    args->colour = DEFAULT_COLOUR_SETTINGS;
-    set_arg( args );
-    add_succeeded_mess( ({ "Talker colour settings for $D have been reset.\n",
-                             "" }) );
-  }
-  return 1;
-}
-mapping create_valid_colours( string my_colours ) {
-  string *colours;
-  string *valid_colours = TERM_HANDLER->query_colour_codes();
-  colours = map( explode( my_colours, " " ),
-                 (: upper_case( $1 ) :) );
-  return unique_mapping( colours,
-                         (: member_array( $1, $(valid_colours) ) > -1 :) );
-}
-int handle_colour_command(string channel, string new_colour,
-                          class talker_args args) {
-  mapping colours;
-  string valid_colour;
-  if ( !(EFFECTS + "talker")->valid( channel ) && channel != "default" ) {
-    tell_object( this_player(), "You cannot set that "
-                 "channel! Use the channel name \"default\" to set "
-                 "the default channel colour.\n" );
-    return 1;
-  }
-  colours = create_valid_colours( new_colour );
-  switch( sizeof( colours[ 0 ] ) ) {
-  case 0:
-    valid_colour = implode( map( colours[ 1 ], (: "%^" + $1 + "%^" :) ), "" );
-    set_channel_colour( args, channel, valid_colour );
-    add_succeeded_mess( ({ "The eyes flash with" + valid_colour +
-                             " colour.%^RESET%^\n", "" }) );
-    return 1;
-  case 1:
-    add_failed_mess( "The colour $I is invalid.\n", colours[ 0 ] );
-    return -1;
-  default:
-    add_failed_mess( "The colours $I are invalid.\n", colours[ 0 ] );
-    return -1;
-  }
-}
-int handle_status_command(string mode, class talker_args args) {
-  switch (mode) {
-  case "on" :
-    if ( args->status ) {
-      tell_object(this_player(),  "The eyes are already alert "
-                  "and listening to your every word.\n");
-    } else {
-      tell_object(this_player(), "The eyes open and light up "
-                  "eagerly, then dim to a dull glow.\n");
-      args->status = 1;
-    }
-    break;
-  case "off" :
-    if ( !args->status ) {
-      tell_object(this_player(), "You notice that the eyes are "
-                  "already closed, so you wake them up again "
-                  "in order to tell them to go to sleep.\n");
-    } else {
-      tell_object(this_player(), "The eyes slowly lose their "
-                  "glow as they close.\n");
-      args->status = 0;
-    }
-    break;
-  }
-  set_arg(args);
-  return 1;
-}
-int handle_verbose_command(string mode, class talker_args args) {
-  if (!args->status) {
-    tell_object(this_player(), "The eyes are asleep.\n");
-    return 1;
-  }
-  switch (mode) {
-  case "brief":
-    if ( !args->verbose ) {
-      tell_object(this_player(), "The eyes ignore you completely.\n");
-    } else {
-      tell_object(this_player(), "The eyes seem sad as they dim "
-                  "slightly.\n");
-      args->verbose = 0;
-    }
-    break;
-  case "verbose":
-    if ( args->verbose ) {
-      tell_object(this_player(),  "The eyes glitter at you "
-                  "angrily.  They already know that they are to "
-                  "be verbose.\n");
-    } else {
-      tell_object(this_player(), "The eyes light up happily for "
-                  "a moment.\n");
-      args->verbose = 1;
-    }
-    break;
-  }
-  set_arg(args);
-  return 1;
-}
-void receive(string channel, string sender, string text, object *receivers) {
-  class talker_args args;
-  string *ignoring;
-  object where;
-  string colour;
-  string txt;
-  if(!player || !environment(player) )
-    return;
-  where = environment(player);
-  args = arg();
-  if (args && !classp(args))
-    return;
-  if (!args || !args->status || !living(where) || !interactive(where))
-    return;
-  if(member_array(channel, map(args->channels, (: lower_case($1) :)) ) == -1) {
-    return;
-   }
-  if ( channel == "intermud" && where->query_creator() ) {
+public void receive(string channel, string sender, string text,
+                    object *receivers) {
+  class response response;
+  if(!listener) {
+    register_listener();
     return;
   }
-  if ( file_name( previous_object( 1 ) ) == "/secure/cmds/creator/exe_c" ||
-       file_name( previous_object( 1 ) ) == "/secure/cmds/creator/ca_ll" ) {
-    if ( this_player(1) && this_player(1)->query_creator() &&
-         !this_player(1)->query_property( "talker cheat" ) ) {
-      txt = this_player(1)->query_name() +
-        " made " + sender + " chat \"" + text + "\" on "
-        "channel " + channel;
-      user_event( "inform", txt, "cheat" );
-      log_file( "/d/admin/log/TALKER", txt + "\n" );
-      this_player(1)->add_property( "talker cheat", 1, 3 );
-    }
-  }
-  ignoring = where->query_property("ignoring");
-  if (ignoring && member_array(lower_case(sender), ignoring) != -1 ) {
-    return;
-  }
-  if(player->query_property(SHORTHAND_OUTPUT_PROP))
-    text = LANGUAGES->fix_shorthand(text);
-  if ( args->verbose ) {
-#ifdef EMOTE_ENABLED
-    if ( text[0] == '@' || text[0] == ':' ) {
-      text = ( channel == "one" ? "" : "("+ capitalize(channel) +
-               ") " ) +
-        sender +"'s wispy voice comes from " +
-        player->the_short()+", saying that " +
-        (this_player()?this_player()->query_pronoun():"they") +
-        " " + text[1..];
-    } else {
-#endif
-      text = ( channel == "one" ? "" : "("+ capitalize(channel) +
-               ") " ) +
-        sender +"'s wispy voice comes from " +
-        player->the_short()+", saying: " + text;
-#ifdef EMOTE_ENABLED
-    }
-#endif
-  } else {
-#ifdef EMOTE_ENABLED
-    if ( text[0] == '@' || text[0] == ':' ) {
-      text = ( channel == "one" ? "" : "("+ capitalize(channel) +
-               ") " ) +
-        sender +" wisps that " +
-        (this_player()?this_player()->query_pronoun():"they") +
-        " " + text[1..];
-    } else {
-#endif
-      text = ( channel == "one" ? "" : "("+ capitalize(channel) +
-               ") " ) +
-        sender +" wisps: " +text;
-#ifdef EMOTE_ENABLED
-    }
-#endif
-  }
-  if ( stringp( args->colour ) ) {
-    colour = args->colour;
-  }
-  if(mapp(args->colour) && query_colour_status( args ) == "on") {
-    if (!( colour = args->colour[ channel ] ) ) {
-      if(!(colour = args->colour[(EFFECTS + "talker")->
-                                normalise_name(channel)])) {
-        colour = args->colour[ "default" ];
-        if ( !colour ) {
-          colour = DEFAULT_COLOUR;
+  if(sizeof(responses) && listener->query_name() != lower_case(sender) ) {
+    if(member_array(lower_case(channel), keys(responses)) > -1 &&
+       responses[channel]) {
+      foreach( response in responses[channel]) {
+        if(response->sender == sender ||
+           response->sender == "anyone" ) {
+          foreach( string trigger in response->triggers ) {
+            if(regexp(text, trigger)) {
+              if(random(100) < response->probability) {
+                call_out("process_response", response->delay,
+                         response->responses,
+                         ({ channel, sender, text }));
+              }
+              break;
+            }
+          }
         }
       }
     }
   } else {
-    colour = "";
+    query_shadowing(this_object())->receive(channel, sender, text, receivers);
   }
-  tell_object(where, colour +  "$I$5=$C$"+ text + "%^RESET%^\n" );
-#ifdef NOISY
-  if(receivers && sizeof(receivers) && !where->query_invis() &&
-     environment(where) && base_name(environment(where)) != "/room/rubbish") {
-    receivers = map(receivers, (: $1->query_player() :));
-    receivers += ({ this_player() });
-    tell_room(environment(where),
-              "A wispy voice comes from " + player->poss_short(1) + ".\n",
-              receivers);
-  }
-#endif
 }
-int do_chat(string message, string pattern, string verb) {
-  class talker_args args;
-  object *things, *receivers;
-  string sender;
-#ifdef DEBUG
-  tell_creator("taffyd", "Message is %s, pattern is %s, verb is "
-               "%s.\n", message, pattern, verb);
-#endif
-#ifdef EMOTE_ENABLED
-  if ( verb[ <1 ] == ':' ) {
-    verb = verb[0..<2];
-  }
-#endif
-  if (pattern == "into <direct:object>") {
-    add_succeeded_mess("$N whisper$s lovingly to $D.\n");
+private int compare_arrays( mixed *ar1, mixed *ar2 ) {
+  int i;
+  if ( !ar1 && !ar2 )
+    return 0;
+  if ( sizeof( ar1 ) != sizeof( ar2 ) )
     return 1;
-  }
-  args = arg();
-  if (!args->status) {
-    tell_object(this_player(), "The eyes are asleep.\n");
-    return 1;
-  }
-  while (strsrch(message, "%^") != -1) {
-    message = replace(message, ({ "%^", "" }) );
-  }
-  if(member_array( verb, map(args->channels, (: lower_case($1) :)) ) == -1 &&
-     verb != "chat") {
-    return 0;
-  }
-  if(this_player()->query_property("no talker")) {
-    add_failed_mess("Sorry, you are not allowed to use a talker.\n");
-    return 0;
-  }
-  if(environment(this_player()) &&
-     environment(this_player())->query_property("no talker")) {
-    if(stringp(environment(this_player())->query_property("no talker")))
-      add_failed_mess(environment(this_player())->query_property("no talker"));
-    else
-      add_failed_mess("Your talker doesn't seem to work here.\n");
-    return 0;
-  }
-  if (this_player()->query_property("gagged")) {
-    add_failed_mess("You have been gagged!  You cannot chat until "
-                    "your gag is removed.  Perhaps you should talk to a "
-                    "creator about this.\n");
-    return 0;
-  }
-  if (environment(player) != this_player()) {
-    add_failed_mess("You're too far away from $D to whisper into it.\n");
-    return 0;
-  }
-  if (verb == "chat") {
-    if (member_array("one", args->channels) == -1) {
-      verb = args->channels[0];
-    }
-    else {
-      verb = "one";
+  i = sizeof( ar1 );
+  while ( i-- ) {
+    if ( ar1[ i ] != ar2[ i ] ) {
+      return 1;
     }
   }
-  sender = this_player()->query_cap_name();
-  message = replace(message,
-                    ({ BEEP, "", CTRL, "", "[A", "", "[B", "", "[C", "",
-                         "[D", "", "%^", " " }));
-  if(this_player()->query_property(SHORTHAND_PROP))
-    message = LANGUAGES->fix_shorthand(message);
-  things = children( PATH + "talker" );
-  if ( args->local_echo ) {
-    things -= ({ find_object( PATH + "talker" ) });
-  } else {
-    things -= ({ this_object(), find_object( PATH + "talker" ) });
-  }
-  tell_object(this_player(), "You whisper into " + player->the_short() +
-              ".\n");
-  if(!this_player()->query_invis() &&
-     base_name(environment(this_player())) != "/room/rubbish" ) {
-    receivers = map(things, (: $1->query_player() :));
-    receivers += ({ this_player() });
-    tell_room(environment(this_player()), this_player()->one_short(1) +
-              " whispers into " + this_player()->query_possessive() +
-              " " + player->short() + ".\n", receivers);
-  }
-  things->receive(verb, sender, message, things);
-  if( verb == "intermud" ) {
-    if (message[0] == '@' || message[0] == ':') {
-      user_event( "intermud_tell", sender + " ", message[1..], "dwchat" );
-      message = "$N " + message[1..];
-      SERVICES_D->eventSendChannel(sender, "discworld-chat", message, 1);
+  return 0;
+}
+public void process_response( string *commands, string *arguments) {
+  if(!query_listener()) return;
+  foreach(string response in commands) {
+    if(response[0] == '#') {
+      if(function_exists(response[1..], listener)) {
+        call_other( listener, ({ response[1..] }) + arguments);
+      }
     } else {
-      SERVICES_D->eventSendChannel( sender, "discworld-chat", message, 0 );
-      user_event( "intermud_tell", sender +": ", message, "dwchat" );
+      listener->do_command(response);
     }
   }
-  if ( verb == "playtesters" ) {
-    if ( !this_player()->query_creator() &&
-         !PLAYTESTER_HAND->query_playtester(this_player()->query_name()) ) {
-      args->channels -= ({ "playtesters" });
-      set_arg(args);
-      add_failed_mess("You're no longer a playtester!\n");
-      return 0;
-    }
-  }
-#ifdef EMOTE_ENABLED
-  if ( message[0] == '@' || message[0] == ':' ) {
-    HIST->add_chat_history( verb , sender +" wisped that " +
-                            this_player()->query_pronoun() + " ",
-                            message[1..] );
-  } else {
-#endif
-    HIST->add_chat_history( verb , sender +" wisped: ", message );
-#ifdef EMOTE_ENABLED
-  }
-#endif
-  return 1;
-}
-void remove_effect_shadow( int i ) {
-  if ( i == id ) {
-    if ( player && environment( player ) ) {
-      environment( player )->remove_object( player, 1 );
-      init();
-    }
-  }
-  ::remove_effect_shadow( i );
-}
-protected string format_channel_colour( string colour ) {
-  return colour +
-    lower_case( replace_string( implode( explode( colour, "%^%^" ), " " ),
-                                "%^", "" ) ) + "%^RESET%^";
-}
-int handle_colour_list(mixed *colour_args, class talker_args args) {
-  string channel;
-  if (!mapp(args->colour) || query_colour_status( args ) == "off" ) {
-    add_failed_mess( "You currently have talker colours disabled.  Use "
-                     "\"talker colour on\" to turn them on.\n" );
-    return 0;
-  }
-  foreach( channel in args->channels ) {
-    if ( args->colour[ channel ] ) {
-      tell_object( this_player(),
-                   "Channel " + channel + " is " +
-                   format_channel_colour( args->colour[ channel ] ) + ".\n");
-    }
-  }
-  if ( args->colour[ "default" ] ) {
-    tell_object( this_player(),
-                 "The default talker colour is " +
-                 format_channel_colour( args->colour[ "default" ] ) + ".\n");
-  }
-  return 1;
-}
-int handle_echo_command( string mode, class talker_args args) {
-  int current;
-  current = args->local_echo;
-  if ( current ) {
-    if ( mode == "on" ) {
-      add_failed_mess( "Talker echo is already on for $D!\n" );
-      return -1;
-    }
-    args->local_echo = 0;
-    add_succeeded_mess( ({ "The eyes on $D flash slowly.\n", "" }) );
-  } else {
-    if ( mode == "off" ) {
-      add_failed_mess( "Talker echo is already off for $D!\n" );
-      return -1;
-    }
-    args->local_echo = 1;
-    add_succeeded_mess( ({ "The eyes on $D flash twice rapidly.\n",
-                             "" }) );
-  }
-  set_arg( args );
-  return 1;
 }
 
 ==================================================
-FILE: shadows/disease/flu_shadow.c
+FILE: house/tworoomflat/flatN.c
 ==================================================
 
-inherit "/std/effect_shadow";
-string *soulverb;
-string *souladverb;
-int query_flu(){ return 1; }
-string flusoul(){
-   string flu;
-   soulverb = ({"sneeze",
-                "cough"
-   });
-   souladverb = ({"violently",
-                "loudly",
-                "suddenly"
-   });
-this_player()->force_soul_command(soulverb[random(sizeof(soulverb))]+" "+souladverb[random(sizeof(souladverb))]);
-   return flu;
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/flat%N%");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("front room");
+   set_base_desc("a small and cosy front room" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit("out", %out%, "door");
+   modify_exit("out", ({ "door short", "front door"}));
+   add_exit("%2%", PATH+"flat%N%bed", "door");
+   modify_exit("%2%", ({ "door short", "bedroom door"}));
+   modify_exit("out", ({"exit mess", "$N leaves the flat.",
+                         "enter mess",
+                           ({ 1,
+                              "$N enters from a flat.",
+                              "$N enter from a flat."
+                           }),
+                       }) );
+   modify_exit( "out", ({ "closed", 1 }) );
 }
-int look_me(string arg){
-   if(!arg){
-      if (random(100) > 30){
-         tell_object(player, "You feel dizzy and bleary eyed.\n");
+
+==================================================
+FILE: house/tworoomflat/flatNbed.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/flat%N%bed");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%6%", PATH +"flat%N%", "door" );
+   modify_exit("%6%", ({ "door short", "livingroom door" }));
+}
+
+==================================================
+FILE: house/onebedhouse/Nbed.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%bed");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "down", PATH +"%N%livingroom", "stair" );
+   modify_exit("down", ({ "downgrade", 9 }));
+}
+
+==================================================
+FILE: house/onebedhouse/Nhall.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%hall");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("front room");
+   set_base_desc("a small hallway" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit("out", %out%, "door");
+   modify_exit("out", ({"door short", "front door",
+                          "exit mess", "$N leaves the house.",
+                          "closed", 1,
+                          "enter mess",
+                          ({ 1,
+                               "$N enters from a house.",
+                               "$N enter from a house."
+                               }),
+                          }) );
+   add_exit("%0%", PATH+"%N%livingroom", "door");
+   modify_exit("%0%", ({ "door short", "livingroom door"}));
+}
+
+==================================================
+FILE: house/onebedhouse/Nlivingroom.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%livingroom");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("livingroom");
+   set_base_desc("a comfortable livingroom");
+   add_surface("floor", "finished pine board" );
+   add_surface("ceiling", "plain plaster" );
+   add_surface("%0% wall", "plain plaster");
+   add_surface("%2% wall", "plain plaster");
+   add_surface("%4% wall", "plain plaster");
+   add_surface("%6% wall", "plain plaster");
+   add_exit("%4%", PATH+"%N%hall", "door");
+   modify_exit("%4%", ({"door short", "hallway door"}));
+   add_exit("up", PATH+"%N%bed", "stair");
+   modify_exit("up", ({ "upgrade", 9 }));
+}
+
+==================================================
+FILE: house/onebedhut/Nbed.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%bed");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "stone paving" );
+   add_surface( "ceiling", "roughly finished wood" );
+   add_surface( "%0% wall", "roughly finished wood" );
+   add_surface( "%2% wall", "roughly finished wood" );
+   add_surface( "%4% wall", "roughly finished wood" );
+   add_surface( "%6% wall", "roughly finished wood" );
+   add_exit( "%4%", PATH +"%N%livingroom", "door" );
+   modify_exit("%4%", ({ "door short", "living room door" }));
+}
+
+==================================================
+FILE: house/onebedhut/Nlivingroom.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%livingroom");
+   set_orientation(%orientation%);
+   set_quit_handler(%out%);
+   set_short("livingroom");
+   set_base_desc("a small cramped livingroom");
+   add_surface("floor", "stone paving" );
+   add_surface("ceiling", "roughly finished wood" );
+   add_surface("%0% wall", "roughly finished wood" );
+   add_surface("%2% wall", "roughly finished wood" );
+   add_surface("%4% wall", "roughly finished wood" );
+   add_surface("%6% wall", "roughly finished wood" );
+   add_exit("out", %out%, "door");
+   modify_exit("out", ({"door short", "front door",
+                          "exit mess", "$N leaves the hut.",
+                          "closed", 1,
+                          "enter mess",
+                          ({ 1,
+                               "$N enters from a hut.",
+                               "$N enter from a hut."
+                               }),
+                          }) );
+   add_exit("%0%", PATH+"%N%bed", "door");
+   modify_exit("%0%", ({"door short", "bedroom door"}));
+}
+
+==================================================
+FILE: house/fourbedhouse/Nbed2.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%bed2");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%0%", PATH +"%N%landing1", "door" );
+   modify_exit("%0%", ({ "door short", "bedroom door" }));
+   add_exit("window", PATH + "%N%half-roof", "window");
+}
+
+==================================================
+FILE: house/fourbedhouse/Nbed3.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%bed3");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%0%", PATH +"%N%landing2", "door" );
+   modify_exit("%0%", ({ "door short", "bedroom door" }));
+   add_exit("window", PATH + "%N%half-roof", "window");
+}
+
+==================================================
+FILE: house/fourbedhouse/Nbed4.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%bed4");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a small bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%4%", PATH +"%N%landing2", "door" );
+   modify_exit("%4%", ({ "door short", "livingroom door" }));
+}
+
+==================================================
+FILE: house/fourbedhouse/Ndiningroom.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%diningroom");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("spacious dining room");
+   set_base_desc("a spacious dining room");
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit("%3%", PATH+"%N%livingroom", "corridor");
+   add_exit("%2%", PATH+"%N%kitchen", "corridor");
+   add_exit("window", PATH+"%N%garden", "window");
+}
+
+==================================================
+FILE: house/fourbedhouse/Nfamilyroom.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/flat%N%study");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("small study");
+   set_base_desc("a small study");
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit("%6%", PATH+"%N%kitchen", "corridor");
+   add_exit("%0%", PATH+"%N%garden", "door");
+}
+
+==================================================
+FILE: house/fourbedhouse/Ngarden.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE_OUTSIDE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%garden");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("small garden");
+   set_base_desc("a quiet and secluded garden");
+   add_surface("floor", "grass");
+   add_surface("%0% wall", "red brick" );
+   add_surface( "%2% wall", "red brick" );
+   add_surface( "%6% wall", "red brick" );
+   add_exit("%4%", PATH+"%N%familyroom", "door");
+   modify_exit("%4%", ({ "door short", "garden door" }));
+   add_exit("window", PATH+"%N%diningroom", "window");
+}
+
+==================================================
+FILE: house/fourbedhouse/Nhalf-roof.c
+==================================================
+
+#include "path.h";
+inherit "/std/rooftop";
+void setup() {
+  set_light(100);
+  set_short("half-roof");
+  set_long("This is a half-roof, a piece of sloping roof halfway up the "
+           "front of the house.  There is a window to the %2% and another "
+           "to the %6%.\n");
+  set_slope(30, "half-roof", %out%);
+  add_exit("%6% window", PATH+"%N%bed2", "window");
+  add_exit("%2% window", PATH+"%N%bed3", "window");
+  set_wall( ({ "bottom", ({ %out", 250 }), }) );
+  set_wall( ({ "move", ({ "down", 30, %out%,
+                            "$N climb$s down from above to join you." }) }) );
+}
+
+==================================================
+FILE: house/fourbedhouse/Nkitchen.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%kitchen");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("large kitchen");
+   set_base_desc("a large kitchen");
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit("%6%", PATH+"%N%diningroom", "corridor");
+   add_exit("%4%", PATH+"%N%livingroom", "corridor");
+   add_exit("%2%", PATH+"%N%familyroom", "corridor");
+}
+
+==================================================
+FILE: house/fourbedhouse/Nlanding1.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%landing1");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("landing");
+   set_base_desc( "a landing at the top of the stairs" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%0%", PATH +"%N%masterbed", "door" );
+   modify_exit("%0%", ({ "door short", "bedroom door" }));
+   add_exit( "%4%", PATH +"%N%bed2", "door" );
+   modify_exit("%4%", ({ "door short", "bedroom door" }));
+   add_exit("%2%", PATH+"%N%landing2", "corridor");
+   add_exit("down", PATH+"%N%livingroom", "corridor");
+   modify_exit("down", ({"downgrade", 9 }));
+}
+
+==================================================
+FILE: house/fourbedhouse/Nlanding2.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/flat%N%bed");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("hallway");
+   set_base_desc( "a hallway" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_exit( "%0%", PATH +"%N%bed4", "door" );
+   modify_exit("%0%", ({ "door short", "bedroom door" }));
+   add_exit( "%4%", PATH +"%N%bed3", "door" );
+   modify_exit("%4%", ({ "door short", "bedroom door" }));
+   add_exit( "%6%", PATH +"%N%landing1", "corridor" );
+}
+
+==================================================
+FILE: house/fourbedhouse/Nlivingroom.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%livingroom");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("livingroom");
+   set_base_desc("a large, comfortable, and sunny livingroom");
+   add_surface("floor", "finished pine board" );
+   add_surface("ceiling", "plain plaster" );
+   add_surface("%0% wall", "plain plaster");
+   add_surface("%2% wall", "plain plaster");
+   add_surface("%4% wall", "plain plaster");
+   add_surface("%6% wall", "plain plaster");
+   add_exit("out", %out%, "door");
+   modify_exit("out", ({"door short", "front door"}));
+   add_exit("%7%", PATH+"%N%diningroom", "corridor");
+   add_exit("%0%", PATH + "%N%kitchen", "corridor");
+   add_exit("up", PATH + "%N%landing1", "corridor");
+   modify_exit("up", ({"upgrade", 9}));
+   modify_exit("out", ({"message", "$N leaves the house.",
+                          "enter",
+                          ({ 1,
+                             "$N enters from a house.",
+                             "$N enter from a house." }),
+                          "closed", 1,
+                          "door long", "This is the front door to a house.  "
+                          "It has the numerals '%N%' in brass lettering.\n",
+                          }) );
+}
+
+==================================================
+FILE: house/fourbedhouse/Nmasterbed.c
+==================================================
+
+#include "path.h";
+inherit PLAYER_HOUSE;
+void setup() {
+   set_light(50);
+   set_theft_handler( HOSPITAL );
+   set_save_file("%savedir%/%N%masterbed");
+   set_orientation(%orientation%);
+  set_quit_handler(%out%);
+   set_short("bedroom");
+   set_base_desc( "a huge master bedroom" );
+   add_surface( "floor", "finished pine board" );
+   add_surface( "ceiling", "plain plaster" );
+   add_surface( "%0% wall", "plain plaster" );
+   add_surface( "%2% wall", "plain plaster" );
+   add_surface( "%4% wall", "plain plaster" );
+   add_surface( "%6% wall", "plain plaster" );
+   add_exit( "%4%", PATH +"%N%landing1", "door" );
+   modify_exit("%4%", ({ "door short", "bedroom door" }));
+}
+
+==================================================
+FILE: effects/basic.c
+==================================================
+
+#include "potion_attrs.h"
+int x1, x2, y1, y2;
+void set_boundaries(int *min, int *max)
+{
+   x1 = min[0];
+   x2 = max[0];
+   y1 = min[1];
+   y2 = max[1];
+}
+int *query_coordinate()
+{
+   return ({ (x1 + x2) / 2, (y1 + y2) / 2 });
+}
+#pragma no_warnings
+mixed *query_attrs(int *coord)
+{
+   return ({ 0, 100, ({ }), ({ }), ({ }), ({ }) });
+}
+int query_pass_through(int *coord)
+{
+   return 100;
+}
+void install_effect()
+{
+   (void)POTION_SPACE_HANDLER->remove_effect(file_name(this_object()));
+   (void)POTION_SPACE_HANDLER->add_effect(file_name(this_object()), x1, x2, y1, y2);
+}
+int sqrt(int p)
+{
+   int i;
+   for (i = 1; i < 500; i++) if (i * i > p) return i-1;
+}
+int distance_within_region(int *coord)
+{
+   int dx, dy;
+   if (x1 < 0) {
+      if (x2 > 0)
+         dx = (coord[0] < 0) ? -coord[0] : coord[0];
+      else
+         dx = (x2 - coord[0]);
+   } else
+      dx = coord[0] - x1;
+   if (y1 < 0) {
+      if (y2 > 0)
+         dy = (coord[1] < 0) ? -coord[1] : coord[1];
+      else
+         dy = (y2 - coord[1]);
+   } else
+      dy = coord[1] - y1;
+   return sqrt(dx * dx + dy * dy);
+}
+int distance_from_origin(int *coord)
+{
+   return sqrt(coord[0] * coord[0] + coord[1] * coord[1]);
+}
+
+==================================================
+FILE: effects/object/basic_trap.c
+==================================================
+
+#include "path.h"
+string query_classification() { return "object.trap.basic"; }
+string query_shadow_ob() { return SHADOWS +"basic_trap"; }
+int query_indefinite() { return 1; }
+int beginning( object thing, int amount, int id ) {
+	tell_object(find_player("ceres"), sprintf("Adding trap to %O\n",
+																						thing));
+	thing->set_lock_trap(thing, "trap_lock");
+	return 0;
+}
+
+==================================================
+FILE: effects/object/bug_effect.c
+==================================================
+
+#include <effect.h>
+void beginning( object player, int time, int id ) {
+   if (time == 0) {
+      time = 30*60;
+   }
+   player->submit_ee( "create_bug", ({ 5*60, 5*60 }), EE_CONTINUOUS );
+   player->submit_ee( 0, time, EE_REMOVE );
+}
+void end( object player, int time, int id ) {
+}
+void create_bug( object player, int time, int id ) {
+   object bug;
+   object room;
+   string env_string;
+   object *ignore;
+   bug = clone_object("/obj/monster/cockroach");
+   room = environment(player);
+   env_string = player->the_short();
+   ignore = ({ });
+   while (room) {
+      if (room == environment(player) && living(player)) {
+         tell_object(player, env_string+" have "+bug->a_short()+
+                             " suddenly pop out of your "
+                             "ear.\n");
+         ignore += ({ player });
+         tell_room(room, env_string+" has "+bug->a_short()+
+                         " suddenly pop out of "+
+                         player->query_possessive()+
+                         " ear.\n", ignore);
+      } else if (living(player)) {
+         tell_room(room, env_string+" has "+bug->a_short()+
+                         " suddenly pop out of "+
+                         player->query_possessive()+
+                         " ear.\n", ignore);
+      } else {
+         tell_room(room, env_string+" has "+bug->a_short()+
+                         " suddenly pop out of it.\n", ignore);
       }
-      else{
-         player->look_me();
-      }
-      return 1;
+      if (living(room))
+        ignore += ({ room });
+      env_string = env_string + " in " + room->the_short();
+      if (!environment(room))
+        bug->move(room);
+      room = environment(room);
    }
-   return 1;
 }
-int attack_ob(object obj){
-   object *contents;
-   object target;
-   if(random(100) > 30){
-      tell_object(player, "You feel too ill, and can't be bothered to attack.\n");
-      return 1;
-   }
-   player->attack_ob(target);
-   return 1;
+string query_classification() { return "object.bug"; }
+
+==================================================
+FILE: effects/object/cabbage.c
+==================================================
+
+#include <effect.h>
+void beginning( object player, int time, int id ) {
+   player->submit_ee( "make_stink", ({ 20, 20 }), EE_CONTINUOUS );
+   player->submit_ee( 0, time, EE_REMOVE );
 }
-int cast(string str){
-   if(random(100) > 50){
-      tell_object(player, "You lose your concentration as you feel a "+
-                          "sneeze coming on.\n");
-      this_player()->force_soul_command("sneeze");
-      return 1;
-   }
-   player->cast(str);
-   return 1;
+int merge_effect( object player, int time1, int time2, int id ) {
+   player->submit_ee( 0, time1 + time2 - (int)player->expected_tt(),
+         EE_REMOVE );
+   return time1 + time2;
+}
+void end( object player, int time, int id ) {
+   tell_object( player, "Your stomach calms down at last.\n" );
+}
+void make_stink( object player, int time, int id ) {
+   tell_object( player, "A huge trumpeting noise comes from your "
+   "rear, closely followed by a stench of boiled cabbage.\n" );
+   tell_room( environment( player ), "The smell of sprouts and cabbages from "
+   + (string)player->one_short() +
+         " wafts over you and you find yourself thinking of school dinners."
+         "\n", player );
+}
+string query_classification() { return "body.smell.scent"; }
+string smell_string( object player, int time ) {
+   return "the delicious doughnutty smell";
 }
 
 ==================================================
-FILE: shadows/disease/headache_shadow.c
+FILE: effects/object/death_ward.c
 ==================================================
 
-inherit "/std/effect_shadow";
-int query_special_manoeuvre() {
-   tell_object(player, "Your head hurts too much to try anything.\n");
+#include "path.h"
+string query_classification() { return "magic.ward.death"; }
+string query_shadow_ob() { return SHADOWS +"death_ward"; }
+int query_indefinite() { return 1; }
+int beginning( object thing, int amount, int id ) { return 0; }
+
+==================================================
+FILE: effects/object/extra_description.c
+==================================================
+
+#include <effect.h>
+string query_classification() {
+    return "object.extra_description";
+}
+void beginning( object thing , mixed *args ) {
+    string description;
+    int duration;
+    description = args[ 0 ];
+    duration = args[ 1 ];
+    if( !stringp( description ) || !intp( duration ) ) return;
+    thing->add_extra_look( this_object() );
+    thing->submit_ee( 0 , duration , EE_REMOVE );
+}
+string extra_look( object thing ) {
+    int *enums;
+    string message, temp;
+    enums = thing->effects_matching( query_classification() );
+    if( !sizeof( enums ) ) {
+        thing->remove_extra_look( this_object() );
+        return "";
+    }
+    message = "";
+    foreach( int elem in enums ) {
+        temp =  ( thing->arg_of( elem ) ) [ 0 ];
+        if( !stringp( temp ) ) {
+            temp = "";
+        } else {
+           if( strlen( temp ) < 2 || temp[ <2 .. ] != "\n" ) temp += "\n";
+        }
+        message += temp;
+    }
+    return message;
+}
+void end( object thing , mixed *args , int id ) {
+    if( sizeof( args ) == 3 && stringp( args[ 2 ] ) ) {
+         string end_mess = args[ 2 ];
+         if( end_mess[<2 .. ] != "\n" ) end_mess += "\n";
+         tell_object( thing , end_mess );
+    }
+}
+
+==================================================
+FILE: effects/object/heat.c
+==================================================
+
+#include "path.h"
+#include <effect.h>
+string query_classification()
+{
+  return "object.heat";
+}
+string query_shadow_ob()
+{
+  return SHADOWS+"heat_shadow";
+}
+int beginning(object ob, int heat, int id)
+{
+  ob->submit_ee("change_temperature", ({ 45, 15 }), EE_CONTINUOUS);
+  ob->add_extra_look(this_object());
+  return heat;
+}
+void restart(object ob)
+{
+  ob->add_extra_look(this_object());
+}
+int merge_effect(object ob, int new_heat, int old_heat, int id)
+{
+  int heat;
+  heat = new_heat + old_heat;
+  if(heat < 21)
+  {
+    ob->submit_ee(0, 0, EE_REMOVE);
+  }
+  return heat;
+}
+void end(object ob, int heat, int id)
+{
+  ob->remove_extra_look(this_object());
+}
+void change_temperature(object ob, int heat, int id)
+{
+  int shift;
+  int env_temp;
+  int new_heat;
+  env_temp = environment(ob)->query_heat();
+  if(!env_temp)
+  {
+    env_temp = 20;
+  }
+  if(env_temp > heat)
+  {
+    shift = 100 + ((env_temp - heat) / 10);
+    if((heat + shift) > env_temp)
+    {
+      shift = env_temp - heat;
+    }
+  }
+  else
+  {
+    shift = -100 - ((heat - env_temp) / 10);
+    if((heat + shift) < env_temp)
+    {
+      shift = env_temp - heat;
+    }
+  }
+  tell_creator(find_living("gototh"), "Heat shift: %O\n", shift);
+  new_heat = heat + shift;
+  if(heat > ob->query_property("red hot at") &&
+    new_heat < (ob->query_property("red hot at") + 1))
+  {
+    tell_room(environment(ob),
+      "$C$" + ob->one_short() + " stops glowing red hot.\n");
+  }
+  if((heat > 80) && (new_heat < 81))
+  {
+    tell_room(environment(ob),
+      "$C$" + ob->one_short() + " seems to have cooled down.\n");
+  }
+  if(new_heat < 21)
+  {
+    ob->submit_ee(0, 0, EE_REMOVE);
+  }
+  else
+  {
+    ob->set_arg_of(ob->sid_to_enum(id), new_heat);
+  }
+}
+string extra_look(object ob)
+{
+  int heat;
+  int *enums;
+  int red_hot;
+  enums = ob->effects_matching("object.heat");
+  if(!sizeof(enums))
+  {
+    return "";
+  }
+  heat = ob->arg_of(enums[0]);
+  red_hot = ob->query_property("red hot at");
+  if(red_hot)
+  {
+    if(heat > red_hot)
+    {
+      return "It is red hot.\n";
+    }
+    if(heat > 80)
+    {
+      return "It looks hot.\n";
+    }
+  }
+  return "";
+}
+
+==================================================
+FILE: effects/object/horse.c
+==================================================
+
+#include <effect.h>
+#define SHADOWS "/std/effects/object/"
+string query_classification(){return "object.horse"; }
+void beginning(object player, int amount){
+    player->submit_ee(0, amount, EE_REMOVE);
+    player->add_extra_look(this_object());
+}
+int merge_effect(object player, int old_amount, int new_amount){
+   if (old_amount > new_amount)
+      return old_amount;
+   return new_amount;
+}
+string query_shadow_ob(){
+   return SHADOWS+"shadow_horse";
+}
+int survive_death(){
    return 0;
 }
-int command_shadowed(string verb, string arg){
-   if(verb=="cast"){
-     write("Your head hurts too much to muster your might.\n");
-     return 1;
+string extra_look(object player){
+   return capitalize((string)player->the_short()) +
+         " is mounted on a large, black horse.\n";
+}
+void end(object player, int amount, int id){
+   player->remove_extra_look(this_object());
+}
+
+==================================================
+FILE: effects/object/identity_hold.c
+==================================================
+
+#include <effect.h>
+#include "path.h"
+class special_stuff {
+   int keep;
+   string identity;
+}
+int query_indefinite() { return 1; }
+string query_classification() { return "object.identify"; }
+string query_shadow_ob() { return SHADOWS + "identity_hold"; }
+class special_stuff beginning( object thing, mapping data, int id ) {
+   class special_stuff special_stuff;
+   special_stuff = new(class special_stuff);
+   special_stuff->keep = data["keep"];
+   special_stuff->identity = data["identity"];
+   thing->set_keep_value(special_stuff->keep);
+   thing->set_identifier(special_stuff->identity);
+   thing->set_identity_hold_owner(this_player());
+   return special_stuff;
+}
+class special_stuff merge_effect( object thing,
+                                  class special_stuff data,
+                                  mapping arg,
+                                  int id ) {
+   if (!nullp(arg["keep"])) {
+      data->keep = arg["keep"];
    }
-   return player->command_shadowed(verb, arg);
+   if (!nullp(arg["identity"])) {
+      data->identity = arg["identity"];
+   }
+   thing->set_keep_value(data->keep);
+   thing->set_identifier(data->identity);
+   return data;
+}
+void end( object thing, mixed* store, int id ) {
+}
+class special_stuff restart( object thing, class special_stuff data, int id ) {
+   thing->set_keep_value(data->keep);
+   thing->set_identifier(data->identity);
+   thing->set_identity_hold_owner(this_player());
+   return data;
 }
 
 ==================================================
-FILE: shadows/curses/alone.c
+FILE: effects/object/label.c
 ==================================================
 
-inherit "/std/effect_shadow";
-int query_blinded() {
-   return 1;
+#include <effect.h>
+int query_indefinite() { return 1; }
+object create_store(mapping map,
+                    object player) {
+   object store;
+   store = clone_object( "/std/container" );
+   if ( objectp( player ) ) {
+      store->set_player( player );
+   }
+   if ( mapp( map ) ) {
+      store->init_dynamic_arg( map );
+   }
+   return store;
 }
-
-==================================================
-FILE: shadows/curses/antisqeal.c
-==================================================
-
-inherit "/std/effect_shadow";
-string *replace_matrix =  ({
-"kewl", "cool",
-"l33t", "elite",
-" ur ", "your",
-" r ", " are ",
-" u ", " you ",
-" y ", " why ",
-"2", "two",
-"4", "for",
-"sum", "some",
-"wut", "what",
-"z", "s",
-"Z", "s",
-"k", "c",
-"K", "c",
-"wif", "with",
-"werk", "work" });
-#ifdef 0
-string mangle_speech( string s ) {
-    string s1;
-    s1 = player->mangle_speech( s ); return replace( " " + (stringp(s1)?s1:s),
-    replace_matrix)[1..10000]; }
-#endif
-string mangle_chat( string s ) {
-  return replace(s, replace_matrix);
+string query_classification() { return "object.label"; }
+mixed* beginning( object thing, object label, int id ) {
+   object store;
+   store = clone_object( "/std/container" );
+   label->move( store );
+   thing->add_extra_look( file_name(this_object()) );
+   return ({ store, store->query_dynamic_auto_load() });
 }
-
-==================================================
-FILE: shadows/curses/chef_curse.c
-==================================================
-
-inherit "/std/effect_shadow";
-string *replace_matrix =  ({
-"the", "zee",
-"The", "Zee",
-"ir", "ur",
-"ow", "oo",
-"th", "t",
-"au", "oo",
-"Au", "Oo",
-"u", "oo",
-"U", "Oo",
-"tion", "shun",
-"an", "un",
-"An", "Un",
-"en ", "ee ",
-"ew", "oo",
-"a", "e*",
-"A", "E*",
-"e* ", "e ",
-"E* ", "E ",
-"e*", "e",
-"E*", "E",
-"e ", "e-a ",
-"f", "ff",
-" o", " oo",
-" O", " Oo",
-"v", "f",
-"V", "F",
-"w", "v",
-"W", "V", });
-string mangle_speech( string s ) {
-    string s1;
-    s1 = player->mangle_speech( s );
-    return replace( " " + (stringp(s1)?s1:s), replace_matrix)[1..10000];
+mixed* merge_effect( object thing, mixed* store, object label, int id ) {
+   if (!store) {
+      store = ({ 0, ([ ]) });
+   }
+   if (mapp(store)) {
+      store = ({ 0, store });
+   }
+   if ( !store[0] ) {
+      store[0] = create_store(store[1], environment(thing));
+   }
+   label->move( store[0] );
+   store[1] = store[0]->query_dynamic_auto_load();
+   return store;
 }
-
-==================================================
-FILE: shadows/curses/deaf_shadow.c
-==================================================
-
-inherit "/std/effect_shadow";
-#include "effect.h"
-void event_whisper(object ob, string start, string mess, object *d, string lang) {
-   int i;
-   i = (int)arg() / 2;
-   if (random(100) < i) {
-      player->event_whisper(ob, start, mess, d, lang);
+void end( object thing, mixed* store, int id ) {
+  int i;
+  if (arrayp(store)) {
+    for(i=0; i<sizeof(store); i++)
+      if(objectp(store[i]))
+         store[i]->dest_me();
+  } else if(objectp(store))
+    store->dest_me();
+   thing->remove_extra_look( this_object() );
+}
+mixed* restart( object thing, mixed stuff, int id ) {
+   object player;
+   object store;
+   mapping map;
+   int enum;
+   if (mapp(stuff)) {
+      map = stuff;
+   } else if (stuff) {
+      map = stuff[1];
    } else {
-      player->add_message(ob, "$N %hiss% something at you, but you just "+
-"can't make it out.\n", 1);
+      map = ([ ]);
    }
+   player = environment( thing );
+   thing->add_extra_look( file_name(this_object()) );
+   store = create_store(map, environment(thing));
+   enum = thing->sid_to_enum(id);
+   thing->set_arg_of(enum, ({ store, map }));
 }
-void event_person_say(object ob, string start, string mess, string lang) {
-   string dum1, dum2;
-   if (sscanf(start, "%sloud%s", dum1, dum2)) {
-      if (random(100) > (100 - (int)arg()) / 2) {
-         player->event_person_say(ob, start, mess, lang);
-      } else {
-         player->add_message(ob, "$N say$s something loudly, but "+
-"you fail to hear it properly.\n", 1);
-      }
-   } else {
-      if (random(100) < arg()) {
-         player->event_person_say(ob, start, mess, lang);
-      } else {
-         player->add_message(ob, "$N say$s something, but you just can't "+
-   "hear it properly.\n", 1);
+string extra_look( object thing ) {
+   int *enums;
+   object store;
+   object *labels;
+   mixed *bing;
+   enums = (int *)thing->effects_matching( "object.label" );
+   if ( !sizeof( enums ) ) {
+      return "";
+   }
+   bing = thing->arg_of( enums[ 0 ] );
+   if (pointerp(bing)) {
+      store = bing[0];
+      if (!store) {
+         store = create_store(bing[1], environment(thing));
+         thing->set_arg_of(enums[0], ({ store, bing[1] }));
       }
    }
-}
-void event_person_say_new(object ob, string start, string mess, string lang,
-  mixed avoid) {
-   tell_object(player, sprintf("New Say: %O %O %O %O %O\n", ob, start, mess, lang, avoid));
+   if ( !objectp( store ) ) {
+      return "";
+   }
+   labels = (object *)store->find_inv_match( "" );
+   if ( !sizeof( labels ) ) {
+      return "";
+   }
+   return capitalize( (string)thing->query_pronoun() ) +" has "+
+         query_multiple_short( labels ) +" stuck on "+
+         (string)thing->query_objective() +".\n";
 }
 
 ==================================================
-FILE: shadows/curses/ensmurfed.c
+FILE: effects/object/newbie_shoes.c
 ==================================================
 
-inherit "/std/effect_shadow";
-varargs string short(int dark) {
-   if (player)
-     return player->short(dark)+"smurf";
-   return "Smurf curse shadow";
+#include "path.h"
+#include <effect.h>
+#define CLASS "misc.worn.shoes.orthopaedic"
+string query_classification() { return CLASS; }
+int query_indefinite() { return 1; }
+string query_shadow_ob() { return SHADOWS + "newbie_shoes"; }
+void chat(object player, mixed arg, int id)
+{
+  string *mechats = ({
+    "Something's crawling inside the shoes.\n",
+    "The Cobblers of Sek must've made these things!\n",
+    "Did that vice just screw down tighter?\n",
+    "*OUCH* that stung!\n",
+    "You not-so-idly wonder who came up with these shoes.\n"
+    });
+  string *youchats = ({
+    " winces in pain.\n",
+    " mutters something about shoes.\n",
+    " stumbles.\n"
+    });
+  if (!interactive(player)) return;
+  tell_object(player, mechats[random(sizeof(mechats))]);
+  tell_room(environment(player),
+    player->query_cap_name() + youchats[random(sizeof(youchats))],
+    ({ player }) );
 }
-mixed query_short() { return player->query_short()+"smurf"; }
-mixed query_long() { return "This is a small blue humanoid.\n"; }
-int query_female() { return 0; }
-int query_gender() { return 0; }
-int query_male() { return 0; }
-int query_neuter() { return 1; }
-string query_gender_string() { return "smurf"; }
-string query_gender_title() { return "smurf"; }
-string query_objective() { return "it"; }
-string query_possessive() { return "its"; }
-string query_pronoun() { return "it"; }
-string long(string str, int dark) {
-   string s, guild_ob;
-   s = "You see "+ query_short();
-   guild_ob = player->query_guild_ob();
-   if (guild_ob)
-      s += " "+ (string)guild_ob->query_title( this_object() ) +".\n";
+void notify(object player, mixed arg, int id)
+{
+  tell_object(player,
+    "A fiery pain shoots up your legs from your feet.\n");
+}
+void beginning( object player, int amount, int id )
+{
+  player->add_extra_look( this_object() );
+  player->adjust_bonus_dex(-1);
+  player->submit_ee("chat", ({ 10, 30 }), EE_CONTINUOUS);
+  player->submit_ee("notify", 1, EE_ONCE);
+}
+void restart( object player, int amount, int id )
+{
+  beginning(player, amount, id);
+}
+void merge_effect(object player, mixed oldarg, mixed newarg, int id)
+{
+  return;
+}
+void end( object player, int amount, int id )
+{
+  player->remove_extra_look( this_object() );
+  player->adjust_bonus_dex(1);
+  tell_object(player, "Ahhhh!  Free from those evil shoes!\n");
+}
+string extra_look( object player )
+{
+  int *enums;
+  enums = (int *)player->effects_matching( CLASS );
+  if ( !sizeof( enums ) )
+     return "";
+  return(capitalize(player->query_pronoun()) +
+    " looks embarrassed and uncomfortable.\n");
+}
+
+==================================================
+FILE: effects/object/no_save.c
+==================================================
+
+#include "path.h"
+string query_classification() { return "mudlib.object.nosave"; }
+string query_shadow_ob() { return SHADOWS +"no_save"; }
+int query_indefinite() { return 1; }
+void beginning( object thing, string owner, int id ) { return; }
+string merge_effect( object thing, string old_owner, string new_owner,
+      int id ) {
+   return old_owner;
+}
+
+==================================================
+FILE: effects/object/object_desc.c
+==================================================
+
+#include <effect.h>
+string query_classification(){return "crafts.description"; }
+string* beginning(object thing, string* desc){
+   switch(sizeof(desc)){
+      case 5:
+         thing->add_property("determinate", desc[4]);
+      case 4:
+         thing->add_alias(desc[3]);
+      case 3:
+         thing->add_adjective(desc[2]);
+      case 2:
+         thing->set_long(desc[1]);
+      case 1:
+         thing->set_short(desc[0]);
+   }
+   return desc;
+}
+string* merge_effect(object player, string* old_desc, string* new_desc){
+   return new_desc;
+}
+mixed* restart(object thing, string* description, int id){
+   switch(sizeof(description)){
+      case 5:
+         thing->add_property("determinate", description[4]);
+      case 4:
+         thing->add_alias(description[3]);
+      case 3:
+         thing->add_adjective(description[2]);
+      case 2:
+         thing->set_long(description[1]);
+      case 1:
+         thing->set_short(description[0]);
+   }
+   return ({thing, description, id});
+}
+
+==================================================
+FILE: effects/object/owned_weapon.c
+==================================================
+
+#include "path.h"
+string query_classification() { return "mudlib.owned.weapon"; }
+string query_shadow_ob() { return SHADOWS +"owned_weapon"; }
+int query_indefinite() { return 1; }
+void beginning( object thing, string owner, int id ) { return; }
+string merge_effect( object thing, string old_owner, string new_owner,
+      int id ) {
+   write( "There is a bug with the ownership of "+
+         (string)thing->the_short() +" ("+ file_name( thing ) +
+         ")!  Please bug report it and contact a creator!\n" );
+   return old_owner;
+}
+
+==================================================
+FILE: effects/object/swim_fins.c
+==================================================
+
+#include <effect.h>
+#define SHADOW "/std/shadows/object/swim_fins"
+string query_classification() { return "clothing.swim_fins"; }
+string query_shadow_ob() { return SHADOW; }
+void beginning(object player, int time ) {
+   player->submit_ee( "test_worn", 1, EE_ONCE );
+   player->submit_ee( "test_worn", 20, EE_CONTINUOUS );
+}
+void restart( object player ) {
+}
+int merge_effect( object player, int old_state, int new_state ) {
+   return old_state | new_state;
+}
+int test_for_effect( object thing ) {
+   if ( !thing )
+      return 0;
+   return member_array( file_name( this_object() ),
+         (string *)thing->query_wear_effects() ) != -1;
+}
+void test_worn( object player ) {
+   if ( player->still_auto_loading() )
+      return;
+   if ( !sizeof( filter_array( (object *)player->query_armours(),
+         "test_for_effect", this_object() ) ) ) {
+      player->submit_ee( 0, 0, EE_REMOVE );
+      return;
+   }
+}
+
+==================================================
+FILE: effects/object/talker.c
+==================================================
+
+#include "path.h"
+#include <library.h>
+#include <talker.h>
+#include <player.h>
+#include <playtesters.h>
+#include <deity.h>
+#include <nomic_system.h>
+#define HELP_CMD "/cmds/player/help"
+nosave mapping _channel_cache;
+nosave string *valid_channels = ({"one", "two", "A'Tuin", "Intermud", "Apex",
+    "Adventurers", "Priests", "Wizards",
+    "Assassins", "Warriors", "Thieves",
+    "Witches", "playerkillers",
+    "playtesters", "Catfish", "Fish",
+    "Gapp", "Gufnork", "Hat",
+    "Pishe", "Sandelfon", "Sek",
+      "theAgateanEmpireCouncil",
+     "KlatchCouncil", "KlatchCouncilMagistrate",
+    "Ankh-MorporkCouncil",
+    "Ankh-MorporkCouncilMagistrate" });
+string query_classification() { return "magic.talker"; }
+string query_shadow_ob() { return SHADOWS +"talker"; }
+int query_indefinite() { return 1; }
+protected class talker_args new_talker_args() {
+    return new(class talker_args, status : 1, channels : ({ "one" }),
+        verbose : 1, local_echo : 0, colour : 0 );
+}
+class talker_args beginning( object thing, mixed args, int id ) {
+    if ( environment( thing ) )
+        tell_object( environment( thing ), "Somewhere inside " +
+            thing->the_short() + " a pair of glittering eyes swirl "
+            "into being.\n" );
+    thing->add_extra_look( this_object() );
+    thing->add_alias( "talker" );
+    thing->add_plural( "talkers" );
+    if (arrayp(args)) {
+        args = new_talker_args();
+        return args;
+    }
+    if (!classp(args)) {
+        return new_talker_args();
+    }
+}
+class talker_args merge_effect(object thing, mixed old_args, mixed new_args) {
+    class talker_args args;
+    if (!classp(old_args) || !classp(new_args))
+        return new_talker_args();
+    args = copy(old_args);
+    args->channels += new_args->channels;
+    args->channels = uniq_array(args->channels);
+    return args;
+}
+void restart( object thing, mixed args, int id ) {
+    if (!classp(args)) {
+        thing->set_arg_of(thing->sid_to_enum(id), new_talker_args());
+        tell_object( environment( thing ), "Your talker quivers "
+            "uncontrollably and starts to jump around.  You will have "
+            "to re-add your talker channels and reconfigure your talker.\n" );
+    }
+    thing->add_extra_look( this_object() );
+    thing->add_alias( "talker" );
+    thing->add_plural( "talkers" );
+}
+void end( object thing, mixed *args, int id ) {
+    if ( environment( thing ) )
+        tell_object( environment( thing ), "The pair of glittering eyes in "+
+          (string)thing->the_short() +" close and fade away forever.\n" );
+    thing->remove_extra_look( this_object() );
+    thing->remove_alias( "talker" );
+    thing->remove_plural( "talkers" );
+}
+string extra_look( object thing ) {
+    int *enums;
+    mixed args;
+    enums = (int *)thing->effects_matching( "magic.talker" );
+    if ( !sizeof( enums ) ) {
+        return "";
+    }
+    args = thing->arg_of( enums[ 0 ] );
+    if (!classp(args)) {
+         return "";
+    }
+    if ( args->status ) {
+        return "Just beneath the surface, you can make out what looks like a "
+        "pair of glittering eyes.\n";
+    }
+    return "Just beneath the surface, you can make out what looks like a "
+    "pair of closed eyes.\n";
+}
+string *all_channels( object player ) {
+    string word, *list;
+    string p_name;
+    class cache_data settings;
+    string* areas;
+    if ( player->query_property("gagged") ) {
+        return ({ });
+    }
+    list = ({ "one", "two" });
+    word = (string)player->query_guild_ob();
+    if ( file_size( word +".c" ) > 0 ) {
+        if (word != "disavowed") {
+            list += ({ capitalize(word->query_name()) });
+        }
+    }
+    else {
+        list += ({ "Adventurers" });
+    }
+    word = (string)player->query_deity();
+    if ( stringp( word ) ) {
+        list += ({ capitalize( word ) });
+    }
+    word = (string)player->query_name();
+    p_name = player->query_name();
+    if (!_channel_cache) {
+        _channel_cache = ([ ]);
+    }
+    if (undefinedp(_channel_cache[p_name])) {
+        _channel_cache[p_name] = new(class cache_data,
+          talker_quest : LIBRARY->query_quest_done(p_name, "talker quest"),
+          playtester : PLAYTESTER_HAND->query_playtester(p_name),
+          apex_member : "/d/am/buildings/apex/admin_office"->query_member(p_name)
+        );
+    }
+    settings = _channel_cache[p_name];
+    if (settings->talker_quest) {
+        list += ({ "A'Tuin", "Intermud" });
+    }
+    if (settings->apex_member) {
+        list += ({ "Apex" });
+    }
+    if (settings->playtester) {
+        list += ({ "playtesters" });
+    }
+    if ( player->query_player_killer()) {
+        list += ({ "playerkillers" });
+    }
+    areas = NOMIC_HANDLER->query_citizenship_areas();
+    foreach (word in areas) {
+       if (NOMIC_HANDLER->is_citizen_of(word, p_name)) {
+          list += ({ replace_string(word, " ", "") + "Council" });
+       }
+       if (NOMIC_HANDLER->is_magistrate_of(word, p_name)) {
+          list += ({ replace_string(word, " ", "") + "CouncilMagistrate" });
+       }
+    }
+    return list;
+}
+string channels() {
+    return sprintf( "%#-*s\n", (int)this_player()->query_cols(),
+      implode( all_channels( this_player() ), "\n" ) );
+}
+varargs int valid( mixed word, object who) {
+    if (!who) {
+        who = this_player();
+    }
+    if (arrayp(word) && arrayp(valid_channels)) {
+        if (sizeof( word - valid_channels ) != 0) {
+            return 0;
+        }
+    } else {
+        if (member_array( word, valid_channels ) == -1) {
+            return 0;
+        }
+    }
+    if (who->query_lord()) {
+       return 1;
+    }
+    if ( who->query_creator() ) {
+        if (stringp(word) &&
+            word[<7..] != "Council" &&
+            word[<10..] != "Magistrate") {
+            return 1;
+        } else if (arrayp(word)) {
+            if (!sizeof(filter(word, (: $1[<7..] == "Council" &&
+                                        $1[<10..] == "Magistrate" :)))) {
+                return 1;
+            }
+        }
+    }
+    if ( arrayp( word ) ) {
+        return sizeof( word - all_channels( who ) ) == 0;
+    }
+    return ( member_array( word, all_channels( who ) ) != -1 );
+}
+object find_actual_talker( object thing ) {
+    object talker;
+    while ( thing ) {
+        talker = thing;
+        thing = query_shadowing( thing );
+    }
+    return talker;
+}
+string list( string word, int brief ) {
+    int space;
+    int *enums;
+    string sender;
+    string table;
+    object thing;
+    object *ok;
+    object *things;
+    object holder;
+    class talker_args args;
+    table = "";
+    space = (int)this_player()->query_cols() - 20;
+    things = children( SHADOWS + "talker" ) -
+        ({ find_object( SHADOWS + "talker" ) });
+    things = filter( map( things, (: find_actual_talker( $1 ) :) ),
+        (: $1 && environment($1) && living(environment($1)) &&
+           (!userp($1) || interactive($1)) :) );
+    things = uniq_array(things);
+    things = sort_array( things,
+        (: strcmp( environment($1)->query_name(),
+            environment($2)->query_name() ) :) );
+    ok = ({ });
+    foreach( thing in things ) {
+        holder = environment( thing );
+        if (userp(holder)) {
+            sender = capitalize( holder->query_cap_name() );
+        } else {
+            sender = capitalize( holder->query_name() );
+        }
+        if ( holder->query_invis() ) {
+            continue;
+        }
+        enums = (int *)thing->effects_matching( "magic.talker" );
+        if ( !sizeof( enums ) ) {
+            if ( !word ) {
+                table += sprintf( LIST_FORMAT, sender, space, "(barfed)" );
+            }
+            continue;
+        }
+        args = thing->arg_of( enums[ 0 ] );
+        if (!classp(args)) {
+            continue;
+        }
+        if ( !args->status) {
+            if ( !word ) {
+                table += sprintf( LIST_FORMAT, sender, space, "(asleep)" );
+            }
+            continue;
+        }
+        if ( !word || ( member_array( word, args->channels ) != -1 ) ) {
+            if (brief) {
+                ok += ({ sender });
+            } else {
+                table += sprintf( LIST_FORMAT, sender, space,
+                    query_multiple_short( args->channels ) );
+            }
+        }
+    }
+    if (brief) {
+       return "$I$5=People listing to the channel " + word + " are: " +
+              query_multiple_short(ok) + "\n";
+    }
+    if ( table == "" ) {
+        return sprintf( LIST_FORMAT, "None", space, "" );
+    }
+    return table;
+}
+string normalise_name( string channel ) {
+    int position;
+    mixed *details;
+    string *lower_names;
+    string lower_channel;
+    lower_channel = lower_case( channel );
+    lower_names = map( valid_channels, (: lower_case($1) :) );
+    position = member_array( lower_channel, lower_names );
+    if ( position == -1 ) {
+        details = HELP_CMD->find_match_in_array( lower_channel,
+            lower_names );
+        if ( details[ 1 ] > 70 ) {
+            return valid_channels[ details[ 0 ] ];
+        }
+        return channel;
+    }
+    return valid_channels[ position ];
+}
+varargs mapping query_channel_cache(string person) {
+    if (!_channel_cache)
+        return ([ ]);
+    if (stringp(person) && classp(_channel_cache[person])) {
+        return copy(_channel_cache[person]);
+    }
+    return copy(_channel_cache);
+}
+void reset() {
+    _channel_cache = ([ ]);
+}
+void clear_cache(string person) {
+    if (_channel_cache) {
+        map_delete(_channel_cache, person);
+    }
+}
+
+==================================================
+FILE: effects/object/wet.c
+==================================================
+
+#include <effect.h>
+string query_classification() { return "object.wet"; }
+void beginning( object thing, int amount, int id ) {
+   thing->submit_ee( "dry_off", ({ 30, 90 }), EE_CONTINUOUS );
+   thing->add_extra_look( this_object() );
+   thing->add_adjective("wet");
+}
+int merge_effect( object thing, int old_amount, int new_amount, int id ) {
+   return old_amount + new_amount;
+}
+void end( object thing, int amount, int id ) {
+   thing->remove_extra_look( this_object() );
+   thing->remove_adjective("wet");
+}
+void restart( object thing, int amount, int id ) {
+   thing->add_extra_look( this_object() );
+}
+void dry_off( object thing, int amount, int id ) {
+   amount -= 100 + amount / 10;
+   if ( amount > 0 )
+      thing->set_arg_of( (int)thing->sid_to_enum( id ), amount );
    else
-      s += ".\n";
-   s += "It is a small blue humanoid wearing white trousers.\n";
-   s += capitalize(query_pronoun())+" "+player->health_string()+".\n";
-   s += player->calc_extra_look();
-   s += player->weather_extra_look();
-   s += player->query_living_contents(0);
-   return s;
+      thing->submit_ee( 0, 0, EE_REMOVE );
 }
-string smurf( string str ) {
-   string str1;
-   if ( sscanf( str, "%s,", str ) ) str1 = ",";
-   else if ( sscanf( str, "%s.", str ) ) str1 = ".";
-   else if ( sscanf( str, "%s!", str ) ) str1 = "!";
-   else if ( sscanf( str, "%s;", str ) ) str1 = ";";
-   else str1 = "";
-   if ( sscanf( str, "%sing", str ) ) str = "smurfing";
-   else if ( sscanf( str, "%sd", str ) ) str = "smurfed";
-   else if ( sscanf( str, "%ss", str ) ) str = "smurfs";
-   else str = "smurf";
-   return str + str1;
-}
-string mangle_speech( string str ) {
-   string tmp, *bits;
-   int i;
-   tmp = player->mangle_speech( str );
-   if( !tmp ) tmp = str;
-   bits = explode(tmp, " ");
-   for (i=1;i<sizeof(bits);i+=3) {
-      bits[i] = smurf( bits[i] );
+string wet_string( object thing ) {
+   int *enums;
+   string wetness;
+   enums = (int *)thing->effects_matching( "object.wet" );
+   if ( !sizeof( enums ) )
+      return "";
+   switch ( (int)thing->arg_of( enums[ 0 ] ) / ( 1 +
+         (int)thing->query_weight() ) ) {
+      case 0 :
+         return "just barely damp";
+      case 1 .. 5 :
+         wetness = "slightly wet";
+         break;
+      case 6 .. 10 :
+         wetness = "wet";
+         break;
+      case 11 .. 30 :
+         wetness = "very wet";
+         break;
+      case 31 .. 80 :
+         wetness = "sopping wet";
+         break;
+      default :
+          wetness = "absolutely soaking wet";
    }
-   tmp = implode(bits, " ");
-   return tmp;
+   return wetness;
+}
+string extra_look(object thing)  {
+   return "It is " + wet_string(thing) + ".\n";
+}
+
+==================================================
+FILE: effects/external/coffee_nose.c
+==================================================
+
+#include <effect.h>
+void beginning( object player, int time ) {
+    if (time > 1800)
+        time = 1800;
+    tell_object( player, "\n" );
+    tell_room( environment( player ), (string)player->the_short() + " drinks some of his coffee and ends up with a small amount of froth on "+player->query_possessive()+" nose.\n", player);
+    player->submit_ee( 0, time, EE_REMOVE );
+    player->add_extra_look( this_object() );
+}
+int merge_effect( object player, int time1, int time2 ) {
+    int newtime;
+     newtime = (time1 > time2 ) ? time1 : time2;
+     newtime = ( newtime > 1800 ) ? 1800 : newtime;
+    player->submit_ee( 0, newtime, EE_REMOVE );
+    return newtime;
+}
+void end( object player, int time ) {
+    if ( !player->query_property( "dead" ) )
+        tell_object( player, "A small amount of frothy Coffee drops onto the floor.\n" );
+    player->remove_extra_look( this_object() );
+}
+string query_classification() { return "coffee.nose"; }
+string extra_look( object player ) {
+    return capitalize( player->query_pronoun()+" looks "
+      "like "+player->query_pronoun()+" has a small amount of creamy, frothy coffee on "+player->query_possessive()+" nose.\n" );
+}
+
+==================================================
+FILE: effects/external/flea_cure.c
+==================================================
+
+#include <effect.h>
+int infested;
+int cleanse( object thing, int bonus ) {
+    int i, flag, *effnums;
+    class effect *effs;
+    if ( !thing )
+      return 0;
+    if ( !living( thing ) )
+      return 0;
+    effnums = (int *)thing->effects_matching(
+              "disease.parasite.external.flea");
+    if ( !sizeof( effnums ) )
+      return 0;
+    effs = (class effect *)thing->query_effs();
+    for ( i = sizeof( effnums ) - 1; i >= 0; i-- )
+      if ( effs[ effnums[ i ] ]->ob_name->test_remove( thing,
+          effs[ effnums[ i ] ]->arg, effnums[ i ], bonus ) ) {
+          thing->delete_effect( effnums[ i ] );
+          flag = 1;
+      }
+    infested = flag;
+    return flag;
+}
+void beginning( object player, int time ) {
+   player->submit_ee( "make_smell", ({ 20, 30 }), EE_CONTINUOUS );
+   player->submit_ee( "kill_flea", ({ 30, 40 }), EE_CONTINUOUS );
+   call_out("cleanse", 0, player, time/10);
+   player->submit_ee( 0, time, EE_REMOVE );
+}
+int merge_effect( object player, int time1, int time2 ) {
+   player->submit_ee( 0, time1 + time2 - (int)player->expected_tt(),
+         EE_REMOVE );
+   if (!infested)
+       call_out("cleanse", 0, player, (time1+time2)/10);
+   return time1 + time2;
+}
+void end( object player, int time ) {
+   tell_object( player, "The odd odour is gone now.\n" );
+}
+void kill_flea( object player ) {
+    if (infested && random(2)) {
+        tell_object( player, "You hear a faint scream and see a small dot " +
+                    "fall past your eyes.\n" );
+        tell_room( environment( player ), "You see a tiny speck leap from " +
+                  (string)player->short() + "'s head, screaming pitifully.\n",
+                  player );
+    }
+}
+void make_smell( object player ) {
+    tell_object( player, "You notice a strange odour, like wet Grflx "
+              "and rotting cabbage, in the air.\n" );
+    tell_room( environment( player ),  "A smell reminiscent of a wet Grflx "+
+              "and rotting cabbages seems to emanate from "+
+              (string)player->short() + ".\n", player );
+}
+string query_classification() { return "body.smell.insecticide"; }
+string smell_string( object player, int time ) {
+   return "the odd odour of wet Grflx and rotting cabbage";
 }
