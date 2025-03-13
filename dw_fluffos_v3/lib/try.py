@@ -26,6 +26,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
     os.makedirs(output_dir, exist_ok=True)
     
     base_name, ext = os.path.splitext(base_output_name)
+    lib_base = os.path.dirname(source_dir)  # e.g., /mnt/home2/test/Test/dw_fluffos_v3/lib/
     
     current_file_num = 1
     current_token_count = 0
@@ -34,7 +35,12 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
     outfile = None
     files_in_current = []
     
-    lib_base = os.path.dirname(source_dir)  # e.g., /mnt/home2/test/Test/dw_fluffos_v3/lib/
+    output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
+    # Force overwrite by opening in write mode immediately
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write("\n\n\n\n")  # Reserve header space
+    outfile = open(output_file, 'a', encoding='utf-8')  # Append mode for content
+    print(f"Initialized new file: {output_file}")
     
     for root, dirs, files in os.walk(source_dir):
         for filename in sorted(files):
@@ -56,7 +62,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                 
                 print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
                 
-                if outfile and (current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit):
+                if current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit:
                     outfile.seek(0)
                     outfile.write(f"# Total Tokens: {current_token_count}\n"
                                   f"# Total Files Merged: {len(files_in_current)}\n"
@@ -68,19 +74,18 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                     current_token_count = 0
                     current_char_count = 0
                     files_in_current = []
-                    outfile = None
-                
-                if not outfile:
                     output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
-                    outfile = open(output_file, 'w', encoding='utf-8')
-                    print(f"Starting new file: {output_file}")
-                    outfile.write("\n\n\n\n")  # Reserve space for header
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write("\n\n\n\n")
+                    outfile = open(output_file, 'a', encoding='utf-8')
+                    print(f"Initialized new file: {output_file}")
                 
                 outfile.write(full_entry)
                 current_token_count += tokens_in_file
                 current_char_count += chars_in_file
                 file_count += 1
                 files_in_current.append(filename)
+                print(f"Wrote {filename} with header: FILE: /lib/{rel_path}")
             else:
                 print(f"Skipped invalid filename: {filename}")
     
@@ -122,7 +127,7 @@ def main():
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
     print("HELP: Headers show paths relative to /lib/ (e.g., /lib/std/armour.c) for 2003 Discworld MUD lib.")
-    print("      If first file lacks 'FILE:', check for script bugs or invalid files.")
+    print("      Check terminal output if first file lacks 'FILE:' prefix.")
     print("====================================================")
     
     print("\nProcessing .c files:")
