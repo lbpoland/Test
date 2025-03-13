@@ -1,0 +1,24 @@
+# Generated from /mnt/home2/test/Test/dw_fluffos_v3/lib/d/learning/TinyTown/roads/womble02.c (2003 FluffOS v3) for Forgotten Realms MUD
+# Date: 2025-03-12 12:51:30
+from typing import Dict, List, Optional, Any
+from ..driver import MudObject, Player, driver
+from ..driver import MudObject, Player, driver
+import asyncio
+
+    def setup(self, ) -> None:
+            add_property( "determinate", "the " )
+            set_short( "southeastern corner of Womble square" )
+            set_long("This is the eastern edge of Tiny Town, a small "
+            "town built as an example for new creators who might want to see "
+            "how to make rooms, npc's and such without the complexity of "
+            "the \"real\" domains.\n")
+            set_zone( "Tiny Town")
+            set_linker([PATH +"womble01", PATH +"womble03", PATH +"womble04",],
+            "into", "", "Womble Square" )
+            add_exit( "north", PATH +"womble04", "road" )
+            add_exit( "northwest", PATH +"womble03", "hidden" )
+            add_exit( "west", PATH +"womble01", "road" )
+
+
+
+class Womble02(MudObject):

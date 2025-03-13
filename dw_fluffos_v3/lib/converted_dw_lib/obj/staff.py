@@ -1,0 +1,53 @@
+# Generated from /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/staff.c (2003 FluffOS v3) for Forgotten Realms MUD
+# Date: 2025-03-12 12:51:30
+from typing import Dict, List, Optional, Any
+from ..driver import MudObject, Player, driver
+from ..driver import MudObject, Player, driver
+import asyncio
+
+    def __init__(self):
+
+
+    def set_weight(self, number: int) -> None:
+            weapon::set_weight( number )
+            new_weapon( 80 * number )
+            add_attack( "thwack", 50, [weight / 3, 4, weight], "blunt",
+            "blunt", 0 )
+            add_attack( "prod", 50, [weight / 2, 4, weight / 2], "blunt",
+            "blunt", 0 )
+
+
+    def long(self, word: int, dark: int) -> str:
+            return artifact::long( word, dark ) + weapon::long( word, dark )
+
+
+    def init(self, ) -> None:
+            this_player()->add_command( "invoke", self )
+
+
+    def do_invoke(self, ) -> int:
+            int outcome
+            if ( query_wielded() != this_player() ) {
+            this_player()->add_failed_mess( self, "You must be holding "+
+            "$D to $V it.\n", [}) )
+            return 0
+
+
+    def init_dynamic_arg(self, map: Any) -> None:
+            if ( map[ "::" ] )
+            weapon::init_dynamic_arg( map[ "::" ] )
+            if ( map[ "artifact" ] )
+            artifact::init_dynamic_arg( map[ "artifact" ] )
+
+
+    def init_static_arg(self, map: Any) -> None:
+            if ( !mapp( map ) )
+            return
+            if ( map[ "::" ] )
+            weapon::init_static_arg( map[ "::" ] )
+            if ( map[ "artifact" ] )
+            artifact::init_static_arg( map[ "artifact" ] )
+
+
+
+class Staff(MudObject):
