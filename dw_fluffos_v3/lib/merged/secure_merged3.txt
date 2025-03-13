@@ -1,0 +1,1848 @@
+# Total Tokens: 17750
+# Total Files Merged: 12
+# Total Characters: 59201
+
+==============================================
+
+#include <data.h>
+#include <login_handler.h>
+#include <playerinfo.h>
+#include <random_names.h>
+#include <login.h>
+#include <mail.h>
+#include <access.h>
+#include <playtesters.h>
+#define RL_NORMAL 4
+#define RL_NONEW 3
+#define RL_PT 2
+#define RL_CRE 1
+#define QUOTE_HANDLER "/obj/handlers/pqf_handler"
+#define MULTIPLAYER "/obj/handlers/multiplayer"
+#define LIVING "/obj/handlers/livings"
+#define CLUB_HANDLER "/obj/handlers/club_handler"
+#define BASTARDS "/secure/bastards"
+#define FILE_PATH "/doc/login"
+#define LOGIN_SCRIPT FILE_PATH + "/login_script.txt"
+#define READ_INPUT 1
+#define SLEEP 2
+#define MIN_LEN 3
+#define MAX_LEN 12
+#define ADMIN_EMAIL "trustees@discworld.imaginary.com"
+#define FREE_DOMAINS ({"hotmail.com", "yahoo.com"})
+#define TIMEOUT_TIME 120
+#define THROWOUT_TIME ( 2 * TIMEOUT_TIME )
+#define MIN_RESET_TIME 86400
+class state {
+  string name;
+  string action;
+  string write;
+  int noecho;
+  mapping events;
+}
+private mapping _states;
+private nosave string _state;
+private nosave string _last_state;
+private nosave string _event;
+private nosave string _last_event;
+private nosave int _login_start_time;
+private nosave int _counter;
+private nosave mapping _data;
+private nosave int _compiling;
+nosave private int _run_level;
+private nosave string _terminal_name;
+private nosave int _rows;
+private nosave int _cols;
+protected void finish_compiling(string, mapping);
+protected void load_file();
+void enter_state(string);
+void dest_me();
+void create() {
+  seteuid("Root");
+  _states = ([ ]);
+  load_file();
+  _data = ([ ]);
+  _run_level = RL_NORMAL;
+  if(interactive(this_object()))
+     resolve(query_ip_number(this_object()), "");
+  call_out("time_out", TIMEOUT_TIME);
+}
+#ifdef DEBUG
+void debug_log(string fmt, mixed args ...) {
+  log_file("/secure/NLOGIN",
+           "%s: " + fmt + "\n", ctime(time())[4..18], args ...);
+}
+#else
+void debug_log(string fmt, mixed args ...) { return; }
+#endif
+void load_file() {
+  if(_compiling) {
+    debug_log("Already compiling, exiting.");
+    return;
+  }
+  if(file_size(base_name(this_object()) + ".o") > -1 &&
+     unguarded((: stat(base_name(this_object()) + ".o") :))[1] >=
+     unguarded((: stat(LOGIN_SCRIPT) :))[1]) {
+    debug_log("loading data.");
+    unguarded((: restore_object, base_name(this_object()) :));
+    if(!_states)
+      _states = ([ ]);
+    debug_log("data load complete.");
+  } else {
+    debug_log("Compiling script");
+    debug_printf("Compiling script");
+    _compiling = 1;
+    DATA_HANDLER->compile_file(LOGIN_SCRIPT, (: finish_compiling :));
+  }
+}
+protected void finish_compiling(string fname, mapping data) {
+  string name, s, e;
+  mixed *bits;
+  mapping thing, event;
+  debug_printf("Finished compiling");
+  foreach(name, bits in data) {
+    switch(name) {
+    case "state":
+      foreach(thing in bits) {
+        if(_states[thing["name"]])
+          debug_log("Error, state %s already exists!", thing["name"]);
+        _states[thing["name"]] = new(class state,
+                                     action: thing["action"],
+                                     write: thing["write"],
+                                     noecho: thing["no-echo"],
+                                     events: ([ ]));
+        debug_log("State %s found", thing["name"]);
+        if(!arrayp(thing["event"]))
+          thing["event"] = ({ thing["event"] });
+        foreach(event in thing["event"]) {
+          if(mapp(event) && stringp(event["data"]) &&
+             stringp(event["new-state"])) {
+            _states[thing["name"]]->events[event["data"]] = event["new-state"];
+            debug_log("Event %s new state %s", event["data"],
+                   event["new-state"]);
+          } else
+            debug_log("Error event %O in state %s", event, thing["name"]);
+        }
+      }
+      break;
+    default:
+      tell_creator("ceres", "Name: " + name + "\n");
+    }
+  }
+  debug_log("Validating state machine.");
+  foreach(s in keys(_states)) {
+    if(_states[s]->action && !function_exists(_states[s]->action))
+      debug_log("Action function %s doesn't exist", _states[s]->action);
+    foreach(e in keys(_states[s]->events)) {
+      if(!_states[s]->events[e])
+        debug_log("New state %s doesn't exist in %s %s",
+                  _states[s]->events[e], _states[s]->name, e);
+    }
+  }
+  debug_log("Done. %d states created.", sizeof(keys(_states)));
+  debug_log("Saving data.");
+  _compiling = 0;
+  unguarded((: save_object, base_name(this_object()) :));
+}
+void process_event(string event, string type) {
+  if(type == "input" && _states[_state] && _states[_state]->noecho)
+    debug_log("entering process event with state %s and event %s-<hidden>",
+              _state, type);
+  else
+    debug_log("entering process event with state %s and event %s-%s", _state,
+              type, event);
+  _last_event = _event;
+  _event = type + "-" + event;
+  if(_states[_state]->events[type + "-" + lower_case(event)]) {
+    enter_state((_states[_state])->events[type + "-" + lower_case(event)]);
+  } else if(_states[_state]->events[type]) {
+    enter_state((_states[_state])->events[type]);
+  } else if(_states[_state]->events["default"]) {
+    enter_state((_states[_state])->events["default"]);
+  } else {
+    debug_log("no such event %s in state %s (%s)", type + "-" +
+              lower_case(event), _state,
+              query_multiple_short(keys(_states[_state]->events)));
+    return;
+  }
+}
+void enter_state(string new_state) {
+  mixed retval;
+  string tmp, field;
+  _last_state = _state;
+  _state = new_state;
+  debug_log("entering state %s", _state);
+  if(new_state == "finished")
+    return;
+  if(!_states[_state]) {
+    debug_log("invalid state %s exiting", _state);
+    dest_me();
+  }
+  if(_states[_state]->write) {
+    debug_log("writing %s", _states[_state]->write);
+    if(file_size(_states[_state]->write) > 0)
+      tmp = LOGIN_HANDLER->get_message(_states[_state]->write);
+    else
+      tmp = _states[_state]->write;
+    foreach(field in keys(_data))
+      if(stringp(_data[field]))
+        tmp = replace_string(tmp, "$"+field, _data[field]);
+    if(tmp[sizeof(tmp)-1] == '\n')
+      tmp = tmp[0..<2];
+    write(tmp);
+  }
+  if(_states[_state]->action) {
+    debug_log("calling %s", _states[_state]->action);
+    retval = call_other(this_object(), _states[_state]->action, _event);
+  } else
+    retval = READ_INPUT;
+  if(intp(retval) && retval == READ_INPUT) {
+    debug_log("action %s returned read_input in state %s",
+              _states[_state]->action, _state);
+    input_to("process_event", _states[_state]->noecho, "input");
+    return;
+  }
+  if(_states[_state]->action)
+    debug_log("action %s returned %s in state %s",
+              _states[_state]->action, (string)retval, _state);
+  if(_state == "check-login-access") {
+    process_event(retval, "return");
+    return;
+  }
+  call_out("process_event", 0, retval, "return");
+}
+string query_state() { return _state; }
+private int check_valid_name(string str) {
+  int i;
+  for (i=0;i<strlen(str);i++) {
+    if (str[i] < 'a' || str[i] > 'z') {
+       return i;
+    }
+  }
+  return -1;
+}
+private int check_name(string name, int new_char) {
+  if(strlen(name) < MIN_LEN) {
+    write("Sorry the player name " + name + " is too short (min " + MIN_LEN +
+          " characters).\n");
+    return 0;
+  }
+  if(strlen(name) > MAX_LEN) {
+    write("Sorry the player name " + name + " is too long (max " +
+          MAX_LEN + " characters).\n");
+    return 0;
+  }
+  if(check_valid_name(name) != -1) {
+    write("Invalid characters used in the name.  You can only use letter "
+          "characters, from a to z, spaces and any other sort of "
+          "punctuation may not be used.\n");
+    return 0;
+  }
+  if(PLAYER_HANDLER->test_banished(name)) {
+    write("\nSorry the player name " + name + " has been banished.\n");
+    return 0;
+  }
+  if (!PLAYER_HANDLER->test_valid(name) || MAIL_TRACK->query_list(name)) {
+    write("Sorry that name is not allowed.\n");
+    return 0;
+  }
+  if(PLAYER_HANDLER->test_user(name) || LIVING->find_player(name)) {
+    write("Sorry that name has already been taken.\n");
+    return 0;
+  }
+  if(CLUB_HANDLER->is_club(name)) {
+    write("Sorry that name is already in use for a club or family.\n");
+    return 0;
+  }
+  return 1;
+}
+private string generate_password() {
+  int i;
+  string pass = "";
+  for(i=0; i<8; i++)
+    switch(random(3)) {
+    case 2:
+      pass += sprintf("%c", 65 + random(26));
+      break;
+    case 1:
+      pass += sprintf("%c", 97 + random(26));
+      break;
+    default:
+      pass += sprintf("%c", 48 + random(10));
+    }
+  return replace(pass, ({ "0", "9", "o", "p", "O", "P",
+                          "1", "2", "i", "j", "I", "J",
+                          "l", "m" }));
+}
+mixed main_menu(string event) {
+  string mess;
+  _data = ([ ]);
+  _counter = 0;
+  write(LOGIN_HANDLER->get_message(FILE_PATH+ "/BANNER"));
+  if(LOGIN_HANDLER->site_lockeddown(query_ip_number(this_object()))) {
+    write("Sorry, your site has been locked down for excessive failed login "
+          "attempts.  If you have forgotten your password please email "+
+          ADMIN_EMAIL + ".  If you have not failed to login "
+          "please try again later.\n");
+    mess = sprintf("attempted login from locked down site: %s.",
+                   query_ip_number(this_object()));
+    log_file("BAD_PASSWORD", ctime(time())[4..18] + ": " + mess + "\n");
+    event(efun::users(), "inform", mess, "bad-password");
+    return "quit";
+  }
+  if(find_object("/obj/shut")) {
+    if(find_object("/obj/shut")->query_time_to_crash() < 60) {
+      write("With less than one minute to go it is too close to the "
+            "shut-down to attempt to log in, please try again in a "
+            "few minutes.\n");
+      return "quit";
+    }
+    write("It is too close to the shut-down to attempt to log "
+          "in unless you are a creator or net-dead.  Please try again "
+          "in a few minutes.\n");
+  }
+  write(LOGIN_HANDLER->get_message(FILE_PATH+ "/MAIN_MENU"));
+  return READ_INPUT;
+}
+mixed check_delete_name(string event) {
+  _data["name"] = lower_case(replace_string(event, "input-", ""));
+  if(!PLAYER_HANDLER->test_user(_data["name"])) {
+    write("There is no such player.\n\nPress enter to continue ");
+    return READ_INPUT;
+  }
+  if(PLAYER_HANDLER->test_creator(_data["name"])) {
+    write("Creators cannot be deleted this way.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(file_size(PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+               ".o") > 0 ||
+     file_size(PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+               ".o.gz") > 0) {
+    write("That character is already marked for deletion.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  return "ok";
+}
+mixed check_delete_password(string event) {
+  _data["password"] = replace_string(event, "input-", "");
+  if(!PLAYER_HANDLER->test_password(_data["name"], _data["password"])) {
+    write("\nPassword incorrect.\n");
+    return "invalid";
+  }
+  write("This is will PERMANENTLY delete your character, are you sure? "
+        "[y/n] ");
+  return READ_INPUT;
+}
+mixed delete_character(string event) {
+  string extension;
+  if(PLAYER_HANDLER->test_creator(_data["name"])) {
+    write("Creators cannot be deleted this way.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(unguarded((: file_size,
+                PLAYER_HANDLER->query_player_file_name(_data["name"]) + ".o"
+                :)) != -1) {
+    extension = ".o";
+  } else {
+    extension = ".o.gz";
+  }
+  if(unguarded((: cp, PLAYER_HANDLER->query_player_file_name(_data["name"]) +
+                extension,
+                PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+                extension :))){
+    unguarded((: rm, PLAYER_HANDLER->query_player_file_name(_data["name"]) +
+               extension :));
+    unguarded((: rm,
+               PLAYER_HANDLER->query_player_disk_file_name(_data["name"]) +
+               extension :));
+    write("\n\nPLEASE READ:\nCharacter deleted.  You have 10 days "
+          "cooling off time, during "
+          "which you may reinstate your character.  To reinstate it "
+          "simply log on again and it will reinstate it for you.\n\n");
+  } else {
+    write("WARNING! Unable to delete your character.\n\n");
+  }
+  write("Press enter to continue ");
+  return READ_INPUT;
+}
+mixed check_new_access(string event) {
+  mixed *tmp;
+  _data["new_player"] = 1;
+  if(_run_level != RL_NORMAL) {
+    write("Sorry this site is not open to new players.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(find_object("/obj/shut")) {
+    write("It is too close to the shut-down to attempt to create a new "
+          "character.  Please try again in a few minutes.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  switch(BASTARDS->query_access(this_object())) {
+  case NO_NEW:
+  case NO_ACCESS:
+    write("\nNew player logins are disabled from this site.  If you wish "
+          "to create a character, please email " + ADMIN_EMAIL +
+          " with the player name you "
+          "would like to use, the name(s) of your other characters and "
+          "the name of your ISP.  Note that requests from free email "
+          "accounts (hotmail, yahoo etc.) may not be acceptable.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  case AUTH_NEW:
+    write("\nNew player logins from this site are disabled.  In order to "
+          "create a new character you will be asked for a character "
+          "name and an email address, a password will then be emailed "
+          "to you at that address.  Note that the address must not "
+          "include free accounts (hotmail, yahoo etc.)\n\n");
+    return "auth";
+  }
+  if(!BASTARDS->query_multi(this_object())) {
+    tmp = filter(users(),
+                 (: interactive($1) &&
+                  !$1->query_creator() &&
+                  !$1->query_property("test character") &&
+                  !strcmp(query_ip_number($1), $2) :),
+                 query_ip_number(this_object())) - ({ this_object() });
+    if(sizeof(MULTIPLAYER->check_allowed(this_object(), tmp))) {
+      write(LOGIN_HANDLER->get_message(FILE_PATH+ "/MULTIPLAYERS") +
+            "\n\n"
+            "Press enter to continue ");
+      return READ_INPUT;
+    }
+  }
+  return "ok";
+}
+mixed check_guest_access(string event) {
+  _data["guest"] = 1;
+  _data["new_player"] = 1;
+  if(_run_level != RL_NORMAL) {
+    write("Sorry this site is not open to guests.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(find_object("/obj/shut")) {
+    write("It is too close to the shut-down to attempt to create a new "
+          "character.  Please try again in a few minutes.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(BASTARDS->query_access(this_object()) != DEFAULT) {
+    write("\nGuest logins are disabled from this site.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  return "ok";
+}
+mixed finger_player(string event) {
+  string finger_info;
+  string player;
+  player = replace_string(event, "input-", "");
+  if(player)
+    player = lower_case(player);
+  if (stringp(player) && strlen(player) > 2 && check_valid_name(player)) {
+    finger_info = "/secure/finger"->finger_info(player, 1);
+    if (!finger_info) {
+      write("I am sorry, there is no such player.\n\n");
+    } else {
+      write(strip_colours(finger_info) + "\n\n");
+    }
+  } else {
+    write("Invalid name, returning to the login menu.\n\n");
+  }
+  write("Press enter to continue ");
+  return READ_INPUT;
+}
+mixed list_players(string event) {
+  write("Here is a list of the people currently playing Discworld:\n" +
+        implode(sort_array(map(filter(users(), (: $1->query_cap_name() &&
+                                                !$1->query_invis() &&
+                                                $1->query_name() != "logon":)),
+                               (: $1->query_cap_name() :)),
+                           (: strcmp :)), ", ") + "\n");
+  write( "\nPress enter to continue ");
+  return READ_INPUT;
+}
+mixed reset_counter(string event) {
+  _counter = 0;
+  return READ_INPUT;
+}
+mixed check_email(string event) {
+  string name, domain, address;
+  address = replace_string(event, "input-", "");
+  if(!regexp(address,
+           "^[a-zA-Z0-9\\+\\.\\_\\-]+@[a-zA-Z0-9\\_\\-].[a-zA-Z0-9\\_\\-]")){
+    write("Sorry, that address is invalid.  Please try again or "
+          "enter 'q' to quit.\n");
+    return "invalid";
+  }
+  sscanf(address, "%s@%s", name, domain);
+  if(member_array(domain, FREE_DOMAINS) != -1) {
+    write("Sorry, that is a free account and not allowed.  Please try "
+          "again or enter 'q' to quit.  If you do not have a non-free "
+          "address email " + ADMIN_EMAIL + " for a new character.\n");
+    return "invalid";
+  }
+  _data["email"] = address;
+  return "ok";
+}
+mixed check_new_name(string event) {
+  _data["name"] = lower_case(replace_string(event, "input-", ""));
+  if(!_data["name"] || _data["name"] == "" || _data["name"] == "q")
+    return "failed";
+  _counter++;
+  if(check_name(_data["name"], 1)) {
+    _data["cap_name"] = capitalize(_data["name"]);
+    return "ok";
+  } else if(_counter < 3) {
+    return "invalid";
+  } else {
+    return "failed";
+  }
+}
+mixed check_random_name(string event) {
+  string tmp;
+  if(!event || event == "")
+    return "invalid";
+  tmp = replace_string(event, "input-", "");
+  if((tmp[0] - '1') < 0 || (tmp[0] - '1') >= sizeof(_data["random_names"]))
+    return "invalid";
+  _data["name"] = lower_case(_data["random_names"][tmp[0] - '1']);
+  if(check_name(_data["name"], 1)) {
+    return "ok";
+  } else
+    return "invalid";
+}
+mixed main_random_name_menu(string event) {
+  string *langs;
+  int i;
+  i = 1;
+  langs = RANDOM_NAME_GENERATOR->query_languages();
+  for (i=0;i<sizeof(langs);i++)
+    langs[i] = sprintf("%c - %s (eg. %s)", (i+'1'), capitalize(langs[i]),
+                       RANDOM_NAME_GENERATOR->unique_name(langs[i]));
+  write("You are choosing a name for the first time on Discworld.\n"
+        "You can choose a name which is generated to sound something "
+        "like:\n"+
+        implode(langs, "\n") +
+        "\nM - Main Menu\n"
+        "Q - Quit\n\n"
+        "Your choice? ");
+  return READ_INPUT;
+}
+mixed random_lang_choice(string event) {
+  string choice;
+  int len;
+  choice = replace_string(event, "input-", "");
+  len = sizeof(RANDOM_NAME_GENERATOR->query_languages());
+  if(strlen(choice) == 1 && choice[0] >= '1' && choice[0] <= ('1'+len-1))
+    return RANDOM_NAME_GENERATOR->query_languages()[choice[0]-'1'];
+  write("Incorrect choice.\n");
+  return "invalid";
+}
+mixed show_random_names(string event) {
+  int i;
+  string lang;
+  lang = replace_string(event, "return-", "");
+  write("Here is a list of 9 random names.  Please choose one:\n");
+  _data["random_names"] = allocate(9);
+  for (i=0; i<sizeof(_data["random_names"]); i++) {
+    _data["random_names"][i] = RANDOM_NAME_GENERATOR->unique_name(lang);
+    write(sprintf("%c - %s\n", i+'1', _data["random_names"][i]));
+  }
+  write("M - Main Menu\n"
+        "N - Name Menu\n"
+        "G - Generate a new set of names\n"
+        "Q - Quit\n"
+        "Or, type in your name of choice\n\n"
+        "Your choice? ");
+  return READ_INPUT;
+}
+mixed check_new_password(string event) {
+  _data["password"] = replace_string(event, "input-", "");
+  write("\n");
+  if(!_data["password"] || _data["password"] == "")
+    return "failed";
+  if(strlen(_data["password"]) < 6) {
+    write("Password is too short, must be at least 6 characters.\n");
+    return "invalid";
+  }
+  if(_data["password"] == _data["name"]) {
+    write("Password is the same as your name, please try again.\n");
+    return "invalid";
+  }
+  return "ok";
+}
+mixed verify_password(string event) {
+  string tmp;
+  write("\n");
+  tmp = replace_string(event, "input-", "");
+  if(tmp == _data["password"])
+    return "ok";
+  else {
+    write("Passwords do not match.\n");
+    return "invalid";
+  }
+}
+mixed get_capitalization(string event) {
+  if(!_data["cap_name"])
+    _data["cap_name"] = capitalize(_data["name"]);
+  write("\nHow would you like your name capitalised? [" +
+        _data["cap_name"] + "] ");
+  return READ_INPUT;
+}
+mixed check_capitalization(string event) {
+  string tmp;
+  tmp = replace_string(event, "input-", "");
+  if(!tmp || tmp == "")
+    return "ok";
+  if(lower_case(tmp) != _data["name"]) {
+    write("Sorry it has to be the same as your name.");
+    return "invalid";
+  }
+  _data["cap_name"] = tmp;
+  return "ok";
+}
+mixed request_password(string event) {
+  string name, email, pass, mess;
+  mixed tmp;
+  name = replace_string(event, "input-", "");
+  if(name)
+    name = lower_case(name);
+  if(!PLAYER_HANDLER->test_user(name)) {
+    write("There is no such player.\n\nPress enter to continue ");
+    return READ_INPUT;
+  }
+  if(PLAYER_HANDLER->test_creator(name)) {
+    write("Creator passwords cannot be reset this way mail " +
+          ADMIN_EMAIL + ".\n\nPress enter to continue ");
+    return READ_INPUT;
+  }
+  if(!PLAYER_HANDLER->test_ip_allowed(name, query_ip_number(this_object()))) {
+    write("Sorry that characters password cannot be reset from your IP "
+          "address.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  email = PLAYER_HANDLER->test_email(name);
+  if(sizeof(email) > 0 && email[0] == ':')
+    email = email[1..];
+  while(email != "" && sizeof(email) && email[0] == ' ')
+    email = email[1..];
+  if(!email || email == "" ||
+     !regexp(email, "^[A-z0-9_+\\.]+@[A-z0-9_+]+\\.[A-z0-9_+\\.]+$")) {
+    write("Sorry, that player does not have a valid email address set.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  tmp = BASTARDS->query_temp_password(name);
+  if(tmp && tmp[0] > time() - MIN_RESET_TIME) {
+    write("Sorry that character has had a temporary passwords set "
+          "within the last " + number_as_string(MIN_RESET_TIME / 3600) +
+          " hours, please try again later.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  pass = generate_password();
+  BASTARDS->set_temp_password(name, crypt(pass, 0));
+  MAILER->do_mail_message(email, "admin", "Your temporary password", 0,
+                          "The temporary password for " + name + " is " +
+                          pass + "\n\nYou must use this password within "
+                          "the next 7 days.  This is a one use\npassword.  "
+                          "After using it to login you should immediately "
+                          "use the\n'password' command to set a new "
+                          "password.\n\n");
+  mess = sprintf("password requested for %s by user at site  %s.", name,
+                  query_ip_number(this_object()));
+  log_file("BAD_PASSWORD", ctime(time())[4..18] + ": " + mess + "\n");
+  event(efun::users(), "inform", mess, "bad-password");
+  write("An email is on its way to you " +
+        "with a temporary password for this character.\n\n"
+        "Press enter to continue ");
+  return READ_INPUT;
+}
+mixed check_login_access(string event) {
+  mixed *tmp;
+  string *alts;
+  if(event && strsrch(event, "input-") != -1)
+    _data["name"] = lower_case(replace_string(event, "input-", ""));
+  if(_data["name"][0] == '-') {
+    _data["name"] = _data["name"][1..];
+    _data["go_invis"] = -1;
+  } else if(_data["name"][0] == ':') {
+    _data["name"] = _data["name"][1..];
+    _data["go_invis"] = 1;
+  } else if(_data["name"][0] == '#') {
+    _data["name"] = _data["name"][1..];
+    _data["go_invis"] = 2;
+  }
+  switch(_run_level) {
+  case RL_CRE:
+    if(!PLAYER_HANDLER->test_creator(_data["name"]) &&
+       !PLAYER_HANDLER->test_property(_data["name"], "test character")) {
+      write("Sorry this site is only open to creators.\n\n"
+            "Press enter to continue ");
+      return READ_INPUT;
+    }
+    break;
+  case RL_PT:
+    if(!PLAYER_HANDLER->test_creator(_data["name"]) &&
+       !PLAYER_HANDLER->test_property(_data["name"], "test character") &&
+       !PLAYTESTER_HAND->query_playtester(_data["name"])) {
+    write("Sorry this site is only open to creators and playtesters.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+    }
+    break;
+  default:
+    break;
+  }
+  if(find_object("/obj/shut") &&
+     !PLAYER_HANDLER->test_creator(_data["name"]) &&
+     !LIVING->find_player(_data["name"])) {
+    write("It is too close to the shut-down to attempt to login.  "
+          "Please try again in a few minutes.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(!PLAYER_HANDLER->test_user(_data["name"])) {
+    write("There is no player by that name.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(!PLAYER_HANDLER->test_ip_allowed(_data["name"],
+                                      query_ip_number(this_object()))) {
+    write("Sorry that character's access control list does not permit "
+          "login from your IP address.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(PLAYER_HANDLER->test_appealing(_data["name"])) {
+    write("Sorry that character has been marked for deletion pending "
+          "appeal.  If you wish to appeal please contact the trustees at "
+          ADMIN_EMAIL + ".\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(PLAYER_HANDLER->test_creator(_data["name"]) ||
+     PLAYER_HANDLER->test_property(_data["name"], "test character"))
+    return "ok";
+  tmp = BASTARDS->query_lockedout(_data["name"]);
+  if(tmp) {
+    write("Sorry that character has chosen to be locked out until\n" +
+          ctime(tmp[SUSPEND_TIME]) + " for " + tmp[SUSPEND_REASON] + ".\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(PLAYERINFO_HANDLER->query_alt_of(_data["name"]))
+    alts = PLAYERINFO_HANDLER->query_alts(PLAYERINFO_HANDLER->
+                                          query_alt_of(_data["name"])) +
+      ({ PLAYERINFO_HANDLER->query_alt_of(_data["name"]) });
+  else
+    alts = PLAYERINFO_HANDLER->query_alts(_data["name"]);
+  if(sizeof(alts))
+    alts -= ({ _data["name"] });
+  if(sizeof(alts)) {
+    tmp = filter(alts, (: LIVING->find_player($1) :));
+    if(sizeof(tmp)) {
+      write("Sorry, you cannot login while one of your alts is logged in.\n"
+            "Press enter to continue ");
+      return READ_INPUT;
+    }
+  }
+  if(tmp = BASTARDS->query_suspended(_data["name"])) {
+    write("You are suspended until " + ctime(tmp[SUSPEND_TIME]) +
+          ", enter your password to see why.\n");
+  }
+  if(PLAYER_HANDLER->test_property(_data["name"], "authorised player"))
+    return "ok";
+  switch(BASTARDS->query_access(this_object())) {
+  case NO_ACCESS:
+    write("Player logins are disabled from this site.  Please contact "
+          "a creator to have your character authorised to login.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+    break;
+  case NO_NEW:
+  case AUTH_NEW:
+    if(PLAYER_HANDLER->test_age(_data["name"]) > -(2 * 24 * 60 * 60)) {
+      write("\nNew player logins are disabled from this site and your character "
+            "is too young.  Please contact a creator to have your character "
+            " authorised to login.\n\n"
+            "Press enter to continue ");
+      return READ_INPUT;
+    }
+    break;
+  case ERROR:
+    write("Sorry your site has invalid access permissions set.  Please "
+          "contact a creator to have this corrected.\n\n"
+            "Press enter to continue ");
+    return READ_INPUT;
+  default:
+  }
+  if(!BASTARDS->query_multi(this_object())) {
+    tmp = filter(users(),
+                 (: interactive($1) &&
+                  !$1->query_creator() &&
+                  !$1->query_property("test character") &&
+                  $1->query_name() != "logon" &&
+                  $1->query_name() != $3 &&
+                  !strcmp(query_ip_number($1), $2)
+                  :),
+                 query_ip_number(this_object()), _data["name"]) -
+      ({ this_object() });
+    if(sizeof(MULTIPLAYER->check_allowed(this_object(), tmp))) {
+      write("Sorry, someone else is already logged in from the same computer\n"
+            "address as you and your site is not authorised for multiple "
+            "players.\n\n"
+            "Press enter to continue ");
+      return READ_INPUT;
+    }
+  }
+  return "ok";
+}
+mixed check_password(string event) {
+  string mess;
+  mixed *tmp;
+  _data["password"] = replace_string(event, "input-", "");
+  _counter++;
+  if(_data["password"] == "")
+    return "failed";
+  if(!PLAYER_HANDLER->test_password(_data["name"], _data["password"])) {
+    tmp = BASTARDS->query_temp_password(_data["name"]);
+    if(!tmp || crypt(_data["password"], tmp[1]) != tmp[1]) {
+      if(_counter < 3) {
+        write("\nPassword incorrect.\n");
+        return "invalid";
+      }
+      LOGIN_HANDLER->failed_login(query_ip_number(this_object()));
+      write("\nToo many retries.\n\nPress enter to continue ");
+      mess = capitalize(_data["name"]) + " failed to login, " +
+        (query_ip_name(this_object()) != query_ip_number(this_object())
+         ? query_ip_name(this_object()) + " (" +
+         query_ip_number(this_object()) + ")"
+         : query_ip_number(this_object()));
+      event(users(), "inform", mess, "bad-password");
+      log_file("BAD_PASSWORD", ctime(time())[4..18] + ": " + mess + "\n");
+      return READ_INPUT;
+    }
+    "/cmds/lord/resetpw"->do_reset(_data["name"], _data["password"]);
+    write("\n\nYour temporary password has now been used!  It is essential "
+          "that you use the password command to set a new password.\n\n");
+  }
+  BASTARDS->clear_temp_password(_data["name"]);
+  if(tmp = BASTARDS->query_suspended(_data["name"])) {
+    write("\nSorry, you are suspended until " +
+          ctime(tmp[SUSPEND_TIME]) + " for " +
+          tmp[SUSPEND_REASON] + ".\n\nPress enter to continue ");
+    return READ_INPUT;
+  }
+  _data["password-check"] = "ok";
+  if(!PLAYER_HANDLER->test_gender(_data["name"]) &&
+     PLAYER_HANDLER->test_property(_data["name"], "new player"))
+    return "new";
+  return "ok";
+}
+mixed set_gender(string event) {
+  string tmp;
+  tmp = lower_case(replace_string(event, "input-", ""));
+  if (tmp == "m") {
+    tmp = "male";
+  }
+  if (tmp == "f") {
+    tmp = "female";
+  }
+  if(tmp == "male" || tmp == "female") {
+    _data["gender"] = tmp;
+    return "ok";
+  }
+  write("That's too weird even for this game!\nTry male or female ");
+  return "invalid";
+}
+mixed check_reconnecting(string event) {
+  if(_data["password-check"] != "ok") {
+    write("Error\n");
+    dest_me();
+  }
+  if(LIVING->find_player(_data["name"])) {
+    write("You are already playing.\n"+
+          "Throw the other copy out? (y/n/restart) ");
+    return READ_INPUT;
+  }
+  return "no";
+}
+mixed restart(string event) {
+  object pl;
+  pl = LIVING->find_player(_data["name"]);
+  if(!pl) {
+    write("Your other copy has been eaten.  Logging in normally.\n");
+    return "ok";
+  }
+  tell_object(pl, "Disconnected by someone from " +
+              query_ip_name(this_object()) + ".\n");
+  if(catch(pl->quit()) && catch(pl->dest_me()))
+    destruct(pl);
+  if(objectp(pl))
+    pl->dest_me();
+  return "ok";
+}
+mixed reconnect(string event) {
+  object pl, ob;
+  pl = LIVING->find_player(_data["name"]);
+  if(!pl) {
+    write("Your other copy has been eaten.  Logging in normally.\n");
+    return "login";
+  }
+  if(interactive(pl)) {
+    tell_object(pl, "Disconnected by someone from " +
+                query_ip_name(this_object()) + ".\n");
+    ob = clone_object("/std/object");
+    exec(ob, pl);
+    ob->dest_me();
+  }
+  exec(pl, this_object());
+  pl->look_me();
+  LOGIN_HANDLER->player_reconnected(pl->query_name());
+  tell_room(environment(pl), pl->query_cap_name()+
+            " has reconnected.\n", ({ pl }) );
+  if (function_exists("inform_reconnect_game", pl))
+    pl->inform_reconnect_game();
+  if(query_ip_number(pl) == query_ip_name(pl))
+     resolve(query_ip_number(pl), "");
+  return "ok";
+}
+mixed check_full(string event) {
+  int ret;
+  if(PLAYER_HANDLER->test_creator(_data["name"]) ||
+     PLAYER_HANDLER->test_property(_data["name"], "test character"))
+    return "ok";
+  ret = LOGIN_HANDLER->int_is_discworld_full(WITHOUT_LOGINS_NOT_IN_QUEUE);
+  if((ret & UNCOMPRESSED_FULL) &&
+     ((ret & COMPRESSED_FULL) || !compressedp(this_object()))) {
+    write("Sorry, there are no player slots available.\n\n");
+    return "full";
+  }
+  return "ok";
+}
+mixed add_to_queue(string event) {
+  object *obs, pl, ob;
+  if(member_array(_data["name"], map(LOGIN_HANDLER->query_login_queue(),
+                                     (: $1->query_name() :) )) != -1 ) {
+    write("You are already in the login queue.\n");
+    obs = filter(LOGIN_HANDLER->query_login_queue(),
+                 (: $1->query_name() == $2 :), _data["name"]);
+    pl = obs[0];
+    if (pl && pl->query_login_ob()) {
+      write("Reconnecting you to the login queue.\n");
+      if (interactive(pl)) {
+        tell_object(pl, "Disconnected by someone from " +
+                    query_ip_name(this_object()) + ".\n");
+        ob = clone_object("/std/object");
+        exec(ob, pl);
+        ob->dest_me();
+      }
+      ob = this_object();
+      exec(pl, ob);
+      return "ok";
+    }
+  }
+  LOGIN_HANDLER->add_to_login_queue(this_object());
+  pl = LIVING->find_player(_data["name"]);
+  if(pl) {
+    write("You were net dead when you left, shuffling you to the "
+          "start of the queue...\n");
+  } else {
+    write("Placing you in the login queue: you have position "+
+          sizeof(LOGIN_HANDLER->query_login_queue()) +
+          ".\nPlease wait.  Type \"quit\" to escape.\n" );
+  }
+  remove_call_out("time_out");
+  call_out("check_status", 15);
+  return "ok";
+}
+mixed display_terms(string event) {
+  write(LOGIN_HANDLER->get_message(FILE_PATH+ "/TERMS"));
+  call_out("terms_delayed", 30);
+  return "ok";
+}
+void terms_delayed() {
+  _counter = 0;
+  write("\nEnter 'yes' if you agree to the terms or 'no' if you cannot.\n"
+        "By typing 'yes' you signify that you have read, understand and "
+        "agree to by bound by these terms and conditions: [yes/no] ");
+  enter_state("agree-terms");
+}
+mixed check_terms(string event) {
+  if(event == "input-yes")
+    return "yes";
+  if(event == "input-no" || _counter++ > 3)
+    return "no";
+  return "error";
+}
+mixed new_player_auth(string event) {
+  object pl;
+  string pass;
+  if(catch(pl = clone_object(BASTARDS->query_player_ob(_data["name"])))) {
+    write("Oh no, someone has broken the player object!  "+
+            "Come back later.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  if(!pl) {
+    write("Something bad happened.\n\n"
+          "Press enter to continue ");
+    return READ_INPUT;
+  }
+  pl->set_name(_data["name"]);
+  pass = generate_password();
+  pl->set_password(crypt(pass, 0));
+  pl->set_email(_data["email"]);
+  pl->add_property("authorised player", 1);
+  pl->add_property("new player", 1);
+  pl->add_property("authorised email", _data["email"]);
+  pl->allow_save();
+  pl->save_me();
+  pl->dest_me();
+  MAILER->do_mail_message(_data["email"], "admin", "Your password", 0,
+                          "The password for " + _data["name"] + " is " +
+                          pass + "\n\n");
+  write("An email is on its way to you with a password for this "
+        "character.\n\n"
+        "Press enter to continue ");
+  return READ_INPUT;
+}
+mixed new_player_login(string event) {
+  object pl, tp;
+  if(catch(pl = clone_object(BASTARDS->query_player_ob(_data["name"])))) {
+    write("Oh no, someone has broken the player object!  "+
+            "Come back later.\n" );
+    return "error";
+  }
+  if(!pl) {
+    write("Something bad happened.\n");
+    return "error";
+  }
+  if(PLAYER_HANDLER->test_property(_data["name"], "authorised player")) {
+    pl->add_property("authorised player", 1);
+    pl->add_property("authorised email",
+                     PLAYER_HANDLER->test_property(_data["name"],
+                                                   "authorised email"));
+    pl->set_email(PLAYER_HANDLER->test_property(_data["name"],
+                                                "authorised email"));
+  }
+  pl->set_name(_data["name"]);
+  if(_data["password"])
+    pl->set_password(crypt(_data["password"], 0));
+  if(_data["guest"]) {
+    pl->add_property("guest", 1);
+    pl->set_title("guest of Discworld");
+  }
+  pl->set_gender(_data["gender"]);
+  pl->set_language("general");
+  pl->set_default_language("general");
+  tp = this_object();
+  if(!exec(pl, tp)) {
+    write("Oh dear, something went wrong.\n");
+    return "error";
+  }
+  if(tp != this_object())
+    tp->quit();
+  write("\n");
+  pl->move_player_to_start(_data["name"], !_data["guest"], _data["cap_name"],
+                           "", _data["go_invis"]);
+  if(query_ip_number(pl) == query_ip_name(pl))
+    resolve(query_ip_number(pl), "");
+  return "ok";
+}
+mixed player_login(string event) {
+  object pl, tp;
+  string cap_name;
+  if(!interactive(this_object())) {
+    debug_log("This ob not interactive. %s %s %s %s", _state, _last_state,
+              _event, _last_event);
+    dest_me();
+  }
+  cap_name = PLAYER_HANDLER->query_cap_name(_data["name"]);
+  if(file_size(PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+               ".o") > 0 &&
+     unguarded((: rename,
+                PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+                ".o",
+                PLAYER_HANDLER->query_player_file_name(_data["name"]) +
+                ".o" :)))
+    write("Removing player from delete queue.\n");
+  else if(file_size(PLAYER_HANDLER->
+                    query_delete_player_file_name(_data["name"]) + ".o.gz") > 0
+          &&
+          unguarded((: rename,
+                     PLAYER_HANDLER->query_delete_player_file_name(_data["name"]) +
+                     ".o.gz",
+                    PLAYER_HANDLER->query_player_file_name(_data["name"]) +
+                     ".o.gz" :)))
+    write("Removing player from delete queue.\n");
+  if(catch(pl = clone_object(BASTARDS->query_player_ob(_data["name"])))) {
+    write("Oh no, someone has broken the player object!  "+
+            "Come back later.\n" );
+    return "error";
+  }
+  if(!pl) {
+    write("Something bad happened.\n");
+    return "error";
+  }
+  tp = this_object();
+  if(!exec(pl, tp)) {
+    write("Oh dear, something went wrong.\n");
+    return "error";
+  }
+  if(tp != this_object())
+    tp->quit();
+  write("\n");
+  pl->move_player_to_start(_data["name"], 0, cap_name, 0, _data["go_invis"]);
+  if(_terminal_name)
+    pl->terminal_type(_terminal_name);
+  if(_cols && _rows)
+    pl->window_size(_cols, _rows);
+  if(query_ip_number(pl) == query_ip_name(pl))
+     resolve(query_ip_number(pl), "");
+  return "ok";
+}
+mixed exit_queue(string event) {
+  call_out("time_out", TIMEOUT_TIME);
+  if(LIVING->find_player(_data["name"]))
+    return "reconnect";
+  else
+    return "login";
+}
+void remove_from_login_queue() {
+  LOGIN_HANDLER->remove_from_login_queue(this_object());
+  tell_object(this_object(), "\n\nYou have exited the login queue!\n\n"
+              "Please press enter to continue ");
+  enter_state("leaving-queue");
+}
+mixed quit(string event) {
+  write("Come back soon!\n");
+  dest_me();
+}
+mixed time_out() {
+  if(!interactive(this_object()))
+    return dest_me();
+  if((query_idle(this_object()) > TIMEOUT_TIME ||
+      (time() > _login_start_time + THROWOUT_TIME)) &&
+     member_array(this_object(), LOGIN_HANDLER->query_login_queue()) == -1) {
+    write("\nTime out.\n\n");
+    return dest_me();
+  }
+  call_out( "time_out", TIMEOUT_TIME);
+  return;
+}
+void check_status() {
+  int pos;
+  if(_data["ok_to_login"])
+    return;
+  pos = member_array(this_object(), LOGIN_HANDLER->query_login_queue())+1;
+  if(!pos) {
+    LOGIN_HANDLER->add_to_login_queue(this_object());
+    pos = member_array(this_object(), LOGIN_HANDLER->query_login_queue())+1;
+  }
+  if(pos && pos != _data["login_pos"])
+    write("You now have position " + pos + " in the queue.\n");
+  _data["login_pos"] = pos;
+  write(sprintf("%-=*s\n", 79,
+                  implode(QUOTE_HANDLER->query_random_quote(), "\n")));
+  call_out("check_status", 30);
+}
+int do_su(string str) {
+  object ob, tp;
+  ob = this_player();
+  tp = this_object();
+  _terminal_name = ob->query_cur_term();
+  _cols = ob->query_cols();
+  _rows = ob->query_rows();
+  exec(tp, ob);
+  ob->quit();
+  _data["name"] = lower_case(str);
+  debug_log("Suing to %s", str);
+  enter_state("check-login-access");
+  return 1;
+}
+int do_upgrade(object old) {
+  old->save();
+  _data["name"] = old->query_name();
+  exec(this_object(), old);
+  destruct(old);
+  enter_state("player-login");
+}
+void logon() {
+  debug_log("Connection received.");
+  if(find_call_out("time_out") == -1)
+    call_out("time_out", TIMEOUT_TIME);
+  _login_start_time = time();
+  enter_state("main-menu");
+}
+int query_prevent_shadow() { return 1; }
+void do_efun_write(string str) {
+  efun::tell_object(this_object(), sprintf("%-=*s", 79, str));
+}
+string query_object_type() { return "X"; }
+string query_gender_string() { return "blue"; }
+void terminal_type(string type) {
+  _terminal_name = type;
+}
+void window_size(int width, int height) {
+  _cols = width;
+  _rows = height;
+}
+void net_dead() {
+  LOGIN_HANDLER->remove_from_login_queue(this_object());
+}
+void dest_me() {
+  LOGIN_HANDLER->remove_from_login_queue(this_object());
+  destruct(this_object());
+}
+int query_login_ob() { return 1; }
+string query_player_file_name(string name) {
+  return PLAYER_HANDLER->query_player_file_name(name);
+}
+string query_delete_player_file_name(string name) {
+   return PLAYER_HANDLER->query_delete_player_file_name(name);
+}
+string query_name() {
+  if(_data && _data["name"])
+    return _data["name"];
+  return "logon";
+}
+string query_cap_name() {
+  if(_data && _data["cap_name"])
+    return _data["cap_name"];
+  return "Logon";
+}
+protected void write_prompt() { return; }
+
+==================================================
+FILE: master.c
+==================================================
+
+inherit "/secure/master/directory_assignments";
+#define ROOT "Root"
+#include <log.h>
+#include <player_handler.h>
+#define TRUSTEES ([ ROOT : 1, "cratylus" : 1,])
+#define READ_MASK 1
+#define WRITE_MASK 2
+#define GRANT_MASK 4
+#define LOCK_MASK 8
+#define SENIOR 4
+#define DIRECTOR 1
+#define TRUSTEE 2
+private mapping positions, permissions;
+private nosave  mapping trustees, checked_master, snoop_list;
+private nosave  object unguarded_ob;
+protected void create() {
+  set_eval_limit(2000000);
+  permissions = ([ ]);
+  positions   = ([ ]);
+  checked_master = ([ ]);
+  snoop_list = ([ ]);
+  unguarded_ob = 0;
+  trustees = TRUSTEES;
+  if (!unguarded((: restore_object, "/secure/master" :)))
+    if (!unguarded((: restore_object, "/secure/config/master_fallback" :)))
+      error("The master object couldn't restore its save file.");
+}
+string query_name() { return "Root"; }
+object connect(int port) {
+  object ob;
+  if (!find_object("/secure/login")) {
+    log_file("REBOOT", "Mud rebooted at "+ctime(time())+"["+time()+"]"+"\n");
+  }
+#ifdef __VERSION__
+#  define VERSION __VERSION__
+#endif
+  printf("LPmud version : %s on port %d.", VERSION, port);
+  switch (port) {
+    case 4243 :
+      ob = clone_object("/secure/nlogin");
+      if(!ob)
+        destruct(this_object());
+      break;
+    default :
+      ob = clone_object("/secure/login");
+      break;
+  }
+  ob->set_login_port(port);
+  printf("\n");
+  return ob;
+}
+int query_trustee(mixed str) {
+  if (pointerp(str)) {
+    str = filter(str, (: interactive($1) :));
+    return sizeof(filter((object *)str,
+                         (: geteuid($1) == ROOT ||
+                          positions[geteuid($1)] == TRUSTEE ||
+                          trustees[geteuid($1)] :))) == sizeof(str);
+  }
+  return ((str == ROOT) || (positions[str] == TRUSTEE) ||
+          (trustees[str]));
+}
+int query_administrator(mixed str) {
+  return query_trustee(str);
+}
+int high_programmer(mixed str) {
+  return query_trustee(str);
+}
+int query_director( mixed arg ) {
+  if ( pointerp( arg ) ) {
+    arg = filter(arg, (: interactive($1) :));
+    return sizeof( filter( (object *)arg,
+                           (: ( positions[ geteuid( $1 ) ] == DIRECTOR ) ||
+            query_trustee( geteuid( $1 ) ) :) ) ) == sizeof( arg );
+  }
+  return ( ( positions[ arg ] == DIRECTOR ) || query_trustee( arg ) );
+}
+int query_leader( mixed arg ) { return query_director( arg ); }
+int query_lord( mixed arg ) { return query_director( arg ); }
+int query_only_director( string word ) {
+   return positions[ word ] == DIRECTOR;
+}
+int query_only_leader( string word ) { return query_only_director( word ); }
+int query_only_lord( string word ) { return query_only_director( word ); }
+string *query_directors() {
+  return filter_array(keys(positions),
+                      "query_only_director", this_object());
+}
+string *query_leaders() { return query_directors(); }
+string *query_lords() { return query_directors(); }
+int query_player_trustee(string str) {
+  return query_trustee(str) && PLAYER_HANDLER->test_user(str);
+}
+int query_player_administrator(string str) {
+  return query_player_trustee(str);
+}
+int query_player_high_lord(string str) {
+  return query_player_trustee(str);
+}
+string *high_programmers() { return keys( trustees ); }
+string *query_administrators() { return keys( trustees ); }
+string *query_trustees() { return keys( trustees ); }
+string *query_all_directors() {
+  return filter_array(keys(positions), "query_director", this_object() );
+}
+string *query_all_leaders() { return query_all_directors(); }
+string *query_all_lords() { return query_all_directors(); }
+int is_leader_of(string person, string domain) {
+  return ("/d/" + domain + "/master")->query_lord() == person;
+}
+int is_deputy_of(string person, string domain) {
+   return ("/d/" + domain + "/master")->query_deputy(person);
+}
+int is_liaison_deputy(string person) {
+   return "/d/liaison/master"->query_deputy(person);
+}
+int query_liaison_deputy_or_director(mixed arg) {
+  if ( pointerp( arg ) ) {
+    arg = filter(arg, (: interactive($1) :));
+    return sizeof( filter( (object *)arg,
+                           (: query_director(geteuid( $1 )) ||
+            is_liaison_deputy( geteuid( $1 ) ) :) ) ) == sizeof( arg );
+  }
+  return ( is_liaison_deputy(arg) || query_director( arg ) );
+}
+int query_liaison_deputy_or_lord(mixed arg) {
+  return query_liaison_deputy_or_director(arg);
+}
+int query_senior( mixed arg ) {
+   if ( pointerp( arg ) )
+      return sizeof(filter( (object *)arg,
+            (: ( positions[ geteuid( $1 ) ] == SENIOR ) ||
+            query_leader( geteuid( $1 ) ) :) ) ) == sizeof( arg );
+   return ( ( positions[ arg ] == SENIOR ) || query_leader( arg ) );
+}
+string *query_all_seniors() {
+   return filter_array( keys( positions ), "query_senior", this_object() );
+}
+string *query_domains() {
+  string *domains;
+  domains = (get_dir("/d/") - ({ "lost+found", "core" }));
+  return filter(domains, (: $1[<4..] != "_dev" :));
+}
+int valid_load(string path, mixed euid, string func) { return 1; }
+string get_root_uid() { return ROOT; }
+string get_bb_uid() { return "Room"; }
+string *define_include_dirs() {
+  return ({ "/include/%s" });
+}
+int valid_trace() { return 1; }
+void shut(int min) {
+  "/obj/shut"->shut(min);
+}
+void remove_checked_master(string name) {
+  map_delete(checked_master, name);
+}
+mapping query_checked_master() { return checked_master; }
+varargs mixed apply_unguarded(function f, int local) {
+  object previous_unguarded;
+  string err;
+  mixed val;
+  if (base_name(previous_object(0)) != "/secure/simul_efun") {
+    error("Illegal unguarded apply.");
+    return 0;
+  }
+  previous_unguarded = unguarded_ob;
+  if (local)
+    unguarded_ob = master();
+  else
+    unguarded_ob = previous_object(1);
+  err = catch(val = (mixed)(*f)());
+  unguarded_ob = previous_unguarded;
+  if (err) {
+    error(err);
+  }
+  return val;
+}
+#include "/secure/master/permission.c"
+#include "/secure/master/crash.c"
+#include "/secure/master/create_dom_creator.c"
+#include "/secure/master/creator_file.c"
+#include "/secure/master/dest_env.c"
+#include "/secure/master/ed_stuff.c"
+#include "/secure/master/file_exists.c"
+#include "/secure/master/logging.c"
+#include "/secure/master/parse_command.c"
+#include "/secure/master/preload.c"
+#include "/secure/master/query_pl_level.c"
+#include "/secure/master/simul_efun.c"
+#include "/secure/master/snoop.c"
+#include "/secure/master/valid_database.c"
+#include "/secure/master/valid_exec.c"
+#include "/secure/master/valid_hide.c"
+#include "/secure/master/valid_ident.c"
+#include "/secure/master/valid_link.c"
+#include "/secure/master/valid_override.c"
+#include "/secure/master/valid_read.c"
+#include "/secure/master/valid_seteuid.c"
+#include "/secure/master/valid_shadow.c"
+#include "/secure/master/valid_socket.c"
+#include "/secure/master/valid_write.c"
+#include "/secure/master/valid_copy.c"
+#include "/secure/master/virtual_objects.c"
+#include "/secure/master/valid_bind.c"
+#include "/secure/master/valid_to_c.c"
+#include "/secure/master/valid_binary.c"
+
+==================================================
+FILE: rcs_handler.c
+==================================================
+
+#include <player_handler.h>
+#define SAVE_FILE "/secure/rcs_handler"
+#define CMD_NUM 5
+#define MAX_MOD_TIME (86400 * 90)
+mapping _locks = ([]);
+void create()  {
+   unguarded((: restore_object, SAVE_FILE :));
+   call_out("clean_up", 2);
+}
+void clean_up(string *names) {
+  string name, file, *cmd;
+  int changed, i;
+  if(!names) {
+    names = keys(_locks);
+  }
+  if(!sizeof(names))
+    return 0;
+  name = names[0];
+  if(sizeof(names) > 1) {
+    while(sizeof(names) > 1 && (!names[1] || !arrayp(names[1])))
+      names = names[1..];
+    if(sizeof(names) > 1)
+      call_out("clean_up", random(15), names[1..]);
+  }
+  foreach(file in _locks[name]) {
+    if(i++ > 100)
+      break;
+    if(file_size(file) <= 0) {
+      _locks[name] -= ({ file });
+      changed = 1;
+    } else if((time() - stat(file)[1]) > MAX_MOD_TIME ||
+            !PLAYER_HANDLER->test_creator(name)) {
+      cmd = ({ "-w" + name,
+                 "-u",
+                 "-mForcibly released due to inactivity",
+                 file[1..] });
+      external_start(CMD_NUM, cmd, "read_call_back", "write_call_back",
+                     "close_call_back");
+      _locks[name] -= ({ file });
+      changed = 1;
+    }
+  }
+  if(!sizeof(_locks[name])) {
+    map_delete(_locks, name);
+    changed = 1;
+  }
+  if(changed)
+    unguarded((: save_object, SAVE_FILE, 2 :));
+}
+void read_call_back(int fd, mixed mess) { return; }
+void write_call_back(int fd) { return; }
+void close_call_back(int fd) { return; }
+void add_lock(mixed cre, string file)  {
+   string name;
+   if( file[0] != '/' )
+      file = "/" + file;
+   if (stringp(cre))  name = lower_case(cre);
+   else name = cre->query_name();
+   if (undefinedp(_locks[name]))
+      _locks[name] = ({ file });
+   else if ( member_array( file, _locks[name] ) < 0 )
+      _locks[name] += ({ file });
+   unguarded((: save_object, SAVE_FILE, 2 :));
+   return;
+}
+void remove_lock(mixed cre, string file)  {
+   string name;
+   if( file[0] != '/' )
+      file = "/" + file;
+   if (stringp(cre))  name = lower_case(cre);
+   else name = cre->query_name();
+   if (!undefinedp(_locks[name]))  {
+      _locks[name] -= ({ file });
+      unguarded((: save_object, SAVE_FILE, 2 :));
+   }
+   return;
+}
+mapping query_non_creators() {
+  mapping res;
+  string person;
+  res = ([ ]);
+  foreach(person in keys(_locks)) {
+    if(!PLAYER_HANDLER->test_creator(person))
+      res[person] = _locks[person];
+  }
+    return res;
+}
+string *query_locks(mixed cre)  {
+   string name;
+   if (stringp(cre))  name = lower_case(cre);
+   else name = cre->query_name();
+   return _locks[name];
+}
+void reset_locks(mixed cre, int start)  {
+  string file, name, rcsfile, tmp;
+  int idx, i, changed;
+  changed = 0;
+  if (stringp(cre))
+    name = lower_case(cre);
+  else
+    name = cre->query_name();
+  if (undefinedp(_locks[name]))
+    return;
+  for(i=0; i < sizeof(_locks[name]) && i < start + 100; i++) {
+    file = _locks[name][i];
+    idx = strsrch(file, "/", -1);
+    rcsfile = file[0 .. idx] + "RCS/" + file[idx + 1 .. ] + ",v";
+    if (file_size(rcsfile) > 0) {
+      tmp = read_file(rcsfile, 4, 1);
+      if (tmp == "locks\n") {
+        string lockname;
+        tmp = read_file(rcsfile, 5, 1);
+        sscanf(tmp, "\t%s:", lockname);
+        if (lockname != name)  {
+          _locks[name] -= ({ file });
+          changed = 1;
+        }
+      } else {
+        _locks[name] -= ({ file });
+        changed = 1;
+      }
+    }
+  }
+  if(!sizeof(_locks[name])) {
+    map_delete(_locks, name);
+    changed = 1;
+  }
+  if (changed)
+    unguarded((: save_object, SAVE_FILE, 2 :));
+  return;
+}
+string help() {
+  return "Displays the files that are locked in your current directory.";
+}
+
+==================================================
+FILE: related_files.c
+==================================================
+
+#include <playerinfo.h>
+#include <nomic_system.h>
+void delete_related_files( string name, int mail, int refresh_type ) {
+   string *files;
+   string area;
+   string dir;
+   if (previous_object() != find_object("/secure/bulk_delete") &&
+       previous_object() != find_object("/secure/delete_clear") &&
+       previous_object() != find_object("/obj/handlers/refresh")) {
+     if (!master()->high_programmer(previous_object(-1)) &&
+         ((string)previous_object()->query_name() != name)) {
+       tell_object(find_player("ceres"), "Not doing erasing. %O\n",
+                   previous_object());
+       unguarded( (: write_file, "/log/CHEAT", ctime( time() ) +
+                   ": illegal attempt to delete related files using "+
+                   "/secure/related_files\nTrace: "+ back_trace() :) );
+       return;
+     }
+   }
+   unguarded( (: rm, "/save/artifacts/"+ name :) );
+   unguarded( (: rm, "/save/bank_accounts/"+name[0..0] + "/" + name + ".o" :) );
+   unguarded( (: rm, "/save/cmr_library/"+ name +".o" :) );
+   catch("/obj/handlers/library"->restart(name));
+   unguarded( (: rm, "/save/library/"+ name[0..0] + "/" + name + ".o" :) );
+   unguarded( (: rm, "/save/philosophies/"+ name[0..0] + "/"+ name + ".o" :) );
+   foreach(dir in get_dir("/save/vaults
+
+==================================================
+FILE: security.c
+==================================================
+
+#include <security.h>
+varargs nomask mixed call_unguarded(string func, mixed a1,
+                                           mixed a2, mixed a3, mixed a4) {
+  return call_other(previous_object(), func, a1, a2, a3, a4);
+}
+
+==================================================
+FILE: simul_efun.c
+==================================================
+
+inherit "/secure/simul_efun/add_a";
+#if !efun_defined(add_action)
+inherit "/secure/simul_efun/add_action";
+#endif
+inherit "/secure/simul_efun/add_command";
+inherit "/secure/simul_efun/aggregate";
+inherit "/secure/simul_efun/amtime";
+inherit "/secure/simul_efun/array";
+inherit "/secure/simul_efun/ctime_elapsed";
+inherit "/secure/simul_efun/back_trace";
+#if !efun_defined(dump_socket_status)
+inherit "/secure/simul_efun/dump_socket_status";
+#endif
+inherit "/secure/simul_efun/find_match";
+inherit "/secure/simul_efun/find_member";
+inherit "/secure/simul_efun/find_other_call_out";
+inherit "/secure/simul_efun/get_function_pointer";
+inherit "/secure/simul_efun/inside_shorts";
+inherit "/secure/simul_efun/mapping";
+inherit "/secure/simul_efun/modified_efuns";
+inherit "/secure/simul_efun/pk_check";
+inherit "/secure/simul_efun/pl_to_ob";
+inherit "/secure/simul_efun/process_value";
+inherit "/secure/simul_efun/query_ident";
+inherit "/secure/simul_efun/query_number";
+inherit "/secure/simul_efun/roll_MdN";
+#if !efun_defined(shuffle)
+inherit "/secure/simul_efun/shuffle";
+#endif
+inherit "/secure/simul_efun/snoop_simul";
+inherit "/secure/simul_efun/sqrt";
+inherit "/secure/simul_efun/strip_colours";
+inherit "/secure/simul_efun/str_inven";
+inherit "/secure/simul_efun/debug";
+inherit "/secure/simul_efun/unguarded";
+inherit "/secure/simul_efun/virtual";
+void create() {
+  seteuid("Root");
+  find_match::create();
+}
+
+==================================================
+FILE: player/delete_clear.c
+==================================================
+
+#include <player_handler.h>
+#define ONE_DAY (60*60*24)
+#define SAVE_FILE "/save/del_pl_check"
+int last_clear;
+void create() {
+  seteuid("Root");
+  restore_object(SAVE_FILE);
+  if (last_clear+ONE_DAY < time()) {
+    call_out("do_delete_check", 0);
+  } else {
+    call_out("do_delete_check", last_clear+ONE_DAY-time());
+  }
+}
+protected void do_delete_check() {
+  string *bits;
+  int i;
+  mixed *rubbish;
+  bits = get_dir("/players/"+DELETE_DIR+"
+
+==================================================
+FILE: simul_efun/add_a.c
+==================================================
+
+string add_a(string s) {
+  int i;
+  if (!stringp(s))
+    return 0;
+  i = 0;
+  while (s[i] == ' ') i++;
+  if(s[i..i+1] == "a " || s[i..i+2] == "an ")
+    return s;
+  switch (s[i]) {
+  case 'a':
+  case 'e':
+  case 'i':
+  case 'o':
+  case 'u':
+  case 'A':
+  case 'E':
+  case 'I':
+  case 'O':
+  case 'U':
+    return "an " + s[i..];
+  default:
+    return "a " + s[i..];
+  }
+}
+int vowel(int i) {
+  return (i == 'a' || i == 'e' || i == 'i' || i == 'o' || i == 'u' ||
+          i == 'A' || i == 'E' || i == 'I' || i == 'O' || i == 'U');
+}
+
+==================================================
+FILE: simul_efun/add_action.c
+==================================================
+
+#define LIV "/obj/handlers/livings"
+private nosave string _nf;
+varargs void log_file(string name, string fmt, mixed *args ...);
+void enable_commands(){
+  efun::set_this_player(previous_object());
+  LIV->enable_commands(previous_object());
+}
+void set_living_name(string name){
+  LIV->set_living_name(name, previous_object());
+}
+int living(object ob){
+  if(!ob)
+    return 0;
+  return ob->_living();
+}
+int _notify_fail(string mes){
+  _nf = mes;
+  return 0;
+}
+string query_notify_fail(){
+  return _nf;
+}
+mixed command(string cmd){
+  int time = eval_cost();
+  if(evaluate(bind((:call_other:), previous_object()),previous_object(),
+           "_process_input", cmd))
+    return eval_cost() - time + 1;
+  return 0;
+}
+mixed actions_defined(mixed, mixed, mixed){ return ({}); }
+void set_this_player(object ob){
+  error("Illegal use of set_this_player.");
+}
+
+==================================================
+FILE: simul_efun/add_command.c
+==================================================
+
+varargs void add_command(string verb, string pattern, function func) {
+   if (!verb) {
+      write("Need to specify a verb for add_command.\n");
+      return ;
+   }
+   if (!pattern) {
+      write("Need to specify a pattern for add_command.\n");
+   }
+   if (this_player()) {
+      this_player()->add_command(verb, previous_object(), pattern, func);
+   }
+}
+void add_succeeded_mess(mixed mess, object *indir) {
+   if (!indir) {
+     indir = ({ });
+   }
+   this_player()->add_succeeded_mess(previous_object(), mess, indir);
+}
+void add_succeeded_ob(object ob) {
+   this_player()->add_succeeded(ob);
+}
+void add_failed_mess(mixed mess, object *indir) {
+   if (!indir) {
+     indir = ({ });
+   }
+   this_player()->add_failed_mess(previous_object(), mess, indir);
+}
+
+==================================================
+FILE: simul_efun/aggregate.c
+==================================================
+
+string mapping_to_string( mapping map );
+string array_to_string( mixed *args ) {
+   int i;
+   args = copy(args);
+   for ( i = sizeof( args ) - 1; i > -1; i-- ) {
+      if ( pointerp( args[ i ] ) ) {
+         args[ i ] = array_to_string( args[ i ] );
+         continue;
+      }
+      if ( mapp( args[ i ] ) ) {
+         args[ i ] = mapping_to_string( args[ i ] );
+         continue;
+      }
+      args[ i ] = sprintf( "%O", args[ i ] );
+   }
+   return "({ "+ implode( args, ", " ) +" })";
+}
+string mapping_to_string( mapping map ) {
+   int i;
+   mixed *args;
+   if( !mapp( map ) ) {
+      return sprintf( "%O", map );
+   }
+   args = keys( map );
+   for ( i = sizeof( args ) - 1; i > -1; i-- ) {
+      if ( pointerp( map[ args[ i ] ] ) ) {
+         args[ i ] = sprintf( "%O : %s", args[ i ],
+               array_to_string( map[ args[ i ] ] ) );
+         continue;
+      }
+      if ( mapp( map[ args[ i ] ] ) ) {
+         args[ i ] = sprintf( "%O : %s", args[ i ],
+               mapping_to_string( map[ args[ i ] ] ) );
+         continue;
+      }
+      args[ i ] = sprintf( "%O : %O", args[ i ], map[ args[ i ] ] );
+   }
+   return "([ "+ implode( args, ", " ) +" ])";
+}
+void alt_move(mixed dest, object ob){
+  if(!ob)
+    return;
+  evaluate(bind((:move_object, dest:), ob));
+}
+varargs string extract(string str, int start, int end) {
+  if (end)
+    return str[start..end];
+  return str[start..];
+}
+
+==================================================
+FILE: simul_efun/alt_move.c
+==================================================
+
+void alt_move(mixed dest, object ob){
+  if(!ob)
+    return;
+  evaluate(bind((:move_object, dest:), ob));
+}

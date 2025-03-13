@@ -1,0 +1,1961 @@
+# Total Tokens: 17705
+# Total Files Merged: 53
+# Total Characters: 59179
+
+/hospital.c
+==================================================
+
+#include <armoury.h>
+#include <hospital.h>
+#include <living.h>
+#include <map.h>
+#include <money.h>
+#include <move_failures.h>
+#include <route.h>
+#include <wander.h>
+#include "path.h"
+#define MAX_HEAVIES 10
+#define DAY 8 * 60 * 60
+#define INTERVAL 20 * 60
+#define MUD_TO_REAL 3
+#define BLOCK 5
+#define MAX_EMPTIES 12
+#define MAX_MOVERS 60
+#define SAVE_FILE SAVE +"hospital"
+inherit "/std/room/basic_room";
+nosave int alchemists, update, *alignments;
+mapping uniques;
+nosave int *al_data;
+nosave string *city;
+nosave object *empties;
+nosave mapping blockages;
+nosave mixed *movers;
+nosave int am_npcs, last_check;
+int ok_to_clone();
+void get_weapon(object ob, string *items);
+void get_armour(object ob, string *items);
+void get_jewellery(object ob, string *items);
+void setup() {
+   set_keep_room_loaded(1);
+   update = time();
+   alignments = allocate( 50 );
+   uniques = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) > 0 ) {
+      unguarded( (: restore_object, SAVE_FILE :) );
+   }
+   alchemists++;
+   unguarded( (: save_object, SAVE_FILE :) );
+   city = ({
+      "child", "rodent", "cockroach", "dog"
+   });
+   empties = ({ });
+   blockages = ([ ]);
+   movers = allocate( MAX_MOVERS );
+   call_out( "check_movers", 10 );
+   call_out( "housekeeping", INTERVAL );
+}
+int *query_al_data() { return al_data; }
+mapping query_uniques() { return uniques; }
+object *query_empties() { return empties; }
+mapping query_blockages() { return blockages; }
+int query_blockage( string this, string other, int number ) {
+   if ( undefinedp( blockages[ this ] ) ) {
+      if ( random( 100 ) >= BLOCK )
+         number = -1;
+      blockages[ this ] = blockages[ other ] = number;
+   }
+   return blockages[ this ];
+}
+mixed *query_movers() { return movers; }
+void housekeeping() {
+   object thing;
+   update = time();
+   foreach( thing in users() ) {
+      if ( thing->query_creator() )
+         continue;
+      alignments[ random( sizeof( alignments ) ) ] =
+            (int)thing->query_al();
+   }
+   al_data = 0;
+   unguarded( (: save_object, SAVE_FILE :) );
+   call_out( "housekeeping", INTERVAL );
+}
+int pick_al() {
+   int one, *stats;
+   if ( !al_data ) {
+      al_data = allocate( 3 );
+      stats = allocate( 4 );
+      foreach( one in alignments ) {
+         stats[ 0 ] += one;
+         stats[ 1 ] += one * one;
+         if ( one > stats[ 2 ] )
+            stats[ 2 ] = one;
+         if ( one < stats[ 3 ] )
+            stats[ 3 ] = one;
+      }
+      stats[ 0 ] /= sizeof( alignments );
+      stats[ 1 ] /= sizeof( alignments );
+      stats[ 1 ] -= stats[ 0 ] * stats[ 0 ];
+      stats[ 1 ] /= 10;
+      if ( stats[ 1 ] < 50 )
+         stats[ 1 ] = 50;
+      stats[ 2 ] -= stats[ 3 ];
+      if ( stats[ 2 ] < 2 )
+         stats[ 2 ] = 2;
+      al_data[ 0 ] = stats[ 0 ] - stats[ 2 ] / 2;
+      al_data[ 1 ] = ( stats[ 2 ] * stats[ 2 ] ) / ( 12 * stats[ 1 ] );
+      if ( al_data[ 1 ] < 5 )
+         al_data[ 1 ] = 5;
+      al_data[ 2 ] = ( 12 * stats[ 1 ] ) / stats[ 2 ];
+      if ( al_data[ 2 ] < 25 )
+         al_data[ 2 ] = 25;
+   }
+   return al_data[ 0 ] + roll_MdN( al_data[ 1 ], al_data[ 2 ] );
+}
+int make_unique( string word ) {
+   if ( uniques[ word ] > time() )
+      return 0;
+    uniques[ word ] = time() + 1 * 60 * 60;
+   unguarded( (: save_object, SAVE_FILE :) );
+   return 1;
+}
+void add_mover( object thing ) {
+   int number;
+   number = MAX_MOVERS / 2 + random( MAX_MOVERS / 2 );
+   if ( !pointerp( movers[ number ] ) )
+      movers[ number ] = ({ thing });
+   else
+      movers[ number ] += ({ thing });
+}
+object get_monster( string type ) {
+   object thing;
+   object ob;
+   switch( type ) {
+      case "city" :
+      case "pumpkin" :
+         thing = get_monster( city[ random( sizeof( city ) ) ] );
+         thing->add_property( "monster type", type +":"+
+               (string)thing->query_property( "monster type" ) );
+         thing->add_move_zone( "Pumpkin" );
+         add_mover( thing );
+         return thing;
+      case "dog":
+         thing = clone_object( CHARS + "dog" );
+         if ( random( 4 ) )
+            thing->set_type( "small" );
+         else
+            thing->set_type( "large" );
+         thing->add_effect( "/std/effects/npc/i_died",
+               ({ HOSPITAL, "regen_after_death" }));
+         thing->add_effect( "/std/effects/npc/eat_edible" );
+         thing->add_effect( "/std/effects/npc/savage_corpse" );
+         thing->add_property( "monster type", type );
+         thing->add_property("animal type", type);
+         return thing;
+      case "child":
+         thing = clone_object( CHARS + "child_human" );
+         return thing;
+    case "cityguard":
+      ob = clone_object(MONSTER);
+      ob->add_property("monster type", type);
+      ob->set_name("guard");
+      ob->add_adjective("city");
+      ob->set_main_plural( "city guards" );
+      ob->set_short("city guard");
+      ob->set_long("This is a city guard. He is supposed to protect the " +
+        "city from undesirables. Sadly, Pumpkin isn't very fussy.\n");
+      ob->set_race("human");
+      ob->set_gender("male");
+      ob->set_guild("fighter");
+      ob->set_level(8);
+      ob->set_al( pick_al() / 5 );
+      ob->adjust_money( 5 + random( 10 ), "Pumpkin pence" );
+      ob->load_chat(10, ({
+          3, "@grumble bitterly",
+          1, "@daydream",
+          1, "@sigh heavily"
+          }) );
+      ob->load_a_chat(50, ({
+          1, "'Ouch!",
+          1, "'Come on! I don't need this.",
+          1, "'Be on your way!",
+          }) );
+      ARMOURY->request_weapon("long sword", 40+random(40))->move(ob);
+      if(random(2))
+        ARMOURY->request_armour("hard leather cap", 70 + random(30))->move(ob);
+      ob->init_equip();
+      return ob;
+    case "mercenary":
+      ob = clone_object(MONSTER);
+      ob->set_name("mercenary");
+      ob->set_main_plural( "mercenaries" );
+      ob->add_plural( "mercenaries" );
+      ob->add_adjective("tough");
+      ob->set_race("human");
+      ob->set_class("fighter");
+      ob->set_level( 50 + roll_MdN( 5, 50 ) );
+      ob->set_al( pick_al() );
+      ob->set_gender(random(2) + 1);
+      ob->set_long("A tough battle scarred mercenary.  There are better "
+                   "ways of filling in an afternoon than messing with the "
+                   "likes of "+ob->query_objective()+".\n");
+      ob->adjust_money( 5 + random( 50 ), "Ankh-Morpork pence" );
+      ob->adjust_money( 1 + random( 5 ), "Ankh-Morpork dollar" );
+      ob->load_chat(3, ({
+        1, "'Anyone you don't like?",
+        1, "'I'll do anything if the price is right?",
+        1, "'Don't get me angry.  You won't like me when I'm angry."
+      }));
+      ob->load_a_chat(30, ({
+        1, "'I'll show you who's boss.",
+        1, "'You think you're so tough.",
+        1, "The crowd runs in terror as the mercenary kills someone by "+
+           "accident."
+      }));
+      get_weapon(ob, ({"bastard sword", "long sword", "morning star",
+       "two-handed axe"}));
+      get_armour(ob, ({"chainmail", "splintmail", "ringmail"}));
+      ob->add_property("monster type", type);
+      ob->init_equip();
+      return ob;
+    case "rodent":
+      ob = clone_object(MONSTER);
+      ob->set_name("rat");
+      ob->set_short("rat");
+      ob->set_race("rat");
+      ob->set_level( random( 1 + random( 3 ) ) );
+      ob->add_alias("city rat");
+      ob->set_main_plural("rats");
+      ob->add_adjective("dirty");
+      ob->add_adjective("city");
+      ob->set_long("This is a large rat.  It appears to have done well "+
+       "living in the city.\n"+
+       "The pollution must not affect it too much.\n" );
+      ob->load_chat( 5, ({
+         1, ":squeaks.",
+         1, ":sniffs the air, whiskers twitching.",
+         1, ":checks for dwarves."
+      }) );
+      ob->set_wimpy( 10 );
+      ob->load_a_chat( 50, ({
+         1, ":squeals in pain.",
+         1, ":twitches fearfully."
+      }) );
+      ob->add_effect("/std/effects/npc/i_died",
+                     ({ HOSPITAL, "regen_after_death" }));
+      ob->add_effect( "/std/effects/npc/eat_edible" );
+      ob->add_effect( "/std/effects/npc/savage_corpse" );
+      ob->add_property("monster type", type);
+      ob->add_property("animal type", type);
+      return ob;
+    case "cockroach":
+      ob = clone_object(MONSTER);
+      ob->set_name("cockroach");
+      ob->set_short("cockroach");
+      ob->set_race("cockroach");
+      ob->set_level( random( 1 + random( 3 ) ) );
+      ob->set_main_plural("cockroaches");
+      ob->add_adjective("dirty");
+      ob->add_alias("roach");
+      ob->set_long( "This is a huge dirty great big cockroach, the size of "
+             "your hand at least.  It waves its feelers at you and looks "
+             "horrible and black.  Not only can cockroaches survive fires, "
+             "plagues, earthquakes and miscellaneous acts of supernatural "
+             "beings, they can survive in Ankh-Morpork!\n" );
+      ob->load_chat( 5, ({
+         10, ":scuttles around a bit.",
+         10, ":cleans its feelers.",
+         10, ":rushes around in circles.",
+         1,  ":jerks off in a strange direction.",
+      }) );
+      ob->set_wimpy( 30 );
+      ob->load_a_chat( 50, ({
+         1, ":oozes horrible white stuff.",
+         1, ":makes a sort of scraping noise."
+      }) );
+      ob->add_effect("/std/effects/npc/i_died",
+                      ({ HOSPITAL, "regen_after_death" }));
+      ob->add_property("monster type", type);
+      ob->add_property("animal type", type);
+      return ob;
+    default:
+      ob = clone_object(MONSTER);
+      ob->set_name("failure");
+      ob->set_short("failure");
+      ob->set_long( "Please inform a creator about this object.\n"+
+          "Type is "+ type +" from "+ file_name( previous_object() ) +".\n" );
+      ob->add_property( "monster type", "failure:"+ type );
+      return ob;
+  }
+}
+void get_armour(object ob, string *items) {
+  ARMOURY->request_armour(items[random(sizeof(items))], 50+random(50))->
+    move(ob);
+}
+void get_jewellery(object ob, string *items) {
+  ARMOURY->request_armour(items[random(sizeof(items))], 20+random(80))->
+    move(ob);
+}
+void get_weapon(object ob, string *items) {
+  ARMOURY->request_weapon(items[random(sizeof(items))], 50+random(50))->
+    move(ob);
+}
+void regen_after_death(object player) {
+  object ob, dest;
+  string nam;
+  if (!player)
+    return ;
+  nam = (string)player->query_property("monster type");
+  dest = (object)player->query_property("start location");
+  if ( !nam )
+    return;
+  if ( !dest )
+    return;
+  if(!ok_to_clone())
+    return;
+  ob = get_monster( explode( nam, ":" )[ 0 ] );
+  dest->add_monster(player, ob);
+  call_out("do_move", 10, ({ ob, dest }) );
+}
+void do_move(mixed *junk) {
+  junk[0]->move(junk[1]);
+}
+string change_to_name(object ob) {
+  return implode((string *)ob->query_adjectives(), " ")+
+         (string)ob->query_name();
+}
+void do_run(object ob) {
+  if (ob)
+    ob -> run_away();
+}
+void fight_check(object ob, object ob1) {
+  if (ob->query_property(previous_object()->query_name()))
+    previous_object()->attack_ob(ob1);
+}
+void do_grin_laugh(object ob) {
+  ob->add_respond_to_with(({ "@grin", ob->query_name() }),
+                          "laugh man at $hname$");
+}
+void add_empty( object thing ) {
+   empties -= ({ 0 });
+   empties += ({ thing });
+   if ( sizeof( empties ) > MAX_EMPTIES )
+      empties = shuffle( empties )[ 0 .. MAX_EMPTIES - 1 ];
+}
+void move_monster( object thing ) {
+   int i;
+   string dest, direc, zone, *movez, *roomz;
+   object place;
+   if ( !thing )
+      return;
+   if ( (int)thing->query_hp() < 0 )
+      return;
+   if ( thing->query_property( PASSED_OUT ) || thing->query_fighting() ) {
+      add_mover( thing );
+      return;
+   }
+   movez = (string *)thing->query_move_zones();
+   empties -= ({ 0 });
+   if ( sizeof( empties ) && !thing->check_anyone_here() )
+      foreach ( place in empties ) {
+         roomz = (string *)place->query_zones();
+         if ( !sizeof( roomz ) ) {
+            empties -= ({ place });
+            continue;
+         }
+         foreach ( zone in roomz ) {
+            i = member_array( zone, movez );
+            if ( i != -1 )
+               break;
+         }
+         if ( i == -1 )
+            continue;
+         thing->move( place );
+         place->add_monster( 0, thing );
+         place->announce_entry( thing );
+         empties -= ({ place });
+         add_mover( thing );
+         return;
+      }
+   place = environment( thing );
+   if ( !place )
+      return;
+   add_mover( thing );
+   foreach ( direc in shuffle( (string *)place->query_direc() ) ) {
+      place->set_destination( direc );
+      dest = (string)place->query_destination( direc );
+      if ( !stringp( dest ) )
+         continue;
+      if ( !thing->check_anyone_here() && !find_object( dest ) )
+         continue;
+      if ( find_object( dest ) )
+         roomz = (string *)dest->query_zones();
+      else
+         roomz = (string *)MAP->query_zones( dest );
+      if ( !sizeof( roomz ) )
+         continue;
+      foreach ( zone in roomz ) {
+         i = member_array( zone, movez );
+         if ( i != -1 )
+            break;
+      }
+      if ( i == -1 )
+         continue;
+      if ( place->query_relative( direc ) )
+         direc = (string)thing->find_rel( direc, 0 );
+      if ( thing->do_command( direc ) )
+         return;
+   }
+}
+void check_movers() {
+   int when;
+   object thing, *things;
+   things = movers[ 0 ];
+   movers[ 0 .. MAX_MOVERS - 2 ] = movers[ 1 .. ];
+   movers[ MAX_MOVERS - 1 ] = 0;
+   call_out( "check_movers", 10 );
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( objectp( thing ) ) {
+         when += 2;
+         call_out( "move_monster", when, thing );
+      }
+   }
+}
+int ok_to_clone() {
+  if(time() > last_check + 300) {
+    last_check = time();
+    am_npcs = sizeof( filter( named_livings(),
+      (: environment( $1 ) && base_name( environment( $1
+       ) )[0..4] == "/d/am" :) ) );
+  }
+  return ( am_npcs < MAX_AM_LIVING );
+}
+int *query_npcs() {
+  return ({ am_npcs, last_check });
+}
+
+==================================================
+FILE: dist/pumpkin/money_symboliser.c
+==================================================
+
+string symbolise_value( int value ) {
+   int dollars;
+   int pence;
+   string s;
+   if (value < 0) {
+      s = "-";
+      value = - value;
+   } else {
+      s = "";
+   }
+   dollars = value / 100;
+   pence = ( value % 100 );
+   if ( !pence ) {
+      return "P$"+ s + dollars;
+   }
+   if ( !dollars ) {
+      return s + pence +"p";
+   }
+   if ( pence < 10 ) {
+      return "P$"+ s + dollars +".0"+ pence;
+   }
+   return "P$" + s + dollars + "." + pence;
+}
+int unsymbolise_string( string str ) {
+  int dollars;
+  int pence;
+  if (strlen(str) < 2) {
+    return 0;
+  }
+  if (str[0] == '$' ||
+      lower_case(str[0..1]) == "p$") {
+     if (str[0] == 'p') {
+       str = str[1..];
+     }
+     if (sscanf(str, "$%d.%d", dollars, pence) == 2) {
+        return dollars * 100 + pence;
+     } else if (sscanf(str, "$%d", dollars) == 1) {
+        return dollars * 100;
+     }
+  } else if (lower_case(str[<1..<1]) == "p") {
+     if (sscanf(str, "%dp", pence) == 1) {
+       return pence;
+     }
+  }
+  return 0;
+}
+
+==================================================
+FILE: dist/pumpkin/path.h
+==================================================
+
+#undef CITY
+#define CITY "/d/dist/pumpkin/"
+#define CITYROOM (CITY "inherit/cityroom")
+#define RABBIT CITY + "rabbit/"
+#define STABLE CITY + "stable/"
+#define PUMPKIN CITY + "pumpkin/"
+#define GUMBOOT CITY + "gumboot/"
+#define FRUITBAT CITY + "fruitbat/"
+#define STABLE CITY + "stable/"
+#define CRUMPT CITY + "crumpt/"
+#define PLAIN CITY + "plain/"
+#define DESERT CITY + "desert/"
+#define SQUASH CITY + "squash/"
+#define WOODS CITY + "woods/"
+#define HOSPITAL (CITY "hospital")
+#define HOSPITAL_INC (CITY "handler/hostpial.h")
+#define SAVE CITY + "save/"
+#define CHARS (CITY + "chars/")
+#define TERRAIN_HANDLER (CITY + "terrain/terrain_handler")
+
+==================================================
+FILE: dist/pumpkin/path2.h
+==================================================
+
+#undef CITY
+#define CITY "/d/dist/pumpkin/"
+#define CITYROOM (CITY "inherit/cityroom")
+#define RABBIT CITY + "rabbit/"
+#define STABLE CITY + "stable/"
+#define PUMPKIN CITY + "pumpkin/"
+#define GUMBOOT CITY + "gumboot/"
+#define FRUITBAT CITY + "fruitbat/"
+#define STABLE CITY + "stable/"
+#define CRUMPT CITY + "crumpt/"
+#define PLAIN CITY + "plain/"
+#define PLAIN CITY + "plain/"
+#define SQUASH CITY + "squash/"
+#define PLAIN CITY + "plain/"
+
+==================================================
+FILE: dist/pumpkin/crumpt/bank.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/bank";
+void setup() {
+   set_short("Pumpkin's Bank");
+   set_long(
+"The room is full of pumpkins with little dollar signs carved in the side.  "
+"There is a wooden counter running across the room with some telers peering "
+"through the wooden grill into the main room.\n");
+   add_item("counter", ({ "long", "It is wooden and has a grill on top to "
+            "seperate the tellers from the unwashed masses.",
+            "position", "the counter" }));
+   add_item("teller", "They peer out at through the grill wondering who has "
+            "come to give them money.\n");
+   add_item("pumpkin", "There are little pumpkins everywhere in the room.");
+   set_light(70);
+   set_percentage(95);
+   set_place("Pumpkin");
+   add_exit("south", CRUMPT + "crumpt7", "door");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/club_office.c
+==================================================
+
+#include "path.h"
+#include <clubs.h>
+inherit "/std/room/club_control_room";
+void setup() {
+   set_light(70);
+   set_club_control_type(CLUB_ROOM_CLUB_ONLY);
+   set_short("Club control room");
+   set_long("This is a small cosy room with a nice comradely atmosphere "
+            "about it.  There is a nice sofa and a desk with little club "
+            "ornaments all over it.\n");
+   add_item("sofa", ({ "long",
+                      "The sofa looks nice and comfortable, just the spot "
+                      "after a hard days hacking people into small bits.\n",
+               "position", "the comfy sofa" }));
+   add_item("desk",
+            ({ "long",
+                   "The brown leather covered desk looks really nice "
+                   "and comforable sitting in the middle of the room like "
+                   "that.  It is covered in small club shaped ornaments.\n",
+               "position", "the large black desk" }));
+   add_item("club ordanment",
+            "The desk is covered in them, 'Real genuine minature babarian "
+            "clubs'.  Looks like someone has a club fetish.\n");
+   set_not_replaceable(1);
+   clone_object("/obj/misc/top_clubs")->move(this_object());
+   add_exit("south", PATH + "crumpt6", "door");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt1.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is Crumpet Circle at the junction with Pumpkin Way.
+\n");
+  set_light( 80 );
+  add_exit("northeast", PUMPKIN + "pumpkin1", "road");
+  add_exit("southwest", CRUMPT + "crumpt2", "road");
+  add_exit("south", CRUMPT + "crumpt3", "road");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt2.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("northeast", CRUMPT + "crumpt1", "road");
+  add_exit("southwest", CRUMPT + "crumpt4", "road");
+  add_exit("northwest", CRUMPT + "post_office", "door");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt3.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("north", CRUMPT + "crumpt1", "road");
+  add_exit("south", CRUMPT + "crumpt5", "road");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt4.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("northeast", CRUMPT + "crumpt2", "road");
+  add_exit("southwest", CRUMPT + "crumpt6", "road");
+  add_exit("north", CRUMPT + "family_office", "door");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt5.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("southwest", CRUMPT + "crumpt7", "road");
+  add_exit("north", CRUMPT + "crumpt3", "road");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt6.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("northeast", CRUMPT + "crumpt4", "road");
+  add_exit("south", CRUMPT + "crumpt8", "road");
+  add_exit("north", PATH + "club_office", "door");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt7.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("northeast", CRUMPT + "crumpt5", "road");
+  add_exit("southwest", CRUMPT + "crumpt9", "road");
+  add_exit("north", CRUMPT + "bank", "door");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt8.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is Crumpet Circle at the junction with Fruitbat Avenue.
+\n");
+  set_light( 80 );
+  add_exit("east", CRUMPT + "crumpt9", "road");
+  add_exit("north", CRUMPT + "crumpt6", "road");
+  add_exit("south", FRUITBAT + "fruitbat1", "road");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/crumpt9.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Crumpet Circle");
+  set_long("This is the end of Crumpet Circle\n");
+  set_light( 80 );
+  add_exit("northeast", CRUMPT + "crumpt7", "road");
+  add_exit("west", CRUMPT + "crumpt8", "road");
+  set_monster( 1, "city" );
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/family_office.c
+==================================================
+
+#include "path.h"
+#include <clubs.h>
+inherit "/std/room/club_control_room";
+int check_playtester(string str, object ob, string special_mess);
+void setup() {
+   object table;
+   set_light(100);
+   set_club_control_type(CLUB_ROOM_FAMILY_ONLY);
+   set_short("Family control room");
+   set_long("White boards cover the walls of the room, in the middle of "
+            "the boards is a large black desk.  Scribblings and weird lines "
+            "joining squiggly blobs to other squiggly blobs cover the white "
+            "boards.\n");
+   add_sign("A large imposing 'read me' type sign.\n",
+            (: query_club_warning_message() :),
+            "sign");
+   add_item("white board", "They are everywhere, the drawings all look "
+                   "somewhat meaningless, although perhaps they are "
+                   "trying to convey some sort of family tree feeling.  "
+                   "All the drawings look rather old, odd really.  "
+                   "A singular lack of white board markers or erasers "
+                   "could be the reason behind it.\n");
+   add_item("white board eraser",
+                   "There are none of them here, not one, not even...  No "
+                   "none at all.\n");
+   add_item("white board marker",
+                   "Looking around the place, there is a singular lack of "
+                   "white board markers.\n");
+   add_item("large black desk",
+            ({ "long",
+                   "The desk looks imposing in its bulk and girth.  It "
+                   "looks a bit unused, although there is a register "
+                   "sitting on top of the desk which seems to contain the "
+                   "list of all the current clubs in Ankh-Morpork.\n",
+               "position", "the large black desk" }));
+   add_item("squiggly blob",
+                   "It appears to be joined to another squiggly blob.\n");
+   add_item("weird line",
+                   "This line darts across the board at an angle that "
+                   "is hard to determine, you guess 16.123678 degrees.\n");
+   add_item("scribblings",
+                   "They are not recognisably words, they just look like they "
+                   "could be words until you take a closer look.\n");
+   set_not_replaceable(1);
+   add_exit("south", PATH + "crumpt4", "door");
+   table = clone_object("/obj/misc/top_families");
+   table->move(this_object());
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/parcel_post.c
+==================================================
+
+#include "path.h"
+inherit "/std/room/parcel_inherit";
+void setup() {
+   set_short("Parcel Post");
+   set_long(
+"Livid orange strips criss cross the room contrasting just beautifully "
+"against the black background.  The walls almost seem to be pulsing with "
+"colour.\n");
+   set_light(70);
+   add_exit("south", CRUMPT + "post_office", "south");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/crumpt/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/crumpt/post_office.c
+==================================================
+
+#include "path.h"
+#include <mail.h>
+inherit "/std/room/basic_room";
+int do_mail( string words );
+private nosave object _dictionary;
+void setup() {
+   add_help_file("mail_room");
+   set_short("Post Office");
+   set_light(70);
+   set_long(
+"Black and orange colours seem to dominate the room, you can see a counter "
+"or something in amongst all the clashing colours.\n");
+   add_item("counter", ({ "long",
+            "There are some envelopes and bits of paper strewn "
+            "about on the counter.",
+            "position", "the counter" }));
+   add_exit("southeast", CRUMPT + "crumpt2", "door");
+   add_exit("north", CRUMPT + "parcel_post", "corridor");
+   add_property("place", "Pumpkin");
+}
+void reset() {
+   if ( !_dictionary ) {
+      _dictionary = clone_object( "/net/obj/dict" );
+      _dictionary->add_property( "there", "attached to the counter" );
+      _dictionary->reset_get();
+      _dictionary->move( this_object() );
+   }
+}
+void init() {
+   ::init();
+   add_command("mail", "<string>", (: do_mail($4[0]) :));
+   add_command("mail", "", (: do_mail(0) :));
+}
+int do_mail( string words ) {
+   return (int)MAIL_TRACK->mail( words );
+}
+int send_message( string from, int parcel ) {
+#if 0
+   object thing;
+   thing = clone_object( CHARS +"post_et" );
+   thing->set_home( file_name( this_object() ) );
+   thing->move( this_object(), "$N pop$s out of the counter and grab$s the mail." );
+   if ( find_player( recipient ) ) {
+      thing->goto_player( recipient, from );
+   } else {
+      thing->goto_dest( COMM_ROOM, from );
+   }
+   return 1;
+#endif
+}
+
+==================================================
+FILE: dist/pumpkin/inherit/cityroom.c
+==================================================
+
+#include <armoury.h>
+#include <hospital.h>
+#include <move_failures.h>
+#include <weather.h>
+#include "path.h"
+#define CREVICE ({ "a crevice", "a pothole", "a gutter" })[ random( 3 ) ]
+#define LOG_FILE LOG +"city_log"
+inherit "/std/room/outside";
+int *crowd;
+string type, *froms;
+object *monsters;
+int last_found;
+int query_cityroom() { return 1; }
+int *query_crowd() { return crowd; }
+object *query_monsters() { return monsters; }
+void announce_entry( object thing ) {
+  string word;
+  if ( !froms ) {
+    froms = ({ });
+    foreach ( word in query_direc() ) {
+      if ( member_array( word, ({ "north", "south", "east", "west",
+                                    "northeast", "southwest", "southeast",
+                                    "northwest" }) ) == -1 )
+        continue;
+      if ( call_door( word, "query_closed" ) )
+        continue;
+      froms += ({ "the "+ word });
+    }
+  }
+  if ( !sizeof( froms ) )
+    tell_room( this_object(), "$a_short:"+ file_name( thing ) +
+               "$ $V$0=arrives,arrive$V$ from elsewhere.\n" );
+  else
+    tell_room( this_object(), "$a_short:"+ file_name( thing ) +
+               "$ $V$0=arrives,arrive$V$ from "+
+               froms[ random( sizeof( froms ) ) ] +".\n" );
+}
+void make_citymonster( int number ) {
+  if(!(int)HOSPITAL->ok_to_clone()) {
+    HOSPITAL->add_empty( this_object() );
+    return;
+  }
+  if ( !monsters[ number ] ) {
+    monsters[ number ] = (object)( HOSPITAL )->get_monster( type );
+    monsters[ number ]->add_property( "start location", this_object() );
+    this_object()->do_zoning( monsters[ number ] );
+    monsters[ number ]->move( this_object() );
+    announce_entry( monsters[ number ] );
+  }
+  number++;
+  if ( number >= sizeof( monsters ) )
+    return;
+  if((int)HOSPITAL->ok_to_clone())
+    call_out( "make_citymonster", 5 + random( 5 ), number );
+}
+void set_monster( mixed number, string word ) {
+  if ( intp( number ) ) {
+    crowd = ({ number });
+  } else {
+    crowd = number;
+  }
+  number = crowd[ 0 ];
+  crowd += ({ number });
+  if ( number > 3 ) {
+    number = 3;
+  }
+  monsters = allocate( random( 1 + number ) );
+  type = word;
+}
+void create() {
+  crowd = ({ 0, 0 });
+  type = "unknown";
+  monsters = ({ });
+  do_setup++;
+  ::create();
+  do_setup--;
+  add_property( "room size", 20 );
+  add_property( "room zone", ({ "Pumpkin" }) );
+  add_extra_look( this_object() );
+  if ( !do_setup ) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+}
+void reset() {
+  if ( sizeof( monsters ) ) {
+    call_out( "make_citymonster", 5 + random( 5 ), 0 );
+  }
+}
+void dest_me() {
+  ::dest_me();
+}
+int clean_up( int parent ) {
+  if ( base_name( this_object() )[0..<3] == __FILE__) {
+    return 0;
+  }
+  return ::clean_up( 0 );
+}
+mixed *stats() {
+  return ::stats() + ({
+    ({ "crowd", array_to_string( crowd[ 0 .. <2 ] ) }),
+      });
+}
+int do_search( string words ) {
+  object found;
+  if ( query_property( "no scavenging" ) ) {
+    return -1;
+  }
+  if ( this_player()->query_property( "dead" ) ) {
+    return -1;
+  }
+  if ( words ) {
+    if ( ( strsrch( words, "ground" ) == -1 ) &&
+         ( strsrch( words, "crevice" ) == -1 ) &&
+         ( strsrch( words, "pothole" ) == -1 ) &&
+         ( strsrch( words, "gutter" ) == -1 ) &&
+         ( strsrch( words, "cobble" ) == -1 ) ) {
+      return -1;
+    }
+  }
+  switch ( random( 21 ) ) {
+  case 0 .. 6 :
+    found = clone_object( "/obj/money" );
+    if ( random( 80 ) ) {
+      found->adjust_money( 1, "Pumpkin cent" );
+    } else {
+      if ( random( 80 ) ) {
+        found->adjust_money( 1, "Pumpkin dollar" );
+      } else {
+        found->adjust_money( 10, "Pumpkin dollar" );
+      }
+    }
+    break;
+  case 7 .. 16 :
+    if((time() - last_found) > random(360)) {
+      found = (object)ARMOURY->choose_small_item();
+      if(objectp(found)) {
+        found->set_percentage(5 + random(30));
+      } else {
+        found = 0;
+      }
+      last_found = time();
+    }
+    break;
+  case 17 .. 18 :
+    if(sizeof(match_objects_for_existence("cockroach", this_object())) > 3) {
+      return -1;
+    }
+    found = (object)HOSPITAL->get_monster( "cockroach" );
+    found->move( this_object(), "$N scuttle$s out of "+
+                 CREVICE +"." );
+    return -1;
+  case 19 :
+    if(sizeof(match_objects_for_existence("rodent", this_object())) > 3) {
+      return -1;
+    }
+    found = (object)HOSPITAL->get_monster( "rodent" );
+    found->move( this_object(), "$N slink$s out of "+
+                 CREVICE +"." );
+    return -1;
+  default :
+    write( "You have a good look at the ground and spotting "
+           "something, pick it up.  It's only a lump of rotting "
+           "rubbish, though, which you throw away quickly.\n" );
+    say( (string)this_player()->a_short() +" looks closely at "
+         "the ground.  Seeing something, "+
+         (string)this_player()->query_pronoun() +" picks it up, "
+         "but finds that it's only a lump of rotting rubbish, so "+
+         (string)this_player()->query_pronoun() +" throws it away.\n" );
+    this_player()->add_effect( "/std/effects/other/rubbish_smell",
+                               roll_MdN( 5, 60 ) );
+    return 1;
+  }
+  if ( !found ) {
+    return -1;
+  }
+  write( "You have a good look at the ground and scavenge "+
+         (string)found->a_short() +" from "+ CREVICE +".\n" );
+  say( (string)this_player()->a_short() +" looks closely at the ground.\n" );
+  if ( (int)found->move( this_player() ) == MOVE_OK ) {
+    write( "You pick it up.\n" );
+    say( (string)this_player()->query_pronoun() +" picks something up.\n" );
+  } else {
+    write("Unfortunately you cannot pick it up and it disappears down "+
+          CREVICE+".\n");
+  }
+  return 1;
+}
+void add_monster( object old_thing, object new_thing ) {
+  int i;
+  i = member_array( old_thing, monsters );
+  if ( i != -1 ) {
+    monsters[ i ] = new_thing;
+    return;
+  }
+  i = member_array( 0, monsters );
+  if ( i != -1 ) {
+    monsters[ i ] = new_thing;
+    return;
+  }
+  monsters += ({ new_thing });
+}
+void event_dest_me() {
+  if ( find_call_out( "check_stuff" ) == -1 ) {
+    call_out( "check_stuff", 30 );
+  }
+}
+void check_stuff() {
+  object thing, *things;
+  things = all_inventory( this_object() );
+  foreach( thing in things ) {
+    if ( userp( thing ) ) {
+      call_out( "check_stuff", 30 );
+      return;
+    }
+    if ( living( thing ) || thing->query_corpse() ) {
+      things -= ({ thing });
+      continue;
+    }
+    if ( thing->do_not_sell() || !thing->query_value() ) {
+      thing->move( "/room/rubbish" );
+      things -= ({ thing });
+      continue;
+    }
+  }
+  if ( sizeof( things ) ) {
+    things->move( "/d/am/filigree/general_store" );
+  }
+}
+int query_crowd_now() {
+  return crowd[ ( (int)WEATHER->minute_number() *
+                  sizeof( crowd ) - 720 ) / 1440 ];
+}
+string extra_look( object thing ) {
+  switch ( query_crowd_now() ) {
+  case 0 :
+    return "";
+  case 1 :
+    return "With few people about, this seems to be a quiet "
+      "part of the city, perfect for getting mugged.\n";
+  case 2 :
+    return "A number of people pass by as they go about their "
+      "lives (or in some cases, existences).\n";
+  case 3 :
+    return "Quite a few people, some in small groups, walk, "
+      "trot and lurch along the street.\n";
+  case 4 :
+    return "This seems to be a busy part of the city, with "
+      "many people hurrying to various destinations.\n";
+  case 5 :
+    return "All around you, crowds teem as Pumpkin moves "
+      "turbulently through its hectic day.\n";
+  case 6 :
+    return "Crowds of people jostle you constantly, so keep "
+      "an eye on your pockets...\n";
+  default :
+    return "The densely packed crowds make it difficult to "
+      "move, and unpleasant to breathe.\n";
+  }
+}
+
+==================================================
+FILE: dist/pumpkin/inherit/hospital.c
+==================================================
+
+#include <armoury.h>
+#include <hospital.h>
+#include "path.h"
+#include HOSPITAL_INC
+#define CREATE_NPCS 1
+#define REGEN_TIME 1 * 60 * 60
+#define DEFAULT_LOG_DIRECTORY "/d/cwc/log"
+#define DEFAULT_POPULATION 3
+#define MINIMUM_DEATH_REGEN 3
+inherit "/std/room";
+class regenerated_npc {
+    string type;
+    string load_position;
+}
+protected void load_file();
+protected void save_file();
+protected void set_save_file(string new_save);
+protected void restore_default_npcs();
+protected void set_max_living(int new_living);
+protected void set_hospital_type(string new_type);
+protected object *make_monster(string type);
+public object *get_monster(string type);
+public void hospital_log_file(string file, string format, mixed *args ...);
+public int get_item(object destination, string *items);
+public string query_save_file();
+public int query_max_living();
+public int *query_npcs();
+public mapping query_hospital_npcs();
+public void add_npc_type(string type, string *data);
+public void regen_after_death( object dead_npc );
+private nosave string _save_file, _hospital_type;
+private nosave int _max_living;
+private nosave mixed *_regenerated_npcs;
+private nosave int _hospital_call_id;
+private nosave mapping _log_file_info;
+private nosave string _hospital_log_directory;
+public mapping _unique_npcs;
+public mapping _hospital_npcs;
+public int _last_npc_check, _zone_npcs;
+private nosave mapping _npc_groups;
+private nosave mapping _npc_info;
+void create() {
+    seteuid(master()->creator_file(file_name(this_object())));
+    do_setup++;
+    ::create();
+    do_setup--;
+    if (_save_file) {
+        load_file();
+        if (!_hospital_npcs) {
+            restore_default_npcs();
+        }
+        if (!_unique_npcs) {
+            _unique_npcs = ([ ]);
+        }
+        save_file();
+    }
+    if (!_npc_groups)
+        _npc_groups = ([ ]);
+    if (!_npc_groups)
+        _npc_info = ([ ]);
+    _regenerated_npcs = ({ });
+    _log_file_info = ([ ]);
+    if (!do_setup) {
+        set_short("Counterweight Continent Hospital");
+        set_long("All around you NPC's wait in neat little lines, "
+            "ready to be sent on a massive journey that will ultimately "
+            "lead to their deaths.  Some of them stand by a small window "
+            "in the far wall, looking out at freedom.\n");
+        add_property("determinate", "the ");
+        set_light(60);
+    }
+}
+public int get_item(object destination, string *items) {
+    int i;
+    object item;
+    if (!objectp(destination)) {
+        return 0;
+    }
+    while (!item) {
+        i = random(sizeof(items));
+        item = ARMOURY->request_item(items[i], 80 + random(21));
+        if (!objectp(item)) {
+            items = items[0..i-1] + items[i+1..];
+            continue;
+        }
+        if (!sizeof(items)) {
+            hospital_log_file("BROKEN_ITEMS", "Unable to select any items "
+                "for %s in the CWC hospital.\n", previous_object()->short());
+            break;
+        }
+    }
+    if (objectp(item)) {
+        item->move(destination);
+        return 1;
+    }
+    return 0;
+}
+protected void load_file() {
+    if (file_size(_save_file + ".o") > -1) {
+        unguarded((: restore_object, _save_file :));
+    }
+}
+protected void save_file() {
+    unguarded((: save_object, _save_file :));
+}
+protected void set_save_file(string new_save) {
+    _save_file = new_save;
+}
+public string query_save_file() {
+    return _save_file;
+}
+public int make_unique(mixed who) {
+    if (!_unique_npcs)
+        return 0;
+    if (objectp(who))
+        who = who->query_name();
+    if ( _unique_npcs[who] > time() )
+        return 0;
+    _unique_npcs[who] = time() + REGEN_TIME;
+    save_file();
+}
+public int query_regen_time(mixed who) {
+    if (objectp(who))
+        who = who->query_name();
+    if (!_unique_npcs)
+        return 0;
+    return _unique_npcs[who];
+}
+protected void set_max_living(int new_living) {
+    _max_living = new_living;
+}
+public int query_max_living() {
+    return _max_living;
+}
+protected void restore_default_npcs() {
+    _hospital_npcs = ([ ]);
+}
+public int ok_to_clone(string where) {
+    if (time() > _last_npc_check + 300) {
+        _last_npc_check = time();
+        _zone_npcs = sizeof(filter(named_livings(), (: environment($1) &&
+            base_name(environment($1))[0..(sizeof(CWC) + sizeof($(where)) - 1)] ==
+                (CWC + $(where)) :)));
+    }
+    return _zone_npcs < _max_living;
+}
+public int *query_npcs() {
+    return ({ _zone_npcs, _last_npc_check });
+}
+public void add_npc_type(string type, string *data) {
+    if (undefinedp(_hospital_npcs[type])) {
+        _hospital_npcs[type] = copy(data);
+    }
+    else {
+        if (arrayp(_hospital_npcs[type])) {
+            _hospital_npcs[type] += data;
+        }
+    }
+    save_file();
+}
+public mapping query_hospital_npcs() {
+    return copy(_hospital_npcs);
+}
+public object *get_monster(string type) {
+    object *monsters, monster;
+    if (_hospital_npcs[type]) {
+        tell_creator("taffyd", "Attempting to create a %s NPC.\n", type);
+        monsters = make_monster(_hospital_npcs[type][random(sizeof(_hospital_npcs[type]))]);
+        tell_creator("taffyd", "Monsters are now %O.\n", monsters);
+    }
+    else {
+        monsters = make_monster(type);
+    }
+    foreach (monster in monsters) {
+        monster->add_property("monster_type", type);
+        monster->add_effect("/std/effects/npc/i_died",
+            (: regen_after_death :) );
+    }
+    return monsters;
+}
+protected object *make_monster(string type) {
+    object monster;
+    monster = clone_object("/obj/monster");
+    monster->set_name("failure");
+    monster->set_short("hospital accident");
+    monster->set_race("human");
+    monster->set_guild("warrior");
+    monster->set_level(1);
+    return ({ monster });
+}
+public void regen_after_death( object dead_npc ) {
+    object *monsters, destination;
+    class regenerated_npc new_npc;
+    int i, max;
+    if ( !dead_npc )
+        return;
+    _regenerated_npcs += ({ new( class regenerated_npc,
+        type : dead_npc->query_property("monster_type"),
+        load_position : previous_object()->query_property("start location") ) });
+    if ( !ok_to_clone(_hospital_type) || sizeof(_regenerated_npcs) < MINIMUM_DEATH_REGEN )
+        return;
+    new_npc = _regenerated_npcs[0];
+    if ( !classp( new_npc ) )
+        return;
+    _regenerated_npcs = _regenerated_npcs[1..];
+    if (!new_npc->load_position || !new_npc->type );
+        return;
+    max = random(5);
+    for ( i = 0; i < max; i++ ){
+        destination = find_object( new_npc->load_position );
+        if ( !objectp( destination ) )
+            return;
+        monsters = get_monster(new_npc->type);
+        destination->replace_monster(previous_object(), monsters);
+        call_out((: $1->announce_entry($2) :), 8 + random(6), destination,
+            monsters);
+    }
+}
+protected void set_hospital_type(string new_type) {
+    _hospital_type = new_type;
+}
+public void hospital_log_file(string file, string format, mixed *args ...) {
+    string filename;
+    filename = _hospital_log_directory;
+    if (file[0] == '/') {
+        file = file[ strsrch( file, "/", -1 ) + 1 .. ];
+    }
+    log_file( _hospital_log_directory + "/" + file, format, args ...);
+}
+protected void set_log_directory(string new_dir) {
+    if (file_size(new_dir) != -2) {
+        tell_creator( previous_object( 1 ), "%s: Invalid "
+            "log directory -- defaulting to %s.\n",
+            file_name( this_object() ), DEFAULT_LOG_DIRECTORY );
+        new_dir = DEFAULT_LOG_DIRECTORY;
+    }
+    _hospital_log_directory = new_dir;
+}
+protected void set_npc_groups(mapping x) {
+    _npc_groups = x;
+}
+protected void set_npc_info(mapping x) {
+    _npc_info = x;
+}
+public object data_get_npc(string npc_name) {
+    class npc_info info;
+    object npc;
+    function func;
+    if ( undefinedp(_npc_info[npc_name]) )
+        return 0;
+    info = _npc_info[npc_name];
+    if (stringp(info->base))
+        npc = clone_object(info->base);
+    else
+        return 0;
+    if (arrayp(info->functions)) {
+        foreach (func in info->functions) {
+            evaluate(func, npc, previous_object());
+        }
+    }
+    return npc;
+}
+object *data_get_group(string group_name) {
+    class npc_group group;
+    function func;
+    int population, quantity, i;
+    object *npcs, npc;
+    if ( undefinedp(_npc_groups[group_name]) )
+        return 0;
+    group = _npc_groups[group_name];
+    if (functionp(group->population))
+        population = evaluate(group->population);
+    else {
+        population = DEFAULT_POPULATION;
+    }
+    if (!group->storage) {
+        group->storage = ({ });
+    }
+    else {
+        group->storage = filter(group->storage, (: objectp($1) :));
+        if (sizeof(group->storage) >= population)
+            return 0;
+    }
+    if (functionp(group->quantity)) {
+        quantity = evaluate(group->quantity);
+    }
+    else {
+        quantity = 1;
+    }
+    if (stringp(group->npc)) {
+        npcs = allocate(quantity);
+        for (i = 0; i < quantity; i++) {
+            npcs[i] = data_get_npc(group->npc);
+        }
+        npcs = filter(npcs, (: objectp($1) :));
+        group->storage += npcs;
+    }
+    foreach (npc in npcs) {
+        if (arrayp(group->functions)) {
+            foreach (func in group->functions) {
+                evaluate(func, npc, previous_object());
+            }
+        }
+    }
+    return npcs;
+}
+mixed accumulate_npc_array( mixed a ) {
+    int cum, i;
+    mixed choices;
+    choices = copy(a);
+    cum = 0;
+    for (i = 0; i < sizeof(choices); i++) {
+        cum += choices[i][0];
+        choices[i][0] = cum;
+    }
+    return choices;
+}
+varargs mixed get_random_npcs(mixed *choices) {
+    int i;
+    int chance;
+    if (!choices)
+        choices = previous_object()->query_npcs();
+    if (!arrayp(choices) || !sizeof(choices))
+        return 0;
+    chance = random(choices[<1][0]);
+    for (i = 0; i < sizeof( choices ); i++) {
+        if ( choices[ i ][ 0 ] > chance ) {
+            return data_get_group( choices[ i ][ 1 ]);
+        }
+    }
+    return 0;
+}
+
+==================================================
+FILE: dist/pumpkin/inherit/hospital.h
+==================================================
+
+class npc_info {
+    string base;
+    function *functions;
+}
+class npc_group {
+    mixed npc;
+    function quantity;
+    function population;
+    function *functions;
+    object *storage;
+}
+
+==================================================
+FILE: dist/pumpkin/inherit/path.h
+==================================================
+
+#include "../path.h"
+
+==================================================
+FILE: dist/pumpkin/gumboot/armour_shop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/item_shop";
+void setup() {
+   set_short("Smashers Armour Store");
+   set_long(
+"The room is filled with the smell of leather and oil, you can see racks "
+"some suits of armour in various stages of being made around the store.\n");
+   set_light(70);
+   add_exit("west", PATH + "gumboot3", "door");
+   add_object("brigandine armour", 1 + random(4));
+   add_object("hardened leather breastplate", 1 + random(4));
+   add_object("jazerant armour", 1 + random(2));
+   add_object("leather boxer shorts", 1 + random(2));
+   add_object("leather hat", 1 + random(2));
+   add_object("leather jerkin", 1 + random(2));
+   add_object("padded aketon", 1 + random(2));
+   add_object("studded leather jerkin", 1 + random(2));
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/clothes_shop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/item_shop";
+void setup() {
+   set_short("Squiggles Clothing Store");
+   set_long(
+"You are standing in a veritable forest of clothes, they hang off racks "
+"and almost completely hide the floor.  Unfortunately they seem to be "
+"reall limited in the type clothes they sell, obviously they belive in "
+"volume rather than breadth of stock.\n");
+   set_light(70);
+   add_exit("east", PATH + "gumboot2", "door");
+   add_object("green bathrobe", 1 + random(10));
+   add_object("green cloak", 1 + random(10));
+   add_object("green pants", 1 + random(10));
+   add_object("green peaked hat", 1 + random(10));
+   add_object("green silk sash", 1 + random(10));
+   add_object("green wool shirt", 1 + random(10));
+   add_object("white apron", 1 + random(10));
+   add_object("white burnous", 1 + random(10));
+   add_object("white cotton bodice", 1 + random(10));
+   add_object("white cotton robe", 1 + random(10));
+   add_object("white cotton shirt", 1 + random(10));
+   add_object("white cotton toga", 1 + random(10));
+   add_object("white cotton tunic", 1 + random(10));
+   add_object("white linen tunic", 1 + random(10));
+   add_object("white linen skirt", 1 + random(10));
+   add_object("white short-sleeved shirt", 1 + random(10));
+   add_object("white silk lace bodice", 1 + random(10));
+   add_object("white silk pinafore", 1 + random(10));
+   add_object("white silk sash", 1 + random(10));
+   add_object("white socks", 1 + random(10));
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/gumboot1.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Gumboot Road");
+  set_long("This is north end of Gumboot Road at the junction with Squash Square.\n");
+  set_light( 80 );
+  add_exit("north", SQUASH + "squash8", "road");
+  add_exit("south", GUMBOOT + "gumboot2", "road");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/gumboot2.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Gumboot Road");
+  set_long("This is the middle of Gumboot Road\n");
+  set_light( 80 );
+  add_exit("north", GUMBOOT + "gumboot1", "road");
+  add_exit("south", GUMBOOT + "gumboot3", "road");
+  add_exit("west", PATH + "clothes_shop", "door");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/gumboot3.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Gumboot Road");
+  set_long("This is the middle of Gumboot Road\n");
+  set_light( 80 );
+  add_exit("north", GUMBOOT + "gumboot2", "road");
+  add_exit("south", GUMBOOT + "gumboot4", "road");
+  add_exit("east", PATH + "armour_shop", "door");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/gumboot4.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Gumboot Road");
+  set_long("This is the middle of Gumboot Road\n");
+  set_light( 80 );
+  add_exit("north", GUMBOOT + "gumboot3", "road");
+  add_exit("south", GUMBOOT + "gumboot5", "road");
+  add_exit("west", PATH + "weapon_shop", "door");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/gumboot5.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Gumboot Road");
+  set_long("This is end of Gumboot Road at the edge of the city of Pumpkin.\n");
+  set_light( 80 );
+  add_exit("east", TERRAIN_HANDLER + ":0:1:0", "road");
+  add_exit("north", GUMBOOT + "gumboot4", "road");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/gumboot/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/gumboot/weapon_shop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/item_shop";
+void setup() {
+   set_short("Pointy's Weapon Shop");
+   set_long(
+"Racks of weapons line the room, don't touch, they look sharp.\n");
+   set_light(70);
+   add_exit("east", PATH + "gumboot4", "door");
+   add_object("morning star", 1 + random(20));
+   add_object("black handled ceremonial bronze knife", 1 + random(20));
+   add_object("carving knife", 1 + random(20));
+   add_object("chisel", 1 + random(20));
+   add_object("copper fighting knife", 1 + random(20));
+   add_object("dagger", 1 + random(20));
+   add_object("howondalandish throwing knife", 1 + random(20));
+   add_object("klatchian steel dirk", 1 + random(20));
+   add_object("knife", 1 + random(20));
+   add_object("letter opener", 1 + random(20));
+   add_object("meat cleaver", 1 + random(20));
+   add_object("sharp butter knife", 1 + random(20));
+   add_object("silver sickle", 1 + random(20));
+   add_object("small copper knife", 1 + random(20));
+   add_object("small knife", 1 + random(20));
+   add_object("stiletto", 1 + random(20));
+   add_object("tanto", 1 + random(20));
+   add_object("white handled ceremonial bronze knife", 1 + random(20));
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/plain/plain1.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/plain";
+void setup() {
+  set_short("Plains");
+  set_long("This is Plains at the junction with Rabbit Lane.
+\n");
+  set_light( 80 );
+  add_exit("east", PLAIN + "plain2", "road");
+  add_exit("west", RABBIT + "rabbit4", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/plain10.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Forest");
+  set_long("This is the end of Forest\n");
+  set_light( 80 );
+  add_exit("west", PLAIN + "plain9", "road");
+  add_exit("north", PLAIN + "plain5", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/plain2.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/plain";
+void setup() {
+  set_short("Plains");
+  set_long("This is the end of Plains\n");
+  set_light( 80 );
+  add_exit("east", PLAIN + "plain3", "road");
+  add_exit("west", PLAIN + "plain1", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/plain3.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/plain";
+void setup() {
+  set_short("Plains");
+  set_long("This is the end of Plains\n");
+  set_light( 80 );
+  add_exit("east", PLAIN + "plain4", "road");
+  add_exit("west", PLAIN + "plain2", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/plain4.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/plain";
+void setup() {
+  set_short("Plains");
+  set_long("This is the end of Plains\n");
+  set_light( 80 );
+  add_exit("east", PLAIN + "plain5", "road");
+  add_exit("west", PLAIN + "plain3", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/plain/plain5.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/plain";
+void setup() {
+  set_short("Plains");
+  set_long("This is Plains at the junction with Woods.
+\n");
+  set_light( 80 );
+  add_exit("west", PLAIN + "plain4", "road");
+  add_exit("south", WOODS + "woods1", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert1.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is Desert at the junction with Gumboot Road.
+\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert2", "road");
+  add_exit("west", GUMBOOT + "gumboot5", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert10.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is Desert at the junction with Woods.
+\n");
+  set_light( 80 );
+  add_exit("west", DESERT + "desert9", "road");
+  add_exit("north", WOODS + "woods5", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert2.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert3", "road");
+  add_exit("west", DESERT + "desert1", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert3.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert4", "road");
+  add_exit("west", DESERT + "desert2", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert4.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert5", "road");
+  add_exit("west", DESERT + "desert3", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert5.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert6", "road");
+  add_exit("west", DESERT + "desert4", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert6.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert7", "road");
+  add_exit("west", DESERT + "desert5", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert7.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert8", "road");
+  add_exit("west", DESERT + "desert6", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert8.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert9", "road");
+  add_exit("west", DESERT + "desert7", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/desert9.c
+==================================================
+
+#include "path.h";
+inherit "/std/outsides/desert";
+void setup() {
+  set_short("Desert");
+  set_long("This is the end of Desert\n");
+  set_light( 80 );
+  add_exit("east", DESERT + "desert10", "road");
+  add_exit("west", DESERT + "desert8", "road");
+}
+
+==================================================
+FILE: dist/pumpkin/desert/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/rabbit/bookshop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/book_shop";
+void setup() {
+   set_short("Bugs Bookstore");
+   set_long(
+"The distinctly carroty atmosphere of the store makes you feel like "
+"saying 'Whats up doc?'\n");
+   add_exit("south", RABBIT + "rabbit2", "door");
+   set_light(70);
+   set_cut(10);
+   set_when_sold_function( (: $1->set_open_page(0) :) );
+   set_allowed_to_sell( (: $1->query_book() || $1->query_paper() :) );
+   set_minimum_cost(400);
+   set_save_dir(SAVE + "bookshop");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/rabbit/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/rabbit/potion_shop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/potion_shop";
+void setup() {
+   set_short("Carrot's Potion Store");
+   set_long(
+"This is a bright orange room with a green ceiling.\n");
+   set_light(70);
+   add_exit("south", RABBIT + "rabbit4", "door");
+   set_save_dir(SAVE + "potions");
+   set_cut(10);
+   add_property("place", "Pumpkin");
+}

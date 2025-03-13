@@ -1,0 +1,1989 @@
+# Total Tokens: 17803
+# Total Files Merged: 26
+# Total Characters: 59398
+
+c
+==================================================
+
+inherit "/cmds/base";
+#include <nroff.h>
+#include <soul.h>
+#include <log.h>
+#include <autodoc.h>
+#include <login_handler.h>
+#include <player_handler.h>
+#include <command.h>
+#define SYNONYMS "/doc/SYNONYMS"
+#define MATCH_THRESHOLD 55
+void do_help(mixed *stuff);
+private void list_help(string title, string dir);
+private mixed *help_list(string name);
+int command_cmd(string name);
+int here_cmd();
+int object_cmd(object ob);
+int spell_cmd(string name, int spell);
+int file_help(string name);
+void rehash_dirs();
+mixed *query_help_on(string name, int creator, int, int);
+mixed *create_help_files(string *names, string nroff_dir);
+private mapping read_directories(string *directories, int recurse);
+private mapping read_synonyms();
+private string letter_name(int letter, mixed *things);
+private string start_letter( mixed *things );
+private string end_letter( mixed *things );
+private int query_number_from_string(string name, mixed *things );
+private nosave mapping _help_files_player;
+private nosave mapping _help_files_creator;
+private nosave mapping _help_files_playtester;
+private nosave mapping _help_files_lord;
+private nosave mapping _synonyms;
+private nosave string *_player_dirs;
+private nosave string *_creator_dirs;
+private nosave string *_lord_dirs;
+private nosave string *_playtester_dirs;
+void create() {
+   ::create();
+   _player_dirs = ({ "/doc/helpdir/",
+                    "/doc/concepts/",
+                    "/doc/known_command/",
+                    "/doc/room/",
+                    "/doc/spells/",
+                    "/doc/object/" });
+   _creator_dirs = ({"/doc/creator/",
+                    "/doc/driver/",
+                    "/doc/policy/",
+                    "/doc/new/" });
+   _playtester_dirs = ({ "/doc/playtesters/" });
+   _lord_dirs = ({"/doc/lord/"});
+   unguarded((: rehash_dirs() :));
+}
+int *find_match_in_array( string entry, string *items )  {
+   int i;
+   int j;
+   int elength;
+   int ilength;
+   int this_match;
+   int best_match;
+   int best_try;
+   elength = strlen( entry );
+   best_match = this_match = -1;
+   for ( i = sizeof( items ) - 1; i >= 0; i--, this_match = 0 )  {
+      ilength = strlen( items[ i ] );
+      for ( j = 0; j < elength  &&  j < ilength; j++ )
+        if ( entry[ j ] == items[ i ][ j ] ||
+             entry[ j ] == items[ i ][ j - 1 + ( j == 0 ) ]  ||
+             entry[ j ] == items[ i ][ j + 1 - ( j + 1 == ilength ) ] )
+          ++this_match;
+      this_match = 100 * this_match / ( j == elength ? ilength : elength );
+      if ( this_match > best_match )  {
+        best_match = this_match;
+        best_try = i;
+      }
+   }
+   return ({ best_try, best_match });
+}
+int cmd(string name) {
+  class command cmd;
+   mixed *list;
+   string str;
+   string suggestion;
+   int i;
+   int *matches;
+   list = help_list(name);
+   if (sizeof(list) == 0 &&
+       mapp(_synonyms) &&
+       _synonyms[name]) {
+      list = help_list(_synonyms[name]);
+   }
+   if (sizeof(list) == 0) {
+      if (PLAYER_HANDLER->test_user(name)) {
+         add_failed_mess("That is a player, silly.\n");
+         return 0;
+      }
+      list = keys(_help_files_player) + ({ "command_list", "concepts"});
+      matches = find_match_in_array(name, list);
+      if (matches[1] > MATCH_THRESHOLD) {
+         suggestion = list[matches[0]];
+      } else {
+         list = keys(_synonyms);
+         matches = find_match_in_array(name, list);
+         if(matches[1] > MATCH_THRESHOLD) {
+            suggestion = _synonyms[list[matches[0]]];
+         }
+      }
+      if (!this_player()->query_creator()) {
+         log_file("MISSING_HELP", "%s %s looked for help on %s, "
+                  "recommended %s\n",
+                  ctime(time()), this_player()->query_name(),
+                  name, suggestion);
+      }
+      str = "Could not find any help on '" + name + "'.  ";
+      if (!suggestion && this_player()->query_known_command("newbie"))
+        str += "Many useful commands are explained in 'help essentials'.  ";
+      else if(suggestion)
+        str += "Perhaps you are looking for 'help " +suggestion + "'?  ";
+      cmd = new(class command, verb : name);
+      if((CMD_D->IsGRCommand(name) &&
+          this_player()->query_known_command(name)) ||
+         (CMD_D->HandleStars(cmd) &&
+          sizeof(((mixed *)CMD_D->GetPaths(cmd->verb) &
+                  (mixed *)this_player()->GetSearchPath()))) ||
+         sizeof(this_player()->query_parse_command_objects(name)))
+        str += "The syntax for the command '" + name + "' can be found by "
+          "entering 'syntax " + name + "'.  ";
+      if (environment(this_player()) &&
+          environment(this_player())->help_function())
+         str += "Type 'help here' for help on how to use this room.";
+      return notify_fail(str + "\n");
+   }
+   if (sizeof(list) == 1) {
+      do_help(list[0]);
+      return 1;
+   }
+   str = "";
+   for (i = 0; i < sizeof(list); i++) {
+      str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+   }
+   printf("Discworld help found multiple matches, please choose one of:\n"
+          "%-*#s\nChoice: ", this_player()->query_cols(), str);
+   input_to("help_input", 0, list);
+   return 1;
+}
+void help_input(string str, mixed *list) {
+   int num;
+   str = lower_case(str);
+   if (str == "quit" || str == "**" || str == "." || str == "") {
+      write("OK, exiting help.\n");
+      return ;
+   }
+   if ( ( num = query_number_from_string( str, list ) ) == -1 ) {
+       printf("Incorrect choice, must be between %s and %s.\nChoice: ",
+        start_letter( list ), end_letter( list ) );
+      input_to("help_input", 0, list);
+      return ;
+   }
+   do_help(list[num]);
+}
+void do_help(mixed *stuff) {
+   string str;
+   str = evaluate(stuff[1]);
+   if (!str || !strlen(str)) {
+      write("Broken help file!\n");
+   } else {
+      write("$P$" + stuff[0] + "$P$" + str);
+   }
+}
+int here_cmd() {
+  mixed str;
+  mixed *list;
+  int i;
+  str = environment(this_player())->help_function();
+  if(pointerp(str))
+    list = str;
+  else if(str)
+    list += ({ ({ environment(this_player())->short(), str }) });
+  else {
+    write("There is no help available for this room.\n");
+    return 1;
+  }
+  if (sizeof(list) == 1) {
+    do_help(list[0]);
+    return 1;
+  }
+  str = "";
+  for (i = 0; i < sizeof(list); i++) {
+    str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+  }
+  printf("Discworld help found multiple matches, please choose one of:\n"
+         "%-*#s\nChoice: ", this_player()->query_cols(), str);
+  input_to("help_input", 0, list);
+  return 1;
+}
+int object_cmd(object ob) {
+  mixed str;
+  mixed *list;
+  int i;
+  str = ob->help_function();
+  if(pointerp(str))
+    list = str;
+  else if(str)
+    list += ({ ({ environment(this_player())->short(), str }) });
+  else {
+    add_failed_mess("There is no help available for $I.\n", ({ob}));
+    return -1;
+  }
+  if (sizeof(list) == 1) {
+    do_help(list[0]);
+    return 1;
+  }
+  str = "";
+  for (i = 0; i < sizeof(list); i++) {
+    str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+  }
+  printf("Discworld help found multiple matches, please choose one of:\n"
+         "%-*#s\nChoice: ", this_player()->query_cols(), str);
+  input_to("help_input", 0, list);
+  return 1;
+}
+int command_cmd(string name) {
+   mixed help;
+   help = this_player()->help_command(name);
+   if (!help) {
+      notify_fail("No such command as '" + name + "'.\n");
+      return 0;
+   } else {
+      if (functionp(help)) {
+         help = evaluate(help);
+      }
+      write("$P$" + name + "$P$P" + help);
+      return 1;
+   }
+}
+int soul_cmd(string name) {
+   string help;
+   help = SOUL_OBJECT->help_string(name);
+   if (!help) {
+      notify_fail("No such soul as '" + name + "'.\n");
+      return 0;
+   } else {
+      write("$P$" + name + "$P$P" + help);
+      return 1;
+   }
+}
+int spell_cmd(string name, int spell) {
+   mixed help;
+   help = this_player()->help_spell(name);
+   if (!help) {
+      notify_fail("No such spell as '" + name + "'.\n");
+      return 0;
+   } else {
+      if (functionp(help)) {
+         this_player()->move_string(evaluate(help), name);
+      } else {
+         write("$P$" + name + "$P$P" + help);
+      }
+      return 1;
+   }
+}
+int command_list_cmd() {
+   list_help("Command list, try 'help concepts' for a list of concepts.",
+       "/doc/helpdir/");
+   return 1;
+}
+int concepts_list_cmd() {
+   list_help("Concepts list, try 'help command_list' for a list of commands.",
+       "/doc/concepts/");
+   return 1;
+}
+int error_log_cmd() {
+   notify_fail("Unable to get help on '" + ERROR_LOG + "'.\n");
+   return 0;
+}
+private void list_help(string title, string dir) {
+   string *files;
+   files = get_dir(dir + "*") - ({ ".", "..", "ERROR_REPORTS", "RCS", "old" });
+   write("$P$Help$P$" + sprintf("%s\n%-#*s\n", title,
+                                     (int)this_player()->query_cols(),
+                                     implode(files, "\n")));
+}
+ mixed *help_list(string name) {
+   string* stuff;
+   mixed str;
+   object* fluff;
+   object blue;
+   stuff = query_help_on(name, this_player()->query_creator(),
+                         this_player()->query_lord(),
+                         this_player()->query_playtester());
+   if (name == "room" || name == "here") {
+      str = environment(this_player())->help_function();
+      if (pointerp(str)) {
+         stuff += str;
+      } else if (str) {
+         stuff += ({ ({ environment(this_player())->short(),
+                        str }) });
+      } else {
+         add_failed_mess("There is no help available for this room.\n");
+         return 0;
+      }
+   }
+   str = this_player()->help_spell(name);
+   if (stringp(str)) {
+      stuff += ({ ({ name + " (Spell)",
+                    (: $(str) :) }) });
+   }
+   if (functionp(str)) {
+      stuff += ({ ({ name + " (Spell)", str }) });
+   }
+   str = SOUL_OBJECT->help_string(name);
+   if (str) {
+      stuff += ({ ({ name + " (Soul)",
+                    (: $(SOUL_OBJECT)->help_string($(name)) :) }) });
+   }
+   fluff = filter(match_objects_for_existence(name, ({ this_player(),
+                                      environment(this_player()) })),
+                    (: $1 && $1->help_function() :));
+   if (sizeof(fluff)) {
+      foreach (blue in fluff) {
+         stuff += blue->help_function();
+      }
+   }
+   return stuff;
+}
+private string letter_name(int letter, mixed *things) {
+   string bing;
+   if (sizeof(things) > 26) {
+      bing = "aa";
+      bing[0] = 'a' + (letter / 26);
+      bing[1] = 'a' + (letter % 26);
+      return bing;
+   }
+   bing = "a";
+   bing[0] = 'a' + letter;
+   return bing;
+}
+private string start_letter( mixed *things ) {
+   return letter_name(0, things);
+}
+private string end_letter( mixed *things ) {
+   return letter_name(sizeof(things) - 1, things);
+}
+private int query_number_from_string(string name, mixed *things ) {
+   int pos;
+   if (sizeof(things) > 26) {
+      if (strlen(name) != 2) {
+         return -1;
+      }
+      name = lower_case(name);
+      if (name[0] < 'a' || name[0] > 'z') {
+         return -1;
+      }
+      if (name[1] < 'a' || name[1] > 'z') {
+         return -1;
+      }
+      pos = (name[0] - 'a') * 26 + name[1] - 'a';
+      if (pos >= sizeof(things)) {
+         return -1;
+      }
+      return pos;
+   }
+   if (strlen(name) != 1) {
+      return -1;
+   }
+   name = lower_case(name);
+   if (name[0] < 'a' || name[0] > 'z') {
+      return -1;
+   }
+   pos = name[0] - 'a';
+   if (pos >= sizeof(things)) {
+      return -1;
+   }
+   return pos;
+}
+mixed *query_patterns() {
+   return ({ "<string>", (: cmd($4[0]) :),
+               "here", (: here_cmd() :),
+               "object <indirect:object:me-here'item'>", (: object_cmd($1[0]) :),
+               "command <string>", (: command_cmd($4[0]) :),
+               "spell <string>", (: spell_cmd($4[0], 0) :),
+               "ritual <string>", (: spell_cmd($4[0], 1) :),
+               "soul <string>", (: soul_cmd($4[0]) :),
+               "command_list", (: command_list_cmd() :),
+               "concepts", (: concepts_list_cmd() :),
+               "", (: concepts_list_cmd() :) });
+}
+void rehash_dirs() {
+   _help_files_player = read_directories(_player_dirs, 1);
+   _help_files_creator = read_directories(_creator_dirs, 1);
+   _help_files_lord = read_directories(_lord_dirs, 1);
+   _help_files_playtester = read_directories(_playtester_dirs, 1);
+   _synonyms = read_synonyms();
+}
+void rehash_specific_dir(string dir) {
+   string start;
+   mapping ret;
+   string name;
+   string* files;
+   if (dir[<1] != '/') {
+      dir += "/";
+   }
+   start = "/" + implode(explode(dir, "/")[0..1], "/") + "/";
+   if (member_array(start, _player_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_player[name]) {
+            _help_files_player[name] &= files;
+         } else {
+            _help_files_player[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _creator_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_creator[name]) {
+            _help_files_creator[name] &= files;
+         } else {
+            _help_files_creator[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _lord_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_lord[name]) {
+            _help_files_lord[name] &= files;
+         } else {
+            _help_files_lord[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _playtester_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_playtester[name]) {
+            _help_files_playtester[name] &= files;
+         } else {
+            _help_files_playtester[name] = files;
+         }
+      }
+   }
+}
+private mapping read_synonyms() {
+  string *bits, *bits2;
+  int i;
+  mapping tmp;
+  tmp = ([ ]);
+  bits = explode(read_file(SYNONYMS), "\n");
+  for(i=0; i<sizeof(bits); i++) {
+    bits2 = explode(bits[i], " ");
+    tmp[bits2[0]] = bits2[1];
+  }
+  return tmp;
+}
+private mapping read_directories(string *directories, int recurse) {
+   string *files;
+   string fname;
+   int i;
+   string dir;
+   mapping ret;
+   ret = ([ ]);
+   for (i = 0; i < sizeof(directories); i++) {
+     dir = directories[i];
+     files = get_dir(dir + "*") - ({ "ERROR_REPORTS" });
+     foreach (fname in files) {
+       if (file_size( dir + fname) == -2) {
+         if (fname != "." &&
+             fname != ".." &&
+             fname != "old" &&
+             fname != "RCS") {
+           directories += ({ dir + fname + "/" });
+         }
+       } else if (fname != "." &&
+                  fname != ".." &&
+                  fname != "old") {
+         if (!ret[fname]) {
+           ret[fname] = ({ dir + fname });
+         } else {
+           ret[fname] += ({ dir + fname });
+         }
+         if (strsrch(fname, "_") > 0) {
+           fname = replace(fname, "_", " ");
+           if (!ret[fname]) {
+             ret[fname] = ({ dir + fname });
+           } else {
+             ret[fname] += ({ dir + fname });
+           }
+         }
+       }
+     }
+   }
+   return ret;
+}
+mixed *query_help_on(string name, int creator, int lord, int pt) {
+   string *files;
+   mapping map;
+   files = ({ });
+   name = replace_string(name, " ", "_");
+   if (_help_files_player[name]) {
+      files += create_help_files(_help_files_player[name], NROFF_DIR);
+   }
+   if (lord || creator || pt) {
+     if(_help_files_playtester && _help_files_playtester[name]) {
+         files += create_help_files(_help_files_playtester[name], NROFF_DIR);
+      }
+   }
+   if (lord || creator) {
+     if(_help_files_creator && _help_files_creator[name]) {
+         files += create_help_files(_help_files_creator[name], NROFF_DIR);
+      }
+      map = AUTODOC_HANDLER->query_help_map();
+      if (map && map[name]) {
+         files += create_help_files(map[name], NROFF_DIR);
+      }
+   }
+   if (lord) {
+     if(_help_files_lord && _help_files_lord[name]) {
+         files += create_help_files(_help_files_lord[name], NROFF_DIR);
+      }
+      map = AUTODOC_HANDLER->query_help_map();
+      if (map && map[name]) {
+         files += create_help_files(map[name], NROFF_DIR);
+      }
+  }
+   return files;
+}
+string query_synonym(string name) {
+  if(mapp(_synonyms) && _synonyms[name])
+    return _synonyms[name];
+  return "";
+}
+private string nroff_file(string name, string nroff_dir) {
+   string nroff_fn;
+   string str;
+   nroff_fn = nroff_dir + replace(name, "/", ".");
+   str = NROFF_HAND->cat_file(nroff_fn, 1);
+   if (!str) {
+      NROFF_HAND->create_nroff(name, nroff_fn);
+      str = NROFF_HAND->cat_file(nroff_fn, 0);
+   }
+   return str;
+}
+mixed *create_help_files(string *names, string nroff_dir) {
+   int i;
+   mixed *ret;
+   string *bits;
+   ret = ({ });
+   for (i = 0; i < sizeof(names); i++) {
+      bits = explode(names[i], "/");
+      ret += ({ ({ bits[<1] + " (" +
+                   names[i] + ")",
+                   (: nroff_file($(names[i]), $(nroff_dir)) :) }) });
+   }
+   return ret;
+}
+mapping query_help_files_player() { return _help_files_player; }
+mapping query_help_files_creator() { return _help_files_creator; }
+mixed *stats() {
+  mapping map;
+  map = AUTODOC_HANDLER->query_help_map();
+  return ({
+      ({ "player help files", sizeof( keys(_help_files_player) ) }),
+      ({ "creator help files", sizeof( keys(_help_files_creator) ) }),
+        ({ "autodoc help map", sizeof(keys(map)) }) ,
+          });
+}
+int clean_up() {
+  return 0;
+}
+void dest_me() {
+}
+
+==================================================
+FILE: player/helper_s.c
+==================================================
+
+#include <player_handler.h>
+inherit "/cmds/base";
+int cmd() {
+    object *helpers;
+    string mess;
+    helpers = filter( users(), (: !$1->query_creator() &&
+        $1->query_property( "newbie helper" ) &&
+        !$1->query_login_ob() :) );
+    switch( sizeof( helpers ) ) {
+        case 0:
+            add_failed_mess("There are no newbie helpers logged on at the "
+                "moment.\n");
+            return 0;
+        case 1:
+            if ( helpers[ 0 ] == this_player() ) {
+                mess = "You are the only newbie helper logged on at the "
+                    "moment.\n";
+            }
+            else {
+                mess = helpers[ 0 ]->query_short() + " is the only newbie "
+                    "helper logged on at the moment.\n";
+            }
+        break;
+        default:
+            mess = query_multiple_short( helpers->query_short() ) + " are "
+                "newbie helpers.\n";
+    }
+    this_player()->add_succeeded_mess(this_object(), ({mess, ""}),
+      ({ }));
+    return 1;
+}
+int test_helper( string player_name ) {
+    player_name = lower_case( player_name );
+    if ( PLAYER_HANDLER->test_property( player_name, "newbie helper" ) ) {
+        this_player()->add_succeeded_mess(this_object(), ({
+          capitalize( player_name ) + " is a newbie helper.\n",
+          ""}), ({ }));
+        return 1;
+    }
+    add_failed_mess(capitalize( player_name ) +
+        " is not a newbie helper.\n" );
+    return 0;
+}
+mixed *query_patterns() {
+    return ({ "", (: cmd :),
+              "<string'name'>", (: test_helper( $4[ 0 ] ) :) });
+}
+
+==================================================
+FILE: player/hi_story.c
+==================================================
+
+int cmd(string arg){
+   return this_player()->print_history(arg);
+}
+mixed query_patterns() {
+   return ({ "", (: cmd("") :),
+               "<string'number|number,number'>", (: cmd($4[0]) :) });
+}
+
+==================================================
+FILE: player/hnew_bie.c
+==================================================
+
+#include <player.h>
+inherit "/cmds/guild_base";
+#define HIST "/obj/handlers/hist_handler"
+int cmd() {
+  mixed *history;
+  string result;
+  history = HIST->query_chat_history("newbie");
+  if ( !arrayp( history ) || !sizeof( history ) ) {
+    tell_object(this_player(), "Nothing has been said on the newbie "
+                "channel.\n");
+  }
+  else {
+    result = "$P$Newbie Channel$P$";
+    result += implode(map(history, (: "$I$5=*" + ctime($1[2])[11..18] +
+                                      "* $C$" + $1[0] + $1[1] +
+                                    "%^RESET%^" :)), "\n");
+    tell_object(this_player(), result);
+  }
+  return 1;
+}
+mixed *query_patterns() {
+  return ({ "", (: cmd() :) });
+}
+
+==================================================
+FILE: player/ht_ell.c
+==================================================
+
+int cmd(string arg, int brief){
+  function bing;
+  bing = this_player()->get_htell_func();
+  arg = this_player()->expand_nickname(arg);
+  return evaluate(bing, arg, brief);
+}
+mixed *query_patterns()  {
+    return ({ "brief search <string'name'>", (: cmd(lower_case($4[0]), 1) :),
+              "search <string'name'>", (: cmd(lower_case($4[0]),
+                                     !this_player()->query_verbose("htell")) :),
+              "brief", (: cmd("", 1) :),
+              "verbose", (: cmd("", 0) :),
+              "", (: cmd("", !this_player()->query_verbose("htell")) :)
+           });
+}
+
+==================================================
+FILE: player/i.c
+==================================================
+
+inherit "/cmds/player/inv_entory";
+
+==================================================
+FILE: player/idea.c
+==================================================
+
+inherit "/cmds/report_base";
+void create() {
+   ::create();
+   set_error_type("IDEA");
+   set_use_last_error(0);
+}
+
+==================================================
+FILE: player/identify.c
+==================================================
+
+#define EFFECT "/std/effects/object/identity_hold"
+inherit "/cmds/base";
+mixed cmd(object *indirect_obs, string new_name)
+{
+   string  word;
+   object  thing;
+   object *things;
+   int *ees;
+   int keep;
+   if (!new_name)  {
+      things = filter(indirect_obs, (: $1->query_identifier() :));
+      if (!sizeof(things))  {
+         if (sizeof(indirect_obs) > 1) {
+            write("You do not have any of those objects identified.\n");
+         } else {
+            write("You do not have " + indirect_obs[0]->the_short() +
+                  " identified.\n");
+         }
+      } else foreach (thing in things)  {
+         write("You have " + thing->the_short() + " identified as \"" +
+               thing->query_full_identifier() + "\".\n");
+      }
+   } else if (sizeof(indirect_obs) == 1)  {
+      word = lower_case(new_name);
+      if (word == "none") {
+         ees = indirect_obs[0]->effects_matching(EFFECT->query_classification());
+         if (!sizeof(ees)) {
+            add_failed_mess("No identities to remove.");
+            return 0;
+         }
+         keep = indirect_obs[0]->query_keep();
+         indirect_obs[0]->delete_effect(ees[0]);
+         if (keep) {
+            thing->add_effect( EFFECT, ([ "keep" : 1 ]) );
+         }
+         write("You remove the description from " +
+               indirect_obs[0]->the_short() + ".\n");
+      } else {
+         indirect_obs[0]->add_effect(EFFECT, ([ "identity" : word ]));
+         write(indirect_obs[0]->the_short() + " may now be identified as \"" +
+               word + "\".\n");
+      }
+   } else {
+      write("You may only identify one thing at a time.\n");
+   }
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<indirect:object:me'object'> as <string'some new name'>",
+             (: cmd($1, $4[1]) :),
+             "<indirect:object:me'object(s)'>",
+             (: cmd($1, 0) :) });
+}
+
+==================================================
+FILE: player/idle.c
+==================================================
+
+inherit "/cmds/base";
+int cmd(object who) {
+  if (!interactive(who))
+    write(who->query_cap_name() + " is net-dead.\n");
+  else
+    write(who->query_cap_name() + " has been idle for " +
+          "/secure/finger"->time_elapsed_string(query_idle(who)) + ".\n");
+  return 1;
+}
+mixed *query_patterns() {
+  return ({ "<indirect:player>", (: cmd($1[0]) :) });
+}
+
+==================================================
+FILE: player/ignore.c
+==================================================
+
+#include <drinks.h>
+#include <language.h>
+#include <player.h>
+#include <player_handler.h>
+#define TP this_player()
+inherit "/cmds/base";
+int cmd_list() {
+   string *ignoring;
+   ignoring = TP->query_property("ignoring");
+   if(!ignoring) {
+      ignoring = ({ });
+   }
+   if ( !sizeof(ignoring) )  {
+      write( "You are not ignoring anyone.\n" );
+   } else  {
+      ignoring = sort_array(ignoring, 1);
+      write( "You are currently ignoring " +
+              query_multiple_short( map(ignoring, (: capitalize($1) :)),
+                                    0, 0, 1, 0 ) + ".\n" );
+   }
+   return 1;
+}
+int cmd( string str) {
+   string *ignoring;
+   ignoring = TP->query_property("ignoring");
+   if(!ignoring) {
+      ignoring = ({ });
+   }
+   str = lower_case( TP->expand_nickname(str) );
+   if ( !(PLAYER_HANDLER->test_user(str))  &&  !find_player(str)) {
+      if (find_living(str)) {
+         add_failed_mess("You cannot ignore an npc.\n");
+         return 0;
+      } else {
+         add_failed_mess( "Ignoring someone that doesn't exist?  Is this some "
+                           "kind of zen?\n" );
+         return 0;
+      }
+   }
+   if (TP->query_name() == str) {
+      add_failed_mess("Ignoring yourself.  Novel.\n");
+      return 0;
+   }
+   if ( member_array( str, ignoring ) == -1 )  {
+      ignoring += ({ str });
+      TP->add_property("ignoring", ignoring, 604800);
+   } else  {
+      write( "You are already ignoring " + capitalize(str) + ".\n" );
+   }
+   write("You are now ignoring "+capitalize(str)+".\n");
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<string'person'>", (: cmd($4[0]) :),
+             "", (: cmd_list() :) });
+}
+
+==================================================
+FILE: player/inv_entory.c
+==================================================
+
+inherit "/cmds/base";
+mixed cmd()
+{
+   if (this_player()->query_property("dead")) {
+      object *obs;
+      write("You are just a disembodied spirit.  "
+            "You have mist; what else do you want?\n");
+      obs = all_inventory(this_player());
+      obs = filter_array(obs, (: $1->query_property("dead usable") :));
+      if (sizeof(obs)) {
+         write("Hang on!  You appear to have " +
+               query_multiple_short(obs) + ".  Amazing.\n");
+      }
+      return 1;
+   }
+   write(sprintf("You are %s by:\n", this_player()->burden_string()) +
+	 this_player()->query_living_contents(1));
+   if (this_player()->query_auto_loading()) {
+      write("\n%^YELLOW%^Please note that your inventory is still being "
+            "generated.%^RESET%^\n");
+   }
+   return 1;
+}
+mixed *query_patterns()
+{
+   return ({ "", (: cmd() :) });
+}
+
+==================================================
+FILE: player/joing_roup.c
+==================================================
+
+inherit "cmds/base";
+#define TEAM_HANDLER "/obj/handlers/team"
+mixed cmd(string str) {
+  object owner, person;
+  int policy;
+  if(!str)
+    return notify_fail("Syntax: joingroup <group name>\n");
+  if(TEAM_HANDLER->query_group(this_player()))
+    return notify_fail("You are already a member of a group.\n");
+  if(!TEAM_HANDLER->test_group(str))
+    return notify_fail("Sorry, there is no group by that name.\n");
+  owner = TEAM_HANDLER->query_owner(str);
+  if(!owner || environment(owner) != environment(this_player()))
+    return notify_fail("Sorry, the owner of "+str+" is not here.\n");
+  if(TEAM_HANDLER->query_full(str))
+    return notify_fail("Sorry, that group is full, you cannot join.\n");
+  if(TEAM_HANDLER->query_locked(str))
+    return notify_fail("Sorry, that group is locked, you cannot join.\n");
+  policy = TEAM_HANDLER->query_policy(str);
+  if(!TEAM_HANDLER->join_group(str, this_player()))
+    return notify_fail("Ack, something went wrong.\n");
+  foreach(person in TEAM_HANDLER->query_members(str)) {
+    if(person && present(person, environment(this_player())) &&
+       person != this_player()) {
+      this_player()->add_protector(person);
+      person->add_protector(this_player());
+      if(policy == 1)
+  this_player()->add_follower(person);
+      if((policy == 1) || (person == owner))
+  person->add_follower(this_player());
+    }
+  }
+  write("You join "+str+" and will now protect and be protected by "
+  "them.\n");
+  say(this_player()->short()+" joins "+str+" and will protect and be "
+      "protected by its members.\n");
+  write("You are now a member of "+str+"\n");
+  return 1;
+}
+
+==================================================
+FILE: player/keep.c
+==================================================
+
+#define EFFECT "/std/effects/object/identity_hold"
+inherit "/cmds/base";
+int cmd( object *obs )  {
+   object thing;
+   foreach(thing in obs) {
+      thing->add_effect( EFFECT, ([ "keep" : 1 ]) );
+   }
+   write( "You will now attempt to keep "+
+         (string)query_multiple_short(obs)+".\n" );
+   return 1;
+}
+int cmd_list() {
+   object* obs;
+   obs = all_inventory(this_player());
+   obs = filter(obs, (: $1->query_keep() :) );
+   if (!sizeof(obs)) {
+      add_failed_mess("You are not keeping anything.\n");
+      return 0;
+   }
+   write("You are keeping " + query_multiple_short(obs) + ".\n");
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<indirect:object:me>", (: cmd( $1 ) :),
+             "", (: cmd_list :) });
+}
+
+==================================================
+FILE: player/killers.c
+==================================================
+
+#include <player_handler.h>
+#include <clubs.h>
+inherit "/cmds/base";
+string second_name( string str );
+mixed cmd( string mode ) {
+   object *killers;
+   object player = this_player();
+   string *names, *tmp, name;
+   int i, brief, number, guild;
+   mixed *unique_names;
+   if ( mode == "verbose" ) brief = 0;
+   else brief = 1;
+   killers = filter_array( users(),
+                         (: !($1->query_creator())  &&
+                            !($1->query_login_ob())  &&
+                            !($1->query_property("test character")) &&
+                            $1->query_player_killer() :) );
+   if (mode) mode = lower_case(mode);
+   if (mode &&
+       mode != "verbose" &&
+       mode != "brief") {
+      guild = 1;
+      mode = replace(mode, ({  "assassins",   "assassin",
+                               "priests",     "priest",
+                               "thieves",     "thief",
+                               "warriors",    "warrior",
+                               "witches",     "witch",
+                               "wizards",     "wizard",
+                               "adventurers", "adventurer",
+                               "fighters",    "warrior",
+                               "fighter",     "warrior",
+                               "monks",       "monk",
+                              }));
+      killers = filter_array( killers,
+                      (: $1->query_guild_ob() == "/std/guilds/" + $(mode) :) );
+   }
+   if (brief) {
+      names = killers->query_cap_name();
+   } else {
+      names = killers->short();
+   }
+   for (i = 0; i < sizeof(killers); i++) {
+      if (names[i] && this_player()->is_friend(killers[i]->query_name())) {
+         names[i] += "(%^GREEN%^F%^RESET%^)";
+      }
+   }
+   names -= ({ 0 });
+   if (!sizeof(names)) {
+      write("There are no " + (guild?mode + " ":"") + "player killers logged"
+            " in.\n");
+   } else {
+      if(sizeof(names) == 1)  {
+         if ( names[0] == (brief? player->query_cap_name(): player->short()) ) {
+            write( "You are the only player killer on " + mud_name() + ".\n" );
+         } else {
+            write("The only " + (guild?mode:"") + " player killer currently "
+                  "logged in is "+ names[0]+".\n");
+         }
+      } else {
+         i = 0;
+         if ( member_array(
+              (brief? player->query_cap_name(): player->short()),
+              names ) > -1 )  {
+            names -= ({ (brief? player->query_cap_name(): player->short()) });
+            i = 1;
+         }
+         names = sort_array( names,
+                             (: strcmp( lower_case( $1 ),
+                                        lower_case( $2 ) ) :) );
+         if ( i ) {
+             name = this_player()->query_cap_name();
+             if (this_player()->query_family_name() &&
+                 !brief) {
+                name += " " + this_player()->query_family_name();
+             }
+             names += ({ name });
+         }
+         if (!brief) {
+           unique_names = unique_array( names, (: second_name($1) :) );
+           names = ({ });
+           foreach ( tmp in unique_names ) {
+                names += tmp;
+           }
+         }
+         number = sizeof(names);
+         write("There are " + sizeof(names) + (guild?" " + mode:"") +
+               " player killers logged in:\n" +
+               query_multiple_short(names) + "\n");
+      }
+   }
+   return 1;
+}
+int cmd_here() {
+   string *killers;
+   killers = filter_array( all_inventory(environment(this_player())),
+                         (: !($1->query_creator())  &&
+                            !($1->query_property("test character")) &&
+                            $1->query_player_killer() &&
+                            $1->query_visible( this_player() ) &&
+                            $1 != this_player() :) );
+   if (!sizeof(killers)) {
+      add_failed_mess("There are no killers here.\n");
+      return 0;
+   }
+   if (sizeof(killers) > 1) {
+      write("The killers here are " +
+            query_multiple_short(killers) + ".\n");
+   } else {
+      write("The killer here is " +
+            query_multiple_short(killers) + ".\n");
+   }
+   return 1;
+}
+string second_name( string str ) {
+  int pos;
+  pos = strsrch( str, " " );
+  if (pos == -1) {
+     return "";
+  }
+  return str[pos+1..];
+}
+int cmd_club( string club ) {
+    int number;
+    string *names;
+    if( CLUB_HANDLER->query_club_secret( club ) &&
+        !CLUB_HANDLER->is_member_of( club, this_player()->query_name() ) ) {
+        add_failed_mess( "That is a secret club! Killers information about "
+            "secret clubs is only shown to club members.\n" );
+        return -1;
+    }
+    names = map( filter( CLUB_HANDLER->query_members( club ),
+       (: find_player( $1 ) && !PLAYER_HANDLER->test_creator( $1 ) &&
+        pk_check( $1, this_player(), 1 ) != 1 :) ),
+        (: capitalize( $1 ) :) );
+    if ( number = sizeof( names ) ) {
+        if ( number > 1 ) {
+            write("There are " + number + " player killers logged on "
+                "who are members of " + capitalize( club ) + ":\n" +
+                sprintf("%-#*s", this_player()->query_cols(), implode( names,
+                "\n" ) ) + "\n");
+        }
+        else {
+            write("There is " + number + " player killer logged on "
+                "who is a member of " + capitalize( club ) + ":\n" +
+                sprintf("%-#*s", this_player()->query_cols(), implode( names,
+                "\n" ) ) + "\n");
+        }
+    }
+    else {
+        add_failed_mess( "There are no player killers in that club.\n" );
+        return -1;
+    }
+     return 1;
+}
+mixed *query_patterns() {
+  return ({ "", (: cmd(0) :),
+            "{verbose|brief}", (: cmd( $4[0] ) :),
+            "here", (: cmd_here() :),
+            "club <string'club name'>", (: cmd_club( $4[0] ) :),
+            "guild <string'guild name'>", (: cmd( $4[0] ) :) });
+}
+
+==================================================
+FILE: player/lang_uages.c
+==================================================
+
+#include <move_failures.h>
+#include <language.h>
+inherit "cmds/base";
+#define TP this_player()
+mixed cmd(object *obs, string indir, string str) {
+   int i;
+   string *langs;
+   langs = LANGUAGE_HAND->query_languages();
+   for (i = 0; i < sizeof(langs); i++) {
+      if (TP->query_skill(
+               LANGUAGE_HAND->query_language_spoken_skill(langs[i])) > 1 ||
+          TP->query_skill(
+               LANGUAGE_HAND->query_language_written_skill(langs[i])) > 1) {
+      } else {
+         langs = langs[0..i-1] + langs[i+1..];
+         i--;
+      }
+   }
+   write("You can currently speak " +( TP->query_womens_day()?"wommon":
+                 implode(langs, ", ") ) +" and grunt.\n");
+   return 1;
+}
+
+==================================================
+FILE: player/last.c
+==================================================
+
+#include <player_handler.h>
+inherit "/cmds/base";
+#define BASENAME "/d/admin/log/ENTER"
+string process_file(string fname, string str);
+string get_details(string str, string file);
+string mtime(string t);
+string stime(string t);
+nosave int logged_on;
+nosave string time;
+mixed cmd(string str) {
+  string retval;
+  int i;
+  write("This command is no longer available.\n");
+  return 1;
+  if (!str || str == "") {
+    notify_fail("Usage: last <name>\n");
+    return 0;
+  }
+  if(!this_player()->query_creator() &&
+     PLAYER_HANDLER->test_creator(str)) {
+    return notify_fail("Sorry, you can't do that, "+ str + " is a "
+           "creator.\n");
+  }
+  if("/secure/master"->query_lord(str) &&
+     !"/secure/master"->query_lord(this_player()->query_name())) {
+    return notify_fail("Sorry, you can't do that, "+ str +" is a "
+           "lord\n");
+  }
+  logged_on = 0;
+  retval = "";
+  time = "";
+  str = (string)this_player()->expand_nickname(str);
+  retval = process_file(BASENAME + ".log", str);
+  if(logged_on == 1) {
+    if (!find_player(str)) {
+      retval += sprintf("%15-s %s - Destd (??:??)\n", str, mtime(time));
+    } else {
+      retval += sprintf("%15-s %s - Not logged off\n", str, mtime(time));
+    }
+  }
+  if(retval == "") {
+    if(PLAYER_HANDLER->test_user(str)) {
+      i = (int)PLAYER_HANDLER->test_last(str);
+      if(i) {
+        write(sprintf("%15-s %s\n", str, ctime(i)));
+        return 1;
+      }
+    }
+    write("No such user " + str + "\n");
+  } else {
+    write(retval);
+  }
+  return 1;
+}
+string process_file(string fname, string str) {
+  int size, bits, length, i;
+  string retval, file;
+  retval = "";
+  seteuid("Root");
+  size = file_size(fname);
+  if(size > 50000) {
+    length = file_length(fname);
+    bits = size / 50000;
+  } else {
+    bits = 1;
+  }
+  if(bits > 10) {
+    i = bits - 10;
+  } else {
+    i = 0;
+  }
+  for(; i< bits; i++) {
+    file = unguarded((: read_file, fname,
+          i * (length/bits), length / bits :) );
+    if (!file) {
+      write("Log file non existant, or bad things are happening.  "
+      "(Bad vibes man!)\n");
+      return "";
+    }
+    retval += get_details(str, file);
+  }
+  seteuid("Room");
+  return retval;
+}
+string get_details(string str, string file) {
+  string *sarr;
+  string retval;
+  string t2;
+  string type;
+  string time_str;
+  int i;
+  retval = "";
+  sarr = explode(file, "\n");
+  for (i = 0; i < sizeof(sarr); i++) {
+    if (sscanf(sarr[i], "%s [%s] " + str + " ", time_str, type) == 2 ||
+        sscanf(sarr[i], "%s [%s]  " + str + " ", time_str, type) == 2)  {
+      switch(type)  {
+        case "Enter":
+          time = time_str;
+          logged_on = 1;
+          break;
+        case "Recon":
+          time = time_str;
+          logged_on = 1;
+          break;
+        case "Su":
+          t2 = time_str;
+          logged_on = 0;
+          retval += sprintf("%15-s %s - %s [Quit]\n", str, mtime(time),
+                            stime(t2));
+          break;
+        case "NDead":
+          t2 = time_str;
+          logged_on = 1;
+          retval += sprintf("%15-s %s - %s [NetDead]\n", str, mtime(time),
+                    stime(t2));
+          time = "";
+          break;
+        case "Exit":
+          t2 = time_str;
+          logged_on = 0;
+          retval += sprintf("%15-s %s - %s [Quit]\n", str, mtime(time),
+                            stime(t2));
+          break;
+        default:
+          write("Someone has stuffed up... please file a bug report\n");
+          break;
+      }
+    }
+  }
+  return retval;
+}
+string mtime(string t) {
+  if(t == "")
+    return "??? ?? ??:??";
+  return t[0..<4];
+}
+string stime(string t) {
+  if(t == "")
+    return "??:??";
+  return t[7..11];
+}
+
+==================================================
+FILE: player/leaveg_roup.c
+==================================================
+
+inherit "cmds/base";
+#define TEAM_HANDLER "/obj/handlers/team"
+int do_leave(string group, object member);
+mixed cmd(string str) {
+   object member, *members;
+   string group;
+   int disband;
+   group = TEAM_HANDLER->query_group(this_player());
+   if(!group)
+      return notify_fail("You are not a member of any group.\n");
+   members = TEAM_HANDLER->query_members( group );
+   if ( !members) {
+     TEAM_HANDLER->leave_group(group, this_player());
+     TEAM_HANDLER->end_group( group );
+     write( "Somehow your group has no members.  "
+           "Your group has been ended.  "
+           "I hope this is okay.\n" );
+     return 1;
+   } else if(!(TEAM_HANDLER->query_owner(group))) {
+     TEAM_HANDLER->leave_group( group, member );
+     TEAM_HANDLER->end_group( group );
+     write( "Somehow your group has no leader.  "
+      "Your group has been ended.  "
+      "I hope this is okay.\n" );
+     return 1;
+   }
+   if((object)TEAM_HANDLER->query_owner(group) == this_player())
+      disband = 1;
+   foreach( member in members ) {
+      if ( !member || ( member == this_player() ) )
+         continue;
+      if ( disband ) {
+         tell_object(member, this_player()->short()+" leaves the group and "
+                     "it disbands, everyone going their separate ways.\n");
+         do_leave(group, member);
+      } else
+         tell_object(member, this_player()->short()+" leaves the group.\n");
+   }
+   if(disband) {
+      TEAM_HANDLER->end_group(group);
+      write("You disband "+group+" and everyone goes their separate "
+            "ways.\n");
+   } else {
+      do_leave(group, this_player());
+      write("You leave "+group+".\n");
+   }
+   return 1;
+}
+int do_leave(string group, object member) {
+   object person;
+   if(!TEAM_HANDLER->leave_group(group, member))
+      return notify_fail("Ack, something went wrong.\n");
+   if ( !sizeof( (object *)TEAM_HANDLER->query_members( group ) ) )
+      return 0;
+   foreach(person in TEAM_HANDLER->query_members(group)) {
+      if(person) {
+         member->remove_protector(person);
+         person->remove_protector(member);
+         member->remove_follower(person);
+         person->remove_follower(member);
+      }
+   }
+   return 1;
+}
+
+==================================================
+FILE: player/liaison_s.c
+==================================================
+
+inherit "/cmds/base";
+private string idle_time(object person) {
+  int hours, mins, secs;
+  string s, m, h;
+  secs = query_idle(person);
+  mins = secs / 60;
+  secs %= 60;
+  hours = mins / 60;
+  mins %= 60;
+  s = ("0"+secs)[<2..<1];
+  m = ("0"+mins)[<2..<1];
+  if ( !hours )  {
+    return " (idle: "+m+":"+s+")";
+  }
+  h = ("0"+hours)[<2..<1];
+  return " (idle: "+h+":"+m+":"+s+")";
+}
+mixed cmd( ) {
+   int i, j;
+   string *members, *member_alias, *aliases;
+   object person;
+   members = (string *)"/d/liaison/master"->query_members();
+   aliases = ({ });
+   i = sizeof( members );
+   while ( i-- ) {
+      person = find_player( members[ i ] );
+      if ( ! person ) {
+         member_alias = "/d/liaison/master"->member_alias( members[ i ] );
+         j = sizeof( member_alias );
+         while ( j-- ) {
+            if ( find_player( member_alias[ j ] ) ) {
+               aliases += ({ capitalize( member_alias[ j ] ) +"("+
+                     capitalize( members[ i ] ) +")" });
+            }
+         }
+         members = delete( members, i, 1 );
+      } else if (!person) {
+          members = delete(members, i, 1);
+      } else {
+         if ( !interactive( person ) ) {
+            members = delete( members, i, 1 );
+         } else {
+            members[ i ] = capitalize( members[ i ] );
+            switch( person->query_invis()  )  {
+            case 0:
+               break;
+            case 1:
+               members[ i ] = sprintf( "(%s)", members[ i ] );
+               break;
+            case 2:
+               members[ i ] = sprintf( "({%s})", members[ i ] );
+               break;
+            default:
+               members[ i ] = sprintf( "([%s])", members[ i ] );
+               break;
+            }
+            members[ i ] = capitalize( members[ i ] );
+            if (person->query_busy()) {
+               members[ i ] += " (busy)";
+            }
+            if ( query_idle( person ) > 120 )  {
+               members[ i ] += idle_time( person );
+            }
+         }
+      }
+   }
+   if ( this_player()->query_creator() || !sizeof( members )) {
+      members += aliases;
+   }
+   if ( !sizeof( members ) ) {
+      add_failed_mess( "There are no Liaison creators currently logged on.\n" );
+      return 0;
+   }
+   if ( sizeof( members ) > 1 ) {
+      write( "Liaison creators logged on are "+
+            query_multiple_short( members ) +".\n" );
+   } else {
+      write( "The only Liaison creator logged on is "+ members[ 0 ] +".\n" );
+   }
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "", (: cmd() :) });
+}
+
+==================================================
+FILE: player/locate.c
+==================================================
+
+inherit "/cmds/base";
+#define TP this_player()
+object *look_in_container(object fluff,
+                          string word) {
+   object frog;
+   object *obs;
+   object *things;
+   things = match_objects_for_existence(word, ({ fluff }));
+   obs = all_inventory(fluff);
+   foreach (frog in obs) {
+      if (sizeof(all_inventory(frog))) {
+         things += look_in_container(frog, word);
+      }
+   }
+   return things;
+}
+mixed cmd( string word ) {
+   int i;
+   int base_num;
+   string list;
+   object thing;
+   object *things;
+   object *extra_things;
+   debug_printf("%s", word);
+   if (environment(TP)) {
+      switch(TP->check_dark(environment(TP)->query_light())) {
+      case -2:
+      case -1:
+        if (this_player()->query_creator()) {
+          write("It is too dark to locate anything, but since you are a cre...\n");
+        } else {
+          return notify_fail("It's too dark to locate anything.\n");
+        }
+        break;
+      case 1:
+      case 2:
+        if (this_player()->query_creator()) {
+          write("It is too bright to locate anything, but since you are a cre...\n");
+        } else {
+           return notify_fail("It's too bright to locate anything.\n");
+        }
+        break;
+      }
+   }
+   things = match_objects_for_existence( word, ({ environment( TP ) }) );
+   things = filter(things, (: environment($1) == environment(TP) ||
+                             environment($1) == TP :));
+   extra_things = look_in_container(this_player(), word) - things;
+   base_num = sizeof(things);
+   things += extra_things;
+   if ( !sizeof( things ) ) {
+      return notify_fail( "There is nothing here matching \""+ word +"\".\n" );
+   }
+   if ( sizeof( things ) == 1 ) {
+     if ( things[0] == TP ) {
+       write("You are here! :)\n");
+       return 1;
+     }
+     list = "$C$"+ (string)things[ 0 ]->the_short();
+     if ( (object)things[ 0 ]->query_wielded() == TP ) {
+       list += " (held in " + query_multiple_short(TP->query_holding_limbs(things[0])) + ")";
+     }
+     if ( (object)things[ 0 ]->query_worn_by() == TP ) {
+       list += " (worn)";
+     }
+     if ( things[ 0 ]->query_keep() ) {
+       list += " (keeping)";
+     }
+     word = (string)things[ 0 ]->query_full_identifier();
+     if ( stringp( word ) ) {
+       list += " (\""+ word +"\")";
+     }
+     if (environment(things[0]) == this_player()) {
+       list += (things[0]->group_object() ? " are" : " is") +
+         " in your inventory.\n";
+     } else {
+       list += (things[0]->group_object() ? " are in " : " is in ");
+       list += inside_the_short(environment( things[ 0 ] )) + ".\n";
+     }
+     write( list );
+     return 1;
+   }
+   list = "";
+   foreach ( thing in things ) {
+      i++;
+      if ( thing == TP ) {
+         list += "You (" + i + ") are here :)\n";
+         continue;
+      }
+      if (i > 30) {
+         list += "Truncated list!  Cannot list more than 30 items.\n";
+         break;
+      }
+      list += "$C$" + (string)thing->the_short();
+      if (i <= base_num) {
+         list += " (" + i + ")";
+      }
+      if ( (object)thing->query_wielded() == TP ) {
+         list += " (held in " + query_multiple_short(TP->query_holding_limbs(thing)) + ")";
+      }
+      if ( (object)thing->query_worn_by() == TP ) {
+         list += " (worn)";
+      }
+      if ( thing->query_keep() ) {
+         list += " (keeping)";
+      }
+      word = (string)thing->query_full_identifier();
+      if ( stringp( word ) ) {
+         list += " (\""+ word +"\")";
+      }
+      if (environment(thing) == this_player()) {
+         list += (thing->group_object() ? " are " : " is ") +
+           "in your inventory.\n";
+      } else {
+        list += (thing->group_object() ? " are in " : " is in ");
+         list += inside_the_short(environment( thing )) + ".\n";
+      }
+   }
+   write( "$P$Locate$P$"+ list );
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<string'object name'>", (: cmd($4[0]) :) });
+}
+
+==================================================
+FILE: player/lockg_roup.c
+==================================================
+
+inherit "cmds/base";
+#define TEAM_HANDLER "/obj/handlers/team"
+mixed cmd(string str) {
+  object owner;
+  int locked;
+   str = TEAM_HANDLER->query_group(this_player());
+   if(!str)
+      return notify_fail("You are not a member of any group.\n");
+  owner = TEAM_HANDLER->query_owner(str);
+  if(!owner || owner != this_player())
+    return notify_fail("Sorry, you are not the owner of "+str+".\n");
+  locked = TEAM_HANDLER->query_locked(str);
+  if(locked) {
+    TEAM_HANDLER->set_locked(str, 0);
+    write("Team "+str+" unlocked for new members.\n");
+  } else {
+    TEAM_HANDLER->set_locked(str, 1);
+    write("Team "+str+" locked to new members.\n");
+  }
+  return 1;
+}
+
+==================================================
+FILE: player/lockout.c
+==================================================
+
+#include <player_handler.h>
+#include <playerinfo.h>
+inherit "/cmds/base";
+nosave mapping info = ([ ]);
+private int cmd(int tim, string type, string reason, int use_alts) {
+   string p1;
+   string* alts;
+   if (this_player() != this_player(1))
+    return 0;
+   if(type[<1] != 's')
+      type += "s";
+  switch (type) {
+   case "days":
+      tim *= 24;
+      break;
+   case "weeks":
+      tim *= 24 * 7;
+    break;
+   case "hours":
+     tim = tim;
+     break;
+   default:
+      return notify_fail("Invalid time.\n");
+  }
+  if (tim > 24 * 31) {
+    return notify_fail( "You can't lock yourself out for more than "
+                        "one month!\n" );
+  }
+  if(sizeof(reason) > 80) {
+    return notify_fail("Reason cannot be more than 80 characters.\n");
+  }
+   if (use_alts) {
+      p1 = PLAYERINFO_HANDLER->query_alt_of(this_player()->query_name());
+      alts = (string*)PLAYERINFO_HANDLER->query_alts(this_player()->query_name()) |
+             (string*)PLAYERINFO_HANDLER->query_alts(p1) |
+             ({ this_player()->query_name() });
+   } else {
+      alts = ({ this_player()->query_name() });
+   }
+  info[this_player()->query_name()] = ({ tim, reason, alts });
+  write("This will lockout " + query_multiple_short(alts) + ".\n");
+  write("Enter your password: ");
+  input_to("get_pw", 1, this_player());
+  return 1;
+}
+int get_pw(string pass, object player) {
+   int tim;
+  if (!PLAYER_HANDLER->test_password(player->query_name(), pass)) {
+    write("\nSorry, incorrect password.\n");
+    return 0;
+  }
+   if(!info[player->query_name()]) {
+      write("\nSomething went wrong, please try again.\n");
+      return 0;
+   }
+  tim = info[player->query_name()][0];
+  if (tim < 24) {
+    write("\nYour lockout will last " + tim  + " hour" +
+          (tim == 1 ? "" : "s" ) + ".  It cannot be " +
+          "undone.  Are you completely sure you wish to continue?\n");
+  } else {
+    write("\nYour lockout will last " + tim / 24 + " day" +
+          ((tim / 24) == 1 ? "" : "s" ) + ".  It cannot be " +
+          "undone.  Are you completely sure you wish to continue?\n");
+  }
+  input_to("confirm", 0, this_player());
+  return 1;
+}
+int confirm(string yesno, object player) {
+   int tim;
+   string reason;
+   string* alts;
+   string name;
+   if (yesno[0] != 'y') {
+      write("Ok, cancelling lockout...\n");
+      write("Lockout cancelled.\n");
+      return 1;
+   }
+   if(!info[player->query_name()]) {
+      write("Something went wrong, please try again.\n");
+      return 0;
+   }
+   tim = info[player->query_name()][0];
+   reason = info[player->query_name()][1];
+   alts = info[player->query_name()][2];
+   foreach (name in alts) {
+      if (!"/secure/bastards"->lockout_person(name,
+                                           tim*60*60, reason)) {
+         write("Sorry, we failed.\n");
+         return 0;
+      }
+   }
+   write("Ok, you are now locked out.  Quit when ready.\n");
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<number'number of'> "
+                     "<word'days|weeks|hours'> <string'reason'>",
+                     (: cmd($4[0], $4[1], implode($4[2..], " "), 0 ) :),
+             "alts <number'number of'> "
+                     "<word'days|weeks|hours'> <string'reason'>",
+                     (: cmd($4[0], $4[1], implode($4[2..], " "), 1 ) :) });
+}
+
+==================================================
+FILE: player/mailinfo.c
+==================================================
+
+#include <mail.h>
+#include <player_handler.h>
+mixed cmd(string str) {
+  if (!str || str=="")
+    str = this_player()->query_name();
+  else
+    str = this_player()->expand_nickname(str);
+  if (!PLAYER_HANDLER->test_user(lower_case(str)))
+  {
+    write("Sorry, but I don't know any "+capitalize(str)+".\n");
+    return 1;
+  }
+  write("Player "+capitalize(str)+": "+(string)MAILER->finger_mail(str));
+  return 1;
+}
+void dest_me() {
+  destruct(this_object());
+}
+void clean_up() {
+  dest_me();
+}
+void reset() {
+  dest_me();
+}
+
+==================================================
+FILE: player/make.c
+==================================================
+
+#include <config.h>
+#include <weather.h>
+#include <move_failures.h>
+#ifndef __DISTRIBUTION_LIB__
+#include <special_day.h>
+#endif
+inherit  "/cmds/base";
+#define TP this_player()
+private string *_snow_creatures = ({
+    "snowman",
+    "snowwoman",
+    "snowboy",
+    "snowgirl",
+    "snowbunny",
+    "snowfrog",
+    "snowball",
+    "snowwomble",
+    "snowangel",
+    "snowcabbage",
+    "snowwitch",
+    "snowwizard",
+    "snowwarrior",
+    "snowthief",
+    "snowpriest",
+    "snowassassin",
+    "snowfamily",
+    "snowfox",
+    "snowdwarf",
+    "snowplayerkiller",
+    "snowtroll"
+});
+private string _make_pattern_cache;
+void create() {
+    ::create();
+    _snow_creatures = sort_array( _snow_creatures, 1 );
+}
+int is_snowing(object player, string str) {
+  object env;
+  int *co_ords;
+  env = environment(player);
+  if ((string)env->query_property("location") == "inside") {
+    add_failed_mess("You must be outside to make a " + str + ".\n");
+    return 0;
+  }
+  co_ords = (mixed *)env->query_co_ord();
+  if (!WEATHER->query_snowing(env)) {
+     add_failed_mess("You need snow to make a " + str + ".\n");
+     return 0;
+  }
+  return 1;
+}
+mixed cmd(string str) {
+  object ob;
+  object env;
+  env = environment(TP);
+  switch (str) {
+  case "snowball" :
+    if (is_snowing(TP, str)) {
+      ob = clone_object("/std/environ/snowball");
+      if (ob->move(TP) != MOVE_OK) {
+        add_succeeded_mess(({ "$N try to make a snowball, but you cannot "
+                              "pick it up so it disintergrates in "
+                              "disinterest.\n",
+                              "$N tries to make a snowball, but they cannot "
+                                "pick it up.\n" }));
+      } else {
+        add_succeeded_mess(({
+          "$N $V a lovely big snowball.  Have fun with it ;)\n",
+            "$N $V a lovely big snowball.\n" }));
+      }
+      return 1;
+    }
+    break;
+#ifndef __DISTRIBUTION_LIB__
+  case "cream pie":
+    if (SPECIAL_DAY_HANDLER->query_special_day() == CREAM_PIE_DAY) {
+      if (TP->query_property("made cream pie")) {
+        add_failed_mess("You made a cream pie less than 30 seconds ago.  "
+                        "Don't be greedy now.\n");
+      } else {
+        ob = clone_object("/obj/misc/cream_pie");
+        if (ob->move(TP) != MOVE_OK) {
+          add_succeeded_mess(({ "You try to magicaly conjure a cream pie up "
+                                  "out of nowhere, but you cannot pick it up.\n",
+                                  "$N tries to conjure up a cream pie, but "
+                                  "just looks silly.\n" }));
+          ob->dest_me();
+          return 1;
+        } else {
+          TP->add_property("made cream pie", 1, 30);
+          add_succeeded_mess("$N conjure$s up $I.\n", ({ ob }));
+          return 1;
+        }
+      }
+    } else {
+       add_failed_mess("You can only create cream pies on cream pie day!\n");
+    }
+    break;
+  default:
+    if ( member_array( str, _snow_creatures ) > -1 ) {
+        if (is_snowing(TP, str)) {
+          ob = clone_object("/std/environ/snowman");
+          ob->set_type(str);
+          ob->move(env);
+          add_succeeded_mess("$N $V a beautiful " + str + ".\n");
+          return 1;
+        }
+    }
+    break;
+#endif
+  }
+  return 0;
+}
+mixed *query_patterns() {
+    if ( !_make_pattern_cache ) {
+        _make_pattern_cache = "{" + implode( _snow_creatures +
+            ({ "cream pie" }), "|" ) + "}";
+    }
+   return ({ _make_pattern_cache, (: cmd($4[0]) :) });
+}
+
+==================================================
+FILE: player/map.c
+==================================================
+
+inherit "/cmds/base";
+int do_map() {
+   string map;
+   int* coords;
+   object env;
+   string handler;
+   env = environment(this_player());
+   if (!env)  {
+      add_failed_mess("You are somewhere not on any map.\n");
+      return 0;
+   }
+   if (this_player()->query_blinded()) {
+      add_failed_mess("You are blind and cannot see.\n");
+      return 0;
+   }
+   switch(this_player()->check_dark(environment(this_player())->query_light()))
+   {
+   case -2:
+   case -1:
+     return add_failed_mess("It is too dark to see anything.\n");
+   case 2:
+   case 1:
+     return add_failed_mess("It is too bright to see anything.\n");
+   }
+   coords = env->query_terrain_coords();
+   handler = env->query_terrain_handler();
+   if (!coords  ||  !handler) {
+      add_failed_mess("You can only do this in a terrain.\n");
+      return 0;
+   }
+   map = handler->query_player_map(coords[0], coords[1], coords[2],
+                                   env->query_visibility(env));
+   if (!map) {
+      add_failed_mess("There is no map available here.\n");
+      return 0;
+   }
+   write(map);
+   return 1;
+}
+mixed* query_patterns() {
+   return ({ "", (: do_map :) });
+}
+
+==================================================
+FILE: player/maptemp.c
+==================================================
+
+inherit "/cmds/base";
+int do_map() {
+   string map;
+   int* coords;
+   object env;
+   string handler;
+   env = environment(this_player());
+   if (!env)  {
+      add_failed_mess("You are somewhere not on any map.\n");
+      return 0;
+   }
+   if (this_player()->query_blinded()) {
+      add_failed_mess("You are blind and cannot see.\n");
+      return 0;
+   }
+   switch(this_player()->check_dark(environment(this_player())->query_light()))
+   {
+   case -2:
+   case -1:
+     return add_failed_mess("It is too dark to see anything.\n");
+   case 2:
+   case 1:
+     return add_failed_mess("It is too bright to see anything.\n");
+   }
+   coords = env->query_terrain_coords();
+   handler = env->query_terrain_handler();
+   if (!coords  ||  !handler) {
+      add_failed_mess("You can only do this in a terrain.\n");
+      return 0;
+   }
+   map = handler->query_player_map_template(coords[0], coords[1], coords[2],
+                                   env->query_visibility(env));
+   if (!map) {
+      add_failed_mess("There is no map available here.\n");
+      return 0;
+   }
+   write(map);
+   return 1;
+}
+mixed* query_patterns() {
+   return ({ "", (: do_map :) });
+}
+
+==================================================
+FILE: player/mccp.c
+==================================================
+
+inherit "/cmds/base";
+int cmd() {
+    object *players;
+    int compressed;
+    if ( compressedp( this_player() ) ) {
+        tell_object( this_player(), "You are currently using MCCP to "
+          "connect to " + mud_name() + ".\n" );
+    }
+    else {
+        tell_object( this_player(), "You are not currently using MCCP to "
+          "connect to " + mud_name() + ".  Please read 'help compression' for "
+          "more information about MCCP.\n" );
+    }
+    players = filter( users(), (: !$1->query_login_ob() &&
+        reference_allowed( $1, $(this_player()) ) :) );
+    compressed = sizeof( filter( players, (: compressedp :) ) );
+    tell_object( this_player(), "%^BOLD%^$C$" + query_num( compressed, 1000 ) +
+                 " users (" + ((compressed * 100) / sizeof(players)) + "%) are "
+                 "currently using MCCP and " + query_num(sizeof(players) - compressed, 1000) + " users (" + (((sizeof(players) - compressed) * 100) / sizeof(players)) + "%) are uncompressed.%^RESET%^\n" );
+    return 1;
+}
+mixed *query_patterns() {
+    return ({ "", (: cmd :) });
+}

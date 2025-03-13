@@ -1,0 +1,1631 @@
+# Total Tokens: 16445
+# Total Files Merged: 27
+# Total Characters: 54908
+
+/pumpkin/hospital.c
+==================================================
+
+#include <armoury.h>
+#include <hospital.h>
+#include <living.h>
+#include <map.h>
+#include <money.h>
+#include <move_failures.h>
+#include <route.h>
+#include <wander.h>
+#include "path.h"
+#define MAX_HEAVIES 10
+#define DAY 8 * 60 * 60
+#define INTERVAL 20 * 60
+#define MUD_TO_REAL 3
+#define BLOCK 5
+#define MAX_EMPTIES 12
+#define MAX_MOVERS 60
+#define SAVE_FILE SAVE +"hospital"
+inherit "/std/room/basic_room";
+nosave int alchemists, update, *alignments;
+mapping uniques;
+nosave int *al_data;
+nosave string *city;
+nosave object *empties;
+nosave mapping blockages;
+nosave mixed *movers;
+nosave int am_npcs, last_check;
+int ok_to_clone();
+void get_weapon(object ob, string *items);
+void get_armour(object ob, string *items);
+void get_jewellery(object ob, string *items);
+void setup() {
+   set_keep_room_loaded(1);
+   update = time();
+   alignments = allocate( 50 );
+   uniques = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) > 0 ) {
+      unguarded( (: restore_object, SAVE_FILE :) );
+   }
+   alchemists++;
+   unguarded( (: save_object, SAVE_FILE :) );
+   city = ({
+      "child", "rodent", "cockroach", "dog"
+   });
+   empties = ({ });
+   blockages = ([ ]);
+   movers = allocate( MAX_MOVERS );
+   call_out( "check_movers", 10 );
+   call_out( "housekeeping", INTERVAL );
+}
+int *query_al_data() { return al_data; }
+mapping query_uniques() { return uniques; }
+object *query_empties() { return empties; }
+mapping query_blockages() { return blockages; }
+int query_blockage( string this, string other, int number ) {
+   if ( undefinedp( blockages[ this ] ) ) {
+      if ( random( 100 ) >= BLOCK )
+         number = -1;
+      blockages[ this ] = blockages[ other ] = number;
+   }
+   return blockages[ this ];
+}
+mixed *query_movers() { return movers; }
+void housekeeping() {
+   object thing;
+   update = time();
+   foreach( thing in users() ) {
+      if ( thing->query_creator() )
+         continue;
+      alignments[ random( sizeof( alignments ) ) ] =
+            (int)thing->query_al();
+   }
+   al_data = 0;
+   unguarded( (: save_object, SAVE_FILE :) );
+   call_out( "housekeeping", INTERVAL );
+}
+int pick_al() {
+   int one, *stats;
+   if ( !al_data ) {
+      al_data = allocate( 3 );
+      stats = allocate( 4 );
+      foreach( one in alignments ) {
+         stats[ 0 ] += one;
+         stats[ 1 ] += one * one;
+         if ( one > stats[ 2 ] )
+            stats[ 2 ] = one;
+         if ( one < stats[ 3 ] )
+            stats[ 3 ] = one;
+      }
+      stats[ 0 ] /= sizeof( alignments );
+      stats[ 1 ] /= sizeof( alignments );
+      stats[ 1 ] -= stats[ 0 ] * stats[ 0 ];
+      stats[ 1 ] /= 10;
+      if ( stats[ 1 ] < 50 )
+         stats[ 1 ] = 50;
+      stats[ 2 ] -= stats[ 3 ];
+      if ( stats[ 2 ] < 2 )
+         stats[ 2 ] = 2;
+      al_data[ 0 ] = stats[ 0 ] - stats[ 2 ] / 2;
+      al_data[ 1 ] = ( stats[ 2 ] * stats[ 2 ] ) / ( 12 * stats[ 1 ] );
+      if ( al_data[ 1 ] < 5 )
+         al_data[ 1 ] = 5;
+      al_data[ 2 ] = ( 12 * stats[ 1 ] ) / stats[ 2 ];
+      if ( al_data[ 2 ] < 25 )
+         al_data[ 2 ] = 25;
+   }
+   return al_data[ 0 ] + roll_MdN( al_data[ 1 ], al_data[ 2 ] );
+}
+int make_unique( string word ) {
+   if ( uniques[ word ] > time() )
+      return 0;
+    uniques[ word ] = time() + 1 * 60 * 60;
+   unguarded( (: save_object, SAVE_FILE :) );
+   return 1;
+}
+void add_mover( object thing ) {
+   int number;
+   number = MAX_MOVERS / 2 + random( MAX_MOVERS / 2 );
+   if ( !pointerp( movers[ number ] ) )
+      movers[ number ] = ({ thing });
+   else
+      movers[ number ] += ({ thing });
+}
+object get_monster( string type ) {
+   object thing;
+   object ob;
+   switch( type ) {
+      case "city" :
+      case "pumpkin" :
+         thing = get_monster( city[ random( sizeof( city ) ) ] );
+         thing->add_property( "monster type", type +":"+
+               (string)thing->query_property( "monster type" ) );
+         thing->add_move_zone( "Pumpkin" );
+         add_mover( thing );
+         return thing;
+      case "dog":
+         thing = clone_object( CHARS + "dog" );
+         if ( random( 4 ) )
+            thing->set_type( "small" );
+         else
+            thing->set_type( "large" );
+         thing->add_effect( "/std/effects/npc/i_died",
+               ({ HOSPITAL, "regen_after_death" }));
+         thing->add_effect( "/std/effects/npc/eat_edible" );
+         thing->add_effect( "/std/effects/npc/savage_corpse" );
+         thing->add_property( "monster type", type );
+         thing->add_property("animal type", type);
+         return thing;
+      case "child":
+         thing = clone_object( CHARS + "child_human" );
+         return thing;
+    case "cityguard":
+      ob = clone_object(MONSTER);
+      ob->add_property("monster type", type);
+      ob->set_name("guard");
+      ob->add_adjective("city");
+      ob->set_main_plural( "city guards" );
+      ob->set_short("city guard");
+      ob->set_long("This is a city guard. He is supposed to protect the " +
+        "city from undesirables. Sadly, Pumpkin isn't very fussy.\n");
+      ob->set_race("human");
+      ob->set_gender("male");
+      ob->set_guild("fighter");
+      ob->set_level(8);
+      ob->set_al( pick_al() / 5 );
+      ob->adjust_money( 5 + random( 10 ), "Pumpkin pence" );
+      ob->load_chat(10, ({
+          3, "@grumble bitterly",
+          1, "@daydream",
+          1, "@sigh heavily"
+          }) );
+      ob->load_a_chat(50, ({
+          1, "'Ouch!",
+          1, "'Come on! I don't need this.",
+          1, "'Be on your way!",
+          }) );
+      ARMOURY->request_weapon("long sword", 40+random(40))->move(ob);
+      if(random(2))
+        ARMOURY->request_armour("hard leather cap", 70 + random(30))->move(ob);
+      ob->init_equip();
+      return ob;
+    case "mercenary":
+      ob = clone_object(MONSTER);
+      ob->set_name("mercenary");
+      ob->set_main_plural( "mercenaries" );
+      ob->add_plural( "mercenaries" );
+      ob->add_adjective("tough");
+      ob->set_race("human");
+      ob->set_class("fighter");
+      ob->set_level( 50 + roll_MdN( 5, 50 ) );
+      ob->set_al( pick_al() );
+      ob->set_gender(random(2) + 1);
+      ob->set_long("A tough battle scarred mercenary.  There are better "
+                   "ways of filling in an afternoon than messing with the "
+                   "likes of "+ob->query_objective()+".\n");
+      ob->adjust_money( 5 + random( 50 ), "Ankh-Morpork pence" );
+      ob->adjust_money( 1 + random( 5 ), "Ankh-Morpork dollar" );
+      ob->load_chat(3, ({
+        1, "'Anyone you don't like?",
+        1, "'I'll do anything if the price is right?",
+        1, "'Don't get me angry.  You won't like me when I'm angry."
+      }));
+      ob->load_a_chat(30, ({
+        1, "'I'll show you who's boss.",
+        1, "'You think you're so tough.",
+        1, "The crowd runs in terror as the mercenary kills someone by "+
+           "accident."
+      }));
+      get_weapon(ob, ({"bastard sword", "long sword", "morning star",
+       "two-handed axe"}));
+      get_armour(ob, ({"chainmail", "splintmail", "ringmail"}));
+      ob->add_property("monster type", type);
+      ob->init_equip();
+      return ob;
+    case "rodent":
+      ob = clone_object(MONSTER);
+      ob->set_name("rat");
+      ob->set_short("rat");
+      ob->set_race("rat");
+      ob->set_level( random( 1 + random( 3 ) ) );
+      ob->add_alias("city rat");
+      ob->set_main_plural("rats");
+      ob->add_adjective("dirty");
+      ob->add_adjective("city");
+      ob->set_long("This is a large rat.  It appears to have done well "+
+       "living in the city.\n"+
+       "The pollution must not affect it too much.\n" );
+      ob->load_chat( 5, ({
+         1, ":squeaks.",
+         1, ":sniffs the air, whiskers twitching.",
+         1, ":checks for dwarves."
+      }) );
+      ob->set_wimpy( 10 );
+      ob->load_a_chat( 50, ({
+         1, ":squeals in pain.",
+         1, ":twitches fearfully."
+      }) );
+      ob->add_effect("/std/effects/npc/i_died",
+                     ({ HOSPITAL, "regen_after_death" }));
+      ob->add_effect( "/std/effects/npc/eat_edible" );
+      ob->add_effect( "/std/effects/npc/savage_corpse" );
+      ob->add_property("monster type", type);
+      ob->add_property("animal type", type);
+      return ob;
+    case "cockroach":
+      ob = clone_object(MONSTER);
+      ob->set_name("cockroach");
+      ob->set_short("cockroach");
+      ob->set_race("cockroach");
+      ob->set_level( random( 1 + random( 3 ) ) );
+      ob->set_main_plural("cockroaches");
+      ob->add_adjective("dirty");
+      ob->add_alias("roach");
+      ob->set_long( "This is a huge dirty great big cockroach, the size of "
+             "your hand at least.  It waves its feelers at you and looks "
+             "horrible and black.  Not only can cockroaches survive fires, "
+             "plagues, earthquakes and miscellaneous acts of supernatural "
+             "beings, they can survive in Ankh-Morpork!\n" );
+      ob->load_chat( 5, ({
+         10, ":scuttles around a bit.",
+         10, ":cleans its feelers.",
+         10, ":rushes around in circles.",
+         1,  ":jerks off in a strange direction.",
+      }) );
+      ob->set_wimpy( 30 );
+      ob->load_a_chat( 50, ({
+         1, ":oozes horrible white stuff.",
+         1, ":makes a sort of scraping noise."
+      }) );
+      ob->add_effect("/std/effects/npc/i_died",
+                      ({ HOSPITAL, "regen_after_death" }));
+      ob->add_property("monster type", type);
+      ob->add_property("animal type", type);
+      return ob;
+    default:
+      ob = clone_object(MONSTER);
+      ob->set_name("failure");
+      ob->set_short("failure");
+      ob->set_long( "Please inform a creator about this object.\n"+
+          "Type is "+ type +" from "+ file_name( previous_object() ) +".\n" );
+      ob->add_property( "monster type", "failure:"+ type );
+      return ob;
+  }
+}
+void get_armour(object ob, string *items) {
+  ARMOURY->request_armour(items[random(sizeof(items))], 50+random(50))->
+    move(ob);
+}
+void get_jewellery(object ob, string *items) {
+  ARMOURY->request_armour(items[random(sizeof(items))], 20+random(80))->
+    move(ob);
+}
+void get_weapon(object ob, string *items) {
+  ARMOURY->request_weapon(items[random(sizeof(items))], 50+random(50))->
+    move(ob);
+}
+void regen_after_death(object player) {
+  object ob, dest;
+  string nam;
+  if (!player)
+    return ;
+  nam = (string)player->query_property("monster type");
+  dest = (object)player->query_property("start location");
+  if ( !nam )
+    return;
+  if ( !dest )
+    return;
+  if(!ok_to_clone())
+    return;
+  ob = get_monster( explode( nam, ":" )[ 0 ] );
+  dest->add_monster(player, ob);
+  call_out("do_move", 10, ({ ob, dest }) );
+}
+void do_move(mixed *junk) {
+  junk[0]->move(junk[1]);
+}
+string change_to_name(object ob) {
+  return implode((string *)ob->query_adjectives(), " ")+
+         (string)ob->query_name();
+}
+void do_run(object ob) {
+  if (ob)
+    ob -> run_away();
+}
+void fight_check(object ob, object ob1) {
+  if (ob->query_property(previous_object()->query_name()))
+    previous_object()->attack_ob(ob1);
+}
+void do_grin_laugh(object ob) {
+  ob->add_respond_to_with(({ "@grin", ob->query_name() }),
+                          "laugh man at $hname$");
+}
+void add_empty( object thing ) {
+   empties -= ({ 0 });
+   empties += ({ thing });
+   if ( sizeof( empties ) > MAX_EMPTIES )
+      empties = shuffle( empties )[ 0 .. MAX_EMPTIES - 1 ];
+}
+void move_monster( object thing ) {
+   int i;
+   string dest, direc, zone, *movez, *roomz;
+   object place;
+   if ( !thing )
+      return;
+   if ( (int)thing->query_hp() < 0 )
+      return;
+   if ( thing->query_property( PASSED_OUT ) || thing->query_fighting() ) {
+      add_mover( thing );
+      return;
+   }
+   movez = (string *)thing->query_move_zones();
+   empties -= ({ 0 });
+   if ( sizeof( empties ) && !thing->check_anyone_here() )
+      foreach ( place in empties ) {
+         roomz = (string *)place->query_zones();
+         if ( !sizeof( roomz ) ) {
+            empties -= ({ place });
+            continue;
+         }
+         foreach ( zone in roomz ) {
+            i = member_array( zone, movez );
+            if ( i != -1 )
+               break;
+         }
+         if ( i == -1 )
+            continue;
+         thing->move( place );
+         place->add_monster( 0, thing );
+         place->announce_entry( thing );
+         empties -= ({ place });
+         add_mover( thing );
+         return;
+      }
+   place = environment( thing );
+   if ( !place )
+      return;
+   add_mover( thing );
+   foreach ( direc in shuffle( (string *)place->query_direc() ) ) {
+      place->set_destination( direc );
+      dest = (string)place->query_destination( direc );
+      if ( !stringp( dest ) )
+         continue;
+      if ( !thing->check_anyone_here() && !find_object( dest ) )
+         continue;
+      if ( find_object( dest ) )
+         roomz = (string *)dest->query_zones();
+      else
+         roomz = (string *)MAP->query_zones( dest );
+      if ( !sizeof( roomz ) )
+         continue;
+      foreach ( zone in roomz ) {
+         i = member_array( zone, movez );
+         if ( i != -1 )
+            break;
+      }
+      if ( i == -1 )
+         continue;
+      if ( place->query_relative( direc ) )
+         direc = (string)thing->find_rel( direc, 0 );
+      if ( thing->do_command( direc ) )
+         return;
+   }
+}
+void check_movers() {
+   int when;
+   object thing, *things;
+   things = movers[ 0 ];
+   movers[ 0 .. MAX_MOVERS - 2 ] = movers[ 1 .. ];
+   movers[ MAX_MOVERS - 1 ] = 0;
+   call_out( "check_movers", 10 );
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( objectp( thing ) ) {
+         when += 2;
+         call_out( "move_monster", when, thing );
+      }
+   }
+}
+int ok_to_clone() {
+  if(time() > last_check + 300) {
+    last_check = time();
+    am_npcs = sizeof( filter( named_livings(),
+      (: environment( $1 ) && base_name( environment( $1
+       ) )[0..4] == "/d/am" :) ) );
+  }
+  return ( am_npcs < MAX_AM_LIVING );
+}
+int *query_npcs() {
+  return ({ am_npcs, last_check });
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin1.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is end of Pumpkin Way at the junction with Crumpet Circle.\n");
+  set_light( 80 );
+  add_exit("east", PUMPKIN + "pumpkin2", "road");
+  add_exit("southwest", CRUMPT + "crumpt1", "road");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin2.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is middle of Pumpkin Way just north of Crumpt Circle.\n");
+  set_light( 80 );
+  add_exit("west", PUMPKIN + "pumpkin1", "road");
+  add_exit("south", PUMPKIN + "pumpkin3", "road");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin3.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is the middle of Pumpkin Way north of Squash Square.\n");
+  set_light( 80 );
+  add_exit("north", PUMPKIN + "pumpkin2", "road");
+  add_exit("south", PUMPKIN + "pumpkin4", "road");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin4.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is the middle of Pumpkin Way you can just see Squash Square "
+           "to the south.\n");
+  set_light( 80 );
+  add_exit("north", PUMPKIN + "pumpkin3", "road");
+  add_exit("south", PUMPKIN + "pumpkin5", "road");
+  add_exit("west", PATH + "stable_entry", "gate");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin5.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is the middle of Pumpkin Way, quite close to the junction "
+           "with Squash Square to the south.\n");
+  set_light( 80 );
+  add_exit("north", PUMPKIN + "pumpkin4", "road");
+  add_exit("south", PUMPKIN + "pumpkin6", "road");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/pumpkin6.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Pumpkin Way");
+  set_long("This is the end of Pumpkin Way at the junction with "
+           "Squash Square.\n");
+  set_light( 80 );
+  add_exit("north", PUMPKIN + "pumpkin5", "road");
+  add_exit("south", SQUASH + "squash2", "road");
+  set_monster(2, "pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/stable_entry.c
+==================================================
+
+#include "path.h"
+#include <armoury.h>
+inherit "/std/room/stable";
+void setup() {
+   set_light(60);
+   set_theft_handler( HOSPITAL );
+   set_short( "stables" );
+   add_property("determinate", "the ");
+   set_long( "These are the Pumpkin Street stables, an ornate gate to the "+
+      "north opening onto the street.  There are many stalls here, "+
+           "and some of them even have horses in them. Against one wall "+
+           "is a pile of hay and hanging on the walls are saddles and "+
+           "other horse riding equipment.\n");
+   add_exit( "east", PATH +"pumpkin4", "gate" );
+   add_item(({"horse", "horses"}), "There are a few horses here, but "+
+              "most of them seem to be in the carthorse mold, rather "+
+              "than being fine chargers.\n");
+   add_item(({"hay", "pile"}), "A big pile of hay (that's dead grass to you and me).\n");
+   add_item(({"saddle", "saddles", "riding equipment", "equipment"}),
+              "Hanging on one wall are saddles, bridles, bits and other "+
+              "things that help you ride a horse.\n");
+   add_item("stalls", "Boxes where horses live!\n");
+   add_item("gate", "A large gate, made of wrought iron bent into intricate "+
+                    "shapes. On the other side you can see Filigree Street.\n");
+   add_item(({"shape", "shapes"}), "There are many shapes and patterns "+
+              "to be found in the twists and turns of the iron gates, "+
+              "but you can't find any meaning in them. Maybe it's "+
+              "meant to be abstract?\n");
+   room_chat( ({ 50, 50, ({
+ 		  "A horseman rides through the gates and dismounts. "+
+             "A stable boy rushes forward and leads the horse to a stall "+
+             "while the rider leaves.",
+             "One of the horses rears up in its stall, but can't "+
+             "force the door open."
+   }) }) );
+   set_zone("pumpkin stables");
+   set_save_directory("/d/dist/pumpkin/save/stables/");
+   add_stable_type("horse");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/pumpkin/stable_shop.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/item_shop";
+void setup() {
+   set_short("Stable shop");
+   set_long(
+"You are in the stable shop, it is completely full of various weird things "
+"like bits, bridles and other obscure looking bits of leather.\n");
+   add_exit("west", PATH + "pumpkin5", "gate");
+   set_light(70);
+   add_object("pale grey horse");
+   add_object("painted grey horse");
+   add_object("plaid horse");
+   add_object("dappled brown horse");
+   add_object("light brown horse");
+   add_object("dark brown horse");
+   add_object("dark red horse");
+   add_object("black warhorse");
+   add_property("place", "Pumpkin");
+}
+object create_object(string thing) {
+   object horse;
+   object bing;
+   if (strlen(thing) > 8 && thing[<8..] == "warhorse") {
+      horse = clone_object("/obj/monster/transport/warhorse");
+      horse->set_colour(thing[0..<10]);
+      horse->set_value(8);
+      horse->add_property("cost here", 8);
+      return horse;
+   } else if (strlen(thing) > 5 && thing[<5..] == "horse") {
+      horse = clone_object("/obj/monster/transport/horse");
+      horse->set_colour(thing[0..<7]);
+      horse->set_value(8);
+      horse->add_property("cost here", 8);
+      return horse;
+   } else {
+      bing = clone_object(thing);
+      bing->setup_clothing(1000);
+      bing->set_value(8);
+      return bing;
+   }
+}
+
+==================================================
+FILE: dist/pumpkin/chars/child_human.c
+==================================================
+
+#include "path.h"
+inherit "/obj/monster";
+void respond_to_soul(object play);
+void setup() {
+   int i;
+   string *types = ({ "playful", "quiet", "thin", "fat", "noisy",
+         "thoughtful", "happy", "sad", "boring", "interesting" });
+   set_name( "child" );
+   i = random( sizeof( types ) );
+   set_short( types[ i ] +" child" );
+   add_adjective( types[ i ] );
+   set_main_plural( types[ i ] +" children" );
+   set_race( "human" );
+   set_gender( 1 + random( 2 ) );
+   i = (int)"/std/races/human"->query_weight();
+   i += (int)"/std/races/human"->modifier( weight );
+   set_base_weight( ( 3 * i ) / ( 4 + random( 6 ) ) );
+   i = (int)"/std/races/human"->query_height();
+   i += (int)"/std/races/human"->modifier( height );
+   set_height( ( 2 * i ) / ( 3 + random( 4 ) ) );
+   set_con( ( 2 * query_con() ) / ( 3 + random( 4 ) ) );
+   set_dex( ( 2 * query_dex() ) / ( 3 + random( 4 ) ) );
+   set_str( ( 2 * query_str() ) / ( 3 + random( 4 ) ) );
+   set_al( -50 + (int)HOSPITAL->pick_al() / 10 );
+   set_level( random( 5 ) );
+   set_wimpy( 90 );
+   set_long( "This is one of the inhabitants of Pumpkin.\n" );
+   add_effect( "/std/effects/npc/gossip", 5);
+   load_chat(40, ({ 1, "#do_gossip_say:$mess$" }));
+   add_respond_to_with(({ ({ "@skick", "@spunch", "@jump", "@push",
+                             "@shove", "@knee" }) }),
+                       (: respond_to_soul :));
+}
+void respond_to_soul(object play) {
+   switch (random(6)) {
+   case 0:
+      do_command("'Thats not very nice!");
+      break;
+   case 1:
+      do_command("'Pick on someone your own size.");
+      do_command("glare " + player->query_name());
+      break;
+   case 2:
+      do_command("cry");
+      do_command("accuse " + player->query_name() + " of child abuse");
+      break;
+   case 3:
+      do_command("spunch " + player->query_name());
+      do_command("'Take that!  and that!");
+      do_command("skick " + player->query_name());
+      break;
+   case 4:
+      do_command("accuse " + player->query_name() + " of child abuse");
+      break;
+   case 5:
+      do_command("'I will tell my brother!");
+      break;
+   }
+   call_out("run_away", 2);
+}
+
+==================================================
+FILE: dist/pumpkin/chars/dog.c
+==================================================
+
+inherit "/obj/monster";
+#include "path.h"
+string colour, type;
+void check_for_hidden();
+void test_rabid_attack();
+void test_urinate();
+void pat_me( object per );
+void sic_em( object per, string mess );
+string query_colour() { return colour; }
+void setup() {
+   colour = ({ "light brown", "black", "grey", "mottled", "white", "patched",
+         "dark brown", "black and white", "fluorescent yellow" })[ random( 9 ) ];
+  set_name("dog");
+  set_race("dog");
+  set_gender(1 + random(2));
+  set_level( 1 + random( 1 + random( 3 ) ) );
+  add_adjective("hairy");
+  add_adjective(explode(colour, " "));
+}
+void set_type(string type) {
+   set_short( type +" "+ colour +" dog" );
+   set_main_plural( type +" "+ colour +" dogs" );
+   add_adjective( type );
+   if ( type == "small" ) {
+      set_long("The small "+colour+" dog is very hairy.  It looks a "
+                 "bit sad and lost in the streets of Pumpkin.  "
+                 "You are sure it would prefer a cat flap and a nice "
+                 "hot meal every night, or is that you?\n");
+   } else {
+      add_skill_level( "fighting", random( 10 + random( 30 ) ) );
+      add_skill_level( "other.health", random( 10 + random( 30 ) ) );
+      set_main_plural("large "+colour+" dogs");
+      add_adjective("large");
+      set_long("The large "+colour+" dog confidently walks the streets, "
+                 "insolently not moving aside for the warriors and heroes "
+                 "stalking the streets.\n");
+   }
+   add_enter_commands( "#check_for_hidden" );
+   if ( !random( 3 ) )
+     add_effect( "/std/effects/disease/flea_infestation", 10000 );
+  if (!random(6)) {
+    set_wimpy(10);
+    load_chat( 10, ({
+       1, "@froth",
+       1, "@roll eye",
+       1, "@growl",
+       1, "#test_rabid_attack",
+    }) );
+    load_a_chat( 10, ({
+       1, "@froth",
+       1, "@roll eye",
+       1, "@growl" }) );
+    add_respond_to_with( ({ ({ "@pat", "@stroke", "@hug" }),
+                             query_name() }), "bite $hname$");
+  } else {
+    set_wimpy( 70 );
+    load_chat( 5, ({
+       1, (type=="small"?":whines pathetically.":"@growl"),
+       1, (type=="small"?"@stare hungrily at $lname":
+                             "@stare int at $lname"),
+       1, (type=="small"?"@bite $lname ankles":"@stare rud at $lname"),
+       1, "#test_urinate",
+    }) );
+    load_a_chat( 50, ({
+       1, "@bite $aname ?",
+       1, "@growl",
+       1, "@bark",
+    }) );
+    add_respond_to_with( ({ ({ "@pat", "@stroke", "@hug" }),
+                                query_name() }), "#pat_me" );
+    add_respond_to_with( ({ "@say", ({ "get", "sic" }), }), "#sic_em" );
+  }
+  add_effect("/std/effects/npc/eat_edible", 0);
+  add_effect("/std/effects/npc/i_died", ({ HOSPITAL, "regen_after_death" }));
+  add_property("monster_type", type);
+  add_property("animal type", type);
+}
+void bark_at_hidden(object per) {
+  mapping hide_invis;
+  if (per) {
+    hide_invis = per->query_hide_invis();
+    if (environment(per) == environment() &&
+        hide_invis["hiding"]) {
+      do_command("bark loudly");
+      if (!random(4))
+        do_command("bark loudly at "+
+                 per->query_name());
+      else
+        do_command("bark loudly");
+      call_out("bark_at_hidden", 2, per);
+    }
+  }
+}
+void check_for_hidden() {
+  object *obs, mine;
+  int i;
+  mapping hide_invis;
+  function fun;
+  mine = query_property("following");
+  obs = all_inventory(environment(this_object()));
+  for (i=0;i<sizeof(obs);i++) {
+    hide_invis = query_hide_invis();
+    if (living(obs[i]) && hide_invis["hiding"] &&
+        obs[i] != mine && obs[i]->query_visible(this_object())) {
+      call_out("bark_at_hidden", 0, obs[i]);
+      break;
+    }
+  }
+}
+void test_rabid_attack() {
+  int i;
+  object *obs;
+  obs = filter_array(all_inventory(environment()),
+                     (: living($1) && $1 != $2 &&
+                        (!$1->query_property("player") ||
+                         $1->query_level() > 5) :),
+                      this_object());
+  if (sizeof(obs))
+    attack_ob(obs[0]);
+}
+void test_urinate() {
+  object *obs, *liv, blue, mine;
+  int i;
+  liv = ({ });
+  mine = query_property("following");
+  obs = all_inventory(environment());
+  check_for_hidden();
+  for (i=0;i<sizeof(obs);i++) {
+    if (living(obs[i]) && obs[i] != mine &&
+        obs[i] != this_object()) {
+      liv += obs[i..i];
+    }
+  }
+  if (sizeof(liv)) {
+    blue = liv[random(sizeof(liv))];
+    tell_room(environment(),
+              the_short() + " urinates on " + blue->the_short() + "'s leg.\n",
+              ({ blue }));
+    tell_object(blue, capitalize(the_short()) + " urinates on your leg.\n");
+    blue->add_effect("/std/effects/other/dog_urinate", 120);
+  }
+}
+void i_like_them(object them) {
+  if(!them || environment() != environment(them))
+    return ;
+  call_out("i_like_them", 60+random(240), them);
+  if (query_property("excited")) {
+    do_command("bounce excit");
+  } else switch (random(5)) {
+    case 0 :
+      do_command("nuzzle "+them->query_name());
+      break;
+    case 1 :
+      do_command("stare pitifully at "+them->query_name());
+      break;
+    case 2 :
+      do_command("smile "+them->query_name());
+      break;
+    case 3 :
+      do_command("eye "+them->query_name());
+      break;
+    case 4 :
+      do_command("drool "+them->query_name());
+      break;
+  }
+}
+void pat_me(object per) {
+  object ob;
+  ob = query_property("following");
+  if (objectp(ob) &&
+      environment(ob) == environment()) {
+    init_command("nuzzle "+per->query_name());
+  } else if (environment() == environment(per) &&
+   (query_property("monster type") == "small dog" ||
+   !random(5))) {
+    init_command("follow "+per->query_name());
+    init_command("protect "+per->query_name());
+    add_property("following", per);
+    call_out("i_like_them", 60+random(240), per);
+  } else {
+    init_command("ignore "+per->query_name());
+  }
+}
+void periodic_excited() {
+  if (query_property("excited")) {
+    if (query_property("excited") > 1) {
+      switch (random(4)) {
+        case 0 :
+          do_command("growl");
+          break;
+        case 1 :
+          do_command("bark");
+          break;
+        case 2 :
+          do_command("caper");
+          break;
+        case 3 :
+          do_command("bounce excit");
+          break;
+      }
+    } else if (!random(2))
+      do_command("bounce excit");
+    else
+      do_command("caper");
+    call_out("periodic_excited", 10+random(10));
+  }
+}
+void sic_em(object per, string mess) {
+   string *bing;
+   object mine;
+   object *obs;
+   int lvl;
+   bing = explode(replace(mess, "!", ""), " ");
+   mine = query_property("following");
+   if (bing[0] == "get" && per == mine) {
+      obs = match_objects_for_existence(bing[1], environment());
+      obs = filter_array(obs, (: living($1) :));
+      if ( sizeof( obs ) ) {
+	 lvl = query_property( "excited" );
+	 add_property( "excited", lvl+1 );
+	 call_out( function( object npc ) {
+	    int lvl;
+	    lvl = npc->query_property("excited");
+	    if (lvl > 0)
+	       npc->add_property("excited", lvl - 1);
+	    else
+	       npc->remove_property("excited");
+	 }, 120, this_object());
+	 if (!lvl) {
+	    call_out("periodic_excited", 10+random(10));
+	 }
+	 switch (lvl) {
+	  case 0 :
+	    init_command("bounce excit");
+	    break;
+	  case 1 :
+	    init_command("growl "+obs[0]->query_name());
+	    break;
+	  default :
+	    call_out((: attack_ob($2) :), 0, obs[0]);
+	    break;
+	 }
+      }
+   }
+}
+
+==================================================
+FILE: dist/pumpkin/chars/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/fruitbat/fruitbat1.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Fruitbat Avenue");
+  set_long("This is Fruitbat Avenue at the junction with Crumpet Circle.\n");
+  set_light( 80 );
+  add_exit("east", FRUITBAT + "fruitbat2", "road");
+  add_exit("north", CRUMPT + "crumpt8", "road");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/fruitbat2.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Fruitbat Avenue");
+  set_long("This is the middle of Fruitbat Avenue just west of "
+           "Crumpt Circle.\n");
+  set_light( 80 );
+  add_exit("east", FRUITBAT + "fruitbat3", "road");
+  add_exit("west", FRUITBAT + "fruitbat1", "road");
+  add_exit("south", FRUITBAT + "general_store", "door");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/fruitbat3.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Fruitbat Avenue");
+  set_long("This is the middle of Fruitbat Avenue just south of the "
+           "vault.\n");
+  set_light( 80 );
+  add_exit("east", FRUITBAT + "fruitbat4", "road");
+  add_exit("west", FRUITBAT + "fruitbat2", "road");
+  add_exit("north", FRUITBAT + "walrus_vault_entry", "door");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/fruitbat4.c
+==================================================
+
+#include "path.h";
+inherit CITYROOM;
+void setup() {
+  set_short("Fruitbat Avenue");
+  set_long("This is east end of Fruitbat Avenue at the junction "
+           "with Squash Square.\n");
+  set_light( 80 );
+  add_exit("east", SQUASH + "squash4", "road");
+  add_exit("west", FRUITBAT + "fruitbat3", "road");
+  set_monster(1, "city");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/general_store.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/general_shop";
+void setup() {
+   set_short("Elephant's Stamp");
+   set_long(
+"A huge picture of an elephant covers tha back room of the shop.  You can "
+"see the elephant guarding a huge pile of goods.\n");
+   add_exit("north", FRUITBAT + "fruitbat2", "door");
+   set_light(70);
+   set_store_room(FRUITBAT + "storeroom");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/path.h
+==================================================
+
+#include "../path.h"
+#undef PATH
+#define PATH __DIR__
+
+==================================================
+FILE: dist/pumpkin/fruitbat/storeroom.c
+==================================================
+
+inherit "/std/shops/storeroom";
+void setup() {
+   set_short("Elephant's Storeroom");
+   set_light(70);
+   set_long("Lots of stored stuff.\n");
+ }
+
+==================================================
+FILE: dist/pumpkin/fruitbat/walrus_vault.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/vault";
+void setup() {
+   set_short("Wulrus's vault");
+   set_long(
+"A big picture of a nice friendly looking walrus looks down on you "
+"with a nice happy smile.\n");
+   set_light(70);
+   set_vault_name("walrus");
+   set_vault_exit("south", FRUITBAT + "walrus_vault_entry", "door");
+   add_property("place", "Pumpkin");
+}
+
+==================================================
+FILE: dist/pumpkin/fruitbat/walrus_vault_entry.c
+==================================================
+
+#include "path.h"
+inherit "/std/shops/vault_entry";
+object _npc;
+void setup() {
+   set_short("Wulrus's vault");
+   set_long(
+"A big picture of a nice friendly looking walrus looks down on you "
+"with a nice happy smile.\n");
+   set_light(70);
+   set_vault_name("walrus");
+   set_visit_cost(400);
+   set_open_cost(4000);
+   add_exit("south", FRUITBAT + "fruitbat3", "door");
+   set_vault_exit("north", FRUITBAT + "walrus_vault", "door");
+   add_property("place", "Pumpkin");
+}
+void reset() {
+   set_proprietor(_npc);
+}
+
+==================================================
+FILE: admin/common.c
+==================================================
+
+#include <config.h>
+#define DOM_TITLE "the domain of admin"
+#define LORD "pinkfish"
+#define DOMAIN "admin"
+inherit "/std/dom/cmn_mas";
+object board;
+void setup() {
+  set_dom(DOMAIN);
+  set_light(100);
+  add_exit("drum", CONFIG_START_ROOM, "door");
+  modify_exit( "drum", ({ "one way", 1 }) );
+  set_short("Common room of "+DOM_TITLE);
+  set_long("Large relaxing chairs adorn the room.  The walls are covered "+
+           "with strange motifs from different lands and the little shelf "+
+           "above the fireplace is chocker block full of strange figurines "+
+           "and bits of cloth.  It appears to be the common room of "+
+           DOM_TITLE+" the large red letters on the wall were the " +
+           "give away.\n");
+  add_alias("chairs", "chair");
+  add_alias("cloths", "cloth");
+  add_alias("motifs", "motif");
+  add_alias("figurines", "figurine");
+  add_item("chair", "The chairs are lazing around the room relaxing it looks "+
+                    "like they come here after a hard days working in "+
+                    DOM_TITLE+".\n");
+  add_item("fireplace", "A nice little fire place with a cheery fire burning "+
+                        "in it keeping every one warm.\n");
+  add_item("figurine", "Small figurines, they look strangely familiar "+
+                         "until you realise they are the members of "+
+                         DOM_TITLE+".\n");
+  add_item("cloth", "Strange coloured bits of cloth strewn over the "+
+                    "mantlepice for no readily apparent reason.\n");
+  add_item("motif", "The motifs on close inspection look like stylised "+
+                     "signatures of all the members of "+DOM_TITLE+
+                     ".  Some of them are very strange, in fact there "+
+                     "seem to be more than there are members of the house.  "+
+                     "perhaps it is the members of the future.\n");
+  add_item("shelf", "A nice normal sort of shelf thing.  It is like all "+
+                    "those ones you see in houses all over the place, "+
+                    "execpt... the way it has been burnt... hmm it does "+
+                    "not look like the fire did it.\n");
+  add_item("fire", "There is a fire happily burning away in the fireplace "+
+                   "spluttering and crackling to itself.  The flames almost "+
+                   "seem afraid of something.  Looking closer you notice a "+
+                   "picture tacked to the side of the fire place.\n");
+  add_item("picture", "Tacked to the inside wall of the fire thingy, you "+
+                      "know the hole bit at the bottom, is a small picture "+
+                      "it looks like it was taken with the best of demon "+
+                      "photography.  It is a picture of a person holding "+
+                      "a small staff, you think it might be "+LORD+
+                      " but you are not sure as the fire light sparkles "+
+                      "in your eyes.\n");
+  board = clone_object("/obj/misc/board");
+  board->set_datafile(DOMAIN);
+  board->move(this_object());
+}
+
+==================================================
+FILE: admin/master.c
+==================================================
+
+#define LORD "pinkfish"
+#define DOMAIN "admin"
+#define LOGS "/d/admin/log/"
+#define BACKUP_COUNT 9
+inherit "/std/dom/base_master";
+void create() {
+   string file;
+   int i;
+   ::create();
+   foreach ( file in unguarded( (: get_dir, LOGS +"*.log" :) ) ) {
+     if( ( unguarded( (: file_size, LOGS + file :) ) > 1024000) ||
+         ( file != "ENTER.log" &&
+           unguarded( (: file_size, LOGS + file :) ) > 64000 ) ) {
+       file = explode( file, "." )[ 0 ];
+       if(file_size(LOGS+file+"."+BACKUP_COUNT) > 0)
+         unguarded( (: rm, LOGS + file +"."+ BACKUP_COUNT :) );
+       for(i=(BACKUP_COUNT-1); i>0; i--)
+         if(file_size(LOGS+file+"."+i) > 0)
+           unguarded( (: rename, LOGS+file+"."+i, LOGS+file+"."+(i+1) :) );
+       unguarded( (: rename, LOGS+file+".log", LOGS+file+"."+"1" :) );
+     }
+   }
+}
+string query_lord() {
+  return LORD;
+}
+string author_file(string *path) {
+  return capitalize(DOMAIN);
+}
+int check_permission(string euid, string *path, int mask) {
+  if (euid == query_lord())
+    return 1;
+  return ::check_permission(euid, path, mask);
+}
+int valid_read(string *path, string euid, string funct);
+int valid_write(string *path, string euid, string funct);
+int add_member(string name) {
+  if (geteuid(this_player(1)) != query_lord())
+    return 0;
+  return ::add_member(name);
+}
+int remove_member(string name) {
+  if (geteuid(this_player(1)) != query_lord())
+    return 0;
+  return ::remove_member(name);
+}
+int set_project(string name, string pro) {
+  if (geteuid(this_player(1)) != query_lord())
+    return 0;
+  return ::set_project(name, pro);
+}
+int query_member(string name) {
+  return !undefinedp(members[name]) || name == LORD;
+}
+string log_who(string where) {
+  return LORD;
+}
+string query_info() {
+  return "\nThe admin domain is made up of the active Trustees of "
+    "Discworld.  Their role is to ensure the smooth running of the game.  "
+    "They carry the ultimate responsibility for Discworld, how it operates "
+    "and its policies and rules.\n\n";
+}
+
+==================================================
+FILE: admin/room/access_control.c
+==================================================
+
+#include <access.h>
+#include "path.h"
+inherit "/std/room/basic_room";
+#define LOGIN "/secure/login"
+#define READ_MASK 1
+#define WRITE_MASK 2
+#define GRANT_MASK 4
+#define LOCK_MASK 8
+int do_read(string euid, string path);
+int do_write(string euid, string path);
+int do_grant(string euid, string path);
+int do_lock(string path);
+int do_noread(string euid, string path);
+int do_nowrite(string euid, string path);
+int do_nogrant(string euid, string path);
+int do_unlock(string path);
+int do_summary(string str);
+int do_tidy();
+void setup() {
+  set_light(100);
+  set_short("file-access control room");
+  add_property("determinate", "the ");
+  set_long(
+    "You are in a room full of filing cabinets.  There are filing "
+    "cabinets everywhere, they are all packed full of papers and look "
+    "in a horrible mess.\n"
+"Available commands:\n"
+"  read    <euid> <path>     : add read permission to the path.\n"
+"  write   <euid> <path>     : add write permission to the path.\n"
+"  grant   <euid> <path>     : add granting privileges to the path.\n"
+"  lock           <path>     : restrict access to the path.\n"
+"  noread  <euid> <path>     : remove read permission from the path.\n"
+"  nowrite <euid> <path>     : remove write permission from the path.\n"
+"  nogrant <euid> <path>     : remove granting privileges to the path.\n"
+"  unlock         <path>     : remove restrictions to path.\n"
+"  summary [path|euid]       : give a list of all the read/write perms.\n"
+"  tidy                      : tidy away unnecessary perms.\n" );
+  add_exit("east", ROOM+"domain_control", "corridor");
+}
+void init() {
+  ::init();
+  this_player()->add_command("read",    this_object(),
+    "<string'euid'> <string'path'>", (: do_read($4[0], $4[1]) :) );
+  this_player()->add_command("write",   this_object(),
+    "<string'euid'> <string'path'>", (: do_write($4[0], $4[1]) :) );
+  this_player()->add_command("grant",   this_object(),
+    "<string'euid'> <string'path'>", (: do_grant($4[0], $4[1]) :) );
+  this_player()->add_command("lock",    this_object(),
+    "<string'path'>",                (: do_lock($4[0]) :) );
+  this_player()->add_command("noread",  this_object(),
+    "<string'euid'> <string'path'>", (: do_noread($4[0], $4[1]) :) );
+  this_player()->add_command("nowrite", this_object(),
+    "<string'euid'> <string'path'>", (: do_nowrite($4[0], $4[1]) :) );
+  this_player()->add_command("nogrant", this_object(),
+    "<string'euid'> <string'path'>", (: do_nogrant($4[0], $4[1]) :) );
+  this_player()->add_command("unlock",  this_object(),
+    "<string'path'>",                (: do_unlock($4[0]) :) );
+  this_player()->add_command("summary", this_object(),
+    "<string'path or euid'>",        (: do_summary($4[0]) :) );
+  this_player()->add_command("tidy",    this_object(),
+    "",                              (: do_tidy() :) );
+}
+int do_read(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_read("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+               "to call do_read("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, READ_MASK)) {
+    notify_fail("You do not have permission to add read access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->add_read_permission(euid, path);
+}
+int do_write(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_write("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+               "to call do_write("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, WRITE_MASK)) {
+    notify_fail("You do not have permission to add write access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->add_write_permission(euid, path);
+}
+int do_grant(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_grant("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+                 "to call do_grant("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, GRANT_MASK)) {
+    notify_fail("You do not have permission to add grant access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->add_grant_permission(euid, path);
+}
+int do_lock(string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_lock("+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+                 "to call do_lock("+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  if (!path)
+    return notify_fail("Syntax: "+query_verb()+" <path>\n");
+  if (!master()->query_lord(previous_object(-1)))
+    return notify_fail("You don't have permission to lock paths.\n");
+  if ((path[0..2] != "/d/") &&
+      !master()->high_programmer(previous_object(-1)))
+    return notify_fail("You don't have permission to lock paths there.\n");
+  notify_fail("Something went wrong.\n");
+  return (int)master()->lock_path(path);
+}
+int do_noread(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_noread("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+                 "to call do_noread("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, READ_MASK)) {
+    notify_fail("You do not have permission to remove read access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->remove_read_permission(euid, path);
+}
+int do_nowrite(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_nowrite("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+                 "to call do_nowrite("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, WRITE_MASK)) {
+    notify_fail("You do not have permission to remove write access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->remove_write_permission(euid, path);
+}
+int do_nogrant(string euid, string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_nogrant("+euid+", "+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+               "to call do_nogrant("+euid+", "+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  path = (string)this_player()->get_path(path);
+  if (!master()->high_programmer(previous_object(-1)) &&
+      !master()->valid_grant(previous_object(), path, GRANT_MASK)) {
+    notify_fail("You do not have permission to remove grant access.\n");
+    return 0;
+  }
+  notify_fail("Something went wrong.\n");
+  return (int)master()->remove_grant_permission(euid, path);
+}
+int do_unlock(string path) {
+  if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+    event(users(), "inform", "Illegal attempt to call do_unlock("+path+") by "+
+          this_player()->one_short(), "cheat");
+    unguarded((: write_file, "/log/CHEAT", ctime(time())+": Illegal attempt "
+               "to call do_unlock("+path+").\nBacktrace: "+ back_trace() :));
+    return 0;
+  }
+  if (!path)
+    return notify_fail("Syntax: "+query_verb()+" <path>\n");
+  if (!master()->query_lord(previous_object(-1)))
+    return notify_fail("You don't have permission to lock paths.\n");
+  if ((path[0..2] != "/d/") &&
+      !master()->high_programmer(previous_object(-1)))
+    return notify_fail("You don't have permission to lock paths there.\n");
+  notify_fail("Something went wrong.\n");
+  return (int)master()->unlock_path(path);
+}
+int list_before( string first, string second ) {
+   if ( first < second )
+      return -1;
+   if ( first > second )
+      return 1;
+   return 0;
+}
+int do_summary(string str) {
+  mapping perms;
+  string *paths, *euids, ret, creator;
+  int i, j, k;
+  perms = (mapping)master()->query_permissions();
+  if (str) {
+    if (!perms[str]) {
+      if (!LOGIN->test_user(str) && !master()->valid_euid(str)) {
+        write("There are no permissions for "+str+".\n");
+        return 1;
+      } else {
+        creator = str;
+      }
+    } else {
+      perms = ([ str : perms[str] ]);
+    }
+  }
+  paths = sort_array( m_indices( perms ), "list_before", this_object() );
+  if (!sizeof(paths))
+    ret = "No permissions set.\n";
+  else
+    ret = sprintf("%11-s    Path\n", "Euid");
+  for (i=0;i<sizeof(paths);i++) {
+    euids = m_indices(perms[paths[i]]);
+    for (j=0;j<sizeof(euids);j++) {
+      if (!creator || (euids[j] == creator ) ) {
+        k = perms[paths[i]][euids[j]];
+        if (k & LOCK_MASK)
+          ret += sprintf("%11-s LCK %s\n", euids[j], paths[i]);
+        else
+          ret += sprintf("%11-s %c%c%c %s\n", euids[j],(k & READ_MASK?'R':' '),
+                         (k & WRITE_MASK?'W':' '), (k & GRANT_MASK?'G':' '),
+                         paths[i]);
+      }
+    }
+  }
+  this_player()->more_string( ret, "Permissions", 1 );
+  return 1;
+}
+int do_tidy() {
+   int i, j, perm, same;
+   string path, creator, *bits;
+   mapping perms, euids, others;
+   if (!sizeof(filter(previous_object(-1), (: interactive($1) :)))) {
+      event( users(), "inform", "illegal attempt to call do_tidy() by "+
+            (string)this_player()->query_name(), "cheat" );
+      unguarded((: write_file, "/log/CHEAT", ctime( time() ) +": illegal "
+                   "attempt to call do_tidy() by "+
+                   (string)this_player()->query_name() +"\n" :));
+      return notify_fail( "Failed.\n" );
+   }
+   perms = (mapping)master()->query_permissions();
+   foreach( path in keys( perms ) ) {
+      euids = perms[ path ];
+      foreach( creator in keys( euids ) ) {
+         perm = euids[ creator ];
+         if ( !LOGIN->test_creator( creator ) &&
+              !master()->valid_euid( creator ) ) {
+            write( "No creator: "+ creator +".\n" );
+            if ( perm & READ_MASK )
+               master()->remove_read_permission( creator, path );
+            if ( perm & WRITE_MASK )
+               master()->remove_write_permission( creator, path );
+            if ( perm & GRANT_MASK )
+               master()->remove_grant_permission( creator, path );
+            continue;
+         }
+         if ( path == "/" )
+            continue;
+         same = perms[ "/" ][ creator ] & perm;
+         if ( same ) {
+            write( "Access to / supercedes "+ path +" for "+ creator +".\n" );
+            if ( same & READ_MASK )
+               master()->remove_read_permission( creator, path );
+            if ( same & WRITE_MASK )
+               master()->remove_write_permission( creator, path );
+            if ( same & GRANT_MASK )
+               master()->remove_grant_permission( creator, path );
+            continue;
+         }
+         bits = explode( path, "/" );
+         j = sizeof( bits ) - 1;
+         for ( i = 0; i < j; i++ ) {
+            others = perms[ "/"+ implode( bits[ 0 .. i ], "/" ) ];
+            if ( !others )
+               continue;
+            same = others[ creator ] & perm;
+            if ( same ) {
+               write( "Access to /"+ implode( bits[ 0 .. i ], "/" ) +
+                     " supercedes "+ path +" for "+ creator +".\n" );
+               if ( same & READ_MASK )
+                  master()->remove_read_permission( creator, path );
+               if ( same & WRITE_MASK )
+                  master()->remove_write_permission( creator, path );
+               if ( same & GRANT_MASK )
+                  master()->remove_grant_permission( creator, path );
+               break;
+            }
+         }
+      }
+   }
+   return 1;
+}
+
+==================================================
+FILE: admin/room/cloner_control.c
+==================================================
+
+#include "path.h"
+inherit "/std/room/basic_room";
+#define CLONER "/global/cloner"
+int do_add(string from, string to);
+int do_remove(string from);
+int do_list(string matching);
+void setup() {
+  set_light(100);
+  set_short("Cloner Room");
+  set_long("This room is used to look at or add filename mappings for the "+
+     "cloner object.  It's a very, very, very, very boring room.\n\n"+
+     "  add <from> <to> - adds a mapping.\n"+
+     "  remove <from> - removes a mapping.\n"+
+     "  list [str] - lists mappings which contain the optional string "+
+     "str.\n");
+  add_exit("southwest" , ROOM+"development" , "door");
+}
+void init() {
+  ::init();
+  if (!this_player()) return;
+  this_player()->add_command("add", this_object(),
+    "<string:small'from object'> <string:small'to object'>",
+    (: do_add($4[0], $4[1]) :)
+    );
+  this_player()->add_command("remove", this_object(),
+    "<string:small'from object'>",
+    (: do_remove($4[0]) :)
+    );
+  this_player()->add_command("list", this_object(),
+    "<string:small'matching'>",
+    (: do_list($4[0]) :)
+    );
+  this_player()->add_command("list", this_object(),
+    "",
+    (: do_list("") :)
+    );
+}
+int do_add(string from, string to) {
+  CLONER->add_mapping(from, to);
+  return 1;
+}
+int do_remove(string str) {
+  CLONER->remove_mapping(str);
+  return 1;
+}
+int do_list(string from) {
+  this_player()->more_string(CLONER->list_mappings(from));
+  return 1;
+}
+
+==================================================
+FILE: admin/room/development.c
+==================================================
+
+#include "path.h"
+inherit "/std/room/basic_room";
+object board;
+void reset() {
+  if(!board) {
+    board = clone_object("obj/misc/board");
+    board->set_datafile("development");
+    board->move(this_object());
+  }
+}
+void setup() {
+  set_light(80);
+  set_short("Mud Development Office");
+  set_long(
+    "You are in the Development Office of the mud. Maps and charts of the "+
+    "world adorn the panelled walls. Forms sit on a table near the door "+
+    "for registration of new projects. A few bored looking clerks rustle "+
+    "some papers and try to look busy.\n");
+  add_item("clerk", "They seem more interested in coffee than work.\n");
+  add_item("map", "Type 'list' to see available maps, and 'read' to look "+
+           "at one.\n");
+  add_exit("west", "w/common", "door");
+  add_exit("east", ROOM+"quest_room", "door");
+  add_exit("north", ROOM+"mail_room", "door");
+  add_exit("south", ROOM+"domain_control", "corridor");
+  add_exit("northeast", ROOM+"cloner_control", "door");
+   add_exit( "southeast", ROOM +"terrain", "door" );
+}
+void dest_me() {
+  if (board)
+    board->dest_me();
+  ::dest_me();
+}

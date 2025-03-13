@@ -1,0 +1,1556 @@
+# Total Tokens: 13139
+# Total Files Merged: 8
+# Total Characters: 43822
+
+using.c
+==================================================
+
+#include <housing.h>
+#include <login_handler.h>
+#include <am_time.h>
+#include <nomic_system.h>
+#define BANK "/obj/handlers/bank_handler"
+#define DEFAULT_BANK "Bing's First"
+#define DEFAULT_PLACE "Ankh-Morpork"
+#define MAIL_HANDLER "/obj/handlers/mailer"
+#define SAVE_FILE "/save/player_housing/housing"
+class housing {
+  string *other_rooms;
+  string owner;
+  string address;
+  string region;
+  int type;
+  int value;
+  string bank;
+}
+void load_file();
+string query_housing_area_bank(string area);
+private nosave string *_tmp_houses;
+private nosave string *_tmp_rentals;
+private mapping houses;
+private int last_paid;
+private mapping _housing_area;
+private mapping _area_money;
+void create() {
+  houses = ([ ]);
+  _housing_area = ([ ]);
+  _area_money = ([ ]);
+  seteuid("Root");
+  load_file();
+  if (!_housing_area) {
+    _housing_area = ([ ]);
+  }
+  if (!_area_money) {
+    _area_money = ([ ]);
+  }
+  call_out("check_owners", 900 + random(1800), 0);
+  call_out("check_rent", 900 + random(1800));
+}
+void save_file() {
+  unguarded((: cp, SAVE_FILE + ".o", SAVE_FILE + ".o.bak" :));
+  unguarded((: save_object, SAVE_FILE :));
+}
+void load_file() {
+  if (file_size(SAVE_FILE+".o") > 0)
+    unguarded((: restore_object, SAVE_FILE :));
+}
+#ifdef 0
+int change() {
+  class housing nhouse;
+  string house;
+  foreach(house in keys(houses)) {
+    write(sizeof(houses[house]) + "\n");
+    if(sizeof(houses[house]) == 6) {
+      nhouse = new(class housing,
+                   other_rooms: houses[house]->other_rooms,
+                   owner: houses[house]->owner,
+                   address: houses[house]->address,
+                   region: houses[house]->region,
+                   type: houses[house]->type,
+                   bank: houses[house]->region
+               );
+      houses[house] = nhouse;
+    }
+  }
+  save_file();
+  return 1;
+}
+#endif
+int add_house(string house, string *other_rooms, string address,
+              string region, int type) {
+  if(!houses)
+    houses = ([ ]);
+  if(houses[house])
+    return 0;
+  houses[house] = new(class housing,
+                      other_rooms: uniq_array(other_rooms),
+                      address: address,
+                      region: region,
+                      type: type,
+                      bank: query_housing_area_bank(region)
+                  );
+  save_file();
+  return 1;
+}
+int modify_house(string house, string *other_rooms, string address,
+              string region, int type) {
+  if(!houses)
+    houses = ([ ]);
+  if(!houses[house])
+    return 0;
+  houses[house] = new(class housing,
+                      other_rooms: uniq_array(other_rooms),
+                      address: address,
+                      region: region,
+                      type: type,
+                      bank: query_housing_area_bank(region));
+  save_file();
+  return 1;
+}
+int rename_house(string house, string newhouse) {
+  if(!houses[house])
+    return 0;
+  if(houses[newhouse])
+    return 0;
+  houses[newhouse] = houses[house];
+  if(member_array(newhouse, houses[newhouse]->other_rooms) != -1)
+    houses[newhouse]->other_rooms -= ({ newhouse });
+  map_delete(houses, house);
+  save_file();
+  return 1;
+}
+int remove_house( string house ) {
+  if(!houses[house])
+    return 0;
+  map_delete( houses, house );
+  return 1;
+}
+int add_rooms(string house, string *rooms) {
+  if(!houses[house])
+    return 0;
+  houses[house]->other_rooms = uniq_array(houses[house]->other_rooms + rooms);
+  save_file();
+  return 1;
+}
+int remove_rooms(string house, string *rooms) {
+  if(!houses[house])
+    return 0;
+  houses[house]->other_rooms -= rooms;
+  save_file();
+  return 1;
+}
+int set_owner(string house, string owner) {
+  string room;
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(!owner)
+    return 0;
+  owner = lower_case(owner);
+  house->ownership_change(houses[house]->owner, owner);
+  foreach(room in houses[house]->other_rooms)
+    room->ownership_change(houses[house]->owner, owner);
+  log_file("HOUSING", "%s Owner for %s set to %s from %s.\n",
+           ctime(time())[4..15], house, owner, houses[house]->owner);
+  houses[house]->owner = owner;
+  save_file();
+  return 1;
+}
+int set_region(string house, string region) {
+  if(!houses) {
+    return 0;
+  }
+  if(!houses[house]) {
+    return 0;
+  }
+  if(!stringp(region)) {
+    return 0;
+  }
+  houses[house]->region = region;
+  save_file();
+  log_file("HOUSING", "%s Region for %s set to %s\n",
+           ctime(time())[4..15], house, region);
+  return 1;
+}
+int set_address(string house, string address) {
+  if(!houses) {
+    return 0;
+  }
+  if(!houses[house]) {
+    return 0;
+  }
+  if(!stringp(address)) {
+    return 0;
+  }
+  houses[house]->address = address;
+  save_file();
+  log_file("HOUSING", "%s Address for %s set to %s\n",
+           ctime(time())[4..15], house, address);
+  return 1;
+}
+string query_owner(string house) {
+  string tmp;
+  if(!houses)
+    return 0;
+  if(houses[house])
+    return replace(houses[house]->owner, " (In Arrears)", "");
+  foreach(tmp in keys(houses))
+    if(member_array(house, houses[tmp]->other_rooms) != -1)
+      return replace(houses[tmp]->owner, " (In Arrears)", "");
+}
+int query_house(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return 1;
+}
+int set_bank(string house, string bank) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(!bank)
+    return 0;
+  if(((class housing)houses[house])->type != RENT)
+    return 0;
+  houses[house]->bank = bank;
+  save_file();
+  return 1;
+}
+string query_bank(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->bank;
+}
+string *query_rooms(string house) {
+  string *tmp;
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(sizeof(houses[house]->other_rooms)) {
+    tmp = houses[house]->other_rooms;
+    tmp += ({ house });
+  } else
+    tmp = ({ house });
+  return tmp;
+}
+string query_address(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->address;
+}
+string query_region(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->region;
+}
+int set_type(string house, int type) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(type < 0 || type > 1)
+    return 0;
+  ((class housing)houses[house])->type = type;
+  save_file();
+  return 1;
+}
+int query_type(string house) {
+  if(!houses)
+    return -1;
+  if(!houses[house])
+    return -1;
+  return ((class housing)houses[house])->type;
+}
+int query_value(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->value;
+}
+string *query_vacant(string region) {
+  string house, *sale_list;
+  sale_list = ({ });
+  foreach(house in keys(houses)) {
+    if(stringp(houses[house]->owner)) {
+      if (lower_case(houses[house]->owner) == "for sale" &&
+          houses[house]->region == region) {
+        sale_list += ({ house });
+      }
+    } else {
+      debug_printf("Bad owner for house %O\n", house);
+    }
+  }
+  return sale_list;
+}
+int set_for_sale(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to For Sale from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = "For Sale";
+  houses[house]->bank = DEFAULT_BANK;
+  save_file();
+  return 1;
+}
+int set_under_offer(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to Under Offer from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = "Under Offer";
+  houses[house]->value = 0;
+  save_file();
+  return 1;
+}
+int set_in_arrears(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to In Arrears from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = houses[house]->owner + " (In Arrears)";
+  save_file();
+  return 1;
+}
+int set_value(string house, int value) {
+  if(!houses || !houses[house])
+    return 0;
+  houses[house]->value = value;
+  save_file();
+  return 1;
+}
+int player_refreshed(mixed name, int refresh_type) {
+  class housing house;
+  string hname;
+  if(objectp(name))
+    name = name->query_name();
+  foreach(hname, house in houses)
+    if(house->owner == name) {
+      log_file("HOUSING", "%s %s refreshed or deleted.\n", ctime(time())[4..15],
+               house->owner);
+      set_for_sale(hname);
+    }
+  return 1;
+}
+void set_housing_area_citizenship(string area, string citizenship) {
+   _housing_area[area] = citizenship;
+   save_file();
+}
+void remove_housing_area_citizenship(string area) {
+   map_delete(_housing_area, area);
+   save_file();
+}
+string query_housing_area_citizenship(string area) {
+   return _housing_area[area];
+}
+mapping query_all_housing_area_citizenships() {
+   return copy(_housing_area);
+}
+void set_housing_area_money( string area, string bank, string place ) {
+    if( !_area_money[area] ) {
+        _area_money[area] = ([ ]);
+    }
+    if( bank ) {
+        _area_money[area]["bank"] = bank;
+    }
+    if( place ) {
+        _area_money[area]["place"] = place;
+    }
+    save_file();
+}
+string query_housing_area_bank(string area) {
+    if( _area_money[area] && _area_money[area]["bank"] ) {
+        return _area_money[area]["bank"];
+    }
+    else {
+        return DEFAULT_BANK;
+    }
+}
+string query_housing_area_place(string area) {
+    if( _area_money[area] && _area_money[area]["place"] ) {
+        return _area_money[area]["place"];
+    }
+    else {
+        return DEFAULT_PLACE;
+    }
+}
+void check_owners(int i) {
+  class housing tmp;
+  if(!_tmp_houses)
+    _tmp_houses = keys(houses);
+  if(i == sizeof(_tmp_houses))
+    return;
+  tmp = houses[_tmp_houses[i]];
+  if(!tmp->owner ||
+     lower_case(tmp->owner) == "for sale" ||
+     lower_case(tmp->owner) == "under offer" ||
+     strsrch(lower_case(tmp->owner), "(in arrears)") != -1) {
+    call_out("check_owners", 1, ++i);
+    return;
+  }
+  if(!PLAYER_HANDLER->test_user(lower_case(tmp->owner))) {
+    log_file("HOUSING", "%s %s doesn't exist.\n", ctime(time())[4..15],
+             tmp->owner);
+    set_for_sale(_tmp_houses[i]);
+  } else if(!PLAYER_HANDLER->test_creator(tmp->owner)) {
+    switch(tmp->type) {
+    case SALE:
+      if(PLAYER_HANDLER->test_last(tmp->owner) < time() - OWNER_TIMEOUT) {
+        log_file("HOUSING", "%s %s is idle last login %s ago [%s].\n",
+                 ctime(time())[4..15], tmp->owner,
+                 ctime_elapsed(time() - PLAYER_HANDLER->test_last(tmp->owner)),
+                 _tmp_houses[i]);
+        set_for_sale(_tmp_houses[i]);
+      }
+      break;
+    case RENT:
+      if(PLAYER_HANDLER->test_last(tmp->owner) < time() - RENTER_TIMEOUT) {
+        log_file("HOUSING", "%s %s is idle last login %s [%s].\n",
+                 ctime(time())[4..15], tmp->owner,
+                 ctime_elapsed(time() - PLAYER_HANDLER->test_last(tmp->owner)),
+                 _tmp_houses[i]);
+        set_for_sale(_tmp_houses[i]);
+      }
+      if (_housing_area[tmp->region] &&
+          !NOMIC_HANDLER->is_citizen_of(_housing_area[tmp->region],
+                                        tmp->owner)) {
+        log_file("HOUSING", "Property %s has an owner %s, who is not "
+                 "a citizen of %s [rent %d].\n", _tmp_rentals[i],
+                 tmp->owner, _housing_area[tmp->region], tmp->value);
+        MAIL_HANDLER->do_mail_message(tmp->owner,
+                                      "Housing Rental Office",
+                                      "Reposession", "",
+                                      "Due to not being a citizen of " +
+                                      _housing_area[tmp->region] +
+                                      " when your rent was due, your property "
+                                      "at " +tmp->address + " has been "
+                                      "reposessed and put up for sale.\n\n"
+                                      "The rental office.\n");
+        set_for_sale(_tmp_rentals[i]);
+      }
+      break;
+    }
+  }
+  call_out("check_owners", 1, ++i);
+}
+void check_rent() {
+  int *now, daysleft;
+  now = AM_TIME_HANDLER->query_am_time_array(time());
+  if(now[AM_TIME_MONTH] != last_paid) {
+    log_file("HOUSING", "Processing rent for " +
+             AM_TIME_HANDLER->query_month(now[AM_TIME_MONTH]) + "\n");
+    call_out("charge_rent", 0);
+    last_paid = now[AM_TIME_MONTH];
+    save_file();
+  }
+  daysleft = AM_TIME_HANDLER->query_days_per_month()[now[AM_TIME_MONTH]-1] -
+    now[AM_TIME_DAY_OF_MONTH];
+  call_out("check_rent", (daysleft * AM_SECONDS_PER_DAY) + 1);
+}
+void charge_rent(int i) {
+  class housing tmp;
+  string owner;
+  if(!_tmp_rentals)
+    _tmp_rentals = keys(houses);
+  if(i >= sizeof(_tmp_rentals))
+    return;
+  tmp = houses[_tmp_rentals[i]];
+  while(i < sizeof(_tmp_rentals) &&
+        (tmp->type != RENT || !tmp->owner ||
+         lower_case(tmp->owner) == "for sale" ||
+         lower_case(tmp->owner) == "under offer")) {
+    if(++i < sizeof(_tmp_rentals))
+      tmp = houses[_tmp_rentals[i]];
+  }
+  if(i >= sizeof(_tmp_rentals)) {
+    return;
+  }
+  call_out("charge_rent", 1, (i+1));
+  if(!tmp->bank) {
+    set_bank( _tmp_rentals[i], query_housing_area_bank( tmp->region ) );
+    log_file("HOUSING", "Property %s had no bank, setting it to %s.\n",
+             _tmp_rentals[i], tmp->bank);
+  }
+  if(!tmp->value) {
+    log_file("HOUSING", "Property %s has a rent of zero.\n",
+             _tmp_rentals[i]);
+  } else if(strsrch(tmp->owner, "(In Arrears)") != -1) {
+    owner = replace(tmp->owner, " (In Arrears)", "");
+    if(BANK->query_account(owner, tmp->bank) < tmp->value * 3) {
+      log_file("HOUSING", "%s %s failed to pay %d (%d) for %s [%s] "
+               "property repossessed.\n",
+               ctime(time())[4..15], owner, tmp->value * 3,
+               BANK->query_account(owner, tmp->bank), _tmp_rentals[i],
+               tmp->bank);
+      MAIL_HANDLER->do_mail_message(owner,
+                                    "Housing Rental Office",
+                                    "Reposession", "",
+                                    "Due to insufficient funds in your "
+                                    "account at " + tmp->bank + " bank your "
+                                    "property\n"
+                                    "at " +tmp->address + " has been "
+                                    "reposessed.\n\n"
+                                    "The rental office.\n");
+      BANK->adjust_account(owner, tmp->bank,
+                           -(BANK->query_account(owner, tmp->bank)));
+      set_for_sale(_tmp_rentals[i]);
+    } else {
+      BANK->adjust_account(owner, tmp->bank, - (tmp->value * 3));
+      log_file("HOUSING", "%s %s paid arrears of %d for %s [%s]\n",
+               ctime(time())[4..15], tmp->owner, tmp->value * 3,
+               BANK->query_account(owner, tmp->bank), _tmp_rentals[i],
+               tmp->bank);
+      set_owner(_tmp_rentals[i], owner);
+    }
+  } else if(BANK->query_account(tmp->owner, tmp->bank) < tmp->value) {
+    log_file("HOUSING", "%s %s failed to pay %d (%d) for %s [%s] "
+             "property set in arrears.\n", ctime(time())[4..15], tmp->owner,
+             tmp->value, BANK->query_account(tmp->owner, tmp->bank),
+             _tmp_rentals[i], tmp->bank);
+    MAIL_HANDLER->do_mail_message(tmp->owner,
+                                  "Housing Rental Office",
+                                  "In Arrears", "",
+                                  "Due to insufficient funds in your account "
+                                  "at " + tmp->bank + " bank your property\n"
+                                  "at " +tmp->address + " is now in arrears."
+                                  "\n\n"
+                                  "Next month you will be charged three times "
+                                  "the normal rent (this months rent, a one "
+                                  "month late fee and next months rent).\n\n"
+                                  "Failure to pay will result in repossession "
+                                  "of your property.\n\n"
+                                  "The rental office.\n");
+    set_in_arrears(_tmp_rentals[i]);
+  } else {
+    BANK->adjust_account(tmp->owner, tmp->bank, -tmp->value);
+    log_file("HOUSING", "%s %d rental paid by %s for %s\n",
+             ctime(time())[4..15], tmp->value, tmp->owner, _tmp_rentals[i]);
+  }
+  if(tmp->owner != "For Sale" &&
+     BANK->query_account(tmp->owner, tmp->bank) < (tmp->value * 3)) {
+    MAIL_HANDLER->do_mail_message(tmp->owner,
+                                  "Housing Rental Office",
+                                  "Shortage of funds", "",
+                                  "Your bank account currently has funds for "
+                                  "less than three months rent.\n\n"
+                                  "The rental office.\n");
+  }
+  debug_printf("Doing callout %d.", (i+1));
+}
+mapping query_houses() {
+  return copy(houses);
+}
+mixed stats() {
+  return ({
+    ({ "total houses", sizeof(keys(houses)) }),
+      ({ "paid for" , AM_TIME_HANDLER->query_month(last_paid) }),
+      });
+}
+
+==================================================
+FILE: handlers/image.c
+==================================================
+
+#include <image.h>
+varargs class IMAGE_INFO load_image(string image_file, int rle) {
+  int i, j, n, size_x, size_y;
+  string image_type, l;
+  mixed vals;
+  class IMAGE_INFO ret;
+  image_type = read_file(image_file, 1, 1);
+  image_type = replace_string(image_type, " ", "");
+  image_type = replace_string(image_type, "\n", "");
+  if (image_type != "RAW") {
+    error("Only image type RAW is currently supported.\n");
+  }
+  l = read_file(image_file, 2, 1);
+  if (sscanf(l, "%d%d", size_x, size_y) != 2) {
+    error("Image size(s) not found.\n");
+  }
+  ret = new(class IMAGE_INFO);
+  ret->size = ({ size_x, size_y });
+  vals = read_file(image_file, 3);
+  vals = reg_assoc(vals, ({ "[0-9]+" }), ({ 1 }));
+  n = 0;
+  while (vals[1][n] != 1) n++;
+  ret->image = allocate(size_x);
+  for (i = 0; i < size_x; i++) {
+    ret->image[i] = allocate(size_y);
+    for (j = 0; j < size_y; j++) {
+      if (n >= sizeof(vals[0])) {
+        error("Ran out of values for image at " + i + ", " + j + ".\n");
+      }
+      ret->image[i][j] = to_int(vals[0][n++]);
+      while ((n < sizeof(vals[0])) && (vals[1][n] != 1))
+        n++;
+    }
+  }
+  return ret;
+}
+void print_image(class IMAGE_INFO im) {
+  int i, j;
+  printf("size: %d x %d, %s, ", im->size[0], im->size[1],
+         (im->rle?"rle":"no rle"));
+  if (arrayp(im->nw_coord))
+    printf("@ ({ %d, %d, %d })\n", im->nw_coord[0], im->nw_coord[1],
+           im->nw_coord[2]);
+  else
+    printf("(not placed)\n");
+  printf("Image:\n    ");
+  for (i = 0; i < sizeof(im->image); i++) {
+    for (j = 0; j < sizeof(im->image[i]); j++) {
+      printf("% 4d", im->image[i][j]);
+    }
+    printf("\n    ");
+  }
+  printf("\n");
+}
+
+==================================================
+FILE: handlers/inhume.c
+==================================================
+
+#include <inhume.h>
+void create() {
+   string * prev;
+   string msg;
+   prev = map( previous_object(-1), (: file_name($1) :) );
+   msg = sprintf( "%s: /obj/handlers/inhume loaded: previous_object(-1) = %O",
+     ctime( time() ), prev );
+   tell_creator( "shrike", msg );
+   log_file( LOG, msg );
+}
+
+==================================================
+FILE: handlers/item_tracker.c
+==================================================
+
+#include <library.h>
+#include <quest_handler.h>
+inherit "/std/object";
+#define QUEST_INFO_IDENT  "items"
+#define MAX_COPIES    10
+mapping item_cache;
+mapping player_items;
+void create()
+{
+   ::create();
+   item_cache = ([ ]);
+}
+mixed query_item_state( mixed pl_name, mixed item )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  return player_items[ item ];
+}
+int delete_item( mixed pl_name, mixed item )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  map_delete( player_items, item );
+  return 1;
+}
+int query_item_copies( mixed pl_name, mixed item )
+{
+  int copy_number,n_copies;
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    item = item->query_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  n_copies = 0;
+  for (copy_number = 1; copy_number < MAX_COPIES; copy_number++) {
+    if (player_items[ item+"/"+copy_number ]) n_copies++;
+  }
+  return n_copies;
+}
+int set_item_state( mixed pl_name, mixed item, mixed state )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  player_items[ item ] = state;
+  return 1;
+}
+mixed query_all_item_states( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  return player_items;
+}
+int save_all_item_states( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    return 0;
+  }
+  LIBRARY->set_player_quest_info( pl_name, QUEST_INFO_IDENT, player_items );
+  return 1;
+}
+int save_all_item_states_delete_cache( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    return 0;
+  }
+  LIBRARY->set_player_quest_info( pl_name, QUEST_INFO_IDENT, player_items );
+  map_delete( item_cache, pl_name );
+  return 1;
+}
+
+==================================================
+FILE: handlers/key_handler.c
+==================================================
+
+#define RESTORE_PATH "/save/keys/"
+inherit "/std/object";
+mapping keys;
+mapping key_names;
+nosave string _current_group;
+private void init_data( string group ) {
+   keys = ([ ]);
+   key_names = ([ ]);
+}
+private int get_data_file( string group ) {
+   if (_current_group == group) {
+      return 1;
+   }
+   _current_group = group;
+   if ( file_size( RESTORE_PATH + group +".o" ) > 0 ) {
+      unguarded((: restore_object, RESTORE_PATH + group :));
+   } else {
+      init_data( group );
+      return 0;
+   }
+   return 1;
+}
+private void save_data_file( ) {
+   unguarded((: save_object, RESTORE_PATH + _current_group :));
+}
+mapping query_all_keys( string group ) {
+   get_data_file( group );
+   return keys;
+}
+private void set_keys( string group, mapping list ) {
+   get_data_file( group );
+   keys = list;
+   save_data_file( );
+}
+string *query_all_key_permissions( string group, string key ) {
+   get_data_file( group );
+   if ( !keys[ key ] ) {
+      return ({ });
+   }
+   return keys[ key ];
+}
+void set_key_permissions( string group, string key, string *types ) {
+   get_data_file( group );
+   if (sizeof(types)) {
+      keys[ key ] = types;
+   } else {
+      map_delete(keys, key);
+   }
+   save_data_file( );
+}
+int query_key_permission( string group, string key, string type ) {
+   get_data_file( group );
+   if ( !keys[ key ] ) {
+      return 0;
+   }
+   if ( member_array( type, keys[ key ] ) == -1 ) {
+      return 0;
+   }
+   return 1;
+}
+int add_key_permission( string group, string key, string type ) {
+   get_data_file( group );
+   if ( !keys[ key ] ) {
+       keys[ key ] = ({ });
+   }
+   if ( member_array( type, keys[ key ] ) != -1 ) {
+      return 0;
+   }
+   keys[ key ] += ({ type });
+   save_data_file( );
+   return 1;
+}
+int remove_key_permission( string group, string key, string type ) {
+   int i;
+   get_data_file( group );
+   if ( !keys[ key ] ) {
+      return 0;
+   }
+   if ( ( i = member_array( type, keys[ key ] ) ) == -1 ) {
+      return 0;
+   }
+   keys[ key ] = delete( keys[ key ], i, 1 );
+   if (!sizeof(keys[key])) {
+      map_delete(keys, key);
+   }
+   save_data_file( );
+   return 1;
+}
+mapping query_all_key_names( string group ) {
+   get_data_file( group );
+   return key_names;
+}
+private void set_key_names( string group, mapping list ) {
+   get_data_file( group );
+   key_names = list;
+   save_data_file( );
+}
+string query_key_name( string group, string key ) {
+   get_data_file( group );
+   return key_names[ key ];
+}
+void set_key_name( string group, string key, string name ) {
+   get_data_file( group );
+   key_names[ key ] = name;
+   save_data_file( );
+}
+void delete_key_name( string group, string key ) {
+   get_data_file( group );
+   if ( !key_names[ key ] ) {
+      return;
+   }
+   map_delete( key_names, key );
+   save_data_file( );
+}
+
+==================================================
+FILE: handlers/languages.c
+==================================================
+
+#include <language.h>
+#define L_NEW 512
+#define REPLACEMENTS (["no1":"noone",\
+                       "ne1":"anyone",\
+                       "any1":"anyone",\
+                       "u":"you",\
+                       "r":"are", \
+                       "NE1":"anyone",\
+                       "U":"you",\
+                       "R":"are", \
+                       "ur":"you are",\
+                       "teh":"the", \
+                       "some1":"someone", \
+                       "c":"see", \
+                       "cing":"seeing",\
+                       "sum1":"someone",\
+                       "urs":"yours",\
+                       "thier":"their", \
+                       "pls":"please",\
+                       "PLZ":"please",\
+                       "plz":"please",\
+                       "b4":"before", \
+                       "tnx":"thanks"])
+mapping languages;
+string search;
+void create() {
+  languages = ([
+  "rabbit" : ({ L_SPOKEN|L_WRITTEN|L_DISTANCE|L_ALWAYS_SPEAK|L_NEW,
+                "/std/languages/rabbit", 10 }),
+  "general" : ({ L_SPOKEN|L_WRITTEN|L_DISTANCE|L_ALWAYS_SPEAK,
+                "/std/languages/general", 10 }),
+  "grunt" : ({ L_SPOKEN | L_ALWAYS_SPEAK, "/std/languages/grunt", 100 }),
+  "wommon" : ({ L_WRITTEN|L_SPOKEN|L_DISTANCE|L_MAGIC,
+                "/std/languages/wommon", 10 }),
+              ]);
+  search = "(" + implode(keys(REPLACEMENTS), "|") + ")";
+}
+int query_language_spoken(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][0]&L_SPOKEN;
+}
+int query_language_written(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][0]&L_WRITTEN;
+}
+int query_language_distance(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][0]&L_DISTANCE;
+}
+int query_language_new(string str) {
+  if (!languages[str])
+     return 0;
+  return languages[str][0]&L_NEW;
+}
+int query_language_magic(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][0]&L_MAGIC;
+}
+int query_language_size(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][2];
+}
+int query_language_always_spoken(string str) {
+  if (!languages[str])
+    return 0;
+  return languages[str][0]&L_ALWAYS_SPEAK;
+}
+mixed squidge_text(string lang, mixed str, int size) {
+  if (!languages[lang])
+    return 0;
+  if (!(languages[lang][0]&L_MAGIC))
+    return str[0..(size/languages[lang][2])];
+  return (mixed)languages[lang][1]->squidge_text(str, size);
+}
+int query_flags(string name) {
+  if (!languages[name])
+    return 0;
+  return languages[name][0];
+}
+string query_garble_object(string name) {
+  if (!languages[name])
+    return 0;
+  return languages[name][1];
+}
+string *query_languages() {
+  return m_indices(languages);
+}
+int test_language(string str) {
+  return pointerp(languages[str]);
+}
+string query_language_spoken_skill(string lang) {
+  return LANGUAGE_SKILL_START + replace(lang, " ", "_") + "." + SPOKEN_SKILL;
+}
+string query_language_written_skill(string lang) {
+  return LANGUAGE_SKILL_START + replace(lang, " ", "_") + "." + WRITTEN_SKILL;
+}
+mixed garble_say(string lang, string start, string mess,
+                 object player, object from, string type) {
+   string garble_ob;
+   if (query_language_new(lang)) {
+      garble_ob = query_garble_object(lang);
+      if (living (from) && garble_ob) {
+         return garble_ob->garble_say(start, mess, player, from, type,
+                                      query_language_spoken_skill(lang),
+                                      type == SHOUT_TYPE);
+      }
+   } else {
+      if (player->query_skill(query_language_spoken_skill(lang)) < 99) {
+         garble_ob = query_garble_object(lang);
+         if(garble_ob)
+           return garble_ob->garble_say(start, mess, player, type);
+         else
+           debug_printf("Error, %s has no garble object.", lang);
+      }
+   }
+   return ({ start, mess });
+}
+string garble_text(string lang, mixed text, object thing, object player ) {
+   string garble_ob;
+   if (functionp(text)) {
+      text = evaluate(text);
+   }
+   if (query_language_new(lang)) {
+      garble_ob = query_garble_object(lang);
+      if (garble_ob) {
+         return garble_ob->garble_text(text, thing, player,
+                                       query_language_written_skill(lang));
+      }
+   } else {
+      if (player->query_skill(query_language_written_skill(lang)) < 99) {
+         garble_ob = query_garble_object(lang);
+         if( !garble_ob )
+            return "You do not recognise the language.\n";
+         else
+            return garble_ob->garble_text(text, thing, player);
+      }
+      if (query_language_magic(lang)) {
+         garble_ob = query_garble_object(lang);
+         return garble_ob->magical_text(text, thing, player);
+      }
+      return text;
+   }
+   if (query_language_magic(lang))
+      return 0;
+   return "Text written in " + lang + " could not have been written.  "
+          "There are "
+          "broken bits of letters scattered over the page, looks like "
+          "someone had a bad game of scrabble.\n";
+}
+string do_replacements(string mess) {
+  string *bits, name, value;
+  mixed *tmp;
+  int index, i, add_space;
+  mess = replace(mess, ({"ne1 no ", "anyone know "}));
+  if(!regexp(mess, search))
+    return mess;
+  if(mess[<1] == ' ')
+    add_space = 1;
+  bits = explode(mess, " ");
+  foreach(name, value in REPLACEMENTS) {
+    tmp = regexp(bits, "(^|[^A-Za-z0-9\\\\./_&-]+)"+name+"($|[^A-Za-z0-9\\./&_-]+)", 1);
+    if(sizeof(tmp)) {
+      for(i=0; i<sizeof(tmp); i+=2) {
+        index = tmp[i+1]-1;
+        bits[index] = replace(bits[index], name, value);
+      }
+    }
+  }
+  return implode(bits, " ") + (add_space ? " " : "");
+}
+string fix_shorthand(string mess) {
+  string pre, mid, post, res;
+  if (!stringp(mess)) {
+     return "";
+  }
+  res = "";
+  while(sscanf(mess, "%s'%s'%s", pre, mid, post) == 3) {
+    res += do_replacements(pre) + "'" + mid;
+    mess = "'" + post;
+  }
+  res += do_replacements(mess);
+  return res;
+}
+
+==================================================
+FILE: handlers/library.c
+==================================================
+
+#include <quest_handler.h>
+#include <player_handler.h>
+#define XP 10000
+#define XP_QUESTS ({"womble's brooch", "balance quest", "easy post quest", \
+                    "hard post quest", "apprentice baker" })
+#define RESTORE_PATH  "save/library/"
+#define MAX_CACHE_SIZE 100
+#define CACHE_TIMEOUT 900
+inherit "/std/object";
+int *times;
+string player_name, *quests, text_file;
+mapping player_quest_info;
+nosave mapping qps;
+nosave int requests, cache_hits;
+class qinfo {
+  int cached;
+  string player_name;
+  string *quests;
+  int *times;
+  string text_file;
+  mapping player_quest_info;
+}
+nosave mapping player_cache = ([ ]);
+int new_top_quest();
+int query_quest_time(string, string);
+private void init_data(string pl_name) {
+  player_name = pl_name;
+  quests = ({ });
+  times = ({ });
+  text_file = "";
+  player_quest_info = ([ ]);
+}
+void clean_cache() {
+  string name;
+  foreach(name in keys(player_cache))
+    if(player_cache[name]->cached < time() - CACHE_TIMEOUT)
+      map_delete(player_cache, name);
+}
+private int get_data_file(string name) {
+  int success;
+  class qinfo tmp;
+  requests++;
+  if(player_cache[name]) {
+    player_cache[name]->cached = time();
+    cache_hits++;
+    return 1;
+  }
+  success = unguarded((: restore_object, RESTORE_PATH+name[0..0]+"/"+name :));
+  if(!success)
+    init_data(name);
+  tmp = new(class qinfo,
+            cached : time(),
+            player_name : player_name,
+            quests : quests,
+            times : times,
+            text_file : text_file,
+            player_quest_info : player_quest_info);
+  player_cache[name] = tmp;
+  if((sizeof(player_cache) > MAX_CACHE_SIZE) &&
+     (find_call_out("clean_cache") == -1))
+    call_out("clean_cache", 60);
+  return success;
+}
+private void save_data_file(string name) {
+  if(!player_cache[name])
+    return;
+  player_name = player_cache[name]->player_name;
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  text_file = player_cache[name]->text_file;
+  player_quest_info = player_cache[name]->player_quest_info;
+  unguarded((: save_object, RESTORE_PATH+name[0..0]+"/"+name :));
+  return ;
+}
+string query_title( string name ) {
+  string quest;
+  get_data_file( name );
+  if(!player_cache[name]->quests || !sizeof(player_cache[name]->quests)) {
+    return 0;
+  }
+  quest = player_cache[name]->
+    quests[random(sizeof(player_cache[name]->quests))];
+  return (string)QUEST_HANDLER->query_quest_title(quest);
+}
+string *query_quests(string name) {
+  get_data_file(name);
+  if(!player_cache[name]->quests ) {
+    return ({ });
+  }
+  return player_cache[name]->quests + ({ });
+}
+string get_most_recent_quest(string name) {
+  int loop, highest;
+  string quest_name;
+  string *quests;
+  int *times;
+  if(!get_data_file(name))
+    return "Sorry";
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  if(sizeof(quests) == 0)
+    return "None";
+  for(highest = loop = 0; loop < sizeof(quests); loop++) {
+    if(times[loop] > highest) {
+      highest = times[loop];
+      quest_name = quests[loop];
+    }
+  }
+  return quest_name;
+}
+int get_most_recent_time(string name) {
+  int loop, hightime;
+  string *quests;
+  int *times;
+  if(!get_data_file(name)) {
+    return -1;
+  }
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  if(sizeof(quests) == 0) {
+    return 0;
+  }
+  for(hightime = loop = 0; loop < sizeof(quests); loop++) {
+    if(times[loop] > hightime) {
+      hightime = times[loop];
+    }
+  }
+  return hightime;
+}
+int set_quest(string pl_name, string qu_name, int no_xp) {
+  int qu_level;
+  object ob;
+  object card;
+  int i;
+  if(!find_player(pl_name) || find_player(pl_name)->query_property("guest"))
+    return 0;
+  i = QUEST_HANDLER->query_quest_status(qu_name);
+  ob = find_player (pl_name);
+  if (i == 0 && ob->query_playtester()) {
+    tell_object (ob, "%^BOLD%^If this quest weren't inactive, you'd be "
+      "showered in riches right about now!\n%^RESET%^");
+  }
+  if(i < 1) {
+   user_event( "inform", pl_name +" completes "+ qu_name + " (inactive)", "quest");
+    return 0;
+  }
+  if (ob && ob->advancement_restriction()) {
+    log_file ("/log/secure/playtesters/protection_log", "%s: %s "
+      "completed quest %s while advancement restricted active.\n", ctime(time()),
+      pl_name, qu_name);
+    return 0;
+  }
+  if(qps && qps[pl_name])
+    map_delete(qps, pl_name);
+  get_data_file(pl_name);
+  if ( member_array( qu_name, player_cache[pl_name]->quests ) != -1 )
+    return 0;
+  player_cache[pl_name]->quests += ({ qu_name });
+  player_cache[pl_name]->times += ({ time() });
+  qu_level = (int)QUEST_HANDLER->query_quest_level(qu_name);
+  if ( qu_level < 1 )
+    return 0;
+  QUEST_HANDLER->quest_completed( pl_name, qu_name, previous_object() );
+  save_data_file( pl_name );
+  if ( !ob ) {
+    return 0;
+  }
+  if(member_array(qu_name, XP_QUESTS) != -1) {
+    ob->adjust_xp(XP*qu_level, 0);
+    call_out("save_them", 1, ob);
+  }
+  ob->set_title( "quest",
+                 (string)QUEST_HANDLER->query_quest_title( qu_name ) );
+  card = clone_object ("/d/underworld/creator_cards/creator_card");
+  card->move (ob, "$N appear$s in your inventory with a flash.");
+  return 1;
+}
+int unset_quest(string pl_name, string qu_name) {
+  int qu_level;
+  get_data_file(pl_name);
+  if ( member_array( qu_name, player_cache[pl_name]->quests ) == -1 )
+    return 0;
+  qu_level = (int)QUEST_HANDLER->query_quest_level(qu_name);
+  if ( qu_level < 1 )
+    return 0;
+  player_cache[pl_name]->quests -= ({ qu_name });
+  player_cache[pl_name]->times -= ({ time() });
+  save_data_file( pl_name );
+  return 1;
+}
+void save_them( object thing ) {
+  if ( thing )
+    thing->save_me();
+}
+void set_player_quest_info( string pl_name, string qu_info, mixed *details ) {
+  get_data_file( pl_name );
+  if(!player_cache[pl_name]->player_quest_info )
+    player_cache[pl_name]->player_quest_info = ([ ]);
+  player_cache[pl_name]->player_quest_info[qu_info] = details;
+  save_data_file(pl_name);
+}
+mapping query_all_player_quest_info( string pl_name ) {
+  if(!get_data_file( pl_name ))
+    return 0;
+  if ( !player_cache[pl_name]->player_quest_info )
+    return 0;
+  return copy(player_cache[pl_name]->player_quest_info);
+}
+mixed *query_player_quest_info( string pl_name, string qu_info ) {
+  if(!get_data_file( pl_name))
+    return 0;
+  if(!player_cache[pl_name]->player_quest_info)
+    return 0;
+  player_cache[pl_name]->player_quest_info =
+    player_cache[pl_name]->player_quest_info + ([ ]);
+  return player_cache[pl_name]->player_quest_info[qu_info];
+}
+int query_quest_time(string name, string qu_name) {
+  int time;
+  if(!get_data_file(name)) {
+    return 0;
+  }
+  time = member_array(qu_name, player_cache[name]->quests);
+  if(time < 0) {
+    return 0;
+  }
+  return player_cache[name]->times[time];
+}
+string query_story(string name) {
+  string story, *quests;
+  int loop;
+  if(!get_data_file(name)) {
+    return "You can find nothing in the library on " + name + "\n";
+  }
+  story = "";
+  if(player_cache[name]->text_file != "") {
+    return unguarded((: read_file, text_file :));
+  }
+  quests = player_cache[name]->quests;
+  if(!sizeof(quests)) {
+    return "That person has lead a most unadventureous life";
+  }
+  for(loop = 0; loop < sizeof(quests); loop++) {
+    story += capitalize(QUEST_HANDLER->query_quest_story(quests[loop])) +".\n";
+  }
+  return story;
+}
+int query_quest_done(string player, string quest) {
+  if(!get_data_file(player))
+    return 0;
+  return (member_array(quest, player_cache[player]->quests) != -1);
+}
+int flush_cache (string name) {
+  qps[name] = 0;
+}
+int query_quest_points( string name ) {
+   int points;
+   string word;
+   string *quests;
+   if(!qps)
+     qps = ([ ]);
+   if(qps[name])
+     return qps[name]-1;
+   get_data_file( name );
+   quests = player_cache[name]->quests;
+   if ( !quests || !sizeof( quests ) )
+      points = 0;
+   else {
+     foreach( word in quests ) {
+       points += (int)QUEST_HANDLER->query_quest_level( word );
+     }
+   }
+   qps[name] = points+1;
+   return points;
+}
+int restart(mixed name) {
+  class qinfo tmp;
+  if(objectp(name))
+    name = name->query_name();
+  if(!PLAYER_HANDLER->test_user(name))
+    return 0;
+  init_data(name);
+  tmp = new(class qinfo,
+            cached : time(),
+            player_name : player_name,
+            quests : quests,
+            times : times,
+            text_file : text_file,
+            player_quest_info : player_quest_info);
+  player_cache[name] = tmp;
+  save_data_file(name);
+  return 1;
+}
+mixed *stats() {
+  int percentage;
+  if(requests)
+    percentage = (cache_hits * 100) / requests;
+  return ({
+    ({ "cache size", sizeof(player_cache) }),
+      ({ "requests", requests }),
+      ({ "cache hits", cache_hits }),
+      ({ "cache misses", requests - cache_hits }),
+      ({ "percentage hits", percentage }),
+      });
+}
+
+==================================================
+FILE: handlers/livings.c
+==================================================
+
+private nosave mapping _lnames = ([]);
+private nosave mapping _players = ([]);
+#ifdef 0
+void create() {
+  object player, *players;
+  players = filter(efun::users(), (: $1 && inherits("/std/container", $1) :));
+  foreach(player in players) {
+    _players[player->query_name()] = player;
+  }
+}
+#endif
+private void check_lnames(string* names) {
+   string key;
+   foreach (key in names) {
+      mixed bing = _lnames[key];
+      if (arrayp(bing)) {
+         bing -= ({ 0 });
+         if (sizeof(bing)) {
+            _lnames[key] = bing;
+         }
+         else {
+            map_delete(_lnames, key);
+         }
+      }
+      else {
+         map_delete(_lnames, key);
+      }
+   }
+}
+private void check_players(string* names) {
+   string key;
+   foreach (key in names) {
+      mixed bing = _players[key];
+      if (arrayp(bing)) {
+         bing -= ({ 0 });
+         if (sizeof(bing)) {
+            _players[key] = bing;
+         }
+         else {
+            map_delete(_players, key);
+         }
+      }
+      else {
+         map_delete(_players, key);
+      }
+   }
+}
+void remove_garbage(){
+  string* names;
+  int i;
+  names = keys(_lnames);
+  for (i = 0; i < sizeof(names); i += 50) {
+     call_out((: check_lnames :), i / 25, names[i..i+50]);
+  }
+  names = keys(_players);
+  for (i = 0; i < sizeof(names); i += 50) {
+     call_out((: check_players :), i / 25, names[i..i+50]);
+  }
+}
+void enable_commands(object ob){
+}
+void set_living_name(string name, object ob){
+  if (!stringp(name) || !objectp(ob)) {
+    return ;
+  }
+  if(!_lnames[name]) {
+    _lnames[name] = ({ob});
+  } else {
+    _lnames[name] += ({ob});
+  }
+  if ( ob == master() ) {
+     log_file( "LIVINGS", "%O (%s) became a living. %O\n", ob,
+         name, call_stack(0) );
+  }
+}
+object *named_livings(){
+  object *ret;
+  ret = keys(_lnames);
+  ret = map(ret, (:$1?(_lnames)[$1]:0:));
+  reset_eval_cost();
+  ret = filter(ret, (:$1:));
+  reset_eval_cost();
+  ret = implode(ret, (:$1 + $2:));
+  reset_eval_cost();
+  ret = filter(ret, (:$1:));
+  return ret;
+}
+object find_living(string it) {
+  if(_lnames[it]) {
+    _lnames[it] = filter(_lnames[it], (: $1 :));
+    if(sizeof(_lnames[it]))
+      return _lnames[it][<1];
+  }
+  return 0;
+}
+object find_player(string it) {
+  object *people;
+  int t = real_time();
+  object *tmp;
+  if(_players[it]) {
+      return _players[it];
+    return 0;
+  }
+  people = filter(efun::users(), (: $1 && $1->query_name() == $(it) &&
+                                  inherits("/std/container", $1):));
+  if(sizeof(people)) {
+    _players[it] = people[0];
+    if(real_time() - t > 1)
+      log_file("GARBAGE", "find_player took %d seconds to find %s (1)\n",
+               real_time() - t, it);
+      return _players[it];
+  }
+  if(!_lnames[it]) {
+    if(real_time() - t > 1)
+      log_file("GARBAGE", "find_player took %d seconds to find %s (2)\n",
+               real_time() - t, it);
+    return 0;
+  }
+  tmp = filter(_lnames[it], (: $1 && userp($1) :));
+  if(real_time() - t > 1)
+    log_file("GARBAGE", "find_player took %d seconds to find %s (3)\n",
+             real_time() - t, it);
+  if(sizeof(tmp))
+    return tmp[0];
+  return 0;
+}
+mapping query_dynamic_auto_load() {
+   mapping tmp;
+   tmp = ([ "lnames" : _lnames,
+            "players" : _players,
+          ]);
+   return tmp;
+}
+void init_dynamic_arg(mapping maps) {
+   object ob;
+   string name;
+   if (maps["lnames"])
+      _lnames = maps["lnames"];
+   if (maps["players"])
+      _players = maps["players"];
+   foreach(ob in efun::users()){
+      if ( !ob ) {
+        continue;
+      }
+      name = ob->query_name();
+      _players[name] = ob;
+      if(!_lnames[name]){
+        _lnames[name] = ({ob});
+      } else {
+        _lnames[name] |= ({ob});
+      }
+   }
+}
+mixed *stats() {
+  return ({ ({ "lnames", sizeof(keys(_lnames)) }),
+              ({ "players", sizeof(keys(_players)) })});
+}

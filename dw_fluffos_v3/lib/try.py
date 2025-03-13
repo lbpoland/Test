@@ -5,7 +5,7 @@ def estimate_tokens(content):
     """Estimate token count with a conservative heuristic."""
     words = len(content.split())
     chars = len(content.replace('\n', ''))
-    token_estimate = max(int(words / 0.75), int(chars / 4)) * 1.2  # Increased buffer to 20%
+    token_estimate = max(int(words / 0.75), int(chars / 4)) * 1.2
     return int(token_estimate)
 
 def count_lines(content):
@@ -16,8 +16,8 @@ def count_chars(content):
     """Count characters excluding newlines."""
     return len(content.replace('\n', ''))
 
-def merge_files(source_dir, extensions, base_output_name, output_dir, token_limit=100000, separator="=" * 50):
-    """Merge files into output_file(s) in output_dir, splitting when approaching token_limit."""
+def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=60000, token_limit=80000, separator="=" * 50):
+    """Merge files into output_file(s) in output_dir, splitting when approaching char_limit."""
     dir_path = Path(source_dir)
     if not dir_path.exists():
         print(f"Directory {source_dir} does not exist!")
@@ -53,7 +53,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, token_limi
                 
                 print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
                 
-                if current_token_count + tokens_in_file > token_limit:
+                if current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit:
                     if outfile:
                         outfile.seek(0)
                         outfile.write(f"# Total Tokens: {current_token_count}\n"
@@ -67,7 +67,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, token_limi
                     current_char_count = 0
                     files_in_current = []
                 
-                if current_token_count == 0:
+                if current_char_count == 0:
                     output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
                     if outfile:
                         outfile.close()
@@ -115,7 +115,7 @@ def main():
     print("====================================================")
     print("Grok Limits:")
     print("- Maximum Context Window: 128,000 tokens")
-    print("- Safe Cutoff Used: 100,000 tokens per file (reduced for safety)")
+    print("- Safe Cutoff Used: 60,000 chars or 80,000 tokens per file")
     print("- No strict line limit, but monitored")
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
@@ -124,8 +124,9 @@ def main():
     for dir_name, output_file in directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, extensions, output_file, output_dir, token_limit=100000)
+        merge_files(folder_path, extensions, output_file, output_dir, char_limit=60000, token_limit=80000)
     
     print("\nExtraction and merging complete! All files are in", output_dir)
 
-if __name__ == "__main__":    main()
+if __name__ == "__main__":
+    main()

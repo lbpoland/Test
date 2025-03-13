@@ -1,0 +1,1687 @@
+# Total Tokens: 16620
+# Total Files Merged: 6
+# Total Characters: 55416
+
+unty.c
+==================================================
+
+#include <money.h>
+#define SAVE_FILE "/save/bounty"
+#define EXPIRY 60 * 60 * 8 * 60
+#define BASE 40000
+#define TAXES 60
+#define LOGIN "/secure/login"
+class bounty {
+   string short;
+   string *victims;
+   int value;
+   int active;
+   int time;
+}
+mapping bounty, collect;
+void create() {
+   bounty  = ([ ]);
+   collect = ([ ]);
+   seteuid( "Room" );
+   if ( file_size( SAVE_FILE +".o" ) > 0 )
+      unguarded( (: restore_object, SAVE_FILE :) );
+   call_out( "tidy_bounties", 120 );
+}
+void save_file() { unguarded( (: save_object, SAVE_FILE :) ); }
+void delete_bounty( string word ) {
+   map_delete( bounty, word );
+   save_file();
+}
+void tidy_bounties() {
+   int now = time();
+   string word;
+   object thing;
+   class bounty record;
+   foreach ( word, record in bounty ) {
+      if ( LOGIN->test_creator( word ) ) {
+         log_file( "BOUNTY", "%s: bounty removed from %s (creator)\n",
+               ctime( now ), word );
+         map_delete( bounty, word );
+         continue;
+      }
+      if (record && record->time + EXPIRY < now ) {
+         if (record->active )
+            log_file( "BOUNTY", "%s: bounty on %s of %d expired\n",
+                  ctime( now ), word, record->value );
+         else
+            log_file( "BOUNTY", "%s: inactive bounty on %s cancelled\n",
+                  ctime( now ), word );
+         thing = find_player( word );
+         if ( objectp( thing ) )
+            tell_object( thing, "You feel that there is no longer "
+                  "a price on your head.\n" );
+         map_delete( bounty, word );
+         continue;
+      }
+   }
+   foreach ( word, record in collect )
+      if ( !LOGIN->test_user( word ) ) {
+         map_delete( collect, word );
+         continue;
+      }
+      if (record && record->time + EXPIRY < now ) {
+         log_file( "BOUNTY", "%s: bounty of %d owed to %s expired\n",
+               ctime( now ), record->value, word );
+         thing = find_player( word );
+         if ( objectp( thing ) )
+            tell_object( thing, "You have the funniest feeling that "
+                  "you just let a lot of money get away.\n" );
+         map_delete( collect, word );
+      }
+   save_file();
+}
+void clear_bounties() {
+   if ( !master()->high_programmer( geteuid( this_player( 1 ) ) ) )
+      return 0;
+   bounty  = ([ ]);
+   collect = ([ ]);
+   save_file();
+}
+void dest_me() { destruct( this_object() ); }
+void register_kill( object victim, object *attackers ) {
+   int now, reward;
+   string killed, killer, *killers;
+   object thing;
+   class bounty record;
+   if ( member_array( victim, attackers ) != -1 )
+      return;
+   if ( victim->query_creator() || victim->query_property( "no bounties" ) )
+      return;
+   if ( !environment( victim ) )
+      return;
+   if ( environment( victim )->query_property( "bar brawling" ) )
+      return;
+   now = time();
+   killed = (string)victim->query_short();
+   if ( undefinedp( bounty[ lower_case( killed ) ] ) ) {
+      return;
+      foreach ( thing in attackers ) {
+         if ( !objectp( thing ) )
+            continue;
+         if ( thing->query_creator() )
+            continue;
+         if ( !userp( thing ) && !thing->query_property( "unique" ) )
+            continue;
+         if ( ( (object)thing->query_property( "inhumer" ) == victim ) &&
+               ( (object)victim->query_property( "inhumee" ) == thing ) )
+            continue;
+         killer = (string)thing->query_short();
+         if ( undefinedp( bounty[ lower_case( killer ) ] ) ) {
+            record = new( class bounty );
+            bounty[ lower_case( killer ) ] = record;
+            record->short = killer;
+            record->victims = ({ killed });
+         } else {
+            record = (class bounty)bounty[ lower_case( killer ) ];
+            if ( strsrch( lower_case( killed ),
+                  lower_case( implode( record->victims, ", " ) ) ) == -1 )
+               record->victims += ({ killed });
+         }
+         record->time = now;
+         if ( record->active ) {
+            record->value = sizeof( record->victims ) * BASE;
+            if ( sizeof( record->victims ) > 1 )
+               call_out( "inform_bounty", 30, thing );
+         }
+      }
+      save_file();
+      return;
+   }
+   if ( !( ( (class bounty)bounty[ lower_case( killed ) ] )->active ) )
+      return;
+   killers = ({ });
+   foreach ( thing in attackers ) {
+      if ( !objectp( thing ) )
+         continue;
+      if ( thing->query_creator() )
+         continue;
+      if ( !userp( thing ) && !thing->query_property( "unique" ) &&
+            !thing->query_property( "bounty hunter" ) )
+         continue;
+      killer = (string)thing->query_short();
+      killers += ({ killer });
+      call_out( "well_done", 30, thing, (string)victim->query_gender() );
+   }
+   if ( sizeof( killers ) ) {
+      reward = ( (class bounty)bounty[ lower_case( killed ) ] )->value /
+            sizeof( killers );
+      foreach ( killer in killers ) {
+         if ( !undefinedp( bounty[ lower_case( killer ) ] ) )
+            continue;
+         if ( undefinedp( collect[ lower_case( killer ) ] ) ) {
+            record = new( class bounty );
+            collect[ lower_case( killer ) ] = record;
+            record->short = killer;
+            record->victims = ({ killed });
+         } else {
+            record = (class bounty)collect[ lower_case( killer ) ];
+            record->victims += ({ killed });
+         }
+         record->time = now;
+         record->value += reward;
+      }
+      log_file( "BOUNTY", "%s: bounty on %s fulfilled by %s\n",
+            ctime( now ), lower_case( killed ),
+            query_multiple_short( map_array( killers,
+            (: lower_case( $1 ) :) ) ) );
+      map_delete( bounty, lower_case( killed ) );
+   }
+   save_file();
+}
+void inform_bounty( object thing ) {
+   if ( !thing )
+      return;
+   if ( !userp( thing ) )
+      return;
+   tell_object( thing, "You feel the price on your head rise.\n" );
+}
+void well_done( object thing, int gender ) {
+   if ( !thing )
+      return;
+   if ( !userp( thing ) )
+      return;
+   tell_object( thing, "You feel good about killing a wanted "+
+         ({ "creature", "man", "woman" })[gender] +".\n" );
+}
+string report_murder( string killer ) {
+   string place;
+   class bounty record;
+   if ( undefinedp( bounty[ lower_case( killer ) ] ) )
+      return "According to the records, \""+ killer +
+            "\" has never killed anyone.";
+   killer = lower_case( killer );
+   record = (class bounty)bounty[ killer ];
+   if ( record->active ) {
+      place = (string)environment( this_player() )->query_property( "place" );
+      if ( !place || ( place == "" ) )
+         place = "default";
+      return "There is already a bounty of "+
+            (string)MONEY_HAND->money_value_string( record->value, place ) +
+            " offered for the death of "+ record->short +".";
+   }
+   record->active = 1;
+   record->value = sizeof( record->victims ) * BASE;
+   call_out( "issue_warrant", 30, killer );
+   save_file();
+   if ( strsrch( lower_case( (string)this_player()->query_short() ),
+         lower_case( implode( record->victims, ", " ) ) ) == -1 )
+      return "Ah, a concerned citizen reporting a murder.  I'll issue "
+            "a bounty notice for "+ record->short +" right away.";
+   return "I'm sorry to hear that "+ record->short +" caused you "
+         "harm.  I'll issue a bounty notice right away.";
+}
+void issue_warrant( string killer ) {
+   object thing;
+   thing = find_player( killer );
+   if ( !thing )
+      return;
+   if ( !userp( thing ) )
+      return;
+   thing->remove_hide_invis( "hide" );
+   tell_room( environment( thing ), "There is a small unspectacular flash "
+         "of light and a small orange imp appears.  It promptly informs "+
+         (string)thing->the_short() +" that a bounty has been placed on "+
+         (string)thing->query_possessive() +" head.  The imp bows deeply, "
+         " smiles evilly, and vanishes in an equally unspectacular flash "
+         "of light.\n", thing );
+   tell_object( thing, "There is a small unspectacular flash of light and "
+         "a small orange imp appears.  It promptly informs you that a bounty "
+         "has been placed on your head.  The imp bows deeply, smiles evilly, "
+         "and vanishes in an equally unspectacular flash of light.\n" );
+}
+string collect_bounty() {
+   int money;
+   string collector, place;
+   class bounty record;
+   collector = lower_case( (string)this_player()->query_short() );
+   if ( undefinedp( collect[ collector ] ) )
+      return "According to the records, you've done nothing "
+            "to deserve a bounty.";
+   record = (class bounty)collect[ collector ];
+   money = ( record->value * ( 100 - TAXES ) ) / 100;
+   place = (string)environment( this_player() )->query_property( "place" );
+   if ( !place || ( place == "" ) )
+      place = "default";
+   this_player()->adjust_money( (mixed *)MONEY_HAND->create_money_array( money,
+         place ) );
+   this_player()->set_title( "bounty", "Bounty Hunter" );
+   map_delete( collect, collector );
+   save_file();
+   return "Ah yes, let's see.  Monies owed to you total "+
+         (string)MONEY_HAND->money_value_string( record->value, place ) +
+         ", minus death tax, inheritance tax, income tax, pension fund "
+         "contribution, union dues, VAT, Save the Womble donations and "
+         "administrative charges, which leaves you with the grand sum of "+
+         (string)MONEY_HAND->money_value_string( money, place ) +
+         ".  Nice doing business with you.";
+}
+int query_bounty( string word ) { return !undefinedp( bounty[ word ] ); }
+int query_bounty_value( string word ) {
+   if ( undefinedp( bounty[ word ] ) )
+      return 0;
+   return ( (class bounty)bounty[ word ] )->value;
+}
+string query_all_bounties() {
+   int cre;
+   string list, word, place;
+   class bounty record;
+   cre = (int)this_player( 1 )->query_creator();
+   if ( !sizeof( bounty ) )
+      return "There are no bounties currently offered.\n";
+   place = (string)environment( this_player() )->query_property( "place" );
+   if ( !place || ( place == "" ) )
+      place = "default";
+   list = "";
+   foreach ( word, record in bounty )
+      if ( record->active ) {
+         list += sprintf( " -   %-15s for %s\n", record->short,
+               (string)MONEY_HAND->money_value_string( record->value,
+               place ) );
+         if ( cre )
+            list += sprintf( "               %-#60s\n               %s\n",
+                  implode( record->victims, "\n" ),
+                  ctime( record->time + EXPIRY ) );
+      } else
+         if ( cre )
+            list += sprintf( " -   %-15s (inactive)\n"
+                  "               %-#60s\n               %s\n",
+                  record->short, implode( record->victims, "\n" ),
+                  ctime( record->time + EXPIRY ) );
+   if ( list == "" )
+      return "There are no bounties currently offered.\n";
+   return "The following bounters are currently offered:\n"+ list;
+}
+string query_all_collectors() {
+   string list, word, place;
+   class bounty record;
+   if ( !sizeof( collect ) )
+      return "There are no bounties awaiting collection.\n";
+   place = (string)environment( this_player() )->query_property( "place" );
+   if ( !place || ( place == "" ) )
+      place = "default";
+   list = "";
+   foreach ( word, record in collect )
+         list += sprintf( " -   %-15s owed %s\n               %s\n",
+               record->short,
+               (string)MONEY_HAND->money_value_string( record->value, place ),
+               ctime( record->time + EXPIRY ) );
+   return "The following bounties are awaiting collection:\n"+ list;
+}
+string query_bounty_info( string word ) {
+   string place;
+   class bounty record;
+   place = (string)environment( this_player() )->query_property( "place" );
+   if ( !place || ( place == "" ) )
+      place = "default";
+   if ( undefinedp( bounty[ word ] ) )
+      return 0;
+   record = (class bounty)bounty[ word ];
+   if ( !record->active )
+      return 0;
+   return "A bounty of "+
+         (string)MONEY_HAND->money_value_string( record->value, place ) +
+         " is offered for the death of "+ record->short +" for the murder of "+
+         query_multiple_short( record->victims ) +".\n";
+}
+
+==================================================
+FILE: handlers/broadcaster.c
+==================================================
+
+#define DIR_ARRAY ({ "east", "northeast", "north", "northwest", \
+                     "west", "southwest", "south", "southeast", "east" })
+#define SAVE_FILE "/save/broadcaster"
+#define BROADCAST_HISTORY_LENGTH 10
+void broadcast_event( object *things,
+                      int *centre,
+                      string message,
+                      int range,
+                      int inside,
+                      int underwater );
+void npc_hear_shouts(object newlistener);
+int npc_unhear_shouts(object oldlistener);
+void npc_shout_event( object shouter,
+                      string start,
+                      string message,
+                      string lang,
+                      int *coord,
+                      int range );
+private void load_me();
+private void save_me();
+private nosave object *_listeners;
+private nosave mapping _channels;
+private nosave mapping _channel_history;
+private mapping _channel_ids;
+void create() {
+   _listeners = ({ });
+   _channels = ([ ]);
+   _channel_ids = ([ ]);
+   _channel_history = ([ ]);
+   load_me();
+}
+mixed *get_direc_dist( int *co_ord1, int *co_ord2 ) {
+   int dx, dy, dz, sector;
+   if (!pointerp(co_ord1) ||
+       !pointerp(co_ord2)) {
+      return ({ 0, DIR_ARRAY[0], 0 });
+   }
+   dx = co_ord1[ 0 ] - co_ord2[ 0 ];
+   dy = co_ord1[ 1 ] - co_ord2[ 1 ];
+   dz = co_ord1[ 2 ] - co_ord2[ 2 ];
+   if ( dx > 0 ) {
+      if ( ( 1000 * dy ) > ( 2414 * dx ) ) {
+         sector = 0;
+      } else {
+         if ( ( 1000 * dy ) > ( 414 * dx ) ) {
+            sector = 1;
+         } else {
+            if ( ( 1000 * dy ) > ( -414 * dx ) ) {
+               sector = 2;
+            } else {
+               if ( ( 1000 * dy ) > ( -2414 * dx ) ) {
+                  sector = 3;
+               } else {
+                  sector = 4;
+               }
+            }
+         }
+      }
+   } else {
+      if ( ( 1000 * dy ) < ( 2414 * dx ) ) {
+         sector = 4;
+      } else {
+         if ( ( 1000 * dy ) < ( 414 * dx ) ) {
+            sector = 5;
+         } else {
+            if ( ( 1000 * dy ) < ( -414 * dx ) ) {
+               sector = 6;
+            } else {
+               if ( ( 1000 * dy ) < ( -2414 * dx ) ) {
+                  sector = 7;
+               } else {
+                  sector = 8;
+               }
+            }
+         }
+      }
+   }
+   return ({ dx * dx + dy * dy + dz * dz, DIR_ARRAY[ sector ], dz });
+}
+void broadcast_event( object *things, int *centre, string message,
+      int range, int inside, int underwater ) {
+   int *to;
+   string text;
+   object thing, place;
+   mixed *dir_direc;
+   if ( !pointerp( things ) ||
+        !pointerp( centre ) ||
+        sizeof( centre ) != 3 ) {
+      return;
+   }
+   foreach ( thing in things ) {
+      if ( !living( thing ) ) {
+         continue;
+      }
+      place = environment( thing );
+      if ( !place ) {
+         continue;
+      }
+      to = (int *)place->query_co_ord();
+      if ( !pointerp( to ) || sizeof( to ) != 3 ) {
+         continue;
+      }
+      switch ( (string)place->query_property( "location" ) ) {
+         case "inside" :
+            if ( !inside ) {
+               continue;
+            }
+            break;
+         case "underwater" :
+            if ( !underwater ) {
+               continue;
+            }
+            break;
+         default :
+      }
+      dir_direc = get_direc_dist( centre, to );
+      if ( dir_direc[ 0 ] < 0 ) {
+         continue;
+      }
+      if ( dir_direc[ 0 ] > range * range ) {
+         continue;
+      }
+      switch ( dir_direc[ 0 ] ) {
+         case 0 :
+            continue;
+         case 1 .. 2500 :
+            if ( ( dir_direc[ 2 ] * dir_direc[ 2 ] ) > ( dir_direc[ 0 ] / 2 ) ) {
+               if ( dir_direc[ 2 ] > 0 ) {
+                  text = "Right above you, "+ message +"\n";
+               } else {
+                  text = "Right below you, "+ message +"\n";
+               }
+            } else {
+               text = "Very close to the "+ dir_direc[ 1 ] + ", "+
+                     message +"\n";
+            }
+            break;
+         case 2501 .. 40000 :
+            text = "Nearby to the "+ dir_direc[ 1 ] + ", "+ message +"\n";
+            break;
+         case 40001 .. 640000 :
+            text = "To the "+ dir_direc[ 1 ] + ", "+ message +"\n";
+            break;
+         case 640001 .. 10240000 :
+            text = "In the distance to the "+ dir_direc[ 1 ] + ", "+
+                  message +"\n";
+            break;
+         default:
+            continue;
+      }
+      if(interactive(thing) && query_verb() == "shout") {
+        text = thing->colour_event("shout", "") + text + "%^RESET%^";
+      }
+      thing->add_message( "$I$5="+ text, ({ }) );
+   }
+}
+void npc_hear_shouts(object newlistener) {
+  int i;
+  if (member_array(newlistener,_listeners)!=-1) {
+     return;
+  }
+  i = member_array(0,_listeners);
+  if (i != -1) {
+    _listeners[i]=newlistener;
+  } else {
+    _listeners=_listeners+({newlistener});
+  }
+}
+int npc_unhear_shouts(object oldlistener) {
+  int i;
+  if (sizeof(_listeners)==0) {
+    return 0;
+  }
+  i = member_array(oldlistener,_listeners);
+  if (i == -1) {
+    return 0;
+  }
+  _listeners = _listeners[0..i] + _listeners[i+1..];
+  return 1;
+}
+void npc_shout_event( object shouter, string start, string message,
+      string lang, int *coord, int range ) {
+  if (_listeners) {
+    _listeners -= ({ 0 });
+    _listeners->event_person_shout(shouter, start, message,
+                                  lang, coord, range );
+  }
+}
+void add_object_to_channel(string channel_name,
+                           object ob) {
+   if (!_channels[channel_name]) {
+      _channels[channel_name] = ({ });
+   }
+   _channels[channel_name] += ({ ob });
+}
+int remove_object_from_channel(string channel_name,
+                               object ob) {
+   if (_channels[channel_name]) {
+      if (member_array(ob, _channels[channel_name]) != -1) {
+         _channels[channel_name] -= ({ ob });
+         if (!sizeof(_channels[channel_name])) {
+           map_delete(_channels, channel_name);
+         }
+         return 1;
+      }
+   }
+   return 0;
+}
+void broadcast_to_channel(mixed ob,
+                          string channel,
+                          mixed message) {
+   string str;
+   if (!ob) {
+      return ;
+   }
+   if (objectp(ob)) {
+      str = ob->query_cap_name();
+   }
+   if (_channels[channel]) {
+      _channels[channel] -= ({ 0 });
+      _channels[channel]->event_channel_message(ob, channel, message);
+      if (!_channel_history[channel]) {
+         _channel_history[channel] = ({ });
+      }
+      _channel_history[channel] += ({ ({ str, message, time() }) });
+      if (sizeof(_channel_history[channel]) > BROADCAST_HISTORY_LENGTH) {
+         _channel_history[channel] = _channel_history[channel][1..];
+      }
+   }
+}
+mixed *query_channel_history(string channel) {
+   return _channel_history[channel];
+}
+object *query_channel_members(string channel) {
+   return _channels[channel];
+}
+int is_channel(string channel) {
+  return !undefinedp(_channels[channel]);
+}
+mapping query_all_channels() {
+   return _channels;
+}
+int query_next_channel_number(string channel) {
+   int next_num;
+   next_num = ++_channel_ids[channel];
+   save_me();
+   return next_num;
+}
+private void save_me() {
+   unguarded( (: save_object(SAVE_FILE) :) );
+}
+private void load_me() {
+   unguarded( (: restore_object(SAVE_FILE, 1) :) );
+}
+mapping query_dynamic_auto_load() {
+   return ([ "channels" : _channels,
+       "history" : _channel_history ]);
+}
+void init_dynamic_arg(mapping arg) {
+   _channels = arg["channels"];
+   if (!_channels) {
+      _channels = ([ ]);
+   }
+   _channel_history = arg["history"];
+   if (!_channel_history) {
+      _channel_history = ([ ]);
+   }
+}
+
+==================================================
+FILE: handlers/change_skills.c
+==================================================
+
+#include <login_handler.h>
+#include <language.h>
+#include <tune.h>
+#include <skills.h>
+#include <combat.h>
+#define ORIGINAL "alpha"
+#define VERSION "beta"
+#define VERSION_2 "gamma"
+#define VERSION_3 "delta"
+#define VERSION_4 "epsilon"
+#define VERSION_5 "zeta"
+#define VERSION_6 "eta"
+#define OLD_SKILLS ({ \
+      "magic.spells.offensive.area", \
+      "magic.spells.offensive.target", \
+      "magic.spells.defensive.area", \
+      "magic.spells.defensive.self", \
+      "magic.spells.defensive.target", \
+      "magic.spells.misc.area", \
+      "magic.spells.misc.self", \
+      "magic.spells.misc.target", \
+      "magic.spells.special", \
+      "magic.items.held.wand", \
+      "magic.items.held.rod", \
+      "magic.items.held.staff", \
+      "magic.items.held.broom", \
+      "magic.items.worn.amulet", \
+      "magic.items.worn.ring", \
+      "magic.items.scroll", \
+      "magic.points", \
+      "occult.methods.brewing", \
+      "occult.methods.dancing", \
+      "occult.methods.chanting", \
+      "occult.methods.flying", \
+      "occult.spells.cursing", \
+      "occult.spells.summoning", \
+      "occult.spells.enchanting", \
+      "occult.spells.charming", \
+      "occult.spells.healing", \
+   })
+#define OTHER_SKILLS ({ \
+      "magic", \
+      "magic.spells", \
+      "magic.spells.offensive", \
+      "magic.spells.defensive", \
+      "magic.spells.misc", \
+      "magic.items", \
+      "magic.items.held", \
+      "magic.items.worn", \
+      "occult", \
+      "occult.methods", \
+      "occult.spells", \
+   })
+#define ETA_CHANGES (["other.tracking" : "crafts.hunting.tracking", \
+                      "other.swimming" : "other.movement.swimming", \
+                      "other.riding" : "other.movement.riding", \
+                      "other.riding.horse" : "other.movement.riding.horse", \
+                      "other.riding.camel" : "other.movement.riding.camel", \
+                      "other.climbing" : "other.movement.climbing", \
+                      "other.climbing.tree" : "other.movement.climbing.tree", \
+                      "other.climbing.rock" : "other.movement.climbing.rock", \
+                      "other.climbing.rope" : "other.movement.climbing.rope", \
+                      "other.valueing" : "other.trading.valueing", \
+                      "other.valueing.gems" : "other.trading.valueing.gems", \
+                      "other.valueing.jewellery" : "other.trading.valueing.jewellery", \
+                      "other.valueing.weapons" : "other.trading.valueing.weapons", \
+                      "other.valueing.armour" : "other.trading.valueing.armour"])
+#define EFFECTS ({"magic.defensive.floating", "magic.shield.impact", \
+                  "magic.defensive.skin.troll", "priest.shield" })
+int query_level_in( mapping skills, string skill ) {
+   string *bits;
+   if ( !undefinedp( skills[ skill ] ) )
+      return skills[ skill ];
+   bits = explode( skill, "." );
+   if ( sizeof( bits ) == 1 )
+      return 0;
+   bits = delete( bits, sizeof( bits ) - 1, 1 );
+   skill = implode( bits, "." );
+   return query_level_in( skills, skill );
+}
+void change_skills( object thing ) {
+   int i, total;
+   mapping skills;
+   skills = (mapping)thing->query_skills();
+   if ( !m_sizeof( skills ) )
+      return;
+   for ( i = 0; i < sizeof( OLD_SKILLS ); i++ ) {
+      total += query_level_in( skills, OLD_SKILLS[ i ] );
+      if ( !undefinedp( skills[ OLD_SKILLS[ i ] ] ) )
+         skills = m_delete( skills, OLD_SKILLS[ i ] );
+   }
+   for ( i = 0; i < sizeof( OTHER_SKILLS ); i++ )
+      if ( !undefinedp( skills[ OTHER_SKILLS[ i ] ] ) )
+         skills = m_delete( skills, OTHER_SKILLS[ i ] );
+   if ( !total )
+      return;
+   thing->add_property( "magic levels", total );
+   thing->set_skills( skills );
+   tell_object( thing, "\n\nAn imp that only you can see flashes into "+
+         "existence.\n" );
+   tell_object( thing, "The imp tells you: The magic and occult skill "+
+         "categories are being amalgamated and restructured.\n" );
+   tell_object( thing, "The imp tells you: You have a total of "+ total +
+         " levels that you can spend on the new magic skills.\n" );
+   tell_object( thing, "The imp tells you: Go and find the black "+
+         "monolith in the middle of Sator Square which you can use to "+
+         "to spend them.\n" );
+   tell_object( thing, "The imp flashes back to wherever it came from.\n\n" );
+}
+int query_minimum_skill_xp(int lvl) {
+   int i;
+   int xp;
+   xp = 0;
+   for (i = 0; i < lvl; i++) {
+      xp += ( DEFAULT_COST * STD_COST * 100 ) / (( LEVEL_DIV + 1) * 500);
+   }
+   return xp;
+}
+void change_language_skills( object thing, int lev ) {
+   int i;
+   int total_xp;
+   mapping skills;
+   string *bits;
+   string start;
+   string *langs;
+   string health;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   health = skills["other.health"];
+   start = "other.language.";
+   total_xp = 0;
+   for (i = 0; i < sizeof(bits); i++) {
+      if (bits[i][0..strlen(start)-1] == start) {
+         total_xp += query_minimum_skill_xp(skills[bits[i]]);
+         map_delete(skills, bits[i]);
+      }
+   }
+   langs = thing->query_languages();
+   for (i = 0; i < sizeof(langs); i++) {
+      thing->add_language(langs[i]);
+      thing->remove_language( langs[i] );
+   }
+   if (skills["other.language"]) {
+      total_xp += query_minimum_skill_xp(skills["other.language"]);
+      map_delete(skills, "other.language");
+   }
+   thing->add_language("common");
+   if(thing->query_guild_ob() == "/std/guilds/wizard") {
+     thing->add_language("wizard spells");
+   }
+   if(thing->query_guild_ob() == "/std/guilds/thief") {
+     thing->add_language("thieves' cant");
+   }
+   if(skills["other.health"] != health) {
+     tell_object(thing, "A fluffy cabbage tells you: Something has gone wrong "
+                 "with your language adjustment, please tell Ceres or "
+                 "Pinkfish\n");
+     return;
+   }
+   thing->adjust_xp( total_xp );
+   tell_object(thing,
+"A fluffy cabbage turns up and stares straight into your eyes.\n"
+"You feel that the fluffy cabbage has shuffled around some bits of your mind.\n"
+               );
+   if (total_xp > 0 && lev < 2) {
+      tell_object(thing,
+"Your languages have been shifted, you appear to have gained "+total_xp+" xp.\n"
+                 );
+   }
+}
+mapping recalc_parents(mapping skills, string skill) {
+  int i, j, lvl;
+  string *tree, *bits, this_skill;
+  bits = explode(skill, ".");
+  for(i=sizeof(bits)-1; i>=0; i--) {
+    this_skill = implode(bits[0..i], ".");
+    tree = (string *)SKILL_OB->query_immediate_children(this_skill);
+    lvl = 0;
+    for(j=0; j<sizeof(tree); j++) {
+      lvl += skills[tree[j]];
+    }
+    if(sizeof(tree))
+      skills[this_skill] = lvl / sizeof(tree);
+  }
+  return skills;
+}
+void change_skills_epsilon( object thing ) {
+  int lvl, rest;
+   mapping skills;
+   string *bits;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   tell_object(thing, "A squirrel appears and says: I'm just updating your "
+               "skill tree, will be just a jiffy.\n");
+   lvl = skills["covert.sleight-of-hand"];
+   if(lvl > 0) {
+     m_delete(skills, "covert.sleight-of-hand");
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["covert.manipulation.stealing"] = lvl;
+     skills["covert.manipulation.palming"] = lvl;
+     skills["covert.manipulation.passing"] = lvl;
+     skills["covert.manipulation.sleight-of-hand"] = lvl;
+     skills["covert.manipulation"] = lvl;
+     recalc_parents(skills, "covert");
+   }
+   lvl = skills["fighting.combat.melee.sharp"];
+   if(lvl > 0) {
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["fighting.combat.melee.sharp"] = lvl;
+     skills["fighting.combat.melee.pierce"] = lvl;
+     skills = recalc_parents(skills, "fighting.combat.melee");
+   }
+   lvl = skills["fighting.combat.parry.thrown"];
+   rest = skills["fighting.combat.parry.fired"];
+   if(lvl > 0 || rest > 0) {
+     if(rest > lvl)
+       lvl = rest + (lvl / 5);
+     else
+       lvl += (rest / 5);
+     m_delete(skills, "fighting.combat.parry.thrown");
+     m_delete(skills, "fighting.combat.parry.fired");
+     skills["fighting.combat.parry.range"] = lvl;
+     lvl = skills["fighting.combat.parry.held"];
+     m_delete(skills, "fighting.combat.parry.held");
+     skills["fighting.combat.parry.melee"] = lvl;
+     skills = recalc_parents(skills, "fighting.combat.parry");
+   }
+   lvl = skills["fighting.combat.special"];
+   if(lvl > 0) {
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["fighting.combat.special.weapon"] = lvl;
+     skills["fighting.combat.special.unarmed"] = lvl;
+     skills["fighting.combat.special.tactics"] = lvl - lvl / 4;
+     skills = recalc_parents(skills, "fighting.combat.special");
+   }
+   lvl = skills["other.tracking.woodland"];
+   m_delete(skills, "other.tracking.woodland");
+   lvl += skills["other.tracking.desert"];
+   m_delete(skills, "other.tracking.desert");
+   lvl += skills["other.tracking.mountain"];
+   m_delete(skills, "other.tracking.mountain");
+   lvl += skills["other.tracking.road"];
+   m_delete(skills, "other.tracking.road");
+   lvl += skills["other.tracking.field"];
+   m_delete(skills, "other.tracking.field");
+   if(lvl > 0)
+     skills["other.tracking"] = lvl;
+   thing->set_skills( skills );
+   tell_object(thing, "The squirrel says: Ok, all done now.\n");
+}
+int new_skill_value(int sk) {
+  float f = 1000.0;
+  float k = 0.3;
+  if(sk == 0)
+    return 0;
+  return to_int(f * log( 1.0 + sk/(f + sk * k) ) + 0.5);
+}
+void change_skills_zeta( object thing ) {
+   mapping skills;
+   string *bits, bit;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   tell_object(thing, "A small blue frog appears and says: I'm just updating "
+         "your skill levels, this won't take a second.\n");
+   foreach(bit in bits) {
+     if(bit[0..13] != "other.language" &&
+        SKILL_OB->query_immediate_children(bit) == ({ })) {
+       skills[bit] = new_skill_value(skills[bit]);
+       skills = recalc_parents(skills, bit);
+     }
+   }
+   thing->set_skills( skills );
+   tell_object(thing, "The frog says: Ok, all done now.\n");
+}
+void fixup_stats(object thing) {
+  mapping values;
+  mapping changes;
+  int stat_total;
+  string str;
+  changes = ([ ]);
+  values = ([
+    "con" : thing->query_real_con(),
+    "dex" : thing->query_real_dex(),
+    "int" : thing->query_real_int(),
+    "wis" : thing->query_real_wis(),
+    "str" : thing->query_real_str()
+            ]);
+  stat_total = values["con"] + values["dex"] + values["wis"] + values["str"] +
+               values["int"];
+  if (stat_total > 65) {
+     if (thing->query_real_con() > 8) {
+        thing->adjust_con(-1);
+        stat_total--;
+        values["con"]--;
+        changes["con"]++;
+     }
+     if (stat_total > 65 && thing->query_real_dex() > 8) {
+        thing->adjust_dex(-1);
+        stat_total--;
+        values["dex"]--;
+        changes["dex"]++;
+     }
+     while (stat_total > 65) {
+        string highest;
+        int value;
+        string stat;
+        int v;
+        value = 0;
+        foreach (stat, v in values) {
+           if (v > value) {
+              value = v;
+              highest = stat;
+           }
+        }
+        call_other(thing, "adjust_" + highest, -1);
+        values[highest]--;
+        changes[highest]++;
+        stat_total--;
+     }
+  }
+  str = query_multiple_short(map(keys(changes), (: $1 + " changed by " + $2[$1] :), changes));
+  tell_object(thing, "The armadillo says: Stats changed: " + str + "\n");
+}
+void change_skills_eta(object thing) {
+  mapping skills;
+  string bit, effect;
+  class tactics tactics;
+  int eff;
+  tactics = new(class tactics,
+                attitude : "neutral",
+                response : "neutral",
+                parry : "both",
+                parry_unarmed : 0,
+                mercy : "ask",
+                focus_zone : 0,
+                ideal_distance : 0);
+  thing->set_tactics(tactics);
+  skills = thing->query_skills();
+  if(!sizeof(skills))
+    return;
+  tell_object(thing, "An armadillo appears out of nowhere and says: "
+              "I'm just updating your skills, this won't take a second.\n");
+  foreach(bit in keys(ETA_CHANGES)) {
+    tell_object(thing, "Mapping " + bit + " to " + ETA_CHANGES[bit] + ".\n");
+    skills[ETA_CHANGES[bit]] = skills[bit];
+    map_delete(skills, bit);
+  }
+  tell_object(thing, "Adding new skills.\n");
+  foreach(bit in
+          "/std/skills"->query_immediate_children("crafts")) {
+    if(!skills[bit]) {
+      skills[bit] = 0;
+    }
+  }
+  recalc_parents(skills, "crafts.hunting");
+  recalc_parents(skills, "crafts");
+  recalc_parents(skills, "other.movement.riding");
+  recalc_parents(skills, "other.movement.climbing");
+  recalc_parents(skills, "other.movement");
+  recalc_parents(skills, "other.trading.valueing");
+  recalc_parents(skills, "other.trading");
+  recalc_parents(skills, "other");
+  thing->set_skills( skills );
+  foreach(effect in EFFECTS)
+    foreach(eff in thing->effects_matching(effect))
+      catch(thing->delete_effect(eff));
+  tell_object(thing, "Fixing stats.\n");
+  fixup_stats(thing);
+  tell_object(thing, "Granting rearrange.\n");
+   thing->add_known_command("rearrange");
+  if ((thing->query_guild_ob() == "/std/guilds/assassin" &&
+       thing->query_property("assassin") > 1) ||
+      (thing->query_guild_ob() == "/std/guilds/wizard" &&
+       "/obj/handlers/guild_things/wizard_orders"->query_order() == "last")) {
+    tell_object(thing, "Returning PK flag.\n");
+    thing->set_player_killer(1);
+  }
+  thing->remove_property(PKER);
+  thing->remove_property(PKER_MISSPELL);
+  thing->add_property("not real newbie", 1);
+  tell_object(thing, "Removing old combat commands.\n");
+  if(thing->query_known_command("strike"))
+    thing->remove_known_command("strike");
+  if(thing->query_guild_ob() != "/std/guilds/warrior") {
+    thing->remove_known_command("impale");
+    thing->remove_known_command("crush");
+    thing->remove_known_command("behead");
+  }
+  thing->remove_known_command("punch");
+  thing->remove_known_command("kick");
+  tell_object(thing, "The armadillo says: Ok, all done now.\n");
+  "/d/liaison/NEWBIE/choose_land"->fixup_player(this_player());
+}
+void entering( string name, string type ) {
+   object thing;
+   int lvl;
+   if ( type != LOGIN )
+      return;
+   if ( !( thing = find_player( name ) ) )
+      return;
+   switch((string)thing->query_property( "skills version" )) {
+   case VERSION:
+     change_skills( thing );
+   case VERSION_2:
+     change_language_skills( thing, lvl );
+   case VERSION_3:
+     change_skills_epsilon( thing );
+   case VERSION_4:
+     change_skills_zeta(thing);
+   case VERSION_5:
+     change_skills_eta(thing);
+   default:
+     thing->add_property("skills version", VERSION_6);
+     return;
+   }
+}
+string query_version() { return VERSION_5; }
+
+==================================================
+FILE: handlers/chime_handler.c
+==================================================
+
+#define CREATOR "Ceres"
+#include <am_time.h>
+#include <chime.h>
+#define FIFTEEN_MINS (AM_SECONDS_PER_MINUTE * 15)
+class chime {
+  object ob;
+  int type;
+  string mess;
+}
+void do_chime(class chime record, int type);
+class chime *chime_list;
+int last_strike;
+void create() {
+  int next_chime;
+  chime_list = ({ });
+  next_chime = 301 - (time() % 300);
+  remove_call_out("check_time");
+  call_out("check_time", next_chime);
+}
+int register_for_chimes(object ob, int num, string mess) {
+  class chime record;
+  foreach(record in chime_list) {
+    if(record->ob == ob && record->type == num && record->mess == mess) {
+      record->type = num;
+      record->mess = mess;
+      return 1;
+    }
+  }
+  record = new(class chime);
+  record->ob = ob;
+  record->type = num;
+  record->mess = mess;
+  chime_list += ({ record });
+  return 1;
+}
+void check_time() {
+  int next_chime, minute;
+  class chime record;
+  minute = AM_TIME_HANDLER->query_am_minute(time());
+  foreach(record in chime_list) {
+    catch{
+      if(minute % 60 < 5)
+        do_chime(record, CHIME_HOUR);
+      else if(minute % 30 < 5 && record->type > CHIME_HOUR)
+        do_chime(record, CHIME_HALF_HOUR);
+      else if(minute % 15 < 5 && record->type == CHIME_QUARTER_HOUR)
+        do_chime(record, CHIME_QUARTER_HOUR);
+    };
+  }
+  next_chime = (FIFTEEN_MINS + 1) - (time() % FIFTEEN_MINS);
+  remove_call_out("check_time");
+  call_out("check_time", next_chime);
+}
+void do_chime(class chime record, int type) {
+  if(!record || !record->ob)
+    return;
+  (record->ob)->chime(record->mess, type);
+}
+void reset() {
+  int next_chime;
+  class chime record;
+  next_chime = (FIFTEEN_MINS + 1) - (time() % FIFTEEN_MINS);
+  remove_call_out("check_time");
+  call_out("check_time", next_chime);
+  foreach(record in chime_list) {
+    if(!record->ob)
+      chime_list -= ({ record });
+  }
+}
+mapping query_dynamic_auto_load() {
+   mapping tmp;
+   tmp = ([ "chime_list" : chime_list ]);
+   return tmp;
+}
+void init_dynamic_arg(mapping maps) {
+   if (maps["chime_list"])
+      chime_list = maps["chime_list"];
+}
+mixed stats() {
+  return ({ ({ "chime count", sizeof(chime_list) }) });
+}
+
+==================================================
+FILE: handlers/clothing_handler.c
+==================================================
+
+#include <clothing.h>
+mapping _types;
+mapping _equivilants;
+mapping _zones;
+string *_zone_level;
+protected void add_clothing_type(string name,
+                                 string *not_remove,
+                                 string *hiding);
+protected void add_clothing_zone(string zone, string *types);
+private int fixup_types(string type, string *types);
+protected void add_equivilant_type(string name, string equiv);
+private void check_clothing_types();
+string *query_clothing_zone(string zone);
+string *query_clothing_cannot_remove(string type);
+string can_wear_or_remove(object thing, object player);
+void create() {
+   _types = ([ ]);
+   _equivilants = ([ ]);
+   _zones = ([ ]);
+   _zone_level = ({ });
+   add_clothing_type("bandaid", ({ }), ({ }));
+   add_clothing_type("wig",
+       ({ "hood", "helmet", "coif", "hat", "all covering" }),
+       ({ "hood", "helmet", "coif", "hat", "all covering" }));
+   add_clothing_type("hat",
+       ({ "hood", "helmet", "all covering" }),
+       ({ "hood", "helmet", "all covering" }));
+   add_clothing_type("helmet",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering" }));
+   add_clothing_type("hood",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("earring",
+       ({ "coif", "all covering" }),
+       ({ "hood", "coif", "all covering" }));
+   add_clothing_type("moustache",
+       ({ "coif", "mask", "all covering" }),
+       ({ "coif", "mask", "all covering" }));
+   add_clothing_type("glasses",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("nosering",
+       ({ "mask", "coif", "all covering" }),
+       ({ "mask", "coif", "all covering" }));
+   add_clothing_type("mask",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("headband",
+       ({ "hat", "hood", "helmet", "coif", "all covering" }),
+       ({ "hat", "hood", "helmet", "coif", "all covering" }));
+   add_clothing_type("scarf",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering"}));
+   add_clothing_type("necklace",
+       ({ "coif", "all covering" }),
+       ({ "cloak", "coif", "all covering" }));
+   add_clothing_type("collar",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering"}));
+   add_clothing_type( "shoulder",
+       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
+          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
+          "shirt", "undershirt", "all covering" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
+          "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
+          "all covering" }));
+   add_clothing_type( "bra",
+       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
+          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
+          "shirt", "undershirt", "all covering", "long dress", "mini dress" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
+           "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
+           "all covering", "long dress", "mini dress" }));
+   add_clothing_type("undershirt",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "waistcoat",
+          "shirt", "harness", "all covering" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "haubergon", "hauberk",
+          "byrnie", "jacket", "jumper", "shirt", "long dress", "mini dress",
+          "all covering" }));
+   add_clothing_type("shirt",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "waistcoat",
+          "harness", "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("waistcoat",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "harness",
+          "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("harness",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("jumper",
+       ({ "cloak", "cape", "sash", "robe", "breastplate", "haubergon",
+          "hauberk", "byrnie", "tabard", "jacket",  "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "jacket",
+          "all covering" }));
+   add_clothing_type("jacket",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "all covering" }),
+       ({ "cloak", "robe", "hauberk", "all covering" }));
+   add_clothing_type("tabard",
+       ({ "cloak", "cape", "sash", "robe", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("robe",
+       ({ "cloak", "cape", "sash", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("cloak",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("sash",
+       ({ "cloak", "cape", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("cape",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("armband",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("glove",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("bracelet",
+       ({ "glove", "all covering" }),
+       ({ "cloak", "glove", "all covering" }));
+   add_clothing_type("ring",
+       ({ "glove", "all covering" }),
+       ({ "glove", "all covering" }));
+   add_clothing_type("box",
+       ({ "cloak", "robe", "all covering" }),
+       ({ "cloak", "robe", "skirt", "all covering" }));
+   add_clothing_type("apron",
+       ({ "cloak", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("underwear",
+       ({ "harness", "trousers", "greave", "hauberk", "haubergon",
+          "byrnie", "belt", "trousers", "all covering" }),
+       ({ "cloak", "robe", "skirt", "trousers", "all covering",
+          "long dress", "mini dress" }));
+   add_clothing_type("garter",
+       ({ "greave", "hauberk", "trousers", "all covering"}),
+       ({ "cloak", "robe", "greave", "hauberk", "trousers", "skirt",
+          "all covering", "long dress", "mini dress"}));
+   add_clothing_type("skirt",
+       ({ "belt", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("trousers",
+       ({ "greave", "hauberk", "belt" }),
+       ({ "cloak", "hauberk", "robe", "all covering" }));
+   add_clothing_type("belt",
+       ({"hauberk", "haubergon", "byrnie", "all covering" }),
+       ({ "cloak", "robe", "hauberk", "haubergon", "byrnie", "all covering" }));
+   add_clothing_type("sock",
+       ({ "overshoe", "boot", "chausse", "all covering" }),
+       ({ "cloak", "overshoe", "boot", "chausse", "all covering",
+          "long dress", "trousers" }));
+   add_clothing_type("anklet",
+       ({ }),
+       ({ "cloak", "overshoe", "chausse", "all covering" }));
+   add_clothing_type("boot",
+       ({ "overshoe" }),
+       ({ "overshoe", "all covering" }));
+   add_clothing_type("overshoe",
+       ({ }),
+       ({ "all covering" }));
+   add_clothing_type("long dress",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
+          "all covering","belt" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("mini dress",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
+          "all covering","belt" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("small shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("large shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("badge",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("small scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("belt scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("coif",
+       ({ "hood", "scarf", "mask", "helmet", "hat", "all covering"}),
+       ({ "hood", "all covering"}));
+   add_clothing_type("byrnie",
+       ({ "cloak", "breastplate", "backplate", "tabard", "small scabbard",
+          "belt scabbard", "robe", "cape", "sash", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("haubergon",
+       ({ "cloak", "breastplate", "backplate", "tabard", "vambrace",
+          "small scabbard", "belt scabbard", "robe", "cape", "sash",
+          "all covering"}),
+       ({ "cloak", "robe", "all covering"}));
+   add_clothing_type("hauberk",
+       ({ "cloak", "tabard", "vambrace", "greave", "breastplate", "backplate",
+          "small scabbard", "belt scabbard", "robe", "cape", "sash",
+          "all covering"}),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("chausse",
+       ({ "boot", "overshoe", "all covering"}),
+       ({ "boot", "overshoe", "all covering"}));
+   add_clothing_type("breastplate",
+       ({ "cloak", "small scabbard", "belt scabbard", "robe", "tabard",
+          "cape", "sash", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("backplate",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "all covering"}),
+       ({ "cloak", "cape", "sash", "robe", "all covering"}));
+   add_clothing_type("vambrace",
+       ({ "glove", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("greave",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("all covering", ({}), ({}));
+   add_clothing_zone("head",
+       ({ "hood", "helmet", "coif", "hat", "wig", "headband", "moustache",
+          "glasses", "mask" }));
+   add_clothing_zone("neck",
+       ({ "cloak", "hood", "coif", "cape", "scarf", "collar" }));
+   add_clothing_zone("chest",
+       ({ "cloak", "sash", "robe", "breastplate", "haubergon", "hauberk",
+          "byrnie", "tabard", "jacket","jumper", "shirt", "undershirt",
+          "shoulder", "bra","shield", "large shield", "long dress",
+          "mini dress", "apron", "waistcoat" }));
+   add_clothing_zone("back",
+       ({ "cloak", "cape", "sash", "robe", "hauberk", "haubergon", "byrnie",
+          "jacket", "jumper", "shirt", "undershirt", "backplate",
+          "long dress", "mini dress", "waistcoat" }));
+   add_clothing_zone("abdomen",
+       ({ "large shield", "robe", "breastplate", "byrnie", "hauberk",
+          "skirt", "box", "trousers", "underwear", "long dress",
+          "mini dress", "apron", "waistcoat" }));
+   add_clothing_zone("arms",
+       ({ "cloak", "small shield", "shield", "large shield", "robe",
+          "vambrace", "hauberk", "haubergon", "jacket", "armband",
+          "jumper", "shirt", "long dress" }));
+   add_clothing_zone("hands",
+       ({ "glove", "small shield", "shield", "large shield" }));
+   add_clothing_zone("legs",
+       ({ "cloak", "robe", "greave", "hauberk", "skirt", "trousers",
+          "long dress" }));
+   add_clothing_zone("feet",
+       ({ "overshoe", "boot", "chausse", "sock", "anklet" }));
+   add_equivilant_type("shoe", "boot");
+   add_equivilant_type("sandal", "boot");
+   add_equivilant_type("clog", "boot");
+   add_equivilant_type("sabaton", "boot");
+   add_equivilant_type("turban", "helmet");
+   add_equivilant_type("gorget", "collar");
+   add_equivilant_type("stocking", "sock");
+   add_equivilant_type("coat", "cloak");
+   add_equivilant_type("overall", "long dress");
+   call_out((: check_clothing_types() :), 2);
+}
+object* query_items_blocking(object thing, object player) {
+   int i;
+   int j;
+   int k;
+   string *stuff;
+   object *blocking;
+   mixed junk;
+   mixed main_types;
+   object *wearing;
+   main_types = thing->query_type();
+   if (stringp(main_types)) {
+      main_types = ({ main_types });
+   }
+   wearing = player->query_wearing() - ({ thing });
+   blocking = ({ });
+   for (k=0;k<sizeof(main_types);k++) {
+      stuff = query_clothing_cannot_remove(main_types[k]);
+      if (!sizeof(wearing) || !stuff) {
+         return ({ });
+      }
+      for (i = 0; i < sizeof(wearing); i++) {
+         junk = wearing[i]->query_type();
+         if (stringp(junk)) {
+            junk = ({ junk });
+         }
+         for (j = 0; j < sizeof(junk); j++) {
+            if (member_array(junk[j], stuff) != -1 &&
+                 member_array(wearing[i], blocking) == -1) {
+               blocking += ({ wearing[i] });
+               break;
+            }
+         }
+      }
+   }
+   return blocking;
+}
+string can_wear_or_remove( object thing, object player ) {
+   object *blocking;
+   blocking = query_items_blocking(thing, player);
+   if (sizeof(blocking)) {
+     return "when you are wearing "+ query_multiple_short(blocking);
+   }
+   return 0;
+}
+protected void add_clothing_type(string name,
+                                 string *not_remove,
+                                 string *hiding) {
+   _types[name] = new (class clothing_type, _hiding : hiding,
+                                           _not_remove : not_remove);
+}
+class clothing_type query_clothing_type(string name) {
+   return _types[name];
+}
+string *query_clothing_cannot_remove(string type) {
+   class clothing_type bing;
+   bing = _types[type];
+   if (bing) {
+      return bing->_not_remove;
+   }
+   return 0;
+}
+string *query_clothing_hiding(string type) {
+   class clothing_type bing;
+   bing = _types[type];
+   if (bing) {
+      return bing->_hiding;
+   }
+   return ({ });
+}
+int query_clothing_depth(mixed type) {
+   class clothing_type bing;
+   int depth;
+   string str;
+   int min_depth;
+   if (stringp(type)) {
+      bing = _types[type];
+      if (bing) {
+         return bing->_depth;
+      }
+   } else if (pointerp(type)) {
+      min_depth = 100000;
+      foreach (str in type) {
+         depth = query_clothing_depth(str);
+         if (depth < min_depth && depth > 0) {
+            min_depth = depth;
+         }
+      }
+      return min_depth;
+   }
+   return 0;
+}
+int query_clothing_maximum_depth(mixed type) {
+   class clothing_type bing;
+   int depth;
+   string str;
+   int max_depth;
+   if (stringp(type)) {
+      bing = _types[type];
+      if (bing) {
+         return bing->_depth;
+      }
+   } else if (pointerp(type)) {
+      max_depth = 0;
+      foreach (str in type) {
+         depth = query_clothing_depth(str);
+         if (depth > max_depth) {
+            max_depth = depth;
+         }
+      }
+      return max_depth;
+   }
+   return 0;
+}
+mapping query_all_clothing_types() {
+   return _types;
+}
+private void check_clothing_types() {
+   string ty;
+   class clothing_type bits;
+   string *stuff;
+   string bing;
+   string type;
+   int rank;
+tell_creator("presto", "called check_clothing_types\n");
+   foreach (ty, bits in _types) {
+      foreach (bing in bits->_not_remove) {
+         if (!query_clothing_type(bing)) {
+            write("Unknown clothing type " + bing + " in the not remove "
+                  " for " + ty + ".\n");
+         }
+      }
+      foreach (bing in bits->_hiding) {
+         if (!query_clothing_type(bing)) {
+            write("Unknown clothing type " + bing + " in the hiding "
+                  " for " + ty + ".\n");
+         }
+      }
+   }
+   rank = 1;
+   foreach (bing in _zone_level) {
+      stuff = query_clothing_zone(bing);
+      foreach (type in stuff) {
+         bits = _types[type];
+         if (!bits->_depth &&
+             (sizeof(bits->_not_remove) == 0  ||
+             bits->_not_remove[0] == "all covering")) {
+            bits->_depth = rank;
+            rank = fixup_types(type, stuff);
+         }
+      }
+      foreach (type in stuff) {
+         bits = _types[type];
+         if (!bits->_depth) {
+tell_creator("presto", "setting depth of %O to %d\n", type, rank + 1);
+            bits->_depth = rank++;
+         }
+      }
+   }
+}
+private int fixup_types(string type, string *types) {
+   string bing;
+   class clothing_type base;
+   class clothing_type bits;
+   int depth;
+   base = _types[type];
+   depth = base->_depth + 1;
+   foreach (bing in types) {
+      bits = _types[bing];
+      if (!bits->_depth &&
+          member_array(type, bits->_not_remove) != -1) {
+         bits->_depth = depth;
+         depth = fixup_types(bing, types);
+      }
+   }
+   return depth;
+}
+protected void add_clothing_zone(string zone, string *types) {
+   string ty;
+   foreach (ty in types) {
+      if (!query_clothing_type(ty)) {
+         write("Incorrect clothing type " + ty + " in zone " + zone + ".\n");
+      }
+   }
+   _zones[zone] = types;
+   _zone_level += ({ zone });
+}
+protected void add_zone_coverage(string type, string *zones) {
+  string zone;
+  if(!query_clothing_type(type))
+    write("Incorrect clothing type " + type + "\n");
+  foreach(zone in zones)
+    if(member_array(type, zones) != -1)
+      _zones[zone] += ({ type });
+}
+mapping query_all_clothing_zones() {
+   return _zones;
+}
+string *query_clothing_zone(string zone) {
+   return _zones[zone];
+}
+string query_zone_name(string type) {
+   string zone;
+   string *stuff;
+   foreach (zone, stuff in _zones) {
+      if (member_array(type, stuff) != -1) {
+         return zone;
+      }
+   }
+   return 0;
+}
+string *query_zone_names(string type) {
+   string zone;
+   string *stuff;
+   string *zones;
+   if(_equivilants[type])
+     type = _equivilants[type];
+   zones = ({ });
+   foreach (zone, stuff in _zones) {
+     if (member_array(type, stuff) != -1 && zone) {
+       zones += ({ zone });
+     }
+   }
+   return zones;
+}
+int query_zone_level(string zone) {
+   int i;
+   i = member_array(zone, _zone_level);
+   return i * 100;
+}
+protected void add_equivilant_type(string name, string equiv) {
+   if (!query_clothing_type(equiv)) {
+      write("Incorrect clothing type " + equiv + " in equivilant listing.\n");
+   }
+   _equivilants[name] = equiv;
+}
+mapping query_all_equivilant_types() {
+   return _equivilants;
+}
+string query_equivilant_type(string type) {
+   return _equivilants[type];
+}
+int query_valid_type(string type) {
+   if (query_clothing_type(type) ||
+       query_equivilant_type(type)) {
+      return 1;
+   }
+   return 0;
+}
+
+==================================================
+FILE: handlers/club_handler.c
+==================================================
+
+inherit "/obj/handlers/inherit/club_inherit";
+void create() {
+   ::create();
+   setup_call_check_clubs(0, 1);
+}
+void dest_me() {
+   save_cache();
+   destruct(this_object());
+}

@@ -1,0 +1,1766 @@
+# Total Tokens: 16414
+# Total Files Merged: 5
+# Total Characters: 54730
+
+t/carriage/handler.c
+==================================================
+
+#include <room.h>
+#include <data.h>
+#include <room/carriage.h>
+#define CARRIAGE ITEMS "carriage"
+private mapping _routedetails = ([ ]);
+private mapping _routesactual = ([ ]);
+private nosave mapping _carriages = ([ ]);
+private nosave string _base_dir;
+private nosave string _carriage;
+private nosave string _pole;
+private nosave string _data_dir;
+private nosave string _save_file;
+private mapping _file_modified_time;
+private void load_data();
+private void map_carriages();
+private void save_file() {
+   unguarded((: save_object(_save_file) :));
+}
+void create() {
+   seteuid(getuid());
+   _file_modified_time = ([ ]);
+   this_object()->setup();
+}
+void setup_carriage(string dir, string base_dir,
+                    string carriage, string pole, string save_file) {
+   _data_dir = dir;
+   _base_dir = base_dir;
+   _carriage = carriage;
+   _pole = pole;
+   _save_file = save_file;
+   unguarded((: restore_object(_save_file) :));
+   if (!_file_modified_time) {
+      _file_modified_time = ([ ]);
+   }
+   load_data();
+   map_carriages();
+}
+mapping query_route_details() { return _routedetails; }
+mapping query_route_actual() { return _routesactual; }
+string* query_route_names() { return keys(_routesactual); }
+string query_stop_location(string name) {
+   if (_routedetails[name]) {
+     return _routedetails[name]->path;
+   }
+   return "bad stop " + name;
+}
+string query_stop_name(string name) {
+   if (_routedetails[name]) {
+      return _routedetails[name]->name;
+   }
+   return "Broken Position " + name;
+}
+int query_stop_delay(string name) {
+   if (_routedetails[name]) {
+      return _routedetails[name]->delay;
+   }
+   return 60;
+}
+class stop_list_details* query_route_stops(string route) {
+   return _routesactual[route]->stops;
+}
+object query_carriage_on_route(string route) {
+   return _carriages[route];
+}
+private void parse_stop(string fname, mapping data) {
+   string name;
+   class stop_details info;
+   if (!data["id"]) {
+      debug_printf("No id for stop %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   if (!data["name"]) {
+      debug_printf("No name for stop %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (!data["path"]) {
+      log_file("COMPILE_ERROR", "Required path field not present for stop %s\n", name);
+      return 0;
+   }
+   info = new(class stop_details);
+   info->name = data["name"];
+   if (data["path"][0] == '/') {
+      info->path = data["path"];
+   } else {
+      info->path = _base_dir + data["path"];
+   }
+   info->delay = data["delay"];
+   _routedetails[data["id"]] = info;
+   save_file();
+}
+private void parse_route(string fname, mapping data) {
+   string name;
+   class route_details info;
+   mixed bing;
+   if (!data["name"]) {
+      debug_printf("No id for route %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   if (!data["colour"]) {
+      debug_printf("No colour for route %O\n", data);
+      log_file("COMPILE_ERROR", "No name for stop %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   info = new(class route_details, stops : ({ }));
+   info->colour = data["colour"];
+   info->return_along = data["samereturnpath"];
+   foreach (bing in data["stop"]) {
+      if (!mapp(bing) || !stringp(bing["id"]) || !intp(bing["travel"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         log_file("COMPILE_ERROR", "Invalid data for route (%s) %O\n", name,  bing);
+      } else {
+         info->stops += ({ new(class stop_list_details, id : bing["id"],
+                                             travel_time : bing["travel"]) });
+      }
+   }
+   _routesactual[data["name"]] = info;
+   save_file();
+}
+protected void finish_compiling(string fname, mapping data) {
+   mixed* bits;
+   mapping thing;
+   string name;
+   foreach (name, bits in data) {
+      switch (name) {
+      case "stop" :
+         foreach (thing in bits) {
+            parse_stop(fname, thing);
+         }
+         break;
+      case "route" :
+         foreach (thing in bits) {
+            parse_route(fname, thing);
+         }
+         break;
+      default :
+         debug_printf("Unknown data area %s in %s\n", name, fname);
+         log_file("COMPILE_ERROR", "Unknown data area %s in %s\n", name, fname);
+         break;
+      }
+   }
+   _file_modified_time[fname] = unguarded( (: stat($(fname)) :))[1];
+   save_file();
+   map_carriages();
+}
+void scan_for_new_data() {
+   string *files;
+   string fname;
+   string *bits;
+   debug_printf("Scan for new data.");
+   if (unguarded( (: stat(__FILE__)[1] :)) !=
+       _file_modified_time[__FILE__]) {
+      _file_modified_time = ([ ]);
+   }
+   files = ({ _data_dir });
+   while (sizeof(files)) {
+      fname = files[0];
+      files = files[1..];
+      if (unguarded( (: file_size($(fname)) :)) == -2) {
+         bits = get_dir(fname + "/");
+         if (bits) {
+            bits -= ({ "RCS", ".", ".." });
+            bits = filter(bits, (: $1[0] != '.' :));
+            files += map(bits, (: $2 + "/" + $1 :), fname);
+         }
+      } else {
+         if (unguarded( (: stat($(fname)) :))[1] != _file_modified_time[fname]) {
+            debug_printf("Compiling: %s", fname);
+            DATA_HANDLER->compile_file(fname,
+                     (: finish_compiling :));
+         }
+      }
+   }
+   _file_modified_time[__FILE__] =
+                unguarded( (: stat(__FILE__)[1] :));
+}
+private string trim(string str) {
+   while (strlen(str) && str[0] == ' ') {
+      str = str[1..];
+   }
+   while (strlen(str) && str[<1] == ' ') {
+      str = str[0..<2];
+   }
+   return str;
+}
+void load_data() {
+   scan_for_new_data();
+}
+private void map_carriages() {
+  string route;
+  int i, j;
+  class route_details rods;
+  class route_details new_rods;
+  string *locshorts;
+  object carriage;
+  object car;
+  object room;
+  object pole;
+  class stop_list_details loc;
+  string str;
+  foreach( route, rods in _routesactual) {
+    carriage = 0;
+    if (!_carriages[route]) {
+      foreach( car in children( _carriage ) ) {
+        if (clonep(car) && car->query_carriage_name() == route) {
+          carriage = car;
+          break;
+        }
+      }
+    } else {
+      carriage = _carriages[route];
+    }
+    locshorts = ({ });
+    foreach (loc in rods->stops) {
+       str = query_stop_name(loc->id);
+       if (str) {
+          locshorts += ({ str });
+       }
+    }
+    j = 0;
+    foreach (loc in rods->stops) {
+      str = query_stop_location(loc->id);
+      room = load_object(str);
+      if(objectp(room)) {
+        if( room->query_property("carriage pole")) {
+          pole = room->query_property("carriage pole");
+        } else {
+          pole = clone_object(_pole);
+          if(objectp(pole)) {
+            pole->move(room);
+            room->add_property(ROOM_KEEP_PROP);
+          }
+        }
+        if(objectp(pole)) {
+          pole->setup_route(
+                  locshorts[(j+1)..] + locshorts[0..j],
+                  _routesactual[route]->colour,
+                  route);
+        }
+      j++;
+      }
+    }
+    if (rods->return_along) {
+       new_rods = copy(rods);
+       for (i = sizeof(rods->stops) - 2; i >= 1; i--) {
+          new_rods->stops += ({ rods->stops[i] });
+       }
+    } else {
+       new_rods = rods;
+    }
+    if (!carriage) {
+      carriage = clone_object( _carriage );
+      carriage->make_carriage( route, new_rods, this_object() );
+      carriage->setup();
+    } else {
+      carriage->update_route( route, new_rods, this_object() );
+      carriage->setup();
+    }
+    if(objectp(carriage)) {
+      _carriages[route] = carriage;
+    }
+  }
+}
+mixed* stats() {
+   mixed* ret;
+   string route;
+   object ob;
+   ret = ({ });
+   foreach (route in query_route_names()) {
+      ob = query_carriage_on_route(route);
+      if (ob) {
+         ret += ({ ({ route + "-carriage", file_name(ob) })  });
+      }
+      ret += ({ ({ route + "-colour", _routesactual[route]->colour }) });
+      ret += ({ ({ route + "-current stop", ob->query_current_stop()->name })  });
+      ret += ({ ({ route + "-next stop", ob->query_next_stop()->name })  });
+      if (ob && ob->query_outside()) {
+         ret += ({ ({ route + "-outside", file_name(ob->query_outside()) }) });
+      }
+   }
+   return ret;
+}
+
+==================================================
+FILE: room/inherit/carriage/testcar.c
+==================================================
+
+#include <room/carriage.h>
+#define DEFAULT_WAIT 60
+#define DEFAULT_TRAVEL 45
+inherit "/std/room/basic_room";
+private class route_details _route_info;
+private string _carriage_name;
+private string _exit_name;
+private int _current_stop;
+private int _next_stop;
+private object _outside;
+private object _fake_carriage;
+private object _bell;
+private object _car_driver;
+private object _handler;
+private string _n_name;
+private string _p_name;
+int do_ring();
+string query_environ_long();
+void create() {
+    do_setup++;
+    ::create();
+    do_setup--;
+    set_light(60);
+    set_keep_room_loaded(1);
+    set_short( "inside a carriage" );
+    add_property( "no teleport", 1 );
+    add_property("determinate", "");
+    add_property("no map", 1);
+    add_property("no godmother", 1);
+   add_item("window", (: query_environ_long :) );
+   add_item( "carriage", "The carriage looks fairly old and barely "
+     "road worthy." );
+   _bell = clone_object("/std/object");
+   _bell->set_name("bell");
+   _bell->set_short("bell");
+   _bell->add_property("there","hanging here");
+   _bell->set_long("This is a bell you could probably ring if the "
+                 "driver has fallen asleep and you want the carriage to go "
+                 "somewhere.\n");
+   _bell->reset_get();
+   _bell->reset_drop();
+   _bell->move( this_object() );
+   if (!do_setup) {
+      this_object()->setup();
+      this_object()->reset();
+   }
+}
+void init() {
+  this_player()->add_command("ring", _bell, "<direct:object>", (: do_ring :) );
+}
+object create_carriage_driver() {
+   return 0;
+}
+string query_carriage_name() { return _carriage_name; }
+class stop_list_details query_current_stop() { return _route_info->stops[_current_stop]; }
+class stop_list_details query_next_stop() { return _route_info->stops[_next_stop]; }
+object query_outside() { return _outside; }
+class route_details query_route_map() { return _route_info; }
+int *query_stop_info() { return ({ _current_stop, _next_stop }); }
+void update_route( string name,
+                  class route_details new_route_info,
+                  object handler)
+{
+   _handler = handler;
+   _route_info = new_route_info;
+   if (_current_stop >= sizeof(_route_info)) {
+      _current_stop = _current_stop % sizeof(_route_info->stops);
+   }
+   _next_stop = (_current_stop + 1) % sizeof(_route_info->stops);
+}
+int make_carriage( string name,
+                   class route_details new_route_info,
+                   object handler)
+{
+    _handler = handler;
+    _carriage_name = name;
+    _route_info = new_route_info;
+    _current_stop = 0;
+    _next_stop = 1;
+  if (!stringp( _carriage_name )) {
+     log_file("NEW_CARRIAGE","%O: Invalid name: %O", this_object(),_carriage_name);
+     return 0;
+  }
+  if (!classp( _route_info )) {
+     log_file("NEW_CARRIAGE","%O: Invalid class: %O", this_object(), _route_info);
+     return 0;
+  }
+  call_out("make_stop",5);
+  _current_stop = 0;
+  _next_stop = (_current_stop + 1) % sizeof(_route_info->stops);
+  if(!_car_driver) {
+    _car_driver = create_carriage_driver();
+    if(objectp(_car_driver)) {
+      _car_driver->route_setup(_carriage_name);
+      _car_driver->move(this_object());
+    }
+  }
+  return 1;
+}
+void make_stop() {
+   string name;
+   string* name_parts;
+   string np;
+   string n_path;
+   string path;
+   int travel_time;
+   int stop_time;
+   name = _handler->query_stop_name(_route_info->stops[ _current_stop ]->id);
+   path = _handler->query_stop_location(_route_info->stops[ _current_stop ]->id);
+   _p_name = name;
+   travel_time = _route_info->stops[ _next_stop ]->travel_time;
+   stop_time = _handler->query_stop_delay(_route_info->stops[ _current_stop ]->id);
+   _n_name = _handler->query_stop_name(_route_info->stops[ _next_stop ]->id);
+   n_path = _handler->query_stop_location(_route_info->stops[ _next_stop ]->id);
+   _outside = load_object(path);
+   if (!_outside) {
+      log_file("NEW_CARRIAGE", ctime(time())+" (%O): problem with "
+        + path +" (" + name + ", " + _route_info->stops[ _current_stop ]->id + ")\n", this_object());
+      _route_info->stops = _route_info->stops[0.._current_stop - 1] +
+                    _route_info->stops[_current_stop + 1..];
+      call_out("make_stop", 1);
+      return;
+   }
+   tell_room(this_object(), "The carriage comes to a grinding "
+     "halt.\n");
+   if(objectp(_car_driver) && (environment(_car_driver) == this_object())) {
+     _car_driver->arrived_at_to_carriage( name, _n_name );
+   } else {
+     tell_room(this_object(), "The carriage has arrived at " + name + ".\n");
+   }
+   if (!_fake_carriage) {
+     _fake_carriage = clone_object("/std/object");
+     _fake_carriage->set_name("carriage");
+     _fake_carriage->add_property("determinate", "the " );
+     _fake_carriage->set_short(_carriage_name + " Carriage");
+     _fake_carriage->add_adjective( map(explode(_carriage_name, " "),
+                       (: lower_case($1) :) ) );
+     _fake_carriage->set_long("The carriage looks fairly old "
+       "and barely road worthy.  You could probably enter "
+       "it if you fancy a bumpy ride.\n");
+     _fake_carriage->reset_get();
+   }
+   _fake_carriage->move( _outside );
+   _fake_carriage->add_property("there","waiting here");
+   add_exit("leave carriage", path, "corridor");
+   modify_exit("leave carriage", ({
+                "function", "check_can_leave",
+                "enter", "$N climb$s out of the carriage.\n",
+                "message", "$N climb$s out of the carriage.\n",
+                "move mess", "\nYou climb out of the carriage.\n",
+                "size", 190}));
+   add_alias("out", "leave carriage");
+   tell_room(_outside, "The "+ _carriage_name + " carriage arrives and "
+      "pulls to a stop.\n"
+      "The driver opens the carriage door.\n");
+   if(objectp(_car_driver)) {
+     _car_driver->move(_outside, "The " + _carriage_name + " carriage "
+       "driver hops out of the carriage.", "The driver opens the door "
+       "and leaps out.");
+     _car_driver->arrived_at_to_stop( capitalize(_n_name) );
+   } else {
+     tell_room(this_object(), "The carriage's next stop is " + _n_name + ".\n");
+   }
+   _exit_name = "enter " + lower_case(_carriage_name) + " carriage";
+   _outside->add_exit(_exit_name, this_object(), "corridor");
+   name_parts = explode(lower_case(_carriage_name), " ");
+   foreach(np in name_parts) {
+      _outside->add_alias("enter " + np + " carriage", _exit_name);
+      _outside->add_alias("enter " + np + "s carriage", _exit_name);
+   }
+   _outside->add_alias("enter carriage", _exit_name);
+   if(!_outside->query_linker()) {
+      _outside->modify_exit(_exit_name, ({
+                   "enter", "$N enter$s the carriage.\n",
+                   "message", "$N climb$s aboard the carriage.\n",
+                   "move mess", "\nYou climb aboard the carriage.\n",
+                   "size", 190 }) );
+   } else {
+      string *linked_rooms;
+      _outside->modify_exit(_exit_name, ({
+                   "enter", "$N enter$s the carriage.\n",
+                   "message", "$N climb$s aboard the carriage.\n",
+                   "move mess", "\nYou climb aboard the carriage.\n",
+                   "linker mess", ({
+                      "At the carriage stop, $N $V$0=enters,enter$V$ "
+                      "the carriage\n", "At the carriage stop $N "
+                      "$V$0=gets off,get off$V$ the carriage.\n"}) ,
+                   "size", 190 }) );
+      linked_rooms = ( _outside->query_linker() )->query_rooms()
+                         - ({ base_name( _outside ) });
+      foreach( string raum in linked_rooms ) {
+         tell_room( raum ,
+                "A carriage draws to a halt at the carriage stop.\n");
+      }
+   }
+   stop_room_chats();
+   call_out("give_warning", stop_time - 30, name, _n_name);
+   call_out("move_on", stop_time );
+}
+int check_can_leave(string exit, object person) {
+   return !_outside->check_cannot_leave_carriage(person);
+}
+void give_warning(string this_stop_name, string next_stop_name) {
+  if(objectp(_outside) && objectp(_car_driver) &&
+     (environment(_car_driver) == _outside)) {
+    _car_driver->leaving_again_to_stop(next_stop_name);
+  } else {
+    tell_room(this_object(), "The carriage is about to leave to " +
+                             next_stop_name + ".\n");
+  }
+}
+void move_on() {
+  string* name_parts;
+  if(objectp(_car_driver)) {
+    _car_driver->do_command("mutter");
+    _car_driver->move(this_object(), "The driver hops back in to the carriage "
+      "and gets ready to drive again.", "The " + _carriage_name +
+      " driver hops back onto " + _car_driver->query_possessive() +
+      " carriage.");
+  } else {
+    tell_room(this_object(), "The carriage leaves the current stop.\n");
+  }
+  remove_exit("leave carriage");
+  remove_alias("out", "leave carriage");
+  if(objectp(_outside)) {
+    tell_room(_outside, "The driver closes the carriage door.\n"
+                         "The carriage starts moving again.\n");
+    _outside->remove_exit(_exit_name);
+    name_parts = explode(lower_case(_carriage_name), " ");
+    foreach(np in name_parts) {
+      _outside->remove_alias("enter " + np + " carriage", _exit_name);
+      _outside->remove_alias("enter " + np + "s carriage", _exit_name);
+    }
+    _outside->remove_alias("enter carriage", _exit_name);
+    if (_fake_carriage) {
+      _fake_carriage->move("/std/room");
+    }
+    _outside->modify_item("carriage", 0);
+  }
+  if (objectp(_car_driver)) {
+     _car_driver->next_stop_from_carriage(_n_name);
+  }
+  _current_stop = _next_stop;
+  _next_stop = (_current_stop + 1) % sizeof(_route_info->stops);
+  _outside = 0;
+  room_chat(({15, 30, ({
+    "The carriage seems to be on the verge of falling apart "
+      "as it shakes.",
+    "The carriage hits a bump in the road and you almost "
+      "fall out.",
+    "The driver seems to have a talent for hitting every "
+      "pothole.",
+    "The driver falls off, and just manages to get back on "
+      "the carriage."
+  }) }) );
+  this_object()->check_chat();
+  call_out("make_stop", 30 );
+}
+void dest_me() {
+  string path;
+  object ob;
+  string* name_parts;
+  if(objectp(_outside)) {
+    _outside->remove_exit(_exit_name);
+    name_parts = explode(lower_case(_carriage_name), " ");
+    foreach(np in name_parts) {
+      _outside->remove_alias("enter " + np + " carriage", _exit_name);
+      _outside->remove_alias("enter " + np + "s carriage", _exit_name);
+    }
+    _outside->remove_alias("enter carriage", _exit_name);
+    _outside->remove_extra_look(this_object());
+    _outside->modify_item("carriage", 0);
+  }
+  if (_fake_carriage) _fake_carriage->dest_me();
+  if (_bell) _bell->dest_me();
+  if (_car_driver) _car_driver->dest_me();
+  if (_current_stop < sizeof(_route_info)) {
+     path = _handler->query_stop_location(_route_info->stops[ _current_stop ]->id);
+     foreach (ob in all_inventory()) {
+        if (living(ob)) {
+          ob->move(path, "$N appears looking a little shocked.",
+                         "$N disappears in a cloud of shockedness.");
+        }
+     }
+  }
+  ::dest_me();
+}
+string query_quit_handler() {
+   return _handler->query_stop_location(_route_info->stops[ _current_stop ]->id);
+}
+mixed *co() {
+  return filter(call_out_info(),(: $1[0] == this_object() :));
+}
+int do_ring() {
+  if ( sizeof( co() ) != 0 ) {
+    add_succeeded_mess(({"You ring the bell.\n", "$N $V the "
+      "bell.\n"}));
+    if(objectp(_car_driver) && environment(_car_driver) == this_object()) {
+      _car_driver->do_command("scowl");
+      _car_driver->do_command("'We won't reach " + _n_name + " any faster just "
+        "cause you ring that danged bell!");
+    }
+    return 1;
+  }
+  call_out("move_on",2);
+  _car_driver->do_command(":wakes with a start.");
+  tell_object( this_player(), "The carriage starts rolling again.\n");
+  return 1;
+}
+string query_environ_long() {
+  if ( !_outside ) {
+    return "Outside the carriage, the road from " + _p_name + " to "
+      + _n_name + " swishes by.";
+  } else {
+  return "Outside the window you can see:\n" + _outside->long();
+  }
+}
+
+==================================================
+FILE: room/inherit/carriage/testhandler.c
+==================================================
+
+#include <room.h>
+#include <data.h>
+#include <room/carriage.h>
+#define CARRIAGE ITEMS "carriage"
+private mapping _routedetails = ([ ]);
+private mapping _routesactual = ([ ]);
+private nosave mapping _carriages = ([ ]);
+private nosave string _base_dir;
+private nosave string _carriage;
+private nosave string _pole;
+private nosave string _data_dir;
+private nosave string _save_file;
+private mapping _file_modified_time;
+private void load_data();
+private void map_carriages();
+private void save_file() {
+   unguarded((: save_object(_save_file) :));
+}
+void create() {
+   seteuid(getuid());
+   _file_modified_time = ([ ]);
+   this_object()->setup();
+}
+void setup_carriage(string dir, string base_dir,
+                    string carriage, string pole, string save_file) {
+   _data_dir = dir;
+   _base_dir = base_dir;
+   _carriage = carriage;
+   _pole = pole;
+   _save_file = save_file;
+   unguarded((: restore_object(_save_file) :));
+   if (!_file_modified_time) {
+      _file_modified_time = ([ ]);
+   }
+   load_data();
+   map_carriages();
+}
+mapping query_route_details() { return _routedetails; }
+mapping query_route_actual() { return _routesactual; }
+string* query_route_names() { return keys(_routesactual); }
+string query_stop_location(string name) {
+   if (_routedetails[name]) {
+     return _routedetails[name]->path;
+   }
+   return "bad stop " + name;
+}
+string query_stop_name(string name) {
+   if (_routedetails[name]) {
+      return _routedetails[name]->name;
+   }
+   return "Broken Position " + name;
+}
+int query_stop_delay(string name) {
+   if (_routedetails[name]) {
+      return _routedetails[name]->delay;
+   }
+   return 60;
+}
+class stop_list_details* query_route_stops(string route) {
+   return _routesactual[route]->stops;
+}
+object query_carriage_on_route(string route) {
+   return _carriages[route];
+}
+private void parse_stop(string fname, mapping data) {
+   string name;
+   class stop_details info;
+   if (!data["id"]) {
+      debug_printf("No id for stop %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   if (!data["name"]) {
+      debug_printf("No name for stop %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (!data["path"]) {
+      log_file("COMPILE_ERROR", "Required path field not present for stop %s\n", name);
+      return 0;
+   }
+   info = new(class stop_details);
+   info->name = data["name"];
+   if (data["path"][0] == '/') {
+      info->path = data["path"];
+   } else {
+      info->path = _base_dir + data["path"];
+   }
+   info->delay = data["delay"];
+   _routedetails[data["id"]] = info;
+   save_file();
+}
+private void parse_route(string fname, mapping data) {
+   string name;
+   class route_details info;
+   mixed bing;
+   if (!data["name"]) {
+      debug_printf("No id for route %O\n", data);
+      log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   if (!data["colour"]) {
+      debug_printf("No colour for route %O\n", data);
+      log_file("COMPILE_ERROR", "No name for stop %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   info = new(class route_details, stops : ({ }));
+   info->colour = data["colour"];
+   info->return_along = data["samereturnpath"];
+   foreach (bing in data["stop"]) {
+      if (!mapp(bing) || !stringp(bing["id"]) || !intp(bing["travel"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         log_file("COMPILE_ERROR", "Invalid data for route (%s) %O\n", name,  bing);
+      } else {
+         info->stops += ({ new(class stop_list_details, id : bing["id"],
+                                             travel_time : bing["travel"]) });
+      }
+   }
+   _routesactual[data["name"]] = info;
+   save_file();
+}
+protected void finish_compiling(string fname, mapping data) {
+   mixed* bits;
+   mapping thing;
+   string name;
+   foreach (name, bits in data) {
+      switch (name) {
+      case "stop" :
+         foreach (thing in bits) {
+            parse_stop(fname, thing);
+         }
+         break;
+      case "route" :
+         foreach (thing in bits) {
+            parse_route(fname, thing);
+         }
+         break;
+      default :
+         debug_printf("Unknown data area %s in %s\n", name, fname);
+         log_file("COMPILE_ERROR", "Unknown data area %s in %s\n", name, fname);
+         break;
+      }
+   }
+   _file_modified_time[fname] = unguarded( (: stat($(fname)) :))[1];
+   save_file();
+   map_carriages();
+}
+void scan_for_new_data() {
+   string *files;
+   string fname;
+   string *bits;
+   debug_printf("Scan for new data.");
+   if (unguarded( (: stat(__FILE__)[1] :)) !=
+       _file_modified_time[__FILE__]) {
+      _file_modified_time = ([ ]);
+   }
+   files = ({ _data_dir });
+   while (sizeof(files)) {
+      fname = files[0];
+      files = files[1..];
+      if (unguarded( (: file_size($(fname)) :)) == -2) {
+         bits = get_dir(fname + "/");
+         if (bits) {
+            bits -= ({ "RCS", ".", ".." });
+            bits = filter(bits, (: $1[0] != '.' :));
+            files += map(bits, (: $2 + "/" + $1 :), fname);
+         }
+      } else {
+         if (unguarded( (: stat($(fname)) :))[1] != _file_modified_time[fname]) {
+            debug_printf("Compiling: %s", fname);
+            DATA_HANDLER->compile_file(fname,
+                     (: finish_compiling :));
+         }
+      }
+   }
+   _file_modified_time[__FILE__] =
+                unguarded( (: stat(__FILE__)[1] :));
+}
+private string trim(string str) {
+   while (strlen(str) && str[0] == ' ') {
+      str = str[1..];
+   }
+   while (strlen(str) && str[<1] == ' ') {
+      str = str[0..<2];
+   }
+   return str;
+}
+void load_data() {
+   scan_for_new_data();
+}
+private void map_carriages() {
+  string route;
+  int i, j;
+  class route_details rods;
+  class route_details new_rods;
+  string *locshorts;
+  object carriage;
+  object car;
+  object room;
+  object pole;
+  class stop_list_details loc;
+  string str;
+  foreach( route, rods in _routesactual) {
+    carriage = 0;
+    if (!_carriages[route]) {
+      foreach( car in children( _carriage ) ) {
+        if (clonep(car) && car->query_carriage_name() == route) {
+          carriage = car;
+          break;
+        }
+      }
+    } else {
+      carriage = _carriages[route];
+    }
+    locshorts = ({ });
+    foreach (loc in rods->stops) {
+       str = query_stop_name(loc->id);
+       if (str) {
+          locshorts += ({ str });
+       }
+    }
+    j = 0;
+    foreach (loc in rods->stops) {
+      str = query_stop_location(loc->id);
+      room = load_object(str);
+      if(objectp(room)) {
+        if( room->query_property("test pole")) {
+          pole = room->query_property("test pole");
+        } else {
+          pole = clone_object(_pole);
+          if(objectp(pole)) {
+            pole->move(room);
+            room->add_property(ROOM_KEEP_PROP);
+          }
+        }
+        if(objectp(pole)) {
+          pole->setup_route(
+                  locshorts[(j+1)..] + locshorts[0..j],
+                  _routesactual[route]->colour,
+                  route);
+        }
+      j++;
+      }
+    }
+    if (rods->return_along) {
+       new_rods = copy(rods);
+       for (i = sizeof(rods->stops) - 2; i >= 1; i--) {
+          new_rods->stops += ({ rods->stops[i] });
+       }
+    } else {
+       new_rods = rods;
+    }
+    if (!carriage) {
+      carriage = clone_object( _carriage );
+      carriage->make_carriage( route, new_rods, this_object() );
+      carriage->setup();
+    } else {
+      carriage->update_route( route, new_rods, this_object() );
+      carriage->setup();
+    }
+    if(objectp(carriage)) {
+      _carriages[route] = carriage;
+    }
+  }
+}
+mixed* stats() {
+   mixed* ret;
+   string route;
+   object ob;
+   ret = ({ });
+   foreach (route in query_route_names()) {
+      ob = query_carriage_on_route(route);
+      if (ob) {
+         ret += ({ ({ route + "-carriage", file_name(ob) })  });
+      }
+      ret += ({ ({ route + "-colour", _routesactual[route]->colour }) });
+      ret += ({ ({ route + "-current stop", ob->query_current_stop()->name })  });
+      ret += ({ ({ route + "-next stop", ob->query_next_stop()->name })  });
+      if (ob && ob->query_outside()) {
+         ret += ({ ({ route + "-outside", file_name(ob->query_outside()) }) });
+      }
+   }
+   return ret;
+}
+
+==================================================
+FILE: room/controller/club_room_controller.c
+==================================================
+
+inherit "/std/basic/setup";
+#include <clubs.h>
+#include <room/club_room.h>
+private nosave string _save_directory;
+private mapping _options;
+private string _club;
+private mapping _ownership;
+private nosave mapping _default_ownership;
+private int _board_contained;
+class ownership {
+   string name;
+   int type;
+   int control_type;
+}
+private void setup_discussions();
+void save_me();
+void load_me();
+void create() {
+   _options = ([ ]);
+   _ownership = ([ ]);
+   _default_ownership = ([ ]);
+   do_setup();
+   call_out((: load_me() :), 0);
+}
+private void add_board_to(string club) {
+   int board_count;
+   board_count = CLUB_HANDLER->query_elected_option(club,
+                                                    CLUB_ROOM_BOARD_COUNT);
+   board_count++;
+   if (board_count == 1) {
+      CLUB_HANDLER->create_club_board(club);
+   }
+   CLUB_HANDLER->set_elected_option(club,
+                                    CLUB_ROOM_BOARD_COUNT,
+                                    board_count);
+}
+private void remove_board_from(string club) {
+   int board_count;
+   board_count = CLUB_HANDLER->query_elected_option(club,
+                                                    CLUB_ROOM_BOARD_COUNT);
+   board_count--;
+   if (board_count == 0 &&
+       CLUB_HANDLER->query_club_board(club)) {
+      CLUB_HANDLER->remove_club_board(club);
+   }
+   if (board_count <= 0) {
+      CLUB_HANDLER->remove_elected_option(club,
+                                          CLUB_ROOM_BOARD_COUNT);
+   } else {
+      CLUB_HANDLER->set_elected_option(club,
+                                       CLUB_ROOM_BOARD_COUNT,
+                                       board_count);
+   }
+}
+int set_club(string club) {
+   class ownership bing;
+   class ownership fluff;
+   string name;
+   if (!CLUB_HANDLER->is_elected_club(club)) {
+      return 0;
+   }
+   if (_club &&
+       CLUB_HANDLER->query_club_name(club) ==
+       CLUB_HANDLER->query_club_name(_club)) {
+      return 1;
+   }
+   if (_board_contained) {
+      if (_club) {
+         remove_board_from(_club);
+      }
+      add_board_to(club);
+   }
+   _club = club;
+   foreach (name, bing in _ownership) {
+      if (bing->control_type != CLUB_ROOM_CONTROLLED_FIXED) {
+         if (_default_ownership[name]) {
+            fluff = _default_ownership[name];
+            bing->type = fluff->type;
+            if (functionp(fluff->name)) {
+               bing->name = evaluate(fluff->name,
+                                     name,
+                                     club);
+            } else {
+               bing->name = fluff->name;
+            }
+         }
+      }
+   }
+   call_out((: setup_discussions :), 1);
+   save_me();
+   return 1;
+}
+string query_club() {
+   return _club;
+}
+void set_board_associated(int board_associated) {
+   board_associated = board_associated != 0;
+   if (_club) {
+      if (_board_contained != board_associated) {
+         if (board_associated) {
+            add_board_to(_club);
+         } else {
+            remove_board_from(_club);
+         }
+      }
+   }
+   _board_contained = board_associated;
+}
+int query_board_associated() {
+   return _board_contained;
+}
+int is_option(string name) {
+   return !undefinedp(_options[name]);
+}
+mixed query_option(string name) {
+   return _options[name];
+}
+int remove_option(string name) {
+   if (is_option(name)) {
+      map_delete(_options, name);
+      return 1;
+   }
+   return 0;
+}
+int set_option(string name, mixed value) {
+   _options[name] = value;
+}
+int add_controlled_ownership(string name,
+                             int type,
+                             int default_type,
+                             mixed default_name) {
+   class ownership bing;
+   if (!_ownership[name]) {
+      bing = new(class ownership);
+      bing->name = CLUB_UNKNOWN_MEMBER;
+      bing->type = CLUB_ROOM_OWNED_PERSON;
+      bing->control_type = type;
+      _ownership[name] = bing;
+      bing = new(class ownership);
+      bing->name = default_name;
+      bing->type = default_type;
+      bing->control_type = type;
+      _default_ownership[name] = bing;
+      return 1;
+   }
+   return 0;
+}
+int set_controlled_ownership_owner(string controlled,
+                                   string owner,
+                                   int type) {
+   class ownership bing;
+   if (!_ownership[controlled]) {
+      return 0;
+   }
+   bing = _ownership[controlled];
+   bing->type = type;
+   bing->name = owner;
+   save_me();
+   return 1;
+}
+mixed discuss_nominate_ownership(string message,
+                                 string club_name,
+                                 class discussion_idea frog,
+                                 string arg1,
+                                 string arg2) {
+   string *nominated;
+   string body;
+   string *nom;
+   string name;
+   int ret;
+   switch (message) {
+   case CLUB_DISCUSS_MESSAGE_VERIFY :
+      if (CLUB_HANDLER->query_club_name(club_name) !=
+          CLUB_HANDLER->query_club_name(_club)) {
+         return 0;
+      }
+      if (!_ownership[frog->information]) {
+         return 0;
+      }
+      return 1;
+   case CLUB_DISCUSS_MESSAGE_COMPLETE :
+      body = "Hello!\n\nThe discussion item "
+         "added at " + ctime(frog->time_added) + ", finished at " +
+         ctime(time()) + " and added by " + frog->added_by +
+         " has finished.";
+      body += "  The vote for nominations for the ownership of " +
+         frog->information + " in the club " +
+         CLUB_HANDLER->query_club_name(club_name) +
+         " has been completed and the "
+         "results are:\n";
+      nominated = ({ });
+      foreach (name, nom in frog->choices) {
+         body += name + ": " + query_multiple_short(nom);
+         if ((member_array(name, nom) != -1 ||
+              name[0..strlen(CLUB_ROOM_POSITION_START)] == CLUB_ROOM_POSITION_START) &&
+              sizeof(nom) >= 2) {
+            body += " (accepted)\n";
+            nominated += ({ name });
+         } else {
+            body += "\n";
+         }
+      }
+      if (frog->information) {
+         body += frog->information;
+      }
+      if (sizeof(nominated)) {
+         if (_ownership[frog->information]) {
+            if (sizeof(nominated) != 1) {
+               body += "Therefor we had added an election with " +
+                  query_multiple_short(nominated) +
+                  " for the ownership of " +
+                  frog->information + ".\n";
+               CLUB_HANDLER->add_discussion_item(club_name,
+                                   CLUB_DISCUSS_FUNCTION,
+                                   frog->added_by,
+                                   ({ file_name(this_object()),
+                                      "discuss_elect_ownership" }),
+                                   frog->information,
+                                   nominated,
+                                   7 * (24 * 60 * 60),
+                                   0);
+            } else {
+               body += "Only " + nominated[0] +
+                  " was nominated, so they are given ownership immediately.\n";
+               if (name[0..strlen(CLUB_ROOM_POSITION_START)] == CLUB_ROOM_POSITION_START) {
+                  set_controlled_ownership_owner(frog->information,
+                                                 nominated[0][strlen(CLUB_ROOM_POSITION_START)..],
+                                                 CLUB_ROOM_OWNED_POSITION);
+               } else {
+                  set_controlled_ownership_owner(frog->information,
+                                                 nominated[0],
+                                                 CLUB_ROOM_OWNED_PERSON);
+               }
+            }
+         } else {
+            body += "The ownership item appears to have vanished!\n";
+         }
+      } else {
+         if (_ownership[frog->information]) {
+            body += "No one accepted their nomination, so nothing "
+               "happened.\n";
+            CLUB_HANDLER->add_discussion_item(club_name,
+                                CLUB_DISCUSS_FUNCTION,
+                                frog->added_by,
+                                frog->name,
+                                frog->information,
+                                ({ }),
+                                7 * (24 * 60 * 60),
+                                frog->optional_data);
+         } else {
+            body += "The position in the club appears to have vanished!\n";
+         }
+      }
+      return body;
+   case CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION :
+      return "Nominations for ownership of " + frog->information;
+   case CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION :
+      body = "Nominations for the ownership of " + frog->information +
+         ", positions or people can be nominated to have ownership.  "
+         "Positions are nominated by putting the word 'position' in front "
+         "ie: 'position president'.\n"
+         "Currently nominated are:\n";
+      foreach (name, nom in frog->choices) {
+         body += name + ": " + query_multiple_short(nom);
+         if ((member_array(name, nom) != -1 ||
+              name[0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START) &&
+              sizeof(nom) >= 2) {
+            body += " (accepted)\n";
+         } else {
+            body += "\n";
+         }
+      }
+      return body;
+   case CLUB_DISCUSS_MESSAGE_NOMINATION :
+      if (CLUB_HANDLER->is_member_of(_club, arg1)) {
+         if (CLUB_HANDLER->is_member_of(_club, arg2) ||
+             (name[0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START &&
+              CLUB_HANDLER->is_valid_position(_club,
+                                              name[strlen(CLUB_ROOM_POSITION_START)..]))) {
+            if (!frog->choices[arg2]) {
+               frog->choices[arg2] = ({ arg1 });
+               return 1;
+            } else if (member_array(arg1,
+                                    frog->choices[arg2]) == -1) {
+               frog->choices[arg2] += ({ arg1 });
+               return 1;
+            }
+         }
+      }
+      return 0;
+   case CLUB_DISCUSS_MESSAGE_TYPE :
+      return CLUB_DISCUSS_MESSAGE_TYPE_NOMINATE;
+   case CLUB_DISCUSS_MESSAGE_REMOVE_MEMBER :
+      if (frog->choices[arg1]) {
+         map_delete(frog->choices, arg1);
+         ret = 1;
+      }
+      foreach (name, nom in frog->choices) {
+         if (member_array(arg1, nom) != -1) {
+            frog->choices[name] = nom - ({ arg1 });
+            if (!sizeof(frog->choices[name])) {
+               map_delete(frog->choices, name);
+            }
+            ret = 1;
+         }
+      }
+      return ret;
+   case CLUB_DISCUSS_MESSAGE_REMOVE_POSITION :
+      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
+         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
+         ret = 1;
+      }
+      return ret;
+   case CLUB_DISCUSS_MESSAGE_CHANGE_POSITION :
+      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
+         frog->choices[CLUB_ROOM_POSITION_START + arg2] = frog->choices[CLUB_ROOM_POSITION_START + arg1];
+         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
+         ret = 1;
+      }
+      return ret;
+   case CLUB_DISCUSS_MESSAGE_NOMINATION_QUERY :
+      return frog->choices;
+   }
+}
+mixed discuss_elect_ownership(string message,
+                              string club_name,
+                              class discussion_idea frog,
+                              string arg1,
+                              string arg2) {
+   string body;
+   string name;
+   int votes;
+   int ret;
+   int max_votes;
+   string *names;
+   switch (message) {
+   case CLUB_DISCUSS_MESSAGE_VERIFY :
+      if (CLUB_HANDLER->query_club_name(club_name) !=
+          CLUB_HANDLER->query_club_name(_club)) {
+         return 0;
+      }
+      if (!_ownership[frog->information]) {
+         return 0;
+      }
+      return 1;
+   case CLUB_DISCUSS_MESSAGE_COMPLETE :
+      body = "Hello!\n\nThe discussion item "
+         "added at " + ctime(frog->time_added) + ", finished at " +
+         ctime(time()) + " and added by " + frog->added_by +
+         " has finished.";
+      body += "  The vote for elections of the ownership of " +
+              frog->information +
+         " in the club " +
+         CLUB_HANDLER->query_club_name(club_name) +
+         " has been completed and the "
+         "results are:\n";
+      names = ({ });
+      max_votes = 0;
+      foreach (name, votes in frog->choices) {
+         body += name + ": " + votes + "\n";
+         if (votes > max_votes) {
+            max_votes = votes;
+            names = ({ name });
+         } else if (votes == max_votes) {
+            names += ({ name });
+         }
+      }
+      if (_ownership[frog->information]) {
+         if (sizeof(names) == 1) {
+            body += "Therefor we set " + names[0] +
+                  " as owning " + frog->information + ".\n";
+            if (names[0][0..strlen(CLUB_ROOM_POSITION_START) - 1] == CLUB_ROOM_POSITION_START) {
+               set_controlled_ownership_owner(frog->information,
+                                              names[0][strlen(CLUB_ROOM_POSITION_START)..],
+                                              CLUB_ROOM_OWNED_POSITION);
+             } else {
+               set_controlled_ownership_owner(frog->information,
+                                              names[0],
+                                              CLUB_ROOM_OWNED_PERSON);
+             }
+         } else {
+            body += "There was a tie for the results of the position, readding "
+                    "a discussion with the tied members: " +
+                    query_multiple_short(names) + ".\n";
+            CLUB_HANDLER->add_discussion_item(club_name,
+                                   CLUB_DISCUSS_FUNCTION,
+                                   frog->added_by,
+                                   ({ file_name(this_object()),
+                                      "discuss_elect_ownership" }),
+                                   frog->information,
+                                   names,
+                                   7 * (24 * 60 * 60),
+                                   frog->optional_data);
+         }
+      } else {
+         body += "The ownership item appears to have vanished!\n";
+      }
+      return body;
+   case CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION :
+      return "Election for ownership of " + frog->information;
+   case CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION :
+      body = "Election for the ownership of " + frog->information +
+         ".\n";
+      return body;
+   case CLUB_DISCUSS_MESSAGE_TYPE :
+      return CLUB_DISCUSS_MESSAGE_TYPE_VOTE;
+   case CLUB_DISCUSS_MESSAGE_REMOVE_MEMBER :
+      if (frog->choices[arg1]) {
+         map_delete(frog->choices, arg1);
+         ret = 1;
+      }
+      return ret;
+   case CLUB_DISCUSS_MESSAGE_REMOVE_POSITION :
+      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
+         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
+         ret = 1;
+      }
+      return ret;
+   case CLUB_DISCUSS_MESSAGE_CHANGE_POSITION :
+      if (frog->choices[CLUB_ROOM_POSITION_START + arg1]) {
+         frog->choices[CLUB_ROOM_POSITION_START + arg2] = frog->choices[CLUB_ROOM_POSITION_START + arg1];
+         map_delete(frog->choices, CLUB_ROOM_POSITION_START + arg1);
+         ret = 1;
+      }
+      return ret;
+   }
+}
+private void setup_discussions() {
+   string name;
+   class ownership bing;
+   foreach (name, bing in _ownership) {
+      if (bing->control_type != CLUB_ROOM_CONTROLLED_FIXED) {
+         CLUB_HANDLER->add_discussion_item(_club,
+                                           CLUB_DISCUSS_FUNCTION,
+                                           ({ file_name(this_object()),
+                                              "discuss_nominate_ownership" }),
+                                           name,
+                                           ({ }),
+                                           7 * 24 * 60 * 60,
+                                           0);
+      }
+   }
+}
+void load_me() {
+   if (_save_directory) {
+      unguarded( (: restore_object(_save_directory + CLUB_ROOM_CONTROLLER_SAVE_FILE ) :) );
+   }
+}
+void save_me() {
+   if (_save_directory) {
+      unguarded( (: save_object(_save_directory + CLUB_ROOM_CONTROLLER_SAVE_FILE ) :) );
+   }
+}
+void set_save_directory(string save_directory) {
+   while (save_directory[<1] == '/') {
+      save_directory = save_directory[0..<2];
+   }
+   _save_directory = save_directory;
+}
+string query_save_directory() {
+   return _save_directory;
+}
+string query_room_save_file_name(mixed fname) {
+   if (objectp(fname)) {
+      fname = file_name(fname);
+   }
+   fname = fname[strsrch(fname, '/', -1)..];
+   return _save_directory + fname;
+}
+
+==================================================
+FILE: room/controller/topography/area.c
+==================================================
+
+#include <dirs.h>
+#include <image.h>
+inherit "/std/room";
+mapping direction_bits = ([
+    "north": 1,
+    "northeast": 2,
+    "east": 4,
+    "southeast": 8,
+    "south": 16,
+    "southwest": 32,
+    "west": 64,
+    "northwest": 128,
+    "up": 256,
+    "down": 512,
+]);
+class AREA_INFO {
+  string base;
+  int *origin;
+  int *size;
+  mixed *bbox;
+  mixed *vertices;
+  class IMAGE_INFO height;
+  class IMAGE_INFO exits;
+}
+private int dbg_lvl = 0;
+private string debugger = "jeremy";
+private string _handler;
+private class AREA_INFO *areas = ({ });
+private mapping room_cache = ([ ]);
+private mapping area_cache = ([ ]);
+void set_handler(string handler) {
+   _handler = handler;
+}
+string query_handler() {
+   return _handler;
+}
+void set_debugger(string s) { debugger = s; }
+string query_debugger() { return debugger; }
+void set_debug_level(int l) { dbg_lvl = l; }
+int query_debug_level() { return dbg_lvl; }
+mixed query(string s) { return fetch_variable(s); }
+void set_base(int i, string s) { areas[i]->base = s; }
+string query_base(int i) { return areas[i]->base; }
+void set_origin(int i, int *o) { areas[i]->origin = copy(o); }
+int *query_origin(int i) { return copy(areas[i]->origin); }
+void create() {
+  do_setup++;
+  ::create();
+  do_setup--;
+  set_keep_room_loaded(1);
+  if ( !do_setup ) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+}
+int *quantize_to_origin(int *coord_r, int a) {
+  int size2, i, *coord_q;
+  coord_q = allocate(3);
+  for (i = 0; i < 3; i++) {
+    size2 = areas[a]->size[i] * 2;
+    if (coord_r[i] < areas[a]->origin[i]) {
+      coord_q[i] = coord_r[i] - areas[a]->size[i];
+    } else {
+      coord_q[i] = coord_r[i] + areas[a]->size[i];
+    }
+    coord_q[i] = ((coord_q[i] - areas[a]->origin[i]) / size2) * size2
+      + areas[a]->origin[i];
+  }
+  return coord_q;
+}
+void set_size(int i, mixed s) {
+  if (intp(s)) {
+    areas[i]->size = ({ s, s, s });
+  } else if (arrayp(s) && (sizeof(s) == 3)) {
+    areas[i]->size = copy(s);
+  } else {
+    error("Illegal size; must be int or 3-element array.\n");
+  }
+}
+varargs void set_height_map(int i, string map_file, int rle) {
+  int *nw;
+  areas[i]->height = IMAGE_HANDLER->load_image(map_file, rle);
+  if (arrayp(areas[i]->bbox)) {
+    nw = copy(areas[i]->bbox[0]);
+    nw[0] = areas[i]->bbox[1][0] - 1;
+    nw[1] += 1;
+    nw[2] += 1;
+    areas[i]->height->nw_coord = quantize_to_origin(nw, i);
+  }
+}
+varargs void set_exits_map(int i, string map_file, int rle) {
+  int *nw;
+  areas[i]->exits = IMAGE_HANDLER->load_image(map_file, rle);
+  if (arrayp(areas[i]->bbox)) {
+    nw = copy(areas[i]->bbox[0]);
+    nw[0] = areas[i]->bbox[1][0] - 1;
+    nw[1] += 1;
+    nw[2] += 1;
+    areas[i]->exits->nw_coord = quantize_to_origin(nw, i);
+  }
+}
+int new_area() {
+  areas += ({ new(class AREA_INFO) });
+}
+void set_vertices(int a, mixed *vs) {
+  int v, i;
+  if (!arrayp(areas[a]->origin)) {
+    error("Origin unset - setting to (0,0,0).\n");
+    areas[a]->origin = ({ 0, 0, 0 });
+  }
+  areas[a]->vertices = copy(vs);
+  areas[a]->bbox = ({ copy(vs[0]), copy(vs[0]) });
+  for (i = 0; i < 3; i++) {
+    areas[a]->bbox[0][i] += areas[a]->origin[i];
+    areas[a]->bbox[1][i] += areas[a]->origin[i];
+  }
+  for (v = 0; v < sizeof(areas[a]->vertices); v++) {
+    for (i = 0; i < 3; i++) {
+      areas[a]->vertices[v][i] += areas[a]->origin[i];
+      if (areas[a]->vertices[v][i] < areas[a]->bbox[0][i]) {
+        areas[a]->bbox[0][i] = areas[a]->vertices[v][i];
+      } else if (areas[a]->vertices[v][i] > areas[a]->bbox[1][i]) {
+        areas[a]->bbox[1][i] = areas[a]->vertices[v][i];
+      }
+    }
+  }
+}
+int in_bbox(int *coord, mixed *bbox) {
+  if ((coord[0] < bbox[0][0]) || (coord[0] > bbox[1][0])) {
+    return 0;
+  }
+  if ((coord[1] < bbox[0][1]) || (coord[1] > bbox[1][1])) {
+    return 0;
+  }
+  if ((coord[2] < bbox[0][2]) || (coord[2] > bbox[1][2])) {
+    return 0;
+  }
+  return 1;
+}
+int in_area(int a, int *v) {
+  int crossings, i, i0, i1, de, int_n, below_vertex;
+  mixed *vs;
+  if (!in_bbox(v, areas[a]->bbox)) {
+    return 0;
+  }
+  vs = allocate(2);
+  for (i = 0; i < sizeof(areas[a]->vertices); i++) {
+    below_vertex = 0;
+    vs[0] = areas[a]->vertices[i];
+    if (i < sizeof(areas[a]->vertices)-1) {
+      vs[1] = areas[a]->vertices[i+1];
+    } else {
+      vs[1] = areas[a]->vertices[0];
+    }
+    if ((v[1] < vs[0][1]) && (v[1] < vs[1][1])) {
+      continue;
+    }
+    if ((v[1] > vs[0][1]) && (v[1] > vs[1][1])) {
+      continue;
+    }
+    if ((v[0] > vs[0][0]) && (v[0] > vs[1][0])) {
+      continue;
+    }
+    if ((v[0] < vs[0][0]) && (v[0] < vs[1][0])) {
+      if (v[1] != vs[0][1]) {
+        if (v[1] != vs[1][1]) {
+          crossings++;
+        }
+        continue;
+      } else {
+        below_vertex = 1;
+      }
+    }
+    if (vs[0][1] == vs[1][1]) {
+      if (!below_vertex) {
+        return 1;
+      }
+      continue;
+    }
+    if ((v[0] == vs[0][0]) && (v[1] == vs[0][1])) {
+      return 1;
+    }
+    if ((vs[0][0] == vs[1][0]) && !below_vertex) {
+      return 1;
+    }
+    if (v[1] == vs[1][1]) {
+      continue;
+    }
+    if (v[1] == vs[0][1]) {
+      if (v[0] > vs[0][0]) {
+        continue;
+      }
+      i0 = i;
+      while (areas[a]->vertices[i0][1] == v[1]) {
+        i0--;
+        if (i0 < 0) i0 = sizeof(areas[a]->vertices) - 1;
+      }
+      i1 = i;
+      while (areas[a]->vertices[i1][1] == v[1]) {
+        i1++;
+        if (i1 >= sizeof(areas[a]->vertices)) i1 = 0;
+      }
+      crossings++;
+      if (((areas[a]->vertices[i0][1] > v[1]) &&
+           (areas[a]->vertices[i1][1] > v[1])) ||
+          ((areas[a]->vertices[i0][1] < v[1]) &&
+           (areas[a]->vertices[i1][1] < v[1]))) {
+        crossings++;
+      }
+      continue;
+    }
+    de = vs[1][1] - vs[0][1];
+    int_n = ceil(to_float(vs[1][0] - vs[0][0])*(v[1] - vs[0][1])/de
+                 + vs[0][0] + 0.5);
+    if (int_n > v[0]) {
+      crossings++;
+    }
+  }
+  return (crossings & 1);
+}
+object clone_room(int a, int *coord_q, string coord_s) {
+  int i, j, e, bit;
+  string dir;
+  object room;
+  room = clone_object(areas[a]->base);
+  room_cache[coord_s] = room;
+  area_cache[coord_s] = a;
+  room->set_room_size(areas[a]->size);
+  room->set_co_ord(coord_q);
+  if (areas[a]->exits) {
+    i = (areas[a]->origin[0] - coord_q[0])/(2*areas[a]->size[0]);
+    j = (coord_q[1] - areas[a]->origin[1])/(2*areas[a]->size[1]);
+    if ((i < areas[a]->exits->size[0]) && (j < areas[a]->exits->size[1])
+        && (i >= 0) && (j >= 0)) {
+      e = areas[a]->exits->image[i][j];
+      foreach (dir, bit in direction_bits) {
+        if (e & bit) {
+          room->add_exit(dir, "", "path");
+        }
+      }
+      room->add_property("image_cell", ({ i, j }));
+    }
+  }
+  return room;
+}
+object find_room_at_coord(int *coord) {
+  int a, ac, *coord_q;
+  string coord_s;
+  object room;
+  coord_s = sprintf("%d:%d:%d", coord[0], coord[1], coord[2]);
+  if (objectp(room = room_cache[coord_s])) {
+    return room;
+  }
+  if (!undefinedp(ac = area_cache[coord_s])) {
+    return clone_room(ac, coord, coord_s);
+  }
+  for (a = 0; a < sizeof(areas); a++) {
+    coord_q = quantize_to_origin(coord, a);
+    coord_s = sprintf("%d:%d:%d", coord_q[0], coord_q[1], coord_q[2]);
+    if (objectp(room = room_cache[coord_s])) {
+      return room;
+    }
+    if (!undefinedp(ac = area_cache[coord_s])) {
+      return clone_room(ac, coord_q, coord_s);
+    }
+    if (!in_area(a, coord_q)) {
+      continue;
+    }
+    return clone_room(a, coord_q, coord_s);
+  }
+  return 0;
+}
+object find_room_at_exit(object r, int *d, string direc) {
+  int a, ac, i, *coord, *coord_r, *coord_q;
+  string coord_s;
+  object room;
+  mixed size_r;
+  if (dbg_lvl > 0) {
+    tell_creator(debugger, "%s::find_room_at_exit()\n"
+                 "  r: %O\n"
+                 "  d: %O\n"
+                 "  direc: %O\n",
+                 file_name(this_object()), r, d, direc);
+  }
+  if (!arrayp(d)) {
+    return 0;
+  }
+  coord = r->query_co_ord();
+  size_r = r->query_actual_room_size();
+  if (!arrayp(size_r)) {
+    size_r = r->query_room_size();
+    if (!arrayp(size_r)) {
+      size_r = ({ size_r, size_r, size_r });
+    }
+  }
+  coord_r = allocate(3);
+  for (a = 0; a < sizeof(areas); a++) {
+    for (i = 0; i < 3; i++) {
+      coord_r[i] = coord[i] + (size_r[i] + areas[a]->size[i]) * d[i];
+    }
+    coord_s = sprintf("%d:%d:%d", coord_r[0], coord_r[1], coord_r[2]);
+    return load_object(_handler + ":" + coord_s);
+#if 0
+    if (objectp(room = room_cache[coord_s])) {
+      if (dbg_lvl > 0) {
+        tell_creator(debugger, "%s::find_room_at_exit()\n"
+                 "  found room %O cached at %s...\n",
+                 file_name(this_object()), room, coord_s);
+      }
+      return room;
+    }
+    if (!undefinedp(ac = area_cache[coord_s])) {
+      if (dbg_lvl > 0) {
+        tell_creator(debugger, "%s::find_room_at_exit()\n"
+                 "  found area %O cached at %s...\n",
+                 file_name(this_object()), ac, coord_s);
+      }
+      return clone_room(ac, coord_r, coord_s);
+    }
+    coord_q = quantize_to_origin(coord_r, a);
+    coord_s = sprintf("%d:%d:%d", coord_q[0], coord_q[1], coord_q[2]);
+    if (objectp(room = room_cache[coord_s])) {
+      return room;
+    }
+    if (!undefinedp(ac = area_cache[coord_s])) {
+      return clone_room(ac, coord_q, coord_s);
+    }
+    if (!in_area(a, coord_q)) {
+      continue;
+    }
+    return clone_room(a, coord_q, coord_s);
+#endif
+  }
+  return 0;
+}
+int goto_room_at_coord(int *coord) {
+  return this_player()->move_with_look(find_room_at_coord(coord));
+}
+int goto_room_at_exit(int *d, string direc) {
+  return this_player()->move_with_look(find_room_at_exit(
+                        environment(this_player()), d, direc));
+}
+void print_images(int a) {
+  if (areas[a]->height) {
+    printf("-------- Height:\n");
+    IMAGE_HANDLER->print_image(areas[a]->height);
+  }
+  if (areas[a]->exits) {
+    printf("-------- Exits:\n");
+    IMAGE_HANDLER->print_image(areas[a]->exits);
+  }
+}
+void print_map(int a) {
+  int s, e;
+  string l = "";
+  class IMAGE_INFO exits;
+  if (areas[a]->exits) {
+    exits = areas[a]->exits;
+    for (s = 0; s < exits->size[1]; s++) {
+      for (e = 0; e < exits->size[0]; e++) {
+        l += (exits->image[s][e] & 128)?"\\":" ";
+        l += (exits->image[s][e] & 1)  ?"|":" ";
+        l += (exits->image[s][e] & 2)  ?"/":" ";
+      }
+      l += "\n";
+      for (e = 0; e < exits->size[0]; e++) {
+        l += (exits->image[s][e] & 64) ?"-":" ";
+        l += "*";
+        l += (exits->image[s][e] & 4)  ?"-":" ";
+      }
+      l += "\n";
+      for (e = 0; e < exits->size[0]; e++) {
+        l += (exits->image[s][e] & 32) ?"/":" ";
+        l += (exits->image[s][e] & 16) ?"|":" ";
+        l += (exits->image[s][e] & 8)  ?"\\":" ";
+      }
+      l += "\n";
+    }
+    write(l);
+  }
+}

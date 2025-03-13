@@ -1,0 +1,1694 @@
+# Total Tokens: 14967
+# Total Files Merged: 10
+# Total Characters: 49914
+
+dom_names.c
+==================================================
+
+#include <random_names.h>
+#include <player_handler.h>
+private mapping rules;
+private string* _test_rules;
+void create() {
+   seteuid("Room");
+   rules = ([ ]);
+   _test_rules = ({ });
+   unguarded((: restore_object, RANDOM_NAME_SAVE_FILE :));
+   if (!_test_rules) {
+      _test_rules = ({ });
+   }
+}
+private void save_me() {
+   unguarded((: save_object, RANDOM_NAME_SAVE_FILE :));
+}
+void open_file(string f) {
+   string str, *bits, *stuff, lang;
+   int i;
+   bits = explode(f, ".");
+   if (sizeof(bits) > 1) {
+      lang = implode(bits[0..sizeof(bits)-2], ".");
+   } else {
+      lang = f;
+   }
+   lang = replace(lang, "_", " ");
+   str = unguarded((: read_file, RANDOM_NAME_DATA_DIR+f :));
+   bits = explode(str, "\n");
+   rules[lang] = ([ ]);
+   for (i=0;i<sizeof(bits);i++) {
+      sscanf(bits[i], "%s#%*s", bits[i]);
+      if (strlen(bits[i])) {
+         stuff = explode("G"+bits[i], ":");
+         if (sizeof(stuff) >= 3) {
+            rules[lang][stuff[1]] = stuff[2];
+         } else {
+            write("Incorrect file format at line "+i+", less than 3 "
+                  ": seporated bits.\n");
+         }
+      }
+   }
+   save_me();
+}
+string random_name(string lang) {
+   string word = "W", *bing;
+   int some_caps = 1, i;
+   do {
+      some_caps = 0;
+      for (i = 0; i < strlen(word); i++)
+         if (word[i] >= 'A' && word[i] <= 'Z') {
+            bing = explode(rules[lang][word[i..i]], " ") - ({ "" });
+            word = word[0..i-1] + bing[random(sizeof(bing))] + word[i+1..];
+            some_caps = 1;
+         }
+   } while (some_caps);
+   return word;
+}
+string *query_languages() { return keys(rules) - _test_rules; }
+string *query_test_languages() {
+   return _test_rules;
+}
+void add_test_language(string lang) {
+   _test_rules += ({ lang });
+   save_me();
+}
+void remove_test_language(string lang) {
+   _test_rules -= ({ lang });
+   save_me();
+}
+string unique_name(string lang) {
+   string str;
+   int ok;
+   do {
+      ok = 1;
+      str = random_name(lang);
+      if (strlen(str) < 2 || strlen(str) > 11)
+         ok = 0;
+      if (ok && PLAYER_HANDLER->test_user(str))
+         ok = 0;
+      if (ok && !PLAYER_HANDLER->test_valid(str))
+         ok = 0;
+      if (ok && find_living(str))
+         ok = 0;
+   } while (!ok);
+   return str;
+}
+void dest_me() {
+   destruct(this_object());
+}
+
+==================================================
+FILE: handlers/random_num.c
+==================================================
+
+int seed = 100;
+varargs int random(int max, mixed lseed);
+#define Q           51924
+#define R           10855
+#define MULT        41358
+#define MOD   21474836647
+#define MAX_VALUE (MOD-1)
+#define STARTUP_RANDS  16
+void set_seed(int new_seed) {
+  int i;
+  if (seed <= 0)
+    seed = efun::random(200);
+  else
+    seed = new_seed;
+  for (i=0;i<STARTUP_RANDS;i++)
+    random(200);
+}
+varargs int random(int max, mixed lseed) {
+  int k, residue, curseed, mode;
+  if (undefinedp(lseed)) {
+    curseed = seed;
+  } else if (intp(lseed)) {
+    curseed = lseed;
+    mode = 1;
+  } else if (arrayp(lseed) && (sizeof(lseed) == 1) && (intp(lseed[0]))) {
+    curseed = lseed[0];
+    mode = 2;
+  } else {
+    curseed = seed;
+  }
+  k = curseed / Q;
+  residue = MULT * (curseed - Q*R) - R*k;
+  if (residue < 0)
+    residue += MOD;
+  if (mode == 0) {
+    seed = residue;
+  } else if (mode == 2) {
+    lseed[0] = residue;
+  }
+  return residue % max;
+}
+int query_seed() {
+  return seed;
+}
+
+==================================================
+FILE: handlers/reaction.c
+==================================================
+
+#include <move_failures.h>
+#include <reaction.h>
+#define REACTIONS "/obj/reactions/"
+#define SUBSTANCES 10
+mapping substance = allocate_mapping(SUBSTANCES);
+int debug_rh = 0;
+void restore_from_files();
+void write_dbg(string str) { if (debug_rh) write(str); }
+void create() {
+    seteuid("/secure/master"->creator_file(file_name(this_object())));
+    restore_from_files();
+}
+mapping merge_effects(mapping effects_a, mapping effects_m, int q_a, int q_m) {
+    int q_t, strength;
+    string key;
+    mapping ret = ([ ]);
+    if(!mapp(effects_a) || !mapp(effects_m))
+      return 0;
+    q_t = q_a + q_m;
+    if ( !q_t ) {
+        return 0;
+    }
+    foreach (key in keys(effects_a)) {
+        if (!intp(effects_a[key]) || !intp(effects_m[key])) {
+            continue;
+        }
+        if (undefinedp(effects_m[key])) {
+            strength = (effects_a[key]*q_a)/q_t;
+        } else {
+            strength = (effects_a[key]*q_a + effects_m[key]*q_m)/q_t
+                - effects_m[key];
+            map_delete(effects_m, key);
+        }
+        ret += ([key: strength]);
+    }
+    foreach (key in keys(effects_m)) {
+        if (!intp(effects_m[key])) {
+            continue;
+        }
+        strength = (effects_a[key]*q_a + effects_m[key]*q_m)/q_t
+            - effects_m[key];
+        ret += ([key: strength]);
+    }
+    return ret;
+}
+object merge_cont_medium(object a, string medium_alias) {
+    object medium;
+    int no_join, q_a, q_m;
+    mapping effects_a, effects_m, eff;
+    string key;
+    a->remove_alias(medium_alias);
+    no_join = a->query_no_join();
+    if ((medium = present(medium_alias, environment(a))) && !no_join) {
+        a->set_no_join();
+        a->move("/room/void");
+        q_a = a->query_amount();
+        q_m = medium->query_amount();
+        medium->adjust_amount(q_a);
+        effects_a = copy(a->query_eat_effects());
+        effects_m = copy(medium->query_eat_effects());
+        eff = merge_effects(effects_a, effects_m, q_a, q_m);
+        if (mapp(eff)) {
+           foreach (key in keys(eff)) {
+               medium->add_eat_effect(key, eff[key]);
+           }
+        }
+        effects_a = copy(a->query_external_effects());
+        effects_m = copy(medium->query_external_effects());
+        eff = merge_effects(effects_a, effects_m, q_a, q_m);
+        if(eff) {
+          foreach (key in keys(eff)) {
+            medium->add_external_effect(key, eff[key]);
+          }
+        }
+        call_out("dest_substance", 0, a);
+        return medium;
+    } else {
+        a->add_alias(medium_alias);
+        return a;
+    }
+}
+void check_reaction(object a) {
+    int amt_a, need_amt_a, amt_b, need_amt_b;
+    string name_a, name_b, i_a, i_b, msg, fcn;
+    mixed *fcns;
+    int i, j, amt_result;
+    object x, *bs, ob_a, ob_b;
+    float ratio;
+    class reaction rcn;
+    if (objectp(this_player()))
+      debug_rh = this_player()->query_property("debug_rh");
+    else
+      debug_rh = 0;
+    write_dbg("Entering reaction_handler.\n");
+    name_a = a->query_medium_alias();
+    if (!name_a || !a->query_continuous()) {
+        write_dbg("Leaving reaction_handler because there is no A or it is not "
+        "continous.\n");
+        return;
+    }
+    if ( a->query_medium_alias() == a->query_name() ) {
+        debug_printf( "WARNING: Your cont_medium alias must "
+          "not be the same as your name.\n" );
+        return;
+    }
+    a = merge_cont_medium(a, name_a);
+    bs = all_inventory(environment(a));
+    debug_printf( "A is %O at %O. Bs are: %O.\n", a, environment( a ), bs );
+    if ((sizeof(bs) < 2) || (!a->query_amount())) {
+        write_dbg("Leaving reaction_handler because there is no B, or there is "
+        "0 amounts of A.\n");
+        return;
+    }
+    write_dbg("Checking the following: ");
+    for (i = 0; i < sizeof(bs); i++) {
+        write_dbg(bs[i]->query_medium_alias() + ", ");
+    }
+    write_dbg("\n");
+    for (i = 0; i < sizeof(bs); i++) {
+        if (!a->query_amount()) {
+            write_dbg("Leaving reaction_handler.\n");
+            return;
+        }
+        name_b = bs[i]->query_medium_alias();
+        if (!name_b || !bs[i]->query_continuous() || !bs[i]->query_amount()) {
+            continue;
+        }
+        if (name_a < name_b) {
+            i_a = name_a;
+            i_b = name_b;
+            ob_a = a;
+            ob_b = bs[i];
+        } else {
+            i_a = name_b;
+            i_b = name_a;
+            ob_a = bs[i];
+            ob_b = a;
+        }
+        write_dbg("Checking " + i_a + " against " + i_b + ".\n");
+        if (!substance[i_a] || !substance[i_a][i_b]) {
+            continue;
+        }
+        write_dbg("...they react.\n");
+        rcn = substance[i_a][i_b];
+        amt_a = ob_a->query_amount();
+        amt_b = ob_b->query_amount();
+        ratio = to_float(amt_a) / amt_b;
+        if (intp(rcn->ratio)) {
+            rcn->ratio = to_float(rcn->ratio);
+        }
+        if (floatp(rcn->ratio)) {
+            write_dbg("Single ratio...\n");
+            if (ratio > rcn->ratio) {
+                need_amt_b = amt_b;
+                need_amt_a = to_int(ceil(amt_b*rcn->ratio));
+                write_dbg("Setting amt_a to "+ to_int(ceil(amt_b*rcn->ratio)) +".\n" );
+            } else {
+                need_amt_a = amt_a;
+                need_amt_b = to_int(ceil(amt_a/rcn->ratio));
+                write_dbg("Setting amt_b to "+ to_int(ceil(amt_a/rcn->ratio)) +".\n" );
+            }
+        } else if (arrayp(rcn->ratio) && (sizeof(rcn->ratio) == 2)) {
+            write_dbg("Range of ratios...");
+            if (intp(rcn->ratio[0])) {
+                rcn->ratio[0] = to_float(rcn->ratio[0]);
+            }
+            if (intp(rcn->ratio[1])) {
+                rcn->ratio[1] = to_float(rcn->ratio[1]);
+            }
+            if (ratio > rcn->ratio[1]) {
+                write_dbg("above range...(" + ratio + ")\n");
+                need_amt_b = amt_b;
+                need_amt_a = to_int(ceil(amt_b*rcn->ratio[1]));
+                write_dbg("Setting amt_a to "+ to_int(ceil(amt_b*rcn->ratio[1])) +".\n" );
+                write_dbg("This is because amta is: "+ amt_b +" and ratio is "+ rcn->ratio[1] + ".\n" );
+            } else if (ratio < rcn->ratio[0]) {
+                write_dbg("below range...(" + ratio + ")\n");
+                need_amt_a = amt_a;
+                need_amt_b = to_int(ceil(amt_a/rcn->ratio[0]));
+                write_dbg("Setting amt_b to "+ to_int(ceil(amt_a/rcn->ratio[0])) +".\n" );
+                write_dbg("This is because amta is: "+ amt_a +" and ratio is "+ rcn->ratio[0] + ".\n" );
+            } else {
+                write_dbg("within range...(" + ratio + ")\n");
+                need_amt_a = amt_a;
+                need_amt_b = amt_b;
+            }
+        } else {
+            error("Illegal reaction ratio; expecting float, int, or "
+                  "array of two floats or ints.");
+        }
+        amt_result = to_int((need_amt_a + need_amt_b)*rcn->result_amt);
+        write_dbg("...got ("+amt_a+","+amt_b+"), taking ("+need_amt_a+","+
+                  need_amt_b+"), creating " + amt_result + ".\n");
+        write_dbg("...creating "+rcn->result+".\n");
+        x = clone_object(rcn->result);
+        if (rcn->result_amt) {
+            if (function_exists("set_amount", x)) {
+                x->set_amount(amt_result);
+            } else {
+                x->set_weight(amt_result);
+            }
+        }
+        msg = rcn->message;
+        if (msg) {
+            msg = replace(rcn->message, ({
+                "#env#", file_name(environment(a)),
+                "#env2#", file_name(environment(environment(a))),
+                "#obj_a#", file_name(ob_a),
+                "#obj_b#", file_name(ob_b),
+                "#obj_x#", file_name(x)
+              }));
+            tell_room(environment(environment(a)), msg);
+        }
+        fcns = rcn->func;
+        if (fcns) {
+            for (j = 0; j < sizeof(fcns); j++) {
+                if (stringp(fcns[j])) {
+                    fcn = replace(fcns[j], ({
+                        "#env#", file_name(environment(a)),
+                        "#env2#", file_name(environment(environment(a))),
+                        "#obj_a#", file_name(ob_a),
+                        "#obj_b#", file_name(ob_b),
+                        "#obj_x#", file_name(x)
+                      }));
+                } else if (functionp(fcns[j])) {
+                    evaluate(fcns[j], ob_a, ob_b, x, environment(a),
+                             environment(environment(a)), need_amt_a,
+                             need_amt_b);
+                }
+            }
+        }
+        call_out("move_substance", 0, ({x, environment(a)}));
+        ob_a->adjust_amount( -need_amt_a );
+        ob_b->adjust_amount( -need_amt_b );
+    }
+    write_dbg("Leaving reaction_handler.\n");
+}
+void move_substance(object *ob) {
+    int vol, vol_left, cont, closed, i, mv_stat;
+    object *contents;
+    if (!ob[0] || !ob[1]) return;
+    vol_left = (int)ob[1]->query_max_volume() - (int)ob[1]->query_volume();
+    if (cont = ob[0]->query_continuous()) {
+        vol = ob[0]->query_amount();
+    } else {
+        vol = (int)ob[0]->query_weight()*200;
+    }
+    closed = ob[1]->query_closed();
+    ob[1]->set_open();
+    if ((mv_stat = ob[0]->move(ob[1])) != MOVE_OK) {
+        write_dbg(sprintf("Move error (%d)...", vol));
+        if ((vol > vol_left) && cont && !closed) {
+            write_dbg("too much...\n");
+            ob[0]->set_amount(vol_left);
+            tell_room(environment(ob[1]), ob[0]->short(0) +
+                      " leaks out of the " + ob[1]->short(0) + ".\n");
+            mv_stat = ob[0]->move(ob[1]);
+        }
+        if (mv_stat == MOVE_OK) {
+            if (closed) ob[1]->set_closed();
+        } else {
+            contents = all_inventory(ob[1]);
+            write_dbg(sprintf("contents = %O\n", contents));
+            for (i = 0; i < sizeof(contents); i++) {
+                contents[i]->dest_me();
+            }
+            if (!living(ob[1]) && !function_exists("query_co_ord", ob[1])) {
+                tell_room(environment(ob[1]), ob[1]->the_short(0) +
+                          " explodes, splattering the contents all over.\n");
+                ob[1]->move("/room/rubbish");
+            }
+            ob[0]->move("/room/rubbish");
+        }
+    } else {
+        if (closed) ob[1]->set_closed();
+    }
+}
+void dest_substance(object ob) {
+    if (ob) {
+        ob->dest_me();
+    }
+}
+mixed *query_reaction(string name_a, string name_b) {
+    if (!substance[name_a] || !substance[name_a][name_b]) {
+        return 0;
+    }
+    return substance[name_a][name_b];
+}
+mapping query_reactions() { return substance; }
+void restore_from_files() {
+    string *files;
+    int i;
+    files = ({ "base.hdr" });
+    files += get_dir(REACTIONS + "*.rcn");
+    for (i = 0; i < sizeof(files); i++) {
+        files[i] = REACTIONS + files[i];
+    }
+    substance = "/obj/handlers/data"->compile_data(files);
+}
+void update_from_files(string fn) {
+    mapping new_substance;
+    string a, b;
+    new_substance = "/obj/handlers/data"->compile_data( ({ fn }) );
+    foreach (a in keys(new_substance)) {
+      if (undefinedp(substance[a])) {
+        substance[a] = ([ ]);
+      }
+      foreach (b in keys(new_substance[a])) {
+        substance[a][b] = new_substance[a][b];
+      }
+    }
+}
+
+==================================================
+FILE: handlers/refresh.c
+==================================================
+
+#include <refresh.h>
+#include <playerinfo.h>
+#define SAVE_FILE "/save/refresh"
+mapping refresh_callbacks;
+mapping delete_callbacks;
+nosave string loaded_by;
+nosave string loaded_time;
+protected void load_me()
+{
+  refresh_callbacks = 0;
+  delete_callbacks = 0;
+  unguarded( (: restore_object, SAVE_FILE, 0 :) );
+  if (!refresh_callbacks) {
+    refresh_callbacks = ([ ]);
+  }
+  if (!delete_callbacks) {
+    delete_callbacks = ([ ]);
+  }
+}
+protected void save_me()
+{
+  unguarded( (: save_object, SAVE_FILE, 0 :) );
+}
+string query_name() {
+   return "Refresh Handler";
+}
+void create()
+{
+  seteuid("/secure/master"->creator_file(file_name(this_object())));
+  load_me();
+  if (!previous_object()) {
+    loaded_by = "The Masked Man";
+  } else {
+    if (previous_object()->query_creator()) {
+      loaded_by = "Creator: " + previous_object()->query_name();
+    } else if (previous_object()->query_interactive()) {
+      loaded_by = "Player: " + previous_object()->query_name();
+    } else {
+      loaded_by = file_name(previous_object());
+      if (this_player())
+        loaded_by += sprintf(" (%s)", this_player()->query_name());
+    }
+  }
+  loaded_time = ctime(time());
+}
+void dest_me()
+{
+  save_me();
+  destruct(this_object());
+}
+nomask mixed dwep()
+{
+  efun::destruct(this_object());
+  return "Destructed With Extreme Prejudice";
+}
+string register_refresh(mixed ob, string func)
+{
+  object real;
+  if (objectp(ob)) {
+    ob = base_name(ob);
+  }
+  if (!ob) {
+    return "Please supply an object";
+  }
+  real = load_object(ob);
+  if (!real) {
+    return "Couldn't find object";
+  }
+  if (func && !function_exists(func, real)) {
+    return "Couldn't find function";
+  }
+  if (!func) {
+    if (refresh_callbacks[ob]) {
+      map_delete(refresh_callbacks, ob);
+    }
+  } else {
+    if (refresh_callbacks[ob]) {
+      refresh_callbacks[ob] = func;
+    } else {
+      refresh_callbacks += ([ ob : func ]);
+    }
+  }
+  save_me();
+}
+string register_delete(mixed ob, string func)
+{
+  object real;
+  if (objectp(ob)) {
+    ob = base_name(ob);
+  }
+  if (!ob) {
+    return "Please supply an object";
+  }
+  real = load_object(ob);
+  if (!real) {
+    return "Couldn't find object";
+  }
+  if (func && !function_exists(func, real)) {
+    return "Couldn't find function";
+  }
+  if (!func) {
+    if (delete_callbacks[ob]) {
+      map_delete(delete_callbacks, ob);
+    }
+  } else {
+    if (delete_callbacks[ob]) {
+      delete_callbacks[ob] = func;
+    } else {
+      delete_callbacks += ([ ob : func ]);
+    }
+  }
+  save_me();
+}
+varargs void player_refreshed(object player, int totally) {
+  string ob;
+  if (base_name(file_name(previous_object())) != "/global/player") {
+    return;
+  }
+  foreach (ob in keys(refresh_callbacks)) {
+    object obj;
+    obj = load_object(ob);
+    if (obj) {
+      mixed *vals;
+      vals = ({ refresh_callbacks[ob], player, totally });
+      call_out( (: call_other, obj, vals :), 1);
+    }
+  }
+}
+varargs void player_deleted(string player)
+{
+  string ob;
+  if (file_name(previous_object()) != "/secure/delete_clear" &&
+      file_name(previous_object()) != "/cmds/lord/rmp_layer" &&
+      !master()->high_programmer(previous_object(-1))) {
+    unguarded( (: write_file, "/log/CHEAT", ctime( time() ) +
+                ": illegal attempt to delete player files using "+
+                "refresh_handler\nTrace: "+ back_trace() :) );
+    return;
+  }
+  foreach (ob in keys(delete_callbacks)) {
+    object obj;
+    obj = load_object(ob);
+    if (obj) {
+      mixed *vals;
+      vals = ({ delete_callbacks[ob], player, PLAYER_DELETED });
+      call_out( (: call_other, obj, vals :), 1);
+    }
+  }
+  "/secure/related_files"->delete_related_files(player, 1, 0);
+}
+mapping query_funcs()
+{
+  return ([
+    "refresh callbacks" : refresh_callbacks,
+    "delete callbacks" : delete_callbacks,
+    ]);
+}
+mixed *stats()
+{
+  return ({
+    ({ "refreshes", sizeof(refresh_callbacks) }),
+    ({ "deletes", sizeof(delete_callbacks) }),
+    ({ "loaded by", loaded_by }),
+    ({ "loaded time", loaded_time }),
+    });
+}
+
+==================================================
+FILE: handlers/report_handler.c
+==================================================
+
+#include <report_handler.h>
+inherit "/std/object";
+void move_to_recent_cases(mixed *thing);
+mixed *new_cases, *recent_cases;
+void setup() {
+  set_short("report handler");
+  add_property("determinate", "the ");
+  set_long("This is a rather tacky statue of a woman holding "
+    "a sword and some wonky scales.\n");
+  if(file_size(NEWCASES) > -1) {
+    new_cases = restore_variable(read_file(NEWCASES));
+  }
+  if(file_size(RECENT) > -1) {
+    recent_cases = restore_variable(read_file(RECENT));
+  }
+}
+void save_new_cases() {
+  unguarded((: rm, NEWCASES :));
+  unguarded((: write_file, NEWCASES, save_variable(new_cases)+"\n" :));
+}
+mixed query_new() {
+  return new_cases;
+}
+int sizeof_new_cases() {
+  if(!new_cases) {
+    new_cases = restore_variable(read_file(NEWCASES));
+  }
+  return sizeof(new_cases);
+}
+string query_new_cases() {
+  int i, j;
+  string reports = "";
+  for(i = 0; i < sizeof(new_cases); i++) {
+    if(i < 10) {
+      reports += "   "+(i + 1)+": ";
+    } else {
+      reports += "  "+(i + 1)+": ";
+    }
+    reports += "%^CYAN%^Player%^RESET%^: "+capitalize(new_cases[i][NAME]);
+    for(j = 0; j < (12 - sizeof(new_cases[i][NAME])); j++) {
+      reports += " ";
+    }
+    reports += "%^CYAN%^Category%^RESET%^: "+new_cases[i][CATEGORY]+"\n";
+  }
+  return reports;
+}
+string query_new_case(int i) {
+  string report = "";
+  mixed *stuff;
+  if(!new_cases) {
+    new_cases = restore_variable(read_file(NEWCASES));
+  }
+  if(i < 1 || i > sizeof(new_cases)) {
+    return 0;
+  }
+  stuff = new_cases[i - 1];
+  report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
+  if(!sizeof(stuff[CHARS])) {
+    report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
+  } else {
+    report += "  %^CYAN%^Other Characters%^RESET%^: "
+      "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
+  }
+  report += "  %^CYAN%^Creator%^RESET%^: "+stuff[CREATOR]+"\n"
+    "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
+    "  %^CYAN%^Category%^RESET%^: "+stuff[CATEGORY]+"\n"
+    "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0=";
+  return report;
+}
+void add_report(string *stuff) {
+  if(!new_cases) {
+    new_cases = restore_variable(read_file(NEWCASES));
+  }
+  new_cases += ({ stuff });
+  save_new_cases();
+}
+void deal_with_it(int num, string name, string decision) {
+  mixed *thing;
+  num--;
+  thing = new_cases[num];
+  thing += ({ name });
+  thing += ({ decision });
+  new_cases -= ({new_cases[num]});
+  move_to_recent_cases(thing);
+}
+void save_recent_cases() {
+  unguarded((: rm, RECENT :));
+  unguarded((: write_file, RECENT, save_variable(recent_cases)+"\n" :));
+}
+void move_to_recent_cases(mixed *thing) {
+  int i, j;
+  mixed *c_record, *chars;
+  for(i = sizeof(recent_cases) - NO_RECENT; i > -1; i--) {
+    chars = ({recent_cases[i][NAME]});
+    if(arrayp(recent_cases[i][CHARS])) {
+      chars += recent_cases[i][CHARS];
+    }
+    uniq_array(chars);
+    for(j = 0; j < sizeof(chars); j++) {
+      if(file_size((SAVEPATH+chars[j]+".o")) > -1) {
+        c_record = restore_variable(read_file((SAVEPATH+chars[j]+".o")));
+        c_record += ({recent_cases[j]});
+      } else {
+        c_record = ({recent_cases[j]});
+      }
+      unguarded((: rm, (SAVEPATH+chars[j]+".o") :));
+      unguarded((: write_file, (SAVEPATH+chars[j]+".o"),
+        save_variable(c_record)+"\n" :));
+    }
+    recent_cases -= ({recent_cases[i]});
+  }
+  recent_cases += ({ thing });
+  save_new_cases();
+  save_recent_cases();
+}
+mixed query_recent() {
+  if(!recent_cases) {
+    recent_cases = restore_variable(read_file(RECENT));
+  }
+  return recent_cases;
+}
+string query_recent_cases() {
+  int i, j;
+  string reports = "";
+  for(i = 0; i < sizeof(recent_cases); i++) {
+    if(i < 10) {
+      reports += "   "+(i + 1)+": ";
+    } else {
+      reports += "  "+(i + 1)+": ";
+    }
+    reports += "%^CYAN%^Suspect%^RESET%^: "+capitalize(recent_cases[i][NAME]);
+    for(j = 0; j < (12 - sizeof(recent_cases[i][NAME])); j++) {
+      reports += " ";
+    }
+    reports += "%^CYAN%^Category%^RESET%^: "+recent_cases[i][CATEGORY]+"\n";
+  }
+  return reports;
+}
+string query_recent_case(int i) {
+  string report = "";
+  mixed *stuff;
+  if(!recent_cases) {
+    recent_cases = restore_variable(read_file(RECENT));
+  }
+  if(i < 1 || i > sizeof(recent_cases)) {
+    return 0;
+  }
+  stuff = recent_cases[i - 1];
+  report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
+  if(!sizeof(stuff[CHARS])) {
+    report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
+  } else {
+    report += "  %^CYAN%^Other Characters%^RESET%^: "
+      "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
+  }
+  report += "  %^CYAN%^Creator%^RESET%^: "+capitalize(stuff[CREATOR])+"\n"
+    "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
+    "  %^CYAN%^Offence%^RESET%^: "+stuff[CATEGORY]+"\n"
+    "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0="
+    "  %^YELLOW%^High Lord%^RESET%^: "+stuff[HIGHLORD]+"\n"
+    "  %^YELLOW%^High Lord Decision%^RESET%^: "+stuff[DECISION];
+  for(i = 8; i < sizeof(stuff); i += 2) {
+    report += "  %^YELLOW%^Comment from "+stuff[i]+"%^RESET%^: "
+      +stuff[i + 1];
+  }
+  return report;
+}
+string case_history(string name) {
+  int i, j;
+  mixed *history, *cases, *stuff, *all_cases, *check_case;
+  string report, *other_chars = ({ });
+  history = get_dir(SAVEPATH+lower_case(name)+".o");
+  all_cases = get_dir(SAVEPATH);
+  all_cases -= ({"recent.o", "new.o"});
+  for(i = 0; i < sizeof(all_cases); i++) {
+    check_case = restore_variable(read_file((SAVEPATH+all_cases[i])));
+    for(j = 0; j < sizeof(check_case); j++) {
+      if(arrayp(check_case[j][CHARS])) {
+        if(member_array(capitalize(name), check_case[j][CHARS]) != -1) {
+          other_chars += check_case[j][CHARS];
+          other_chars += ({check_case[j][NAME]});
+        }
+      }
+    }
+  }
+  if(sizeof(other_chars)) {
+    uniq_array(other_chars);
+    for(i = 0; i < sizeof(other_chars); i++) {
+      other_chars[i] = capitalize(other_chars[i]);
+    }
+    other_chars -= ({capitalize(name)});
+    other_chars = uniq_array(other_chars);
+    write(capitalize(name)+" is also "
+      +query_multiple_short(other_chars)+".\n");
+  }
+  if(!sizeof(history)) {
+    return 0;
+  }
+  write("%^CYAN%^Case History for "+capitalize(name)+"%^RESET%^:\n");
+  report = "";
+  cases = restore_variable(read_file(SAVEPATH+lower_case(name)+".o"));
+  for(i = 0; i < sizeof(cases); i++) {
+    stuff = cases[i];
+    report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
+    if(!sizeof(stuff[CHARS])) {
+      report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
+    } else {
+      report += "  %^CYAN%^Other Characters%^RESET%^: "
+        "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
+    }
+    report +=  "  %^CYAN%^Creator%^RESET%^: "+capitalize(stuff[CREATOR])+"\n"
+      "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
+      "  %^CYAN%^Offence%^RESET%^: "+stuff[CATEGORY]+"\n"
+      "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0="
+      "  %^YELLOW%^High Lord%^RESET%^: "+stuff[HIGHLORD]+"\n"
+      "  %^YELLOW%^High Lord Decision%^RESET%^: "+stuff[DECISION];
+    for(j = 8; j < sizeof(stuff); j += 2) {
+      report += "  %^YELLOW%^Comment from "+stuff[j]+"%^RESET%^: "
+        +stuff[j + 1];
+    }
+  }
+  return report;
+}
+void add_comment(int i, string name, string comment) {
+  i--;
+  recent_cases[i] += ({ capitalize(name), comment });
+  save_recent_cases();
+}
+
+==================================================
+FILE: handlers/room_handler.c
+==================================================
+
+#include <climate.h>
+#include <living.h>
+#include <move_failures.h>
+#include <player.h>
+#include <room.h>
+#include <weather.h>
+#include <position.h>
+#define CHATSIZE 80
+#define DOORSIZE 60
+mapping exit_types;
+mapping door_types;
+mapping opposite;
+mixed *chatters, *doors;
+void add_door( object thing );
+void create() {
+   seteuid( (string)"/secure/master"->
+           creator_file( file_name( this_object() ) ) );
+   exit_types = ([
+"standard" :({ 0, 1,   400, 0 }),
+"corridor" :({ 0, 1,   250, 0 }),
+"plain"    :({ 0, 1, 10000, 0 }),
+"door"     :({ 0, 1,   300, 0 }),
+"stair"    :({ 0, 1,   300, 0 }),
+"hidden"   :({ 0, 0,   300, 0 }),
+"secret"   :({ 0, 0,   300, 0 }),
+"gate"     :({ 0, 1,   450, 0 }),
+"road"     :({ 0, 1,  1300, 0 }),
+"path"     :({ 0, 1,   800, 0 }),
+"window"   :({ "$N climb$s through a window.\n", 0, 75, 0 }),
+]);
+   door_types = ([
+"door"      : ({ 0, 0, "generic_key", 2, 0, 0, "door" }),
+"secret"    : ({ 0, 0, "generic_key", 3, 1, 0, "door" }),
+"gate"      : ({ 1, 0, "generic_key", 1, 0, 1, "door" }),
+"window"    : ({ 1, 0, "generic_key", 1, 0, 1, "window" }),
+]);
+   opposite = ([
+"north" : ({ 0, "$R$[the ]+south$R$" }),
+"south" : ({ 0, "$R$[the ]+north$R$" }),
+"east" : ({ 0, "$R$[the ]+west$R$" }),
+"west" : ({ 0, "$R$[the ]+east$R$" }),
+"northeast" : ({ 0, "$R$[the ]+southwest$R$" }),
+"southwest" : ({ 0, "$R$[the ]+northeast$R$" }),
+"southeast" : ({ 0, "$R$[the ]+northwest$R$" }),
+"northwest" : ({ 0, "$R$[the ]+southeast$R$" }),
+"up":({0,"below"}), "down":({0,"above"}),
+"out":({0,"inside"}), "in":({0,"outside"}),
+"exit":({0,"inside"}), "enter":({0,"outside"}),
+"hubward":({0,"rimward"}), "rimward":({0,"hubward"}),
+"turnwise":({0,"widdershins"}),
+"widdershins":({0,"turnwise"}) ]);
+   chatters = allocate( CHATSIZE );
+   doors = allocate( DOORSIZE );
+   call_out( "housekeeping", 4 );
+}
+string query_opposite_direction(string dir) {
+   if (opposite[dir]) {
+      return opposite[dir][1];
+   }
+   return 0;
+}
+mixed *query_chatters() { return chatters; }
+mixed *query_doors() { return doors; }
+int add_exit_type(string type, mixed message, mixed obvious,
+                            int size, mixed func) {
+  if (exit_types[type]) {
+    return 0;
+  }
+  exit_types[type] = ({ message, obvious, size, func });
+  return 1;
+}
+int remove_exit_type(string type) {
+   map_delete(exit_types, type);
+   return 1;
+}
+mixed *query_door_type(string type, string direc, string dest) {
+   if (!door_types[type]) {
+      return 0;
+   }
+   call_out( "check_door", 1, ({ previous_object(), direc }) );
+   return door_types[type];
+}
+void check_door( mixed args ) {
+   string direc, dest;
+   string door_name;
+   if ( !args[ 0 ] ) {
+      return;
+   }
+   args[ 0 ]->set_destination( args[ 1 ] );
+   dest = (string)args[ 0 ]->query_destination( args[ 1 ] );
+   if ( !dest ) {
+      tell_room( args[ 0 ], "Error: "+ args[ 1 ] +
+            " is no longer an exit.\n" );
+      return;
+   }
+   if ( !find_object( dest ) ) {
+      return;
+   }
+   door_name = args[0]->call_door(args[1], "query_door_name");
+   direc = (string)dest->query_door( args[ 0 ], door_name );
+   if ( !direc &&
+       !args[ 0 ]->call_door( args[ 1 ], "query_one_way" ) ) {
+      tell_room( args[ 0 ], "Error: "+ dest +
+                "does not have a door coming back here.\n" );
+      return;
+   }
+   args[ 0 ]->modify_exit( args[ 1 ], ({ "other", direc }) );
+   args[ 0 ]->modify_exit( args[ 1 ], ({
+      "closed", (int)dest->call_door( direc, "query_closed" ),
+      "locked", (int)dest->call_door( direc, "query_locked" ) }) );
+   if ( !args[ 0 ]->call_door( args[ 1 ], "query_closed" ) &&
+       ( (string)args[ 0 ]->query_property( "location" ) == "outside" ) ) {
+      add_door( (object)args[ 0 ]->query_door_control( args[ 1 ], door_name ) );
+   }
+}
+mixed *query_exit_type(string type, string dir) {
+  mixed s;
+   if (!(s = opposite[dir])) {
+      s = ({ 0, "elsewhere" });
+   }
+   if (!exit_types[type]) {
+      return exit_types["standard"] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+   }
+   return exit_types[ type ] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+}
+int move_thing( object thing, string dir, string dest, mixed exit,
+                mixed enter, string move ) {
+  int ret;
+  string arrive, leave;
+  object dragging;
+  dragging = (object)thing->query_dragging();
+  if (dragging && environment(dragging) != environment(thing)) {
+    thing->reset_dragging();
+    dragging = 0;
+  }
+  if ( ( exit != "none" ) || objectp( dragging ) ) {
+    if ( stringp( enter ) )
+      enter = ({ 1, enter });
+    else if ( functionp(enter) )
+      enter = ({ 1, evaluate(enter, thing) });
+    else if ( !pointerp( enter ) )
+      enter = ({ 0, "somewhere" });
+    switch ( enter[ 0 ] ) {
+    case 0 :
+      arrive = replace( (string)thing->query_msgin(),
+                        ({"$F", enter[ 1 ],
+                          "$r", thing->query_pronoun() }) );
+      break;
+    default :
+      arrive = enter[ 1 ];
+    }
+    if ( stringp( exit) )
+      leave = exit;
+    else if ( functionp( exit ) )
+      leave = evaluate(exit, thing);
+    else if ( pointerp( exit ) )
+      leave = exit[ 0 ];
+    else
+      leave = (string)thing->query_msgout();
+    leave = replace( leave, ({"$T", "$R$-"+ dir +"$R$",
+                              "$r", thing->query_pronoun() }) );
+  }
+  thing->return_to_default_position(1);
+  if ( arrive || objectp( dragging ) ) {
+    thing->remove_hide_invis( "hiding" );
+    if ( stringp( arrive ) && objectp( dragging ) ) {
+      arrive += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
+        (string)dragging->a_short() +" in behind "+
+        (string)thing->query_objective() +".";
+    }
+    if ( stringp( leave ) && objectp( dragging ) ) {
+      leave += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
+        (string)dragging->the_short() +" away behind "+
+        (string)thing->query_objective() +".";
+    }
+    if ( stringp( move ) ) {
+      tell_object( thing, move );
+    }
+    ret = (int)thing->move( dest, arrive, leave );
+    if ( ( ret == MOVE_OK ) && objectp( dragging ) ) {
+      if(dragging->move(environment(thing)) == MOVE_OK) {
+        tell_object( thing, "You drag "+
+                     (string)dragging->the_short() +" behind you.\n" );
+        thing->adjust_time_left( -DEFAULT_TIME );
+      } else {
+        tell_object( thing, "You fail to drag "+
+                     (string)dragging->the_short() +" behind you.\n" );
+      }
+    }
+  } else {
+    if ( stringp( move ) ) {
+      tell_object( thing, move );
+    }
+    ret = (int)thing->move( dest );
+  }
+  if ( ret == MOVE_OK ) {
+    thing->adjust_time_left( -DEFAULT_TIME );
+    return 1;
+  }
+  return 0;
+}
+int exit_move_door_checks(object thing, mixed closed) {
+  closed->force_other();
+  if(closed->query_open())
+    return 1;
+  if(thing->query_property( "demon" ) || thing->query_property("dead")) {
+    tell_object(thing, "You ghost through "+(string)closed->the_short()+
+                ".\n");
+    return 1;
+  }
+  if(thing->query_weight() < 300)
+    return 0;
+  if(closed->query_locked() && !closed->moving_unlock(thing)) {
+    if(!closed->query_visible(thing)) {
+      return 0;
+    }
+    tell_object(thing, (string)closed->the_short() +
+                ({ " is ", " are " })[(int)closed->query_how_many()] +
+                "locked.\n");
+    return notify_fail("");
+  }
+  if(!closed->moving_open(thing)) {
+    return 0;
+  }
+  return 1;
+}
+int exit_move_func_checks(string verb, string special, object thing,
+                          mixed func, object place) {
+  if(stringp(func))
+    return call_other(place, func, verb, thing, special);
+  if(functionp(func))
+    return evaluate(func, verb, thing, special);
+  if(pointerp(func) && sizeof(func) > 1 && func[0] && func[1])
+    return call_other(func[0], func[1], verb, thing, special);
+  return 1;
+}
+int exit_move( string verb, string extra, mixed special, object thing ) {
+   string leave;
+   object place;
+   object follower;
+   object *okay;
+   mixed closed;
+   int locked;
+   mixed func;
+   mixed *dest_other;
+   object *all_followers;
+   object *tmp_followers;
+   object *more_followers;
+   place = environment( thing );
+   verb = (string)place->expand_alias( verb );
+   place->set_destination( verb );
+   dest_other = (mixed *)place->query_dest_other( verb );
+   if (!pointerp(dest_other))
+      return 0;
+   if(thing->cannot_walk( verb, dest_other ))
+      return notify_fail( "" );
+   closed = (object)place->query_door_control( verb );
+   if(objectp(closed)) {
+     closed->force_other();
+     if(!closed)
+       closed = (object)place->query_door_control( verb );
+   }
+   if (!interactive(thing) && living(thing)
+         && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
+      return 0;
+   if (objectp(closed)) {
+      locked = closed->query_locked();
+   }
+   if(objectp(closed) && closed->query_open()) {
+     closed = 0;
+   }
+   if(objectp(closed) && !exit_move_door_checks(thing, closed)) {
+     return 0;
+   }
+   if ( place->block_exit_move( verb, thing ) ) {
+     return notify_fail( "" );
+   }
+   func = dest_other[ROOM_FUNC];
+   if(func && !thing->query_property( "demon" ) &&
+      !exit_move_func_checks(verb, special, thing, func, place))
+     return 0;
+   if ( place->query_relative( verb ) )
+     leave = (string)thing->find_rel( verb, 0 );
+   else
+     leave = verb;
+   if((int)thing->query_height() > dest_other[ ROOM_SIZE ] &&
+      !(thing->query_crawling() &&
+        (int)thing->query_height()/3 <= dest_other[ ROOM_SIZE ])) {
+     tell_object( thing, "You are too tall to go that way.\n" );
+     return notify_fail( "" );
+   }
+   if ( !stringp( special ) ) {
+      special = dest_other[ ROOM_EXIT ];
+   }
+   if ( !move_thing( thing, verb, dest_other[ ROOM_DEST ], special,
+                     dest_other[ ROOM_ENTER ], dest_other[ ROOM_MESS ] ) ) {
+     return 0;
+   }
+   thing->return_to_default_position(1);
+   okay = ({ });
+   if (place) {
+     all_followers = thing->query_followers();
+     more_followers = all_followers;
+     do {
+       tmp_followers = ({ });
+       foreach (follower in more_followers) {
+         if (follower &&
+             environment( follower ) == place ) {
+           tmp_followers |= follower->query_followers();
+         }
+       }
+       more_followers = tmp_followers - all_followers;
+       all_followers |= tmp_followers;
+     } while (sizeof(more_followers));
+     foreach ( follower in all_followers) {
+       if ( !objectp( follower ) ) {
+         thing->remove_follower( follower );
+         continue;
+       }
+       if(environment(follower) != place ||
+          (userp(follower) && !interactive(follower)) ||
+          (!thing->query_visible(follower) || (special == "none")) ||
+          follower->query_property( PASSED_OUT) ||
+          follower->cannot_walk( verb, dest_other ))
+         continue;
+       if(objectp(closed) && !exit_move_door_checks(follower, closed))
+         continue;
+       if ( func && !follower->query_property( "demon" ) &&
+            !exit_move_func_checks(verb, special, follower, func, place))
+         continue;
+       if (!interactive(follower) && living(follower)
+           && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
+         continue;
+       if ( place->query_relative( verb ) ) {
+         leave = (string)follower->find_rel( verb, 0 );
+         follower->reorient_rel( leave );
+       } else {
+         leave = verb;
+         follower->reorient_abs( leave );
+       }
+       if ( (int)follower->query_height() > dest_other[ ROOM_SIZE ] ) {
+         tell_object( follower, "You are too tall to follow "+
+                      (string)thing->the_short() +" "+ leave +".\n" );
+         continue;
+       }
+       if (function_exists("check_doing_follow", follower) &&
+           !follower->check_doing_follow(thing, verb, special)) {
+         continue;
+       }
+       if(move_thing( follower, verb, dest_other[ROOM_DEST], special,
+                      dest_other[ROOM_ENTER], dest_other[ROOM_MESS]) &&
+          living(follower)) {
+         tell_object(follower, "You follow "+ (string)thing->the_short() +
+                     " "+ leave +".\n");
+         if(follower->query_visible(thing))
+           okay += ({ follower });
+         follower->return_to_default_position(1);
+       } else {
+         tell_object( follower, "You fail to follow "+
+                      (string)thing->the_short() +" "+ leave +".\n" );
+       }
+     }
+   }
+   thing->room_look();
+   if(sizeof(okay)) {
+     okay->room_look();
+     tell_object(thing, query_multiple_short(okay) +
+                 " $V$0=follows,follow$V$ you.\n" );
+   }
+   if(objectp(closed)) {
+      closed->moving_close(thing);
+      if (locked)
+        closed->moving_lock(thing);
+   }
+   return 1;
+}
+void housekeeping() {
+   call_out( "check_chatters", 1 );
+   call_out( "check_doors", 2 );
+   call_out( "housekeeping", 4 );
+}
+void add_chatter(object thing, int number) {
+   number /= 4;
+   if ( number > CHATSIZE - 1 )
+      number = CHATSIZE - 1;
+   if ( !pointerp( chatters[ number ] ) )
+      chatters[ number ] = ({ thing });
+   else
+      chatters[ number ] += ({ thing });
+}
+void check_chatters() {
+   object thing, *things;
+   things = chatters[ 0 ];
+   chatters[ 0 .. <2 ] = chatters[ 1 .. <1 ];
+   chatters[ <1 ] = 0;
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( objectp( thing ) )
+         thing->make_chat();
+   }
+}
+void add_door( object thing ) {
+   int number;
+   number = random( DOORSIZE );
+   if ( !pointerp( doors[ number ] ) )
+      doors[ number ] = ({ thing });
+   else
+      doors[ number ] += ({ thing });
+}
+void check_doors() {
+   int wind;
+   string dest, other, mess;
+   object mine, thing, *things;
+   things = doors[ 0 ];
+   doors[ 0 .. <2 ] = doors[ 1 .. <1 ];
+   doors[ <1 ] = 0;
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( !objectp( thing ) )
+         continue;
+      if ( thing->query_closed() )
+         continue;
+      if(thing->query_stuck())
+         continue;
+      dest = (string)thing->query_dest();
+      other = (string)thing->query_other_id();
+      mine = (object)thing->query_my_room();
+      wind = (int)WEATHER->calc_actual( mine, WINDSP );
+      if ( random( 25 ) > wind ) {
+         add_door( thing );
+         return;
+      }
+      switch ( wind ) {
+       case -1000 .. 20 :
+         mess = "blow$s shut in the breeze.\n";
+         break;
+       case 21 .. 40 :
+         mess = "blow$s shut in the wind.\n";
+         break;
+       default :
+         mess = "slam$s shut in the wind.\n";
+      }
+      if ( find_object( dest ) ) {
+         dest->modify_exit( other, ({ "closed", 1 }) );
+         if(thing->query_autolock())
+           dest->modify_exit(other, ({ "locked", 1 }));
+         dest->tell_door( other, "The $D "+ mess, 0 );
+      }
+      thing->set_closed( 1 );
+      if(thing->query_autolock())
+        thing->set_locked();
+      thing->tell_door( "The $D "+ mess, 0 );
+   }
+}
+mapping query_dynamic_auto_load() {
+   mapping tmp;
+   tmp = ([ "exit_types" : exit_types,
+            "door_types" : door_types,
+            "opposite" : opposite,
+            "chatters" : chatters,
+            "doors" : doors,
+          ]);
+   return tmp;
+}
+void init_dynamic_arg(mapping maps) {
+   if (maps["exit_types"])
+      exit_types = maps["exit_types"];
+   if (maps["door_types"])
+      door_types = maps["door_types"];
+   if (maps["opposite"])
+      opposite = maps["opposite"];
+   if (maps["chatters"])
+      chatters = maps["chatters"];
+   if (maps["doors"])
+      doors = maps["doors"];
+}
+mixed *stats() {
+   int door_count, chatter_count;
+   mixed temp;
+   foreach (temp in chatters)
+      chatter_count += sizeof( temp );
+   foreach (temp in doors)
+      door_count += sizeof( temp );
+   return ({
+      ({ "exit types", sizeof( exit_types ) }),
+      ({ "door types", sizeof( door_types ) }),
+      ({ "opposites",  sizeof( opposite ) }),
+      ({ "chatters",  chatter_count }),
+      ({ "doors", door_count }),
+   });
+}
+
+==================================================
+FILE: handlers/room_rental.c
+==================================================
+
+#include <money.h>
+#include <room/room_rental.h>
+protected void do_load();
+protected void do_save();
+protected void evict_tenant( object room_ob );
+private nosave int loaded = 0;
+private mapping rented_rooms = ([]);
+private mapping rental = ([]);
+private mapping eviction_times = ([]);
+private mapping locations = ([]);
+private mapping paths = ([]);
+void create() {
+  do_load();
+}
+void reset() {
+   string room;
+   int now = time();
+   foreach( room in keys( rented_rooms ) ) {
+      if ( stringp( rented_rooms[ room ] ) ) {
+         if ( ( eviction_times[ room ] < now ) &&
+              ( eviction_times[ room ] > -1 ) ) {
+            evict_tenant( find_object( room ) );
+            tell_creator( "goldenthread", "RENTAL: %s no longer rents %s\n",
+                          rented_rooms[ room ], room );
+            rented_rooms[ room ] = 0;
+            eviction_times[ room ] = -1;
+         }
+      }
+   }
+   do_save();
+}
+protected void do_load() {
+   if ( !loaded )
+      unguarded( (: restore_object( ROOM_RENTAL_SAVE_FILE, 1 ) :) );
+   loaded = 1;
+}
+protected void do_save() {
+   unguarded( (: save_object( ROOM_RENTAL_SAVE_FILE , 0 ) :) );
+}
+void evict_tenant( object room_ob ) {
+   object *occupants;
+   occupants = filter( all_inventory( room_ob ), (: living :) );
+   room_ob->evict_tenant( occupants );
+}
+int add_room( string room, int cost, object office ) {
+   object room_ob;
+   if( !room_ob = load_object( room ) )
+      return 0;
+   rented_rooms[ room ] = 0;
+   rental[ room ] = cost;
+   eviction_times[ room ] = -1;
+   locations[ room ] = office->query_location();
+   paths[ room_ob->short() ] = room;
+   do_save();
+   return 1;
+}
+string query_who_rents( string room, object office ) {
+   if ( locations[room] == office->query_location() ) {
+      if ( stringp( rented_rooms[room] ) )
+         return rented_rooms[room];
+      else
+         return "nobody";
+   } else
+      return "no such room in this location";
+}
+int check_tenant( object player_ob, object room_ob, object office ) {
+   string player = player_ob->short();
+   string room = room_ob->short();
+   if ( player == query_who_rents( room, office ) )
+      return RENTAL_SUCCESS;
+   else if ( player == "nobody" )
+      return RENTAL_AVAILABLE;
+   else if ( player == "no such room!" )
+      return RENTAL_NO_SUCH_ROOM;
+   else
+      return RENTAL_ALREADY_RENTED;
+}
+int delete_room( string room, object office ) {
+  string room_short = load_object( room )->short();
+  if ( locations[room] == office->query_location() ) {
+    map_delete( rented_rooms, room );
+    map_delete( rental, room );
+    map_delete( eviction_times, room );
+    map_delete( locations, room );
+    map_delete( paths, room_short );
+    do_save();
+    return 1;
+  } else
+    return 0;
+}
+int clear_rooms( object office ) {
+   object room_ob;
+   foreach( string room in keys( filter( locations,
+            (: $2 == $( office->query_location() ) :) ) ) ) {
+      room_ob = load_object( room );
+    map_delete( rented_rooms, room );
+    map_delete( rental, room );
+    map_delete( eviction_times, room );
+    map_delete( locations, room );
+    map_delete( paths, room_ob->query_short() );
+  }
+  do_save();
+  return 1;
+}
+string *query_rooms_to_rent( object office ) {
+  return keys( filter( locations,
+               (: $2 == $( office->query_location() ) :) ) );
+}
+int do_rental( object player_ob, string room_short, object office ) {
+   int result;
+   string domain = office->query_domain();
+   string room = paths[ room_short ];
+   if ( locations[room] == office->query_location() ) {
+      if ( !rented_rooms[room] ||
+           ( rented_rooms[room] == player_ob->short()) ) {
+         if ( (int)player_ob->query_value_in( domain ) < rental[room] )
+            return RENTAL_NO_MONEY;
+         rented_rooms[room] = player_ob->short();
+         eviction_times[room] = time() + ONE_DAY;
+         result = RENTAL_SUCCESS;
+      } else
+         result = RENTAL_ALREADY_RENTED;
+   } else
+      result = RENTAL_NO_SUCH_ROOM;
+   do_save();
+   return result;
+}
+int query_rental_value( string room ) {
+   return rental[ room ];
+}
+int remove_rental( object room_ob ) {
+   int result;
+   string room_short = room_ob->short();
+   string room = paths[ room_short ];
+   if ( !undefinedp( rented_rooms[room] ) ) {
+      rented_rooms[room] = 0;
+      result = RENTAL_SUCCESS;
+   } else
+      result = RENTAL_NO_SUCH_ROOM;
+   do_save();
+   return result;
+}
+
+==================================================
+FILE: handlers/route_handler.c
+==================================================
+
+int use_count;
+varargs void get_route(string end, string start, function call_back, int count) {
+  string *result;
+  if(start == "/room/virtual"){
+    call_out((: evaluate($(call_back), ({ })) :), 1);
+    return;
+  }
+  if(!(stringp(start) && stringp(end)))
+    error("illegal argument 1 or 2 to get_route");
+  if(!function_owner(call_back))
+    return;
+  if ((end == start) || (count > 3)){
+    call_out((: evaluate($(call_back), ({ })) :), 1);
+    if(end != start)
+      log_file("ROUTEHANDLER","route for %s from %s to %s failed\n",
+               file_name(function_owner(call_back)), start, end);
+    return;
+  }
+  result = "/obj/handlers/clusters"->get_route(start, end);
+  if(!result){
+    call_out((:get_route($(end), $(start), $(call_back), $(count + 1)):), 10);
+    return;
+  }
+  use_count++;
+  call_out((: evaluate($(call_back), $(result)) :), 1);
+  return;
+}
+void dest_me() {
+  destruct(this_object());
+}
+mixed *stats() {
+  return  ({
+    ({ "routes done", use_count }),
+  });
+}
+
+==================================================
+FILE: handlers/script_processor.c
+==================================================
+
+#define RATIO 20
+inherit "/std/object";
+string stage;
+mapping actors;
+void setup() {
+   actors = ([ ]);
+}
+string query_stage() { return stage; }
+void set_stage( string word ) { stage = word; }
+mapping query_actors() { return actors; }
+string query_actor( string word ) { return actors[ word ]; }
+void set_actor( string name, string path ) { actors[ name ] = path; }
+int perform_line( string script, int line ) {
+   int length;
+   string action, name, text;
+   object actor;
+   length = file_length( script );
+   if ( length < 1 ) {
+      write( "Length of file \""+ script +"\" is "+ length +".\n" );
+      return -1;
+   }
+   if ( length < line )
+      return -1;
+   if ( !stage || ( stage == "" ) )
+      return -2;
+   text = read_file( script, line, 1 );
+   if ( sscanf( text, "%s=%s\n", name, action ) == 2 ) {
+      if ( !actors[ name ] )
+         return -3;
+      actor = find_object( actors[ name ] );
+      if ( !actor )
+         return -4;
+      actor->do_command( action );
+   } else {
+      actor = find_object( stage );
+      if ( !actor )
+         return -4;
+      tell_room( actor, text );
+   }
+   if ( length == line )
+      return -5;
+   return strlen( text ) / RATIO;
+}
+void perform_script( string script, int line ) {
+   int next;
+   next = perform_line( script, line );
+   if ( next < 0 ) {
+      if ( find_object( stage ) )
+         stage->script_ended( next );
+      return;
+   }
+   call_out( "perform_script", 2 + next, script, line + 1 );
+}
+int start_script( string script ) {
+   if ( find_call_out( "perform_script" ) != -1 )
+      return 0;
+   call_out( "perform_script", 3, script, 1 );
+   return 1;
+}
+
+==================================================
+FILE: handlers/snmp_handler.c
+==================================================
+
+#include "snmp.h"
+void create()
+{
+}
+buffer BufferiseInt(int p)
+{
+  buffer buf1;
+  buf1=allocate_buffer(4);
+  if(p<0)
+  {
+    buf1[0]=(4294967296+p)/16777216;
+  } else {
+    buf1[0]=p/16777216;
+  }
+  buf1[1]=p/65536;
+  buf1[2]=p/256;
+  buf1[3]=p%256;
+  return buf1;
+}
+buffer GetData(buffer MIB)
+{
+  int i,j,k;
+  object *tmp;
+  buffer mibreply,mibdata,tmpbuf;
+  mibreply=allocate_buffer(4);
+  tmpbuf=allocate_buffer(1);
+  mibreply[0]=48;
+  mibreply[1]=0;
+  mibreply[2]=OBJECT_IDENT;
+  mibreply[3]=0;
+  mibreply+=MIB;
+  i=sizeof(mibreply);
+  switch(MIB[6])
+  {
+    case 101 :
+      j=sizeof(users());
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      tmpbuf=BufferiseInt(j);
+      mibreply+=tmpbuf;
+      mibreply[i+1]=sizeof(tmpbuf);
+      break;
+    case 102 :
+      j=0;
+      tmp=users();
+      for(k=0;k<sizeof(tmp);k++)
+        if(tmp[k] && (tmp[k])->query_creator())
+          j++;
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      tmpbuf=BufferiseInt(j);
+      mibreply+=tmpbuf;
+      mibreply[i+1]=sizeof(tmpbuf);
+      break;
+    case 100 :
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=1;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      break;
+    default :
+      mibreply[0]=255;
+      break;
+  }
+  mibreply[1]=sizeof(mibreply)-2;
+  mibreply[3]=sizeof(MIB);
+  return mibreply;
+}

@@ -1,0 +1,1680 @@
+# Total Tokens: 15625
+# Total Files Merged: 6
+# Total Characters: 52097
+
+r_shop/storeroom.c
+==================================================
+
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <move_failures.h>
+#include "patterns.h"
+private nosave string _office = "",
+_counter = "",
+_mgr_office = "",
+_shop_front = "",
+_office_dir = "",
+_counter_dir = "",
+_shop_dir = "";
+private nosave object *_cabinets = 0;
+private nosave int _num_cabinets, _call_cabs_clear;
+private nosave mapping _cache = ([]);
+int add_cabinet();
+private void clear_cabinets();
+string directions_to(string);
+private int do_add(object *, mixed *);
+private int do_list(mixed *, string);
+private int do_remove(mixed *);
+private void init_cabinets();
+private int pull_roll();
+int query_content(int);
+int query_num_items(string, int);
+string query_office();
+int query_stock(string);
+string remove_cabinet();
+protected void set_directions(string, string, string);
+protected void set_office(string);
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    add_property("no burial", 1);
+    add_property("determinate", "");
+    add_item("cabinet", "There are several cabinets in the room, holding "
+      "the entire stock of the shop.  If you are authorised to do so, you "
+      "may \"list\" the stock, as well as \"add\" and \"remove\" "
+      "items from the cabinets.");
+    add_item(({"roll", "bag"}), "You could probably \"pull\" a bag off "
+      "the roll and give it to a customer with their purchase.\n"
+      "Bags should only be handed out with purchases of 10 or more items.");
+    if (!do_setup)
+    {
+        this_object()->setup();
+        this_object()->reset();
+    }
+    add_help_file("player_shop_storeroom");
+}
+void init()
+{
+    ::init();
+    if (!_office || _office == "") return;
+    add_command("add", ({"<indirect:object:me'item(s)'>",
+        "<indirect:object:me'item(s)'> to cabinet <number'cabinet'>"}),
+      (: do_add($1,$4) :));
+    add_command("pull", "roll", (: pull_roll() :));
+    if (_office->query_employee(this_player()->query_name()) ||
+      this_player()->query_creator())
+    {
+        add_command("list", ({LIST_BLANK, LIST_CABINET,
+            LIST_ITEM, LIST_ITEM_CABINET}),
+          (: do_list($4,$5) :));
+        add_command("remove", ({"<number> <string'item(s)'>",
+            "<number> <string'item(s)'> from cabinet <number'cabinet'>"}),
+          (: do_remove($4) :));
+    }
+    else if (_office->query_retired(this_player()->query_name()))
+        add_command("list", ({LIST_BLANK, LIST_CABINET,
+            LIST_ITEM, LIST_ITEM_CABINET}), (: do_list($4,$5) :));
+}
+int add_cabinet()
+{
+    object cabinet;
+    string cab_name;
+    if (previous_object() && previous_object() != find_object(_office))
+    {
+        LOG_ERROR("storeroom.c", "add_cabinet()");
+        return 0;
+    }
+    if ((_num_cabinets) == MAX_CABINETS) return 0;
+    init_cabinets();
+    cab_name = "cabinet"+ _num_cabinets++;
+    cabinet = clone_object(CABINET);
+    cabinet->set_name(cab_name);
+    cabinet->set_save_file(_office->query_savedir()+ cab_name);
+    _cabinets += ({cabinet});
+    return 1;
+}
+private void clear_cabinets()
+{
+    if (!_cabinets) return;
+#ifdef DEBUG
+    tell_creator(CREATOR, "Clearing cabinets.\n");
+#endif
+    foreach (object cabinet in _cabinets) cabinet->dest_me();
+    _cabinets = 0;
+}
+void dest_me()
+{
+    remove_call_out(_call_cabs_clear);
+    clear_cabinets();
+    ::dest_me();
+}
+string directions_to(string place)
+{
+    if (place == _counter) return copy(_counter_dir);
+    if (place == _office) return copy(_office_dir);
+    if (place == _shop_front) return copy(_shop_dir);
+    return "here";
+}
+private int do_add(object *items, mixed *args)
+{
+    int cab_no = 0;
+    object *okay = ({}),
+    *failed = ({});
+    add_succeeded_mess("");
+    if (sizeof(args) > 1)
+    {
+        cab_no = args[1];
+        if (cab_no < 1 || cab_no > _num_cabinets)
+        {
+            tell_object(this_player(), "That cabinet does not exist!\n");
+            return 1;
+        }
+    }
+    init_cabinets();
+    foreach (string plural in _office->query_list_array())
+    {
+        int tot_i, number, temp_num;
+        mixed *test;
+        parse_command(plural, items, "%i", test);
+        if (!test || !sizeof(test)) continue;
+        if (!sizeof(_office->query_cabinet(plural)))
+        {
+            tell_object(this_player(), "There are no cabinets assigned to "+
+              plural+ "!\n");
+            return 1;
+        }
+        if ((tot_i = _office->query_max(plural) - query_stock(plural)) < 1)
+        {
+            tell_object(this_player(),
+              "The shop is already fully stocked on "+ plural +".\n");
+            test = ({});
+            continue;
+        }
+        test = test[1..];
+        if (test[0]->query_collective())
+        {
+            number = test[0]->query_amount();
+        }
+        else
+        {
+            number = sizeof(test);
+        }
+        if (cab_no)
+        {
+            int cab_i = 0;
+            foreach (object ob in all_inventory(_cabinets[cab_no-1]))
+            {
+                if (ob->query_collective())
+                {
+                    cab_i += ob->query_amount();
+                }
+                else
+                {
+                    cab_i += 1;
+                }
+            }
+            cab_i = STOCK_PER_CABINET - cab_i;
+            if (cab_i < 1)
+            {
+                tell_object(this_player(), "That cabinet is already full.\n");
+                return 1;
+            }
+            if (member_array(cab_no, _office->query_cabinet(plural)) == -1)
+            {
+                tell_object(this_player(), plural +
+                  " do not belong in that cabinet.\n");
+                return 1;
+            }
+            if (number > cab_i)
+            {
+                tell_object(this_player(), "You cannot add all of the "+ plural +
+                  " to cabinet "+ cab_no+ " without exceeding the maximum.\n");
+                if (test[0]->query_collective())
+                {
+                    object temp = test[0]->make_medium_clone(cab_i);
+                    test[0]->adjust_amount(-cab_i);
+                    test = ({temp});
+                    test->move(this_player());
+                }
+                else
+                {
+                    test = test[0 .. (cab_i - 1)];
+                }
+            }
+        }
+        else if (number > tot_i)
+        {
+            tell_object(this_player(), "You cannot add all of the "+ plural +
+              " to the stock without exceeding the maximum.\n");
+            if (test[0]->query_collective())
+            {
+                object temp = test[0]->make_medium_clone(tot_i);
+                test[0]->adjust_amount(-tot_i);
+                test = ({temp});
+                test->move(this_player());
+            }
+            else
+            {
+                test = test[0 .. (tot_i - 1)];
+            }
+            number = tot_i;
+        }
+        temp_num = number;
+        if (cab_no)
+        {
+            object *temp_fail;
+            okay += test;
+            temp_fail = _cabinets[cab_no - 1]->
+            add_items(test, this_player());
+            failed += temp_fail;
+            if (sizeof(temp_fail))
+            {
+                temp_num -= temp_fail[0]->query_amount();
+            }
+            else
+            {
+                temp_num -= sizeof(temp_fail);
+            }
+        }
+        else
+        {
+            int cab_i = 0;
+            foreach(cab_no in _office->query_cabinet(plural))
+            {
+                object *temp_fail;
+                if (!number) break;
+                foreach (object ob in all_inventory(_cabinets[cab_no-1]))
+                {
+                    if (ob->query_collective())
+                    {
+                        cab_i += ob->query_amount();
+                    }
+                    else
+                    {
+                        cab_i += 1;
+                    }
+                }
+                cab_i = STOCK_PER_CABINET - cab_i;
+                if (cab_i < 1) continue;
+                if (cab_i > number)
+                {
+                    cab_i = number;
+                }
+                if (test[0]->query_collective())
+                {
+                    object temp = test[0]->make_medium_clone(cab_i);
+                    test[0]->adjust_amount(-cab_i);
+                    okay += ({temp});
+                    temp_fail = _cabinets[cab_no - 1]->
+                    add_items(({temp}), this_player());
+                }
+                else
+                {
+                    okay += test[0..(cab_i-1)];
+                    temp_fail = _cabinets[cab_no - 1]->
+                    add_items(test[0 .. (cab_i - 1)], this_player());
+                    test -= test[0 .. (cab_i - 1)];
+                }
+                number -= cab_i;
+                failed += temp_fail;
+                if (sizeof(temp_fail))
+                {
+                    if (temp_fail[0]->query_collective())
+                    {
+                        temp_num -= temp_fail[0]->query_amount();
+                    }
+                    else
+                    {
+                        temp_num -= sizeof(temp_fail);
+                    }
+                }
+            }
+            if (sizeof(test) && test[0]->query_amount())
+            {
+                tell_object(this_player(), "There is not enough room in the "
+                  "assigned cabinets for "+ query_multiple_short(test)+ ".\n");
+                if (test[0]->query_collective())
+                {
+                    temp_num -= test[0]->query_amount();
+                }
+                else
+                {
+                    temp_num -= sizeof(test);
+                }
+            }
+            cab_no = 0;
+        }
+        test = ({});
+        _office->adjust_bought(plural, temp_num);
+        if (!_cache[plural])
+        {
+#ifdef DEBUG
+            tell_creator(CREATOR,"Creating %s cache entry.\n", plural);
+#endif
+            _cache += ([plural:({1,0})]);
+        }
+        else
+        {
+            _cache[plural][0] = 1;
+        }
+    }
+    okay -= failed;
+    if (sizeof(failed))
+    {
+        string short = query_multiple_short(failed);
+        tell_room(environment(this_player()), this_player()->query_short()+
+          " accidentally drops "+ short+
+          " on the floor.\n", ({this_player()}));
+        tell_object(this_player() , "You accidentally drop "+
+          short+ " on the floor.\n");
+    }
+    if (sizeof(okay))
+    {
+        string short = query_multiple_short(okay);
+        _office->shop_log(PURCHASE, this_player()->query_name(),
+          this_player()->convert_message(short)+
+          " added to stock", UNPAID);
+        add_succeeded_mess("$N $V "+ short+
+          " to the stock.\n");
+    }
+    return 1;
+}
+private int do_list(mixed *args, string pattern)
+{
+    object *found_items = ({});
+    int i = 0;
+    add_succeeded_mess("");
+    init_cabinets();
+    foreach (object cabinet in _cabinets)
+    i += sizeof(all_inventory(cabinet));
+    if (!i)
+    {
+        tell_object(this_player(),
+          "There is nothing in stock at the moment.\n");
+        return 1;
+    }
+    if (pattern == LIST_BLANK)
+    {
+        string result = sprintf("     Stock of %s\n     As at %s\n\n",
+          _office->query_shop_name(), ctime(time()));
+        foreach(string key in _office->query_list_array())
+        {
+            found_items = ({});
+            found_items += ((class obj_match)match_objects_in_environments(key, _cabinets))->objects;
+            if (sizeof(found_items))
+                result += query_multiple_short( found_items )+ "\n";
+        }
+        tell_object(this_player(), "$P$Stock list$P$"+ result);
+        return 1;
+    }
+    if (pattern == LIST_CABINET)
+    {
+        string result;
+        if (args[0] < 1 || args[0] > _num_cabinets)
+        {
+            tell_object(this_player(), "That cabinet does not exist!\n");
+            return 1;
+        }
+        if (!sizeof(all_inventory(_cabinets[args[0] - 1])))
+        {
+            result = "There is nothing in that cabinet at the moment.\n";
+        }
+        else
+        {
+            result = sprintf("     Stock of cabinet %d\n     As at %s\n\n",
+              args[0], ctime(time()));
+            foreach(string key in _office->query_list_array())
+            {
+                if (sizeof(found_items = ((class obj_match)match_objects_in_environments(key,
+                        _cabinets[args[0]-1]))->objects ))
+                {
+                    result += query_multiple_short(found_items)+ "\n";
+                }
+            }
+        }
+        tell_object(this_player(), "$P$Cabinet "+ args[0]+
+          " stock list$P$"+ result);
+        return 1;
+    }
+    if (pattern == LIST_ITEM)
+    {
+        string result;
+        found_items += ((class obj_match)match_objects_in_environments(args[0], _cabinets))->objects;
+        if (!sizeof(found_items))
+        {
+            tell_object(this_player(),  "There are no "+ args[0]+
+              " in stock.\n");
+            return 1;
+        }
+        result = sprintf("     List of %s\n     As at %s\n\n%s", args[0],
+          ctime(time()), query_multiple_short(found_items));
+        tell_object(this_player(), "$P$List of " + args[0]+ "$P$"+ result);
+        return 1;
+    }
+    if (args[1] < 1 || args[1] > _num_cabinets)
+    {
+        tell_object(this_player(), "That cabinet does not exist!\n");
+        return 1;
+    }
+    if (!sizeof(all_inventory(_cabinets[args[1] - 1])))
+    {
+        tell_object(this_player(), "There is nothing in that cabinet at "
+          "the moment.\n");
+        return 1;
+    }
+    found_items = ((class obj_match)match_objects_in_environments(args[0],
+        _cabinets[args[1]-1]))->objects;
+    if (!sizeof(found_items))
+    {
+        tell_object(this_player(), "There are no "+ args[0]+ " in stock.\n");
+        return 1;
+    }
+    tell_object(this_player(), "$P$List of "+ args[0]+ " in cabinet "+
+      args[1]+ "$P$"+ sprintf("     List of %s in cabinet %d\n     "
+        "As at %s\n\n%s", args[0], args[1], ctime(time()),
+        query_multiple_short(found_items)));
+    return 1;
+}
+private int do_remove(mixed *args)
+{
+    int cab_no = 0;
+    object *items = ({}), *failed;
+    failed = ({});
+    add_succeeded_mess("");
+    if (sizeof(args) > 2) cab_no = args[2];
+    if (query_num_items(args[1], cab_no) < args[0])
+    {
+        tell_object(this_player(), "The stock does not contain "+
+          args[0] + " "+ args[1]+ " to remove.\n");
+        return 1;
+    }
+    init_cabinets();
+    if (!cab_no)
+    {
+        int number = args[0];
+        for(int i = sizeof(_cabinets); i > 0; i--)
+        {
+            object *stock = ((class obj_match)match_objects_in_environments(args[1],
+                _cabinets[i-1]))->objects;
+            if (sizeof(stock))
+            {
+                if (stock[0]->query_collective())
+                {
+                    if (stock[0]->query_amount() > number)
+                    {
+                        object ob = stock[0]->make_medium_clone(number);
+                        items += ({ ob });
+                        stock[0]->adjust_amount(-number);
+                        if (ob->move(this_player()) != MOVE_OK)
+                        {
+                            ob->move(environment(this_player()));
+                            failed += ({ ob });
+                        }
+                    }
+                    else
+                    {
+                        number -= stock[0]->query_amount();
+                        items += stock;
+                        failed += _cabinets[i-1]->remove_items(stock, this_player());
+                    }
+                }
+                else
+                {
+                    if (sizeof(stock) > number) stock = stock[ 0 .. (number-1) ];
+                    items += stock;
+                    failed += _cabinets[i-1]->remove_items(stock, this_player());
+                    number -= sizeof(stock);
+                }
+            }
+            if (!number) break;
+        }
+    }
+    else
+    {
+        items = ((class obj_match)match_objects_in_environments(args[1],
+            _cabinets[cab_no-1]))->objects[0 .. (args[0] - 1)];
+        failed = _cabinets[cab_no - 1]->remove_items(items, this_player());
+    }
+    foreach (string vest in _office->query_list_array())
+    {
+        if (pluralize(args[1]) == vest)
+        {
+            args[1] = pluralize(args[1]);
+            break;
+        }
+    }
+    if (!_cache[args[1]])
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR,"Creating %s cache entry.\n", args[1]);
+#endif
+        _cache += ([args[1]:({1,0})]);
+    }
+    else
+    {
+        _cache[args[1]][0] = 1;
+    }
+    items -= failed;
+    if (sizeof(failed))
+    {
+        tell_room(environment(this_player() ), this_player()->query_short()+
+          " accidentally drops "+ query_multiple_short(failed)+
+          " on the floor.\n", ({this_player()}));
+        tell_object(this_player() , "You accidentally drop "+
+          query_multiple_short(failed)+ " on the floor.\n");
+    }
+    if (find_object(_office->query_shopkeeper()) &&
+      this_player() == find_object(_office->query_shopkeeper()))
+        _office->query_shopkeeper()->set_failed(sizeof(failed));
+    if (sizeof(items))
+    {
+        _office->shop_log(SALE, this_player()->query_name(),
+          this_player()->convert_message(query_multiple_short(items))+
+          " removed from stock", UNPAID);
+        foreach (string plural in _office->query_list_array())
+        {
+            object *test = ({});
+            parse_command(plural, items, "%i", test);
+            if (!test || !sizeof(test)) continue;
+            _office->adjust_sold(plural, sizeof(test) - 1);
+        }
+        add_succeeded_mess("$N $V "+ query_multiple_short(items)+
+          " from the stock.\n");
+    }
+    return 1;
+}
+void event_death(object k, object *o, object k2, string r, string k3)
+{
+    _office->event_death(k,o,k2,r,k3);
+}
+void event_enter(object ob, string message, object from)
+{
+    _office->event_enter(ob, message, from);
+}
+string long(string word, int dark)
+{
+    return sprintf("%sThere are currently %d store cabinets "
+      "in the room.\n", ::long(word,dark), _num_cabinets);
+}
+private void init_cabinets()
+{
+    if (remove_call_out(_call_cabs_clear) == -1 && !_cabinets)
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR, "Initialising cabinets.\n");
+#endif
+        _cabinets = ({});
+        for (int i = 0; i < _num_cabinets; i++)
+        {
+            string cab_name = "cabinet"+ i;
+            object cabinet = clone_object(CABINET);
+            cabinet->set_name(cab_name);
+            cabinet->set_save_file(_office->query_savedir()+ cab_name);
+            _cabinets += ({cabinet});
+        }
+    }
+    _call_cabs_clear = call_out((: clear_cabinets() :), CLEAR_DELAY);
+}
+private int pull_roll()
+{
+    object bag;
+    string message, day, day2, month;
+    bag = clone_object(SHOP_BAG);
+    sscanf(amtime(time()), "%*s %s %s %s", day, day2, month);
+    if (member_array( month, ({"Offle", "February", "March",
+          "April", "May", "June", "Grune", "August", "Spune", "Sektober",
+          "Ember", "December", "Ick"}) ) == -1)
+        message = sprintf("A very happy %s %s %s\n\nfrom everyone at\n\n%s, %s",
+          day, day2, month, _office->query_shop_name(),
+          _office->query_place());
+    else message = sprintf("With the compliments of\n\n%s, %s.",
+          _office->query_shop_name(), _office->query_place());
+    bag->set_read_mess(message);
+    bag->set_max_cond(400);
+    bag->set_cond(400);
+    if ((int)bag->move(this_player()) != MOVE_OK)
+    {
+        bag->move(this_object());
+        tell_object(this_player(),
+          "You drop the bag as you're carrying too much.\n");
+    }
+    add_succeeded_mess("$N $V the roll and $I comes off in $p hand.\n",
+      ({bag}) );
+    return 1;
+}
+int query_num_items(string item, int cabinet)
+{
+    object *obs;
+    init_cabinets();
+    if (cabinet)
+    {
+        obs = ((class obj_match)match_objects_in_environments(item,
+            _cabinets[cabinet-1]))->objects;
+        if (!sizeof(obs))
+        {
+            return 0;
+        }
+        else if (obs[0]->query_collective())
+        {
+            return obs[0]->query_amount();
+        }
+        else
+        {
+            return sizeof(obs);
+        }
+    }
+    else
+    {
+        return query_stock(item);
+    }
+}
+string query_office() { return copy(_office); }
+int query_stock(string item)
+{
+    object *obs;
+    init_cabinets();
+    if (!_cache[item])
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR,"Creating %s cache entry.\n", item);
+#endif
+        _cache += ([item:({1,0})]);
+    }
+    if (_cache[item][0])
+    {
+#ifdef DEBUG
+        tell_creator("ringo","Updating %s in cache.\n", item);
+#endif
+        obs = ((class obj_match)match_objects_in_environments(item, _cabinets))->objects;
+        if (!sizeof(obs))
+        {
+            _cache[item][1] = 0;
+        }
+        else if (obs[0]->query_collective())
+        {
+            _cache[item][1] = obs[0]->query_amount();
+        }
+        else
+        {
+            _cache[item][1] = sizeof(obs);
+        }
+        _cache[item][0] = 0;
+    }
+    return _cache[item][1];
+}
+string remove_cabinet()
+{
+    object cabinet;
+    if (previous_object() && previous_object() != find_object(_office))
+    {
+        LOG_ERROR("storeroom.c", "remove_cabinet()");
+        return "";
+    }
+    if ((_num_cabinets) == MIN_CABINETS) return "";
+    init_cabinets();
+    _num_cabinets--;
+    cabinet = _cabinets[_num_cabinets];
+    _cabinets -= ({cabinet});
+    cabinet->move("/room/rubbish");
+    return cabinet->query_name();
+}
+protected void set_directions(string office, string counter, string shop)
+{
+    _office_dir = office;
+    _counter_dir = counter;
+    _shop_dir = shop;
+}
+protected void set_long(string long_desc)
+{
+    long_desc += "Employees can \"add\" something to, \"remove\" "
+    "something from and \"list\" the stock.\nThere is a roll of "
+    "shopping bags conveniently located on one wall.\n";
+    ::set_long(long_desc);
+}
+protected void set_office(string path)
+{
+    _office = path;
+    _counter = _office->query_counter();
+    _mgr_office = _office->query_mgr_office();
+    _shop_front = _office->query_shop_front();
+    _num_cabinets = _office->query_num_cabinets();
+}
+
+==================================================
+FILE: shops/player_shop/office_code/admin.c
+==================================================
+
+private void add_board_message(string subject, string post)
+{
+   string *employees;
+   if (_board)
+   {
+#ifdef DEBUG
+      tell_creator(CREATOR, "Posting message %s to board %s.\n", subject,
+        _channel);
+#endif
+      BOARD_HAND->add_message(_channel, _proprietor,
+        subject, post + "--\n"+ _proprietor+ " (proprietor)");
+   }
+   else
+   {
+      employees = _retired;
+      foreach(string employee in m_indices(_employees))
+         if (!(_employees[employee][EMP_POINTS] & NPC))
+            employees += ({ employee });
+      if (!sizeof(employees))
+      {
+#ifdef DEBUG
+         tell_creator(CREATOR, "No employees to send mail to.\n");
+#endif
+         return;
+      }
+      employees += ({CREATOR});
+#ifdef DEBUG
+      tell_creator(CREATOR, "Sending mail %s to all employees.\n", subject);
+#endif
+      AUTO_MAILER->auto_mail(implode(employees, ","), _proprietor,
+           subject+ " ("+ _very_short+ ")", "", post);
+   }
+}
+private void adjust_bonus(string emp, int amount)
+{
+   string sign = "";
+   _accounts["bonus"] += amount;
+   if (amount < 0)
+   {
+      sign = "-";
+      amount = -amount;
+   }
+   shop_log( ACCOUNTS, emp, sprintf( "adjusted the bonus account by %s%s",
+     sign, MONEY_HAND->money_value_string( amount, _place ) ), UNPAID );
+   save_me();
+}
+private void adjust_profit(string emp, int amount)
+{
+   string sign = "";
+   _accounts["profit"] += amount;
+   if (amount < 0)
+   {
+      sign = "-";
+      amount = -amount;
+   }
+   shop_log(ACCOUNTS, emp, sprintf("adjusted the profit account by %s%s",
+     sign, MONEY_HAND->money_value_string(amount, _place)), UNPAID);
+   save_me();
+}
+void adjust_takings(int amt)
+{
+   if (previous_object() && previous_object() != find_object(_counter))
+   {
+      LOG_ERROR("office.c", "adjust_bought("+amt+")");
+      return;
+   }
+   _net_takings += amt;
+   save_me();
+}
+void calc_bonus()
+{
+   int bonus_val, bonus_divisor = 0;
+   foreach (string str in m_indices(_employees))
+   {
+      if (_employees[str][EMP_NOBONUS]) continue;
+      if (_employees[str][EMP_POINTS] & MANAGER)
+      {
+         bonus_divisor += 4;
+      }
+      else if (_employees[str][EMP_POINTS] & SUPERVISOR || _eom == str)
+      {
+         bonus_divisor += 3;
+      }
+      else
+      {
+         bonus_divisor += 2;
+      }
+   }
+   if (!bonus_divisor) bonus_val = _accounts["bonus"];
+   else bonus_val = ( _accounts["bonus"] * 2 ) / bonus_divisor;
+   tell_object(this_player(), "Based on the bonus fund of "+
+     MONEY_HAND->money_value_string(_accounts["bonus"], _place)+
+     ", the following bonuses are anticipated:\n"
+     "\n     Managers    - "+
+     MONEY_HAND->money_value_string(bonus_val * 2, _place)+
+     "\n     Supervisors - "+
+     MONEY_HAND->money_value_string(to_int(bonus_val * 1.5), _place)+
+     "\n     Employees   - "+
+     MONEY_HAND->money_value_string(bonus_val, _place)+ "\n");
+}
+int calc_pay()
+{
+   int amount = 0;
+   foreach(string word in m_indices(_employees))
+      amount += _employees[word][EMP_PAY];
+   return amount;
+}
+private string cap_name(string name)
+{
+   if (!name) return 0;
+   if (test_player(name))
+      return PLAYER_HANDLER->query_cap_name(name);
+   else return capitalize(name);
+}
+int check_manager( string action )
+{
+   object tp = this_player();
+   string tp_name = tp->query_name();
+   if (tp->query_creator() || (_employees[tp_name][EMP_POINTS] & MANAGER) ||
+     (member_array(tp_name, _retired) != -1)) return 1;
+   return notify_fail( "You are not a manager here!\n" );
+}
+string directions_to( string place )
+{
+   if (place == _counter) return copy(_counter_dir);
+   if (place == _storeroom) return copy(_store_dir);
+   if (place == _shop_front) return copy(_shop_dir);
+   return "here";
+}
+int do_set(mixed *args, string pattern)
+{
+   int value, best;
+   object money;
+   switch(pattern)
+   {
+      case SET_EMPS :
+         if (args[0] < MIN_EMP || args[0] > MAX_EMP)
+         {
+            tell_object(this_player(), "Must be between "+ MIN_EMP+
+              " and "+ MAX_EMP+ ".\n");
+            return 1;
+         }
+         shop_log(PERSONNEL, this_player()->query_name(),
+           "set maximum employees to "+ args[0], PAID);
+         _max_emp = args[0];
+         break;
+      case SET_PAY :
+         money = clone_object( MONEY_OBJECT );
+         money->set_money_array(MONEY_HAND->query_values_in(_place));
+         if ((best = money->find_best_fit(args[1])) == -1)
+         {
+            tell_object(this_player(),
+              "That currency is not used by the shop.\n");
+            return 1;
+         }
+         value = args[0] * (money->query_money_array())[best + 1];
+         money->dest_me();
+         if (value < 1)
+         {
+            tell_object(this_player(),
+              "You must pay your employees something.\n");
+            return 1;
+         }
+         shop_log(PERSONNEL, this_player()->query_name(), "set pay to "+
+           MONEY_HAND->money_value_string(value, _place), PAID);
+         _pay_val = value;
+         add_board_message("Pay", sprintf("The base pay rate has today "
+           "been set to:\n\n   Managers: %s\n   Supervisors: %s\n   "
+           "Employees: %s\n", MONEY_HAND->money_value_string(value * 2, _place),
+           MONEY_HAND->money_value_string(to_int(value * 1.5), _place),
+           MONEY_HAND->money_value_string(value, _place)));
+         break;
+   }
+   tell_object(this_player(), "Ok.\n");
+   save_me();
+   return 1;
+}
+int do_transfer(mixed *args)
+{
+   int value, best;
+   object money;
+   string tp;
+   if (args[2] == args[3] || !args[0])
+   {
+      tell_object(this_player(), "The point being?\n");
+      return 1;
+   }
+   tp = this_player()->query_name();
+   money = clone_object(MONEY_OBJECT);
+   money->set_money_array(MONEY_HAND->query_values_in(_place));
+   if ((best = money->find_best_fit(args[1])) == -1)
+   {
+      tell_object(this_player(), "That currency is not used by "
+        "the shop.\n");
+      return 1;
+   }
+   value = args[0] * (money->query_money_array())[best + 1];
+   money->dest_me();
+   switch(args[2]) {
+   case "register" :
+      if (_counter->query_register() < value)
+      {
+         tell_object(this_player(), "There isn't that much available.\n");
+         return 1;
+      }
+      _counter->adjust_register(tp, value);
+      if (args[3] == "profit") adjust_profit(tp, value);
+      else adjust_bonus( tp, value );
+      break;
+   case "bonus" :
+      if (_accounts["bonus"] < value)
+      {
+         tell_object(this_player(), "There isn't that much available.\n");
+         return 1;
+      }
+      adjust_bonus(tp, -value);
+      if (args[3] == "profit") adjust_profit(tp, value);
+      else
+      {
+         money = MONEY_HAND->make_new_amount(value, _place);
+         _counter->add_money_ob(money);
+         shop_log(ACCOUNTS, tp, "adjusted the register by "+
+           MONEY_HAND->money_value_string(value, _place), UNPAID);
+      }
+      break;
+   case "profit" :
+      if (_accounts["profit"] < value)
+      {
+         tell_object(this_player(), "There isn't that much available.\n");
+         return 1;
+      }
+      adjust_profit(tp, -value);
+      if (args[3] == "bonus") adjust_bonus( tp, value );
+      else
+      {
+         money = MONEY_HAND->make_new_amount(value, _place);
+         _counter->add_money_ob(money);
+         shop_log( ACCOUNTS, tp, "adjusted the register by "+
+           MONEY_HAND->money_value_string(value, _place), UNPAID);
+      }
+      break;
+   }
+   shop_log (ACCOUNTS, tp, "transferred "+ args[0]+ " "+ args[1]+ " from "+
+      args[2]+ " to "+ args[3], PAID);
+   tell_object(this_player(), "Ok.\n");
+   return 1;
+}
+private void load_applicants()
+{
+   if (remove_call_out(_call_apps) != -1 ||
+      remove_call_out(_call_apps_clear) != -1) return;
+   if (!_applicants)
+      if (file_size(_savedir+ "applications") > 0)
+         _applicants = restore_variable(unguarded((: read_file,
+            _savedir+ "applications" :)));
+      else _applicants = ([]);
+}
+private void load_history()
+{
+   if (remove_call_out(_call_hist) != -1 ||
+      remove_call_out(_call_hist_clear) != -1) return;
+   if (!_history)
+      if (file_size(_savedir+ "history") > 0)
+         _history = restore_variable(unguarded((: read_file,
+            _savedir+ "history" :)));
+      else _history = ([]);
+}
+private void load_new_policies()
+{
+   if (remove_call_out(_call_newpols) != -1 ||
+      remove_call_out(_call_newpols_clear) != -1) return;
+   if (!_new_policies)
+      if ( file_size(_savedir+ "new_policies") > 0 )
+         _new_policies = restore_variable(unguarded((: read_file,
+            _savedir+ "new_policies" :)));
+      else _new_policies = ([]);
+}
+private void load_policies()
+{
+   if (remove_call_out(_call_pols) != -1 ||
+      remove_call_out(_call_pols_clear) != -1) return;
+   if (!_policies)
+      if ( file_size( _savedir+ "policies" ) > 0 )
+         _policies = restore_variable( unguarded( (: read_file,
+            _savedir+ "policies" :) ) );
+      else _policies = ([]);
+}
+string * query_eom() { return ({_last_month,_eom,}); }
+private void remove_employee(string employee)
+{
+   employee = lower_case(employee);
+   if (_employees[employee])
+   {
+      map_delete(_employees, employee);
+      save_emps();
+   }
+   remove_applicant(employee);
+   remove_retired(employee);
+   remove_call_out(_call_hire_list);
+   _call_hire_list = call_out((: check_hire_list() :), 5);
+}
+private void remove_retired(string retired)
+{
+   retired = lower_case(retired);
+   if (member_array(retired, _retired) == -1) return;
+   _retired -= ({retired});
+   save_me();
+}
+private void reset_employee(string word, int bit)
+{
+   if (!_employees[word]) return;
+   if ((bit < EMPLOYEE) || (bit > CLOCKED_IN))
+   {
+#ifdef DEBUG
+      tell_creator(CREATOR, "Trying to reset an employee bit < %d || > %d\n",
+         EMPLOYEE, CLOCKED_IN );
+#endif
+      return;
+   }
+   _employees[word][EMP_POINTS] -= _employees[word][EMP_POINTS] & bit;
+   if (bit != CLOCKED_IN) save_emps();
+}
+mixed *restore_register() { return copy(_register + ({})); }
+void set_employee(string word, int bit)
+{
+   if (!_employees[word]) return;
+   _employees[word][EMP_POINTS] |= bit;
+   if (bit != CLOCKED_IN) save_emps();
+}
+void summon_shopkeeper()
+{
+   object shopkeeper = find_object(_shopkeeper);
+   if (shopkeeper && environment(shopkeeper)) return;
+   if (num_employees_in()) return;
+   _shopkeeper->start_shift();
+}
+
+==================================================
+FILE: shops/player_shop/office_code/applications.c
+==================================================
+
+void add_applicant(string player, string message)
+{
+   if (previous_object() && previous_object() != find_object(_shop_front))
+   {
+      LOG_ERROR("office.c", "add_applicant("+player+","+message+")");
+      return;
+   }
+   player = lower_case(player);
+   if (!query_applicant(player))
+   {
+      load_applicants();
+      if (!sizeof(_applicants)) _applicants = ([ player:APP_MAP ]);
+      else _applicants += ([ player:APP_MAP ]);
+      _applicants[player][APP_TIME] = time();
+      _applicants[player][APP_MESSAGE] = message;
+      employee_log( player, "Applied for employment" );
+      save_applicants();
+   }
+}
+private void add_declined(string applicant)
+{
+   applicant = lower_case(applicant);
+   if (!query_declined(applicant))
+   {
+      if (!sizeof(_declined)) _declined = ([applicant:0]);
+      else _declined += ([applicant:0]);
+      _declined[applicant] = time();
+      save_me();
+   }
+}
+private void add_vote(string applicant, int vote)
+{
+   string voter = this_player()->query_name();
+   int managers = sizeof(get_managers());
+   if (!managers) managers = 1;
+   load_applicants();
+   if (vote == VABSTAIN) _applicants[applicant][APP_ABSTAIN] += ({voter});
+   else if (vote == VFOR) _applicants[applicant][APP_FOR] += ({voter});
+   else _applicants[applicant][APP_AGAINST] += ({voter});
+   shop_log(GENERAL, voter, "voted on "+ cap_name(applicant), PAID);
+   save_applicants();
+   managers -= sizeof(_applicants[applicant][APP_ABSTAIN]);
+   if (sizeof(_applicants[applicant][APP_FOR]) > managers / 2)
+   {
+      PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
+         "Congratulations!  You've been accepted to work at "+
+         _shop_name+ ".  Please return to the shop within the next "
+         "seven days to \"confirm\" that you wish to accept "
+         "the position.\n");
+      _applicants[applicant][APP_TYPE] = HIRED;
+      _applicants[applicant][APP_TIME] = time();
+      employee_log(applicant, "Application was accepted");
+   }
+   else if (sizeof(_applicants[applicant][APP_AGAINST]) >=
+      managers / 2)
+   {
+      remove_applicant(applicant);
+      PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
+         "Thank you for your recent application for employment "
+         "with us.  Unfortunately, I have to inform you that you "
+         "have been unsuccessful at this time.  Please feel free "
+         "to re-apply again in the future, when your application "
+         "will be re-considered.\n");
+      employee_log(applicant, "Application was declined");
+      add_declined(applicant);
+   }
+}
+void check_hire_list()
+{
+   int count;
+   string *hirees = ({});
+   load_applicants();
+   foreach (string word in m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == HIRED :))))
+      if (time() - _applicants[word][APP_TIME] > HIRE_TIMEOUT)
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor,
+            _shop_name, "", "Since you have not returned to confirm "
+            "your employment with us, we have assumed that you are no "
+            "longer interested, and removed your name from our files.  "
+            "If you wish to re-apply at any time in the future, please "
+            "return to the shop to do so.\n");
+         employee_log(word, "Lapsed their application");
+         remove_applicant(word);
+      }
+   foreach (string word in m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == APPLIED :))))
+      if (sizeof(_applicants[word][APP_FOR]) >
+         sizeof(get_managers()) / 2)
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+            "Congratulations!  You've been accepted to work at "+
+            _shop_name+ ".  Please return to the shop within the next "
+            "seven days to \"confirm\" that you wish to accept "
+            "the position.\n");
+         _applicants[word][APP_TYPE] = HIRED;
+         _applicants[word][APP_TIME] = time();
+         employee_log(word, "Application was accepted");
+      }
+      else if (time() - _applicants[word][APP_TIME] > VOTE_TIMEOUT)
+      {
+         if (sizeof(_applicants[word][APP_FOR]) <=
+            sizeof(_applicants[word][APP_AGAINST]))
+         {
+            remove_applicant(word);
+            PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+               "Thank you for your recent application for employment "
+               "with us.  Unfortunately, I have to inform you that you "
+               "have been unsuccessful at this time.  Please feel free "
+               "to re-apply again in the future, when your application "
+               "will be re-considered.\n");
+            employee_log(word, "Application was declined");
+            add_declined(word);
+         }
+         else
+         {
+            PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+               "Congratulations!  You've been accepted to work at "+
+               _shop_name+ ".  Please return to the shop within the next "
+               "seven days to \"confirm\" that you wish to accept "
+               "the position.\n");
+            _applicants[word][APP_TYPE] = HIRED;
+            _applicants[word][APP_TIME] = time();
+            employee_log(word, "Application was accepted");
+         }
+      }
+   count = _max_emp - sizeof(_employees);
+   if (count < 1) return;
+   hirees = sort_array(keys(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))),
+      (: _applicants[$1][APP_TIME] - _applicants[$2][APP_TIME] :));
+   if (count > sizeof(hirees)) count = sizeof( hirees );
+   for (int n = 0; n < count; n++) hire(hirees[n]);
+   save_applicants();
+}
+int do_cancel()
+{
+   object tp = this_player();
+   remove_applicant(tp->query_name());
+   employee_log(tp->query_name(), "Cancelled application");
+   tell_object(tp, "You cancel your application.\n");
+   return 1;
+}
+int do_confirm()
+{
+   object tp = this_player();
+   string applicant = lower_case(tp->query_name());
+   if (previous_object() && previous_object() != find_object(_shop_front))
+   {
+      LOG_ERROR("office.c", "do_confirm()");
+      return 0;
+   }
+   load_applicants();
+   _applicants[applicant][APP_TYPE] = AWAITING;
+   _applicants[applicant][APP_TIME] = time();
+   tell_object(tp, "You have now been added to "
+      "our waiting list.  You will be notified of your position in the "
+      "list as it changes.  You may \"cancel\" your application at "
+      "any time.  You are currently at position " +
+      sizeof(m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))))+
+      " in the waiting list.\n");
+   save_applicants();
+   employee_log(applicant, "Confirmed employment");
+   tell_object(tp, "You confirm your employment.\n");
+   return 1;
+}
+int do_vote(mixed *args, string pattern)
+{
+   int query_app;
+   string tp = this_player()->query_name();
+   if (pattern == VOTE_APPLICANT)
+   {
+      args[0] = lower_case(args[0]);
+      if (!(query_app = query_applicant(args[0])))
+      {
+         tell_object(this_player(),cap_name(args[0])+
+            " hasn't applied!\n");
+         return 1;
+      }
+      if (query_app != APPLIED)
+      {
+         tell_object(this_player(), cap_name( args[0])+
+            " has already been hired!\n");
+         return 1;
+      }
+      load_applicants();
+      if (member_array(tp, _applicants[args[0]][APP_FOR]) != -1 ||
+         member_array(tp, _applicants[args[0]][APP_AGAINST]) != -1 ||
+         member_array(tp, _applicants[args[0]][APP_ABSTAIN]) != -1)
+      {
+         tell_object(this_player(),
+            "You have already voted for this person!\n");
+         return 1;
+      }
+      switch (args[1][0])
+      {
+      case 'y' :
+         add_vote(args[0], VFOR);
+         tell_object(this_player(), "You vote for " +
+            cap_name( args[0] ) + " to work for the shop.\n");
+         break;
+      case 'a' :
+         add_vote(args[0], VABSTAIN);
+         tell_object(this_player(), "You abstain on " +
+            cap_name(args[0] ) + ".\n");
+         break;
+      default :
+         add_vote(args[0], VAGAINST);
+         tell_object(this_player(), "You vote against " +
+            cap_name( args[0] ) + " working for the shop.\n");
+      }
+      clear_applicants();
+   }
+   else do_policy_vote(tp, args[0], args[1]);
+   return 1;
+}
+private void mail_hirees()
+{
+   string *hirees;
+   load_applicants();
+   hirees = sort_array(keys(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))),
+      (: _applicants[$1][APP_TIME] - _applicants[$2][APP_TIME] :));
+   for (int x = 0; x < sizeof(hirees); x++)
+      PLAYER_SHOP->auto_mail(hirees[x], _proprietor, _shop_name, "",
+         "I am writing to inform you that you have now moved to position "+
+         (x + 1)+ " in the employment waiting list.  If you are not near "
+         "the top of the list, please be patient.\nThank you.\n");
+   clear_applicants();
+}
+private void remove_applicant(string applicant)
+{
+   applicant = lower_case(applicant);
+   if (query_applicant(applicant))
+   {
+      load_applicants();
+      map_delete(_applicants, applicant);
+      save_applicants();
+   }
+}
+private void remove_declined(string declined)
+{
+   declined = lower_case(declined);
+   if (query_declined(declined))
+   {
+      map_delete(_declined, declined);
+      save_me();
+   }
+}
+
+==================================================
+FILE: shops/player_shop/office_code/baddies.c
+==================================================
+
+private void add_baddie(string word, string reason, string banner)
+{
+   object ob;
+   word = lower_case(word);
+   if (query_baddie(word))
+   {
+      if (_baddies[word][BAD_TIME] == time() ||
+         reason == _baddies[word][BAD_REASON]) return;
+      remove_baddie( word );
+   }
+   if (!sizeof(_baddies)) _baddies = ([word:BAD_MAP]);
+   else _baddies += ([word:BAD_MAP]);
+   _baddies[word][BAD_REASON] = reason;
+   _baddies[word][BAD_BANNER] = banner;
+   _baddies[word][BAD_TIME] = time();
+   save_me();
+   shop_log(GENERAL, banner, "banned "+ cap_name(word)+
+      " for "+ reason, PAID);
+   employee_log(word, sprintf("Banned by %s for %s.", cap_name(banner),
+      reason));
+   fire_them(_proprietor, word, reason);
+   remove_applicant(word);
+   if (!(ob = find_player(word))) return;
+   if (environment(ob) == find_object(_shop_front))
+   {
+      tell_room(_shop_front, ob->query_short()+ " drifts out of the door, "
+        "seemingly against "+ ob->query_possessive()+ " will.\n", ({ob}));
+      tell_object(ob , "You feel yourself pushed out of the shop "
+        "by a mysterious force.\n");
+      tell_room(_shop_front->query_outside(), ob->query_short()+
+        " drifts through the door of "+ _shop_name +
+        ", seemingly against "+ ob->query_possessive()+ " will.\n", ({ob}));
+      ob->move(_shop_front->query_outside());
+   }
+}
+int do_ban(mixed *args)
+{
+   if (!test_player(lower_case(args[0])))
+   {
+      tell_object(this_player(), args[0]+ " is not a player.\n");
+      return 1;
+   }
+   if (_employees[args[0]][EMP_POINTS] & MANAGER &&
+      !this_player()->query_creator())
+   {
+      tell_object(this_player(), "You cannot ban "+ cap_name(args[0])+
+         ".\n");
+      return 1;
+   }
+   add_baddie(args[0], args[1], this_player()->query_name());
+   tell_object(this_player(), "You ban "+ cap_name(args[0])+
+     " for "+ args[1]+ ".\n");
+   return 1;
+}
+int do_unban(string person)
+{
+   if (!query_baddie(person))
+   {
+      tell_object(this_player(), person+ " is not currently banned.\n");
+      return 1;
+   }
+   remove_baddie(person);
+   shop_log(GENERAL, this_player()->query_name(),
+     "removed the ban on "+ cap_name(person), PAID);
+   tell_object(this_player(), "You remove the ban on "+
+     cap_name(person)+ ".\n" );
+   return 1;
+}
+private void remove_baddie(string word)
+{
+   if (!query_baddie(word)) return;
+   map_delete(_baddies, word);
+   save_me();
+}
+
+==================================================
+FILE: shops/player_shop/office_code/cabinets.c
+==================================================
+
+private void add_chart_cabinet(string word, int number)
+{
+   if (!_list[word]) return;
+   _list[word][CHART_CAB] += ({number});
+   _list[word][CHART_CAB] = sort_array(_list[word][CHART_CAB], 1);
+   save_list();
+}
+void confirm_cabinet(string confirm, int rent)
+{
+   if (previous_object() && previous_object() != this_object())
+   {
+      LOG_ERROR("office.c", "confirm_cabinet("+confirm+","+rent+")");
+      return;
+   }
+   confirm = lower_case(confirm);
+   if ( strlen(confirm) < 1 ||
+     (confirm[0] != 'y' && confirm[0] != 'n'))
+   {
+       tell_object(this_player(), sprintf("Please enter 'yes' or 'no'.\n"
+         "Are you sure you want to %s a cabinet? ", (rent)?"rent":"remove"));
+       input_to("confirm_cabinet", 0, rent);
+       return ;
+   }
+   if (confirm[0] == 'n')
+   {
+      tell_object(this_player(), "Ok.\n");
+      return;
+   }
+   if (rent)
+      if (_storeroom->add_cabinet())
+      {
+         _num_cabinets++;
+         adjust_profit(this_player()->query_name(), -CABINET_COST);
+         shop_log(ACCOUNTS, this_player()->query_name(),
+           "rented cabinet for "+ MONEY_HAND->money_value_string(CABINET_COST,
+           _place), PAID);
+         save_me();
+      }
+   else
+   {
+      string cab_name;
+      if ((cab_name = _storeroom->remove_cabinet()) != "")
+      {
+         _num_cabinets--;
+         shop_log(ACCOUNTS, this_player()->query_name(),
+           "removed cabinet", PAID);
+         if (file_size(_savedir+ _cab_name + ".o") > 0)
+         {
+            _cab_name = cab_name;
+            call_out((: rm_cab() :), 5);
+         }
+         save_me();
+      }
+   }
+   tell_object(this_player(), "Cabinet "+ (rent)?"rent":"remov" + "ed.\n");
+}
+private int do_check()
+{
+   string result = "Current cabinet assignments are:\n";
+   for (int x = 0; x < _num_cabinets; x++)
+   {
+      string *items = ({});
+      result += sprintf("Cabinet %2d: ", x+1);
+      foreach(string item in m_indices(_list))
+         if (member_array(x+1, _list[item][CHART_CAB]) != -1)
+            items += ({sprintf("%s (%d)", item, _list[item][CHART_MAX])});
+      if (sizeof(items)) result += query_multiple_short( items );
+      result += "\n";
+   }
+   result += "\n";
+   tell_object(this_player(), "$P$Cabinet assignments$P$"+ result);
+   return 1;
+}
+int do_remove()
+{
+   int stock;
+   if (!((stock = _num_cabinets) > MIN_CABINETS))
+   {
+      tell_object(this_player(), "The shop already contains the "
+        "minimum number of cabinets.\n");
+      return 1;
+   }
+   if (sizeof(_storeroom->query_stock(stock)))
+   {
+      tell_object(this_player(), "Cabinet "+ stock+
+        " still contains stock.\n");
+      return 1;
+   }
+   if (query_cabinet_used(stock))
+   {
+      tell_object(this_player(), "Cabinet "+ stock+
+        " is still assigned to hold stock.\n");
+      return 1;
+   }
+   tell_object(this_player(), "Are you sure you wish to remove a cabinet? ");
+   input_to("confirm_cabinet", 0, 0);
+   return 1;
+}
+int do_rent()
+{
+   if (!(_num_cabinets < MAX_CABINETS))
+   {
+      tell_object(this_player(), "The shop already contains the "
+        "maximum number of cabinets.\n");
+      return 1;
+   }
+   if (CABINET_COST > _accounts["profit"])
+   {
+      tell_object(this_player(), "Cabinets currently cost "+
+        MONEY_HAND->money_value_string(CABINET_COST, _place) +
+        ".  There is not enough money in the profit account.\n");
+      return 1;
+   }
+   tell_object(this_player(), "Are you sure you wish to rent a cabinet for "+
+     MONEY_HAND->money_value_string( CABINET_COST, _place ) + " per month? ");
+   input_to("confirm_cabinet", 0, 1);
+   return 1;
+}
+int *query_cabinet(string item)
+{
+   return (!_list[item])?({}):copy(_list[item][CHART_CAB]);
+}
+int query_cabinet_used(int cabinet)
+{
+   foreach(string word in m_indices(_list))
+      if ( member_array(cabinet, _list[word][CHART_CAB]) != -1)
+         return TRUE;
+   return FALSE;
+}
+private void remove_chart_cabinet(string word, int number)
+{
+   if (!_list[word]) return;
+   _list[word][CHART_CAB] -= ({number});
+   save_list();
+}
+private void rm_cab()
+{
+#ifdef DEBUG
+   tell_creator(CREATOR, "Removing cabinet file %s.\n",
+     _savedir+ _cab_name+ ".o");
+#endif
+   unguarded((: rm, _savedir+ _cab_name+ ".o" :));
+   _cab_name = "";
+}
+
+==================================================
+FILE: shops/player_shop/office_code/emp_cmd.c
+==================================================
+
+private int do_bank(mixed *args)
+{
+   object tp = this_player();
+   string word = tp->query_name();
+   if (tp->query_creator())
+   {
+      tell_object(tp, "Creators don't get paid.\n");
+      return 1;
+   }
+   add_succeeded_mess( "" );
+   if ( !sizeof( args ) )
+   {
+      string message = "You are currently being paid into your account at "+
+        BANKS[_employees[word][EMP_BANK]][0]+ ".  To change which bank "
+        "you would like your pay to be deposited at, use the command "
+        "\"bank <number>\" where <number> is one of the following:\n\n";
+      for (int x = 0; x < sizeof(BANKS); x++)
+         message += sprintf("     %d: %s\n", x+1, BANKS[x][0]);
+      tell_object(tp, message + "\n");
+      return 1;
+   }
+   if (args[0] < 1 || args[0] > sizeof(BANKS))
+   {
+      tell_object(tp,  "There are "+ sizeof(BANKS)+
+        " banks to choose from.\n");
+      return 1;
+   }
+   _employees[word][EMP_BANK] = args[0] - 1;
+   save_emps();
+   tell_object(tp, "You change your bank details.\n");
+   return 1;
+}
+private int do_claim(string item)
+{
+   object thing,
+          tp = this_player();
+   int give_bonus;
+   string tp_name = tp->query_name();
+   switch(item)
+   {
+     case "badge" :
+        thing = clone_object(BADGE);
+        thing->set_props(file_name(this_object()), tp->query_name());
+        break;
+     case "handbook" :
+        thing = clone_object(STAFF_BOOK);
+        thing->set_read_mess("\n   "+ _shop_name+ "\n\n"
+          "   Staff Handbook\n\n   This handbook belongs to: "+
+          tp->query_short()+ "\n\n", "common", 100);
+        thing->set_office(file_name(this_object()));
+        tp->add_property(_very_short+ " handbook",1);
+        break;
+     case "bonus" :
+        if (member_array(tp_name, _got_bonus) != -1)
+        {
+           tell_object(tp, "You are not entitled to a "
+             "bonus this month!\n");
+           return 1;
+        }
+        if (_employees[tp_name][EMP_POINTS] & MANAGER)
+        {
+           give_bonus = _bonus_val * 2;
+        }
+        else if (_employees[tp_name][EMP_POINTS] & SUPERVISOR ||
+           _eom == tp_name)
+        {
+           give_bonus = to_int(_bonus_val * 1.5);
+        }
+        else
+        {
+           give_bonus = _bonus_val;
+        }
+        if (!give_bonus)
+        {
+           tell_object(tp,  "There is no money in the bonus "
+             "fund this month.\n");
+           return 1;
+        }
+        _got_bonus += ({tp_name});
+        _bonus -= give_bonus;
+        if (_bonus < 0) _bonus = 0;
+        thing = MONEY_HAND->make_new_amount(give_bonus, _place);
+        shop_log(GENERAL, tp_name, "claimed "+
+          MONEY_HAND->money_value_string(give_bonus, _place), UNPAID);
+        if (thing->move(tp) != MOVE_OK)
+        {
+           thing->move(environment(tp));
+           tell_object(tp, "You drop "+ thing->query_short()+
+             " as you're carrying too much.\n");
+        }
+        save_me();
+        add_succeeded_mess("$N $V "+ MONEY_HAND->
+          money_value_string(give_bonus, _place )+ ".\n");
+        return 1;
+        break;
+   }
+   if (thing->move(tp) != MOVE_OK)
+   {
+      thing->move(this_object());
+      tell_object(tp, "You drop your "+ item+
+        " as you're carrying too much.\n");
+   }
+   add_succeeded_mess("$N $V a new "+ item+ ".\n");
+   return 1;
+}
+private int do_clock(string clock)
+{
+   object tp = this_player();
+   string word = tp->query_name();
+   int pay_them = UNPAID;
+   if (tp->query_creator())
+   {
+      tell_object(tp, "Creators don't clock in or out.\n");
+      return 1;
+   }
+   switch(clock)
+   {
+     case "in" :
+        if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+        {
+           tell_object(tp, "You are already clocked in!\n");
+           return 1;
+        }
+        remove_call_out(_call_summon);
+        if (tp->query_property("no score") &&
+           !_employees[word][EMP_NOPROMOTE])
+        {
+           _employees[word][EMP_NOPROMOTE] = TRUE;
+           save_emps();
+        }
+        pay_them = PAID;
+        set_employee(word, CLOCKED_IN);
+        break;
+     case "out" :
+        if (!(_employees[word][EMP_POINTS] & CLOCKED_IN))
+        {
+           tell_object(tp, "You are already clocked out!\n");
+           return 1;
+        }
+        remove_call_out(_call_summon);
+        _call_summon = call_out((: summon_shopkeeper() :), 60);
+        reset_employee(word, CLOCKED_IN);
+        break;
+   }
+   add_succeeded_mess("$N $V "+ clock+ ".\n");
+   shop_log(GENERAL, word, "clocked "+ clock, pay_them);
+   return 1;
+}
