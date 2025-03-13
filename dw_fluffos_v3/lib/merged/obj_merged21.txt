@@ -1,2370 +1,621 @@
-# Total Tokens: 20719
-# Total Files Merged: 7
-# Total Characters: 69083
+# Total Tokens: 4959
+# Total Files Merged: 1
+# Total Characters: 16535
 
-p_ten_handler.c
+nherit/club_basic.c
 ==================================================
 
-#include <library.h>
-#include <skills.h>
-#include <top_ten_tables.h>
 #include <clubs.h>
-#include <player.h>
+#include <broadcaster.h>
 #include <player_handler.h>
-#define SAVE_FILE "/save/top_ten_tables"
-#define TOP_TEN_SIZE 15
-#define GUILD_TOP_TEN_SIZE 10
-#define ARCHIVE_TIME 50 * 24 * 60 * 60
-#define ARCHIVE_RATING 30000
-#define APEX_LIMIT 10000
-#define AGE_DIVIDER 100
-#define AGE calculate_age_modifier( thing, 0 )
-mapping guild_top_tens;
-mixed *archive, *top_ten;
-nosave int average;
-nosave mixed *skills;
-string _family_largest;
-int _family_largest_num;
-string _family_qp;
-int _family_qp_num;
-string _family_age;
-int _family_age_num;
-mapping _family_guilds;
-mapping _family_guilds_num;
-string _family_pk;
-int _family_pk_num;
-string _family_single_gender;
-int _family_single_gender_num;
-string _family_start_time;
-int _family_start_time_num;
-string _family_relationships;
-int _family_relationships_num;
-string _club_largest;
-int _club_largest_num;
-string _club_qp;
-int _club_qp_num;
-string _club_age;
-int _club_age_num;
-mapping _club_guilds;
-mapping _club_guilds_num;
-string _club_pk;
-int _club_pk_num;
-string _club_single_gender;
-int _club_single_gender_num;
-string _club_start_time;
-int _club_start_time_num;
-void calculate_family_and_club_info();
+class club_info {
+   string actual_name;
+   string founder;
+   string *recruiters;
+   string *members;
+   int type;
+   mapping accounts;
+   int last_paid;
+   int last_touched;
+   mixed extra_data;
+   string description;
+   string region;
+}
+#define CLUB_CACHE_SIZE 20
+private mapping _club_names;
+private string *_observers;
+private nosave int _no_cache_hits;
+private nosave int _no_cache_requests;
+private nosave int _no_cache_miss;
+private nosave int _cache_call_out;
+private nosave mapping _cache;
+private nosave string *_cache_order;
+#define SAVE_FILE_NAME "/save/clubs"
+#define SAVE_FILE_DIR "/save/clubs/"
+protected void save_club(string name);
+protected void load_main();
+protected void save_main();
+int is_club(string club_name);
+int remove_recruiter(string name, string recruiter);
+int is_recruiter_of(string name, string recruiter);
+int query_club_type(string name);
+void check_extra_information(string club_name, string member, int login);
+int is_family(string name);
+int disband_club(string name);
+protected void set_club_changed(string name);
+protected void send_broadcast_message(string club,
+                                      string message);
+protected void send_observer_event(string event_name,
+                                   string *args ...);
 void create() {
-    seteuid( (string)"/secure/master"->
-      creator_file( file_name( this_object() ) ) );
-    guild_top_tens = ([ ]);
-    _family_guilds = ([ ]);
-    _club_guilds = ([ ]);
-    _family_guilds_num = ([ ]);
-    _club_guilds_num = ([ ]);
-    archive = ({ });
-    top_ten = ({ });
-    call_out( "check_tables", 5 );
-    call_out( "check_family_and_club_info", 10 );
-    if ( file_size( SAVE_FILE +".o" ) > 0 ) {
-        unguarded( (: restore_object, SAVE_FILE :) );
-        if (!_family_guilds_num) {
-            _family_guilds_num = ([ ]);
-        }
-        if (!_club_guilds_num) {
-            _club_guilds_num = ([ ]);
-        }
-    }
+    seteuid(master()->creator_file(file_name()));
+   _club_names = ([ ]);
+   _cache = ([ ]);
+   _cache_order = ({ });
+   _observers = ({ });
+   load_main();
 }
-private void save_me() {
-    unguarded( (: save_object, SAVE_FILE :) );
+string query_cap_name() {
+   return "Club controller";
 }
-int query_average() { return average; }
-mixed *query_skills() { return skills; }
-mapping query_guild_top_tens() { return guild_top_tens; }
-void set_guild_top_tens( mapping map ) {
-    guild_top_tens = map;
-    save_me();
+protected void load_main() {
+   unguarded( (: restore_object(SAVE_FILE_NAME, 1) :) );
 }
-void add_guild_top_ten( string word ) {
-    if ( guild_top_tens[ word ] ) {
-        return;
-    }
-    guild_top_tens[ word ] = ({ });
-    save_me();
+protected void save_main() {
+   unguarded( (: save_object(SAVE_FILE_NAME, 1) :) );
 }
-mixed *query_archive() { return archive; }
-void set_archive( mixed *args ) {
-    archive = args;
-    save_me();
+string normalise_name(string name) {
+   return replace_string(lower_case(name), " ", "_");
 }
-mixed *query_top_ten() { return top_ten; }
-void set_top_ten( mixed *args ) {
-    top_ten = args;
-    save_me();
-}
-int check_person( mixed *args, string guild ) {
-    int i;
-    string word;
-    if ( !guild ) {
-        sscanf( args[ 0 ], "%s (%s)", word, guild );
-    } else {
-        word = args[ 0 ];
-    }
-    if ( !PLAYER_HANDLER->test_user( word ) ||
-      !PLAYER_HANDLER->test_active( word ) ||
-      PLAYER_HANDLER->test_creator( word ) ||
-      PLAYER_HANDLER->test_property( word, "no_score" ) ||
-      PLAYER_HANDLER->test_property( word, "no score" ) ) {
-        return 0;
-    }
-    if ( "/obj/handlers/player_handler"->test_guild( word, guild ) != "/std/guilds/"+ guild )
-        return 0;
-    if ( ( (int)PLAYER_HANDLER->test_last( word ) < time() - ARCHIVE_TIME ) ) {
-        if ( args[ 1 ] > ARCHIVE_RATING ) {
-            args[ 0 ] = word +" ("+ guild +")";
-            for ( i = sizeof( archive ) - 1; i > -1; i-- ) {
-                if ( archive[ i ][ 0 ] == args[ 0 ] ) {
-                    if ( archive[ i ][ 1 ] > args[ 1 ] )
-                        archive[ i ] = args + ({ time() });
-                    break;
-                }
-            }
-            if ( i == -1 ) {
-                archive += ({ args + ({ time() }) });
-            }
-        }
-        return 0;
-    }
-    return 1;
-}
-void check_tables() {
-    int i;
-    string word;
-    for ( i = sizeof( top_ten ) - 1; i > -1; i-- ) {
-        if ( !check_person( copy( top_ten[ i ] ), 0 ) ) {
-            top_ten = delete( top_ten, i, 1 );
-        }
-    }
-    foreach ( word in keys( guild_top_tens ) ) {
-        for ( i = sizeof( guild_top_tens[ word ] ) - 1; i > -1; i-- ) {
-            if ( !check_person( copy( guild_top_tens[ word ][ i ] ), word ) ) {
-                guild_top_tens[ word ] = delete( guild_top_tens[ word ], i, 1 );
-            }
-        }
-    }
-    save_me();
-}
-mixed *query_ordered_table( string table_name ) {
-    int i, highest_loc, highest_num;
-    mixed *ret, *args;
-    if ( !table_name || table_name == "main") {
-        args = top_ten;
-    } else {
-        if ( table_name == "archive" ) {
-            args = archive;
-        } else {
-            if ( !guild_top_tens[ table_name ] ) {
-                return ({ });
-            }
-            args = guild_top_tens[ table_name ];
-        }
-    }
-    ret = ({ });
-    while ( sizeof( args ) ) {
-        highest_loc = highest_num = 0;
-        for ( i = 0; i < sizeof( args ); i++ ) {
-            if ( args[ i ][ TOP_TEN_RATING ] > highest_num ) {
-                highest_num = args[ i ][ TOP_TEN_RATING ];
-                highest_loc = i;
-            }
-        }
-        ret += ({ args[ highest_loc] });
-        args = args[ 0 .. highest_loc - 1 ] + args[ highest_loc + 1 .. ];
-    }
-    return ret;
-}
-mixed *remove_name( string word, mixed *args ) {
-    int i;
-    if ( !sizeof( args ) ) {
-        return ({ });
-    }
-    for ( i = sizeof( args ) - 1; i > -1; i-- ) {
-        if ( word == explode( args[ i ][ TOP_TEN_NAME ], " " )[ 0 ] ) {
-            args = delete( args, i, 1 );
-        }
-    }
-    return args;
-}
-int *find_lowest( mixed *args ) {
-    int i, lowest_loc, lowest_num;
-    if ( !sizeof( args ) ) {
-        return ({ 0, 0 });
-    }
-    lowest_loc = 0;
-    lowest_num = args[ 0 ][ TOP_TEN_RATING ];
-    for ( i = 1; i < sizeof( args ); i++ ) {
-        if ( lowest_num > args[ i ][ TOP_TEN_RATING ] ) {
-            lowest_loc = i;
-            lowest_num = args[ i ][ TOP_TEN_RATING ];
-        }
-    }
-    return ({ lowest_loc, lowest_num });
-}
-int query_skill_weight( string skill ) {
-    int total;
-    string *next;
-    next = (string *)SKILL_OB->query_immediate_children( skill );
-    if ( !sizeof( next ) ) {
-        return 1;
-    }
-    foreach ( skill in next ) {
-        total += query_skill_weight( skill );
-    }
-    return total;
-}
-int calculate_age_modifier( object thing, int algorithm ) {
-    if ( algorithm ) {
-        return ( -( thing->query_time_on() - ( thing->query_refresh_time() ? ( time() - thing->query_refresh_time() ) + thing->query_time_on() : 0 ) ) / 86400 );
-    }
-    return ( -thing->query_time_on() / 86400 );
-}
-int calculate_rating( object thing ) {
-    int i, j, rating, *bonuses;
-    rating = (int)thing->query_level();
-    if ( !skills ) {
-        skills = ({ });
-        for ( i = 0; i < sizeof( STD_SKILLS ); i += SKILL_ARR_SIZE ) {
-            skills += ({
-              (string *)SKILL_OB->query_immediate_children( STD_SKILLS[ i ] )
-            });
-            skills += ({
-              sizeof( skills[ <1 ] ),
-              query_skill_weight( STD_SKILLS[ i ] )
-            });
-            average += skills[ <1 ];
-        }
-        average /= sizeof( skills ) / 3;
-    }
-    bonuses = allocate( sizeof( skills ) / 3 );
-    for ( i = sizeof( bonuses ) - 1; i > -1; i-- ) {
-        for ( j = skills[ 3 * i + 1 ] - 3; j > -1; j-- ) {
-            bonuses[ i ] +=
-            (int)thing->query_skill_bonus( skills[ 3 * i ][ j ], 1 );
-        }
-        bonuses[ i ] = ( ( bonuses[ i ] / skills[ 3 * i + 1 ] ) *
-          skills[ 3 * i + 2 ] ) / average;
-    }
-    bonuses = sort_array( bonuses, -1 );
-    j = sizeof( bonuses );
-    for ( i = 0; i < j; i++ ) {
-        rating = 2 * rating + bonuses[ i ];
-        if ( !i && userp( thing ) ) {
-            rating += (int)LIBRARY->
-            query_quest_points( (string)thing->query_name() );
-        }
-    }
-    if( rating > APEX_LIMIT && userp( thing ) ) {
-        rating = AGE * (rating - APEX_LIMIT) / AGE_DIVIDER + APEX_LIMIT;
-    }
-    return rating;
-}
-void player_skill_advance( string word, object thing ) {
-    int rating, *lowest;
-    string name;
-    mixed *guild_top_ten;
-    if ( thing->query_creator() ) {
-        return;
-    }
-    if ( thing->query_property( "guest" ) ) {
-        return;
-    }
-    if ( thing->query_property( "no_score" ) ) {
-        return;
-    }
-    if ( thing->query_property( "no score" ) ) {
-        return;
-    }
-    guild_top_ten = guild_top_tens[ word ];
-    if ( !guild_top_ten ) {
-        return;
-    }
-    name = (string)thing->query_name();
-    rating = calculate_rating( thing );
-    guild_top_ten = remove_name( name, guild_top_ten );
-    lowest = find_lowest( guild_top_ten );
-    if ( sizeof( guild_top_ten ) < GUILD_TOP_TEN_SIZE ) {
-        guild_top_ten += ({
-          ({ name, rating, (int)thing->query_level(),
-            -(int)thing->query_time_on() }) });
-    } else {
-        if ( rating > lowest[ 1 ] ) {
-            guild_top_ten[ lowest[ 0 ] ] =
-            ({ name, rating, (int)thing->query_level(),
-              -(int)thing->query_time_on() });
-        }
-    }
-    guild_top_tens[ word ] = guild_top_ten;
-    top_ten = remove_name( name, top_ten );
-    lowest = find_lowest( top_ten );
-    if ( sizeof( top_ten ) < TOP_TEN_SIZE ) {
-        top_ten += ({
-          ({ name +" ("+ word +")", rating,
-            (int)thing->query_level(), -(int)thing->query_time_on() }) });
-    } else {
-        if ( rating > lowest[ 1 ] ) {
-            top_ten[ lowest[ 0 ] ] =
-            ({ name +" ("+ word +")", rating,
-              (int)thing->query_level(), -(int)thing->query_time_on() });
-        }
-    }
-}
-varargs void excise_name( string word1, string word2 ) {
-    if ( !word2 ) {
-        top_ten = remove_name( word1, top_ten );
-    } else {
-        if ( guild_top_tens[ word2 ] ) {
-            guild_top_tens[ word2 ] = remove_name( word1,
-              guild_top_tens[ word2 ] );
-        }
-    }
-    save_me();
-}
-void check_family_and_club_info() {
-    int offset;
-    string bing;
-    string guild;
-    _family_qp_num = 0;
-    _family_age_num = 0;
-    _family_largest_num = 0;
-    if (!mapp(_family_guilds)) {
-        _family_guilds = ([ ]);
-    }
-    if (!mapp(_club_guilds)) {
-        _club_guilds = ([ ]);
-    }
-    if (_family_qp && !CLUB_HANDLER->is_family(_family_qp)) {
-        _family_qp = 0;
-        _family_qp_num = 0;
-    }
-    if (_family_age && !CLUB_HANDLER->is_family(_family_age)) {
-        _family_age = 0;
-        _family_age_num = 0;
-    }
-    if (_family_largest && !CLUB_HANDLER->is_family(_family_largest)) {
-        _family_largest = 0;
-        _family_largest_num = 0;
-    }
-    if (_family_single_gender && !CLUB_HANDLER->is_family(_family_single_gender)) {
-        _family_single_gender = 0;
-        _family_single_gender_num = 0;
-    }
-    if (_family_pk && !CLUB_HANDLER->is_family(_family_pk)) {
-        _family_pk = 0;
-        _family_pk_num = 0;
-    }
-    if (_club_qp && !CLUB_HANDLER->is_club(_club_qp)) {
-        _club_qp = 0;
-        _club_qp_num = 0;
-    }
-    if (_club_age && !CLUB_HANDLER->is_club(_club_age)) {
-        _club_age = 0;
-        _club_age_num = 0;
-    }
-    if (_club_largest && !CLUB_HANDLER->is_club(_club_largest)) {
-        _club_largest = 0;
-        _club_largest_num = 0;
-    }
-    if (_club_single_gender && !CLUB_HANDLER->is_club(_club_single_gender)) {
-        _club_single_gender = 0;
-        _club_single_gender_num = 0;
-    }
-    if (_club_pk && !CLUB_HANDLER->is_club(_club_pk)) {
-        _club_pk = 0;
-        _club_pk_num = 0;
-    }
-    offset = 3;
-    foreach (guild, bing in _family_guilds) {
-        if (stringp(bing)) {
-            if (!CLUB_HANDLER->is_family(bing)) {
-                map_delete(_family_guilds, guild);
-                map_delete(_family_guilds_num, guild);
-            }
-        } else {
-            map_delete(_family_guilds, guild);
-            map_delete(_family_guilds_num, guild);
-        }
-    }
-    foreach (guild, bing in _club_guilds) {
-        if (stringp(bing)) {
-            if (!CLUB_HANDLER->is_club(bing)) {
-                map_delete(_club_guilds, guild);
-                map_delete(_club_guilds_num, guild);
-            }
-        } else {
-            map_delete(_club_guilds, guild);
-            map_delete(_club_guilds_num, guild);
-        }
-    }
-    save_me();
-}
-void inform_of_club(string club,
-  int family,
-  int type,
-  mixed num) {
-    string str;
-    int bing;
-    if (family) {
-        switch (type) {
-        case TOP_TEN_LARGEST_FAMILY:
-            if (_family_largest_num < num ||
-              _family_largest == club) {
-                _family_largest_num = num;
-                _family_largest = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_OLDEST_FAMILY:
-            if (_family_age_num < num ||
-              _family_age == club) {
-                _family_age_num = num;
-                _family_age = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_MOST_QUEST_POINTS:
-            if (_family_qp_num < num ||
-              _family_qp == club) {
-                _family_qp_num = num;
-                _family_qp = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_MOST_GUILD:
-            foreach (str, bing in num) {
-                if (_family_guilds_num[str] < bing ||
-                  _family_guilds[str] == club) {
-                    _family_guilds_num[str] = bing;
-                    _family_guilds[str] = club;
-                    save_me();
-                }
-            }
-            break;
-        case TOP_TEN_MOST_PKS:
-            if (_family_pk_num < num ||
-              _family_pk == club) {
-                _family_pk_num = num;
-                _family_pk = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_SINGLE_GENDER:
-            if (_family_single_gender_num < num ||
-              _family_single_gender == club) {
-                _family_single_gender_num = num;
-                _family_single_gender = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_OLDEST_LOGONS:
-            if (_family_start_time_num < num ||
-              _family_start_time == club) {
-                _family_start_time_num = num;
-                _family_start_time = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_MOST_RELATIONSHIPS:
-            if (_family_relationships_num < num ||
-              _family_relationships == club) {
-                _family_relationships_num = num;
-                _family_relationships = club;
-                save_me();
-            }
-            break;
-        }
-    } else {
-        switch (type) {
-        case TOP_TEN_LARGEST_FAMILY:
-            if (_club_largest_num < num ||
-              _club_largest == club) {
-                _club_largest_num = num;
-                _club_largest = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_OLDEST_FAMILY:
-            if (_club_age_num < num ||
-              _club_age == club) {
-                _club_age_num = num;
-                _club_age = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_MOST_QUEST_POINTS:
-            if (_club_qp_num < num ||
-              _club_qp == club) {
-                _club_qp_num = num;
-                _club_qp = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_MOST_GUILD:
-            foreach (str, bing in num) {
-                if (_club_guilds_num[str] < bing ||
-                  _club_guilds[str] == club ||
-                  !_club_guilds[str]) {
-                    _club_guilds_num[str] = bing;
-                    _club_guilds[str] = club;
-                    save_me();
-                }
-            }
-            break;
-        case TOP_TEN_MOST_PKS:
-            if (_club_pk_num < num ||
-              _club_pk == club) {
-                _club_pk_num = num;
-                _club_pk = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_SINGLE_GENDER:
-            if (_club_single_gender_num < num ||
-              _club_single_gender == club) {
-                _club_single_gender_num = num;
-                _club_single_gender = club;
-                save_me();
-            }
-            break;
-        case TOP_TEN_OLDEST_LOGONS:
-            if (_club_start_time_num < num ||
-              _club_start_time == club) {
-                _club_start_time_num = num;
-                _club_start_time = club;
-                save_me();
-            }
-            break;
-        }
-    }
-}
-mixed *query_family_info() {
-    return ({ _family_largest,
-      _family_age,
-      _family_qp,
-      _family_guilds,
-      _family_pk,
-      _family_single_gender,
-      _family_start_time,
-      _family_relationships });
-}
-mixed *query_club_info() {
-    return ({ _club_largest,
-      _club_age,
-      _club_qp,
-      _club_guilds,
-      _club_pk,
-      _club_single_gender,
-      _club_start_time });
-}
-void dest_me() {
-    save_me();
-    destruct(this_object());
-}
-void reset() {
-    save_me();
-}
-
-==================================================
-FILE: handlers/trig.c
-==================================================
-
-int *sintab, *pow;
-create()
-{
-   pow = ({ 296296, 308556, 321324, 334621, 348467, 362887, 377903,
-            393541, 409825, 426784, 444444, 462835, 481987, 501931,
-            522701, 544331, 566855, 590311, 614738, 640176, 666666,
-            694253, 722981, 752897, 784052, 816496, 850283, 885467,
-            922107, 960264, 1000000,
-            1041379, 1084471, 1129346, 1176079, 1224744, 1275424,
-            1328201, 1383161, 1440396, 1500000, 1562069, 1626707,
-            1694020, 1764118, 1837117, 1913136, 1992301, 2074742,
-            2160595, 2250000, 2343104, 2440061, 2541030, 2646177,
-            2755675, 2869705, 2988452, 3112114, 3240892, 3375000
-   });
-   sintab = ({
-      0, 17452, 34899, 52335, 69756, 87155, 104528, 121869, 139173, 156434,
-      173648, 190808, 207911, 224951, 241921, 258819, 275637, 292371,
-      309016, 325568, 342020, 358367, 374606, 390731, 406736, 422618,
-      438371, 453990, 469471, 484809, 500000, 515038, 529919, 544639,
-      559192, 573576, 587785, 601815, 615661, 629320, 642787, 656059,
-      669130, 681998, 694658, 707106, 719339, 731353, 743144, 754709,
-      766044, 777145, 788010, 798635, 809016, 819152, 829037, 838670,
-      848048, 857167, 866025, 874619, 882947, 891006, 898794, 906307,
-      913545, 920504, 927183, 933580, 939692, 945518, 951056, 956304,
-      961261, 965925, 970295, 974370, 978147, 981627, 984807, 987688,
-      990268, 992546, 994521, 996194, 997564, 998629, 999390, 999847, 1000000
-   });
-}
-int sin(int angle)
-{
-   while (angle < 0) angle += 360;
-   while (angle >= 360) angle -= 360;
-   if (angle >= 270) return -sintab[360 - angle];
-   if (angle >= 180) return -sintab[angle - 180];
-   if (angle >= 90) return sintab[180 - angle];
-   return sintab[angle];
-}
-int cos(int angle)
-{
-   return sin(90 - angle);
-}
-int tan(int angle)
-{
-   return 1000 * sin(angle) / (sin(90 - angle) / 1000);
-}
-int pow1_5(int n)
-{
-   if (n > 30) n = 30;
-   else if (n < -30) n = -30;
-   return pow[30-n];
-}
-
-==================================================
-FILE: handlers/twiki.c
-==================================================
-
-#include <board.h>
-void do_check_changes();
-#define SAVE_FILE "/save/twiki"
-#define CHECK_TIME (7 * 24 * 60 * 60)
-#define TWIKI_CHANGE_FILE "/.changes"
-#define TWIKI_DATA_DIRECTORY "/twiki/data/"
-private nosave string* _databases;
-private int _last_check;
-private mapping _last_change;
-void create() {
-   _databases = ({ "Main", "Am", "Ram", "Cwc", "Sur", "Klatch",
-                   "Forn", "Underworld", "Other", "Playtesters" });
-   seteuid(getuid());
-   restore_object(SAVE_FILE);
-   if (_last_check + CHECK_TIME < time()) {
-      do_check_changes();
-   }
-   call_out("do_check_changes", _last_check + CHECK_TIME - time());
-   if (!_last_change) {
-      _last_change = ([ ]);
-   }
-   call_out("do_change_inform", 60 * 5);
-}
-mapping find_changed_pages(int limit, string database) {
-   string* lines;
+private void fixup_cache() {
    int i;
-   int tim;
-   string page;
-   string author;
-   mixed* bits;
-   mapping changes_pages;
-   lines = explode(read_file(TWIKI_DATA_DIRECTORY + database + TWIKI_CHANGE_FILE), "\n");
-   changes_pages = ([ ]);
-   for (i = 1; i < sizeof(lines); i++) {
-      bits = reg_assoc(lines[<i], ({ "([a-zA-Z][a-zA-Z0-9]+)", "[0-9]+" }), ({ 1, 2 }) );
-      if (sizeof(bits[0]) == 9 || sizeof(bits[0]) == 7) {
-         page = bits[0][1];
-         author = bits[0][3];
-         sscanf(bits[0][5], "%d", tim);
-         if (tim > limit) {
-            if (page[0..4] != "TWiki" &&
-                page[0..9] != "Underworld" &&
-                author != "PeterThoeny" &&
-                page != author &&
-                page != "WebPreferences") {
-               if (file_size("/twiki/data/" + database + "/" + page + ".txt") > 0 &&
-                   strsrch(read_file("/twiki/data/" + database + "/" + page + ".txt"),
-                           "\t* Login Name:") == -1) {
-                  if (!changes_pages[page]) {
-                     changes_pages[page] = ({ });
-                  }
-                  if (member_array(author, changes_pages[page]) == -1) {
-                     changes_pages[page] += ({ author });
-                  }
-               }
-            }
-         } else {
-            break;
+   if (sizeof(_cache_order) > CLUB_CACHE_SIZE) {
+      for (i = sizeof(_cache_order) - CLUB_CACHE_SIZE; i >= 0; i--) {
+         if (_club_names[_cache_order[i]]) {
+            save_club(_cache_order[i]);
          }
-      } else {
-         break;
+         map_delete(_cache, _cache_order[i]);
+      }
+      _cache_order = _cache_order[sizeof(_cache_order) - CLUB_CACHE_SIZE + 1..];
+   }
+}
+protected class club_info query_club_info(string name) {
+   class club_info bing;
+   name = normalise_name(name);
+   _no_cache_requests++;
+   if (_cache[name]) {
+      _no_cache_hits++;
+      return _cache[name];
+   }
+   if (unguarded( (: file_size(SAVE_FILE_DIR + $(name)) :)) > 0) {
+      _cache[name] = unguarded( (: restore_variable(read_file(SAVE_FILE_DIR +
+                                                              $(name))) :) );
+      _cache_order += ({ name });
+      if (intp(_cache[name]->accounts)) {
+         _cache[name]->accounts = ([ CLUB_DEFAULT_ACCOUNT_NAME : _cache[name]->accounts ]);
+      }
+      if (sizeof(_cache[name]) == 10) {
+         bing = new(class club_info);
+         bing->actual_name = _cache[name]->actual_name;
+         bing->founder = _cache[name]->founder;
+         bing->recruiters = _cache[name]->recruiters;
+         bing->members = _cache[name]->members;
+         bing->type = _cache[name]->type;
+         bing->accounts = _cache[name]->accounts;
+         bing->last_paid = _cache[name]->last_paid;
+         bing->last_touched = _cache[name]->last_touched;
+         bing->extra_data = _cache[name]->extra_data;
+         bing->description = _cache[name]->description;
+         bing->region = "Ankh-Morpork";
+         _cache[name] = bing;
+         set_club_changed(name);
+      }
+      fixup_cache();
+      return _cache[name];
+   }
+   _no_cache_miss++;
+   return 0;
+}
+protected void save_club(string name) {
+   name = normalise_name(name);
+   if (_cache[name]) {
+      _club_names[name] = 0;
+      unguarded( (: write_file(SAVE_FILE_DIR + $(name),
+                               save_variable(_cache[$(name)]),
+                               1) :) );
+   }
+}
+protected void save_cache() {
+   string name;
+   class club_info data;
+   foreach (name, data in _cache) {
+      if (_club_names[name]) {
+         save_club(name);
       }
    }
-   return changes_pages;
 }
-string find_changes(int limit) {
-   mapping changes_pages;
-   string ret;
-   string page;
-   string database;
-   ret = "Changes since " + ctime(limit) + " in\n"
-         "http:
-   foreach (database in _databases) {
-      changes_pages = find_changed_pages(limit, database);
-      foreach (page in sort_array(keys(changes_pages), 1)) {
-         ret += sprintf("%-30s changed by %s\n", database + "." + page,
-                         query_multiple_short(changes_pages[page]));
+protected void set_club_changed(string name) {
+   name = normalise_name(name);
+   if (!undefinedp(_club_names[name])) {
+      if (find_call_out(_cache_call_out) == -1) {
+         _cache_call_out = call_out((: save_cache :), 0);
       }
+      _club_names[name] = 1;
    }
-   return ret;
 }
-string find_changes_in_database(string database, int limit) {
-   mapping changes_pages;
-   string ret;
-   string page;
-   if (database == "Playtesters") {
-      ret = "Changes since " + ctime(limit) + " in\n"
-         "http:
-   } else {
-      ret = "Changes since " + ctime(limit) + " in\n"
-         "http:
-   }
-   changes_pages = find_changed_pages(limit, database);
-   foreach (page in sort_array(keys(changes_pages), 1)) {
-      ret += sprintf("%-30s changed by %s\n", database + "." + page,
-                      query_multiple_short(changes_pages[page]));
-   }
-   return ret;
+private void add_club(string name,
+                      class club_info data) {
+   name = normalise_name(name);
+   _cache[name] = data;
+   _club_names[name] = 0;
+   set_club_changed(name);
 }
-string query_file(string fname) {
-   if (strsrch(fname, ".") > 0) {
-      fname = "/twiki/data/" + replace_string(fname, ".", "/") + ".txt";
-   } else {
-      fname = "/twiki/data/Main/" + fname + ".txt";
+string the_short() {
+   return "Club Control";
+}
+protected void create_extra_data(string name) {
+   class club_info data;
+   data = query_club_info(name);
+   data->extra_data = 0;
+   set_club_changed(name);
+}
+int create_club(string name, string founder, int type, string region) {
+   class club_info info;
+   if (!stringp(name) || !stringp(founder)) {
+      return 0;
    }
-   if (sizeof(stat(fname))) {
-      return read_file(fname);
+   info = new(class club_info);
+   info->actual_name = name;
+   if (type != CLUB_FAMILY) {
+      info->recruiters = ({ founder });
+      info->members = ({ founder });
+   } else {
+      info->recruiters = ({ });
+      info->members = ({ });
+   }
+   info->founder = founder;
+   info->last_touched = time();
+   info->type = type;
+   info->last_paid = time();
+   info->description = 0;
+   info->accounts = ([ CLUB_DEFAULT_ACCOUNT_NAME : 0 ]);
+   info->region = region;
+   add_club(name, info);
+   create_extra_data(name);
+   set_club_changed(name);
+   add_club(name, info);
+   save_main();
+   return 1;
+}
+int change_club_type(string name,
+                     int type) {
+   int club_type;
+   class club_info info;
+   if (is_club(name)) {
+      club_type = query_club_type(name);
+      info = query_club_info(name);
+      if (club_type != type) {
+         info->type = (club_type & CLUB_FLAGS_MASK) | type;
+         set_club_changed(name);
+         create_extra_data(name);
+         return 1;
+      }
    }
    return 0;
 }
-void do_check_changes() {
-   string changes;
-   changes = find_changes(_last_check);
-   BOARD_HAND->add_message("commonroom", "Twiki Database",
-                           "Changes in the Twiki database",
-                           changes);
-   _last_check = time();
-   save_object(SAVE_FILE);
-   call_out("do_check_changes", _last_check + CHECK_TIME - time());
-}
-void do_change_inform() {
-   int changed;
-   mapping changed_pages;
-   string page;
-   string* changers;
-   int dosave;
-   string database;
-   if (!mapp(_last_change)) {
-      _last_change = ([ ]);
-   }
-   foreach (database in _databases) {
-      if (!_last_change[database]) {
-         _last_change[database] = time();
-         dosave = 1;
+int query_club_type(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (!data) {
+         disband_club(name);
       } else {
-         changed = stat(TWIKI_DATA_DIRECTORY + database + TWIKI_CHANGE_FILE)[1];
-         if (changed != _last_change[database]) {
-            changed_pages = find_changed_pages(_last_change[database], database);
-            _last_change[database] = changed;
-            dosave = 1;
-            foreach (page, changers in changed_pages) {
-               user_event( "inform",
-                           sprintf( "%s changes the twiki page %s.%s",
-                                    query_multiple_short(changers), database,
-                                    page),
-                           "message",
-                           this_player() );
-            }
+         return data->type & CLUB_TYPE_MASK;
+      }
+   }
+}
+int set_club_secret(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      data->type |= CLUB_SECRET_FLAG;
+      set_club_changed(name);
+      return 1;
+   }
+   return 0;
+}
+int reset_club_secret(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      data->type &= ~CLUB_SECRET_FLAG;
+      set_club_changed(name);
+      return 1;
+   }
+   return 0;
+}
+int query_club_secret(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return (data->type & CLUB_SECRET_FLAG) != 0;
+   }
+}
+string query_club_region(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return data->region;
+   }
+   return 0;
+}
+int disband_club(string name) {
+   class club_info data;
+   name = normalise_name(name);
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (data) {
+         log_file("CLUB", ctime(time()) + ": disbanded '" +
+                       this_object()->query_club_name(name) + "'; balance = " +
+                       this_object()->query_balance(name, CLUB_DEFAULT_ACCOUNT_NAME) + "; fees due = " +
+                       ctime(this_object()->query_time_fees_due(name)) +
+                       "\n");
+      } else {
+         log_file("CLUB", ctime(time()) + " disbanded '" + name + "' "
+                          "which has a bad data file.\n");
+      }
+      map_delete(_club_names, name);
+      map_delete(_cache, name);
+      unguarded( (: rm(SAVE_FILE_DIR + $(name)) :) );
+      save_main();
+      send_observer_event("club_event_disband_club", name);
+      return 1;
+   }
+   return 0;
+}
+string *query_clubs() {
+   return keys(_club_names);
+}
+string query_insignia_path(string name) {
+   return "/obj/misc/club_badge";
+}
+void touch_club(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      data->last_touched = time();
+      set_club_changed(name);
+   }
+}
+string *query_recruiters(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return data->recruiters;
+   }
+   return ({ });
+}
+string query_founder(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return data->founder;
+   }
+   return 0;
+}
+string *query_members(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return data->members;
+   }
+   return ({ });
+}
+int add_recruiter(string name, string recruiter) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (member_array(recruiter, data->members) != -1 &&
+          member_array(recruiter, data->recruiters) == -1) {
+         data->recruiters += ({ recruiter });
+         set_club_changed(name);
+         touch_club(name);
+         if (!is_family(name)) {
+            send_broadcast_message(name,
+                                   capitalize(recruiter) +
+                                   " becomes a recruiter for the club.");
          }
+         return 1;
       }
    }
-   if (dosave) {
-      save_object(SAVE_FILE);
-   }
-   call_out("do_change_inform", 60 * 5);
+   return 0;
 }
-
-==================================================
-FILE: handlers/vhandler.c
-==================================================
-
-mapping stored_variables;
-void create()
-{
-  seteuid(geteuid(this_object()));
-  stored_variables=([ ]);
-  restore_object(file_name(this_object()));
-}
-mixed query_variable_status(string vname)
-{
-  return stored_variables[vname];
-}
-int set_variable_status(string vname, mixed vvalue)
-{
-  stored_variables[vname]=vvalue;
-  save_object(file_name(this_object()));
-}
-
-==================================================
-FILE: handlers/virtuals.c
-==================================================
-
-#define SAVE_FILE "/save/virtuals"
-#define MAX_NUMBERS 50
-mapping load_data;
-string *paths;
-string *missing_paths;
-string *forbidden_paths;
-void create() {
-   seteuid( "/secure/master"->creator_file( file_name( this_object() ) ) );
-   load_data = ([ ]);
-   paths = ({ });
-   missing_paths = ({ });
-   forbidden_paths = ({ });
-   if ( file_size( SAVE_FILE +".o" ) > 0 )
-      unguarded( (: restore_object, SAVE_FILE :) );
-}
-void save_me() { unguarded( (: save_object, SAVE_FILE :) ); }
-void add_data( string path ) {
-  object junk_item;
-  string tmp_str;
-  int tmp_int;
-  junk_item = clone_object( path );
-  load_data[ path ] = ({ stat( path )[1], junk_item->query_static_auto_load() });
-  destruct( junk_item );
-  paths -= ({ path });
-  paths += ({ path });
-  if( sizeof( paths ) > MAX_NUMBERS ) {
-    tmp_int = sizeof( paths ) - (MAX_NUMBERS + 1);
-    paths = paths[tmp_int+1..tmp_int+MAX_NUMBERS];
-  }
-  foreach( tmp_str in keys( load_data ) ) {
-    if( member_array( tmp_str, paths ) == -1 ) {
-      map_delete( load_data, tmp_str );
-    }
-  }
-  save_me();
-}
-mapping new_data( string path ) {
-  if( ( !load_data[path] ) || ( !sizeof( stat( path ) ) ) || ( load_data[path][0] < stat( path )[1] ) ) {
-    if( !sizeof( stat( path ) ) ) {
-      return 0;
-    }
-    add_data( path );
-  }
-  return load_data[path][1];
-}
-string *query_missing_paths() { return missing_paths; }
-int add_missing( string path ) {
-  if( !missing_paths )
-    missing_paths = ({ });
-  if( member_array( path, missing_paths ) != -1 )
-    return 0;
-  if( path[0..2] == "/w/" )
-    return 0;
-  missing_paths += ({ path });
-  save_me();
-  return 1;
-}
-void remove_missing( string path ) {
-  missing_paths -= ({ path });
-  save_me();
-}
-int query_forbidden( string path ) {
-  return ( member_array( path, forbidden_paths ) != -1 );
-}
-string *query_forbidden_paths( ) { return forbidden_paths; }
-int add_forbidden( string path ) {
-  if( !forbidden_paths )
-    forbidden_paths = ({ });
-  if( member_array( path, forbidden_paths ) != -1 )
-    return 0;
-  forbidden_paths += ({ path });
-  save_me();
-  return 1;
-}
-void remove_forbidden( string path ) {
-  forbidden_paths -= ({ path });
-  save_me();
-}
-
-==================================================
-FILE: handlers/wander_handler.c
-==================================================
-
-#include <player.h>
-#define MH "/obj/handlers/map"
-#define LAST_LOC_PROPERTY "last locations"
-void do_move_after();
-class route_traveller {
-  object monster;
-  int movetime;
-  int delay;
-  string dest;
-}
-class wander_group {
-  object *monsters;
-  int movetime;
-}
-private class wander_group *wanderers = ({});
-private mapping wanderpos = ([]);
-private class route_traveller *travellers = ({});
-private mapping travelpos = ([]);
-private int move_call_out_id;
-private int after_call_out_id;
-private void do_move_after();
-private void move_monsters();
-void delete_move_after( object monster );
-private void do_wander(int running_away, object monster);
-mixed query_next_mover() {
-  return wanderers[0];
-}
-mixed query_anything(string thing){
-  return copy(fetch_variable(thing));
-}
-int query_moving_monster(object ob) {
-  return member_array(ob, travellers) != -1;
-}
-mixed query_route_monster() {
-  return travellers[0];
-}
-int find_pos(mixed *arr, function func, int val, int ref found){
-  int mid, high, low;
-  high = sizeof(arr) - 1;
-  low = 0;
-  while(high >= low){
-    mid = (high + low) / 2;
-    if(val < (*func)(arr[mid]))
-      high = mid - 1;
-    else if(val > (*func)(arr[mid]))
-      low = mid + 1;
-    else break;
-  }
-  found = !(high < low);
-  return mid;
-}
-private void add_traveller(class route_traveller new_traveller){
-  if(sizeof(travellers)){
-    int found, mid;
-    mid = find_pos(travellers, (: $1->movetime :), new_traveller->movetime,
-                   ref found);
-    if(!found){
-      if(new_traveller->movetime > travellers[mid]->movetime)
-        mid++;
-      if(mid == sizeof(travellers)){
-        travellers += ({new_traveller});
-        if(find_call_out(move_call_out_id) == -1 && sizeof(travellers) ) {
-          move_call_out_id = call_out((: move_monsters :),
-                                      travellers[0]->movetime - time() );
-        }
-        return;
+int add_member(string name, string member) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (member_array(member, data->members) == -1) {
+         data->members += ({ member });
+         set_club_changed(name);
+         touch_club(name);
+         if (!is_family(name)) {
+            send_broadcast_message(name,
+                                   capitalize(member) + " joins the club.");
+         }
+         return 1;
       }
-    }
-    if(mid == 0){
-      travellers = ({new_traveller}) + travellers;
-      remove_call_out(move_call_out_id);
-      move_call_out_id = call_out((: move_monsters :),
-                                      new_traveller->movetime - time());
-    } else {
-        travellers = insert(travellers, new_traveller, mid);
-    }
-  } else {
-    travellers = ({ new_traveller });
-    move_call_out_id = call_out((: move_monsters :),
-                                      new_traveller->movetime - time());
-  }
+   }
+   return 0;
 }
-int move_me_please(int delay, string dest) {
-  class route_traveller new_traveller;
-  object monster;
-  monster = previous_object();
-  if(!intp(delay))
-    return 0;
-  if(travelpos[monster])
-    travelpos[monster]->monster = 0;
-  if(delay < 5)
-    delay = 5;
-  new_traveller = new (class route_traveller, monster:monster, delay:delay,
-             movetime:time() + delay, dest:dest);
-  travelpos[monster] = new_traveller;
-  add_traveller(new_traveller);
+int remove_member(string name, string member) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (member_array(member, data->members) != -1) {
+         if (is_recruiter_of(name, member)) {
+            remove_recruiter(name, member);
+         }
+         data->members -= ({ member });
+         set_club_changed(name);
+         check_extra_information(name, member, 0);
+         if (!is_family(name)) {
+            send_broadcast_message(name,
+                                   capitalize(member) + " leaves the club.");
+         }
+         send_observer_event("club_event_remove_member", name, member);
+         return 1;
+      }
+   }
+   return 0;
 }
-private void move_monsters(){
-  class route_traveller tmp;
-  int virtual_move, right, refuse;
-  object monster;
-  string true_location, destination, direc;
-  tmp = travellers[0];
-  monster = tmp->monster;
-  if(sizeof(travellers) > 1)
-    travellers = travellers[1..];
-  else
-    travellers = ({});
-  if (monster) {
-    virtual_move = monster->query_virtual_move();
-    true_location = monster->query_true_location();
-    direc = monster->get_next_route_direction();
-    if (direc) {
-      if ( !virtual_move ){
-        if(catch(monster->do_command(direc)))
-          catch(monster->do_command(direc));
+int remove_recruiter(string name, string recruiter) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (member_array(recruiter, data->recruiters) != -1) {
+         data->recruiters -= ({ recruiter });
+         set_club_changed(name);
+         if (!is_family(name)) {
+            send_broadcast_message(name,
+                                   capitalize(recruiter) +
+                                   " stops being a recruiter for the club.");
+         }
+         return 1;
+      }
+   }
+   return 0;
+}
+string query_club_name(string club_name) {
+   class club_info data;
+   if (is_club(club_name)) {
+      data = query_club_info(club_name);
+      if (!data) {
+         return club_name;
+      }
+      return data->actual_name;
+   }
+   return 0;
+}
+string query_club_description(string club_name) {
+   class club_info data;
+   if (is_club(club_name)) {
+      data = query_club_info(club_name);
+      return data->description;
+   }
+   return 0;
+}
+int set_club_description(string club_name, string description) {
+   class club_info data;
+   if (is_club(club_name)) {
+      data = query_club_info(club_name);
+      data->description = description;
+      set_club_changed(club_name);
+      return 1;
+   }
+   return 0;
+}
+int query_time_fees_due(string club_name) {
+   class club_info data;
+   if (is_club(club_name)) {
+      data = query_club_info(club_name);
+      return data->last_paid + CLUB_PAY_PERIOD;
+   }
+   return 0;
+}
+int query_club_cost_per_period(string club_name) {
+   if (is_club(club_name)) {
+      return CLUB_COST_PER_YEAR +
+           sizeof(query_members(club_name)) * CLUB_COST_PER_MEMBER_PER_YEAR;
+   }
+   return 0;
+}
+int is_club(string name) {
+   name = normalise_name(name);
+   if (!undefinedp(_club_names[name])) {
+      return 1;
+   }
+   return 0;
+}
+int is_elected_club(string name) {
+   name = normalise_name(name);
+   if (is_club(name)) {
+      return query_club_type(name) == CLUB_ELECTED;
+   }
+   return 0;
+}
+int is_personal_club(string name) {
+   if (is_club(name)) {
+      return query_club_type(name) == CLUB_PERSONAL;
+   }
+   return 0;
+}
+int is_family(string name) {
+   if (is_club(name)) {
+      return query_club_type(name) == CLUB_FAMILY;
+   }
+   return 0;
+}
+int is_member_of(string name, string member) {
+   if (is_club(name)) {
+      return member_array(member, query_members(name)) != -1;
+   }
+   return 0;
+}
+int is_recruiter_of(string name, string recruiter) {
+   if (is_club(name)) {
+      return member_array(recruiter, query_recruiters(name)) != -1;
+   }
+   return 0;
+}
+int is_founder_of(string name, string founder) {
+   name = normalise_name(name);
+   if (is_club(name)) {
+      return query_founder(name) == founder;
+   }
+   return 0;
+}
+int create_account(string name,
+                   string account) {
+   class club_info data;
+   if (!account) {
+      account = CLUB_DEFAULT_ACCOUNT_NAME;
+   }
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (undefinedp(data->accounts[account])) {
+         data->accounts[account] = 0;
+         touch_club(name);
+         set_club_changed(name);
+         return 1;
+      }
+   }
+   return 0;
+}
+int add_money(string name,
+              int amount,
+              int type,
+              string person,
+              string account) {
+   class club_info data;
+   if (!account) {
+      account = CLUB_DEFAULT_ACCOUNT_NAME;
+   }
+   if (is_club(name) && amount > 0) {
+      data = query_club_info(name);
+      if (!undefinedp(data->accounts[account])) {
+         data->accounts[account] += amount;
+         touch_club(name);
+         set_club_changed(name);
+         return 1;
+      }
+   }
+   return 0;
+}
+int remove_money(string name,
+                 int amount,
+                 int type,
+                 string person,
+                 string account) {
+   class club_info data;
+   if (!account) {
+      account = CLUB_DEFAULT_ACCOUNT_NAME;
+   }
+   if (is_club(name) && amount > 0) {
+      data = query_club_info(name);
+      if (!undefinedp(data->accounts[account])) {
+         data->accounts[account] -= amount;
+         touch_club(name);
+         set_club_changed(name);
+         return 1;
+      }
+   }
+   return 0;
+}
+int query_balance(string name,
+                  string account) {
+   class club_info data;
+   if (!account) {
+      account = CLUB_DEFAULT_ACCOUNT_NAME;
+   }
+   if (is_club(name)) {
+      data = query_club_info(name);
+      return data->accounts[account];
+   }
+   return 0;
+}
+string* query_account_names(string name) {
+   class club_info data;
+   if (is_club(name)) {
+      data = query_club_info(name);
+      if (data) {
+         return keys(data->accounts);
+      }
+   }
+   return ({ });
+}
+int is_account_of(string club_name, string account) {
+   return member_array(account, query_account_names(club_name)) != -1;
+}
+int is_creator_club(string club_name) {
+   if (is_club(club_name)) {
+      if (PLAYER_HANDLER->test_creator(query_founder(club_name))) {
+         return 1;
+      }
+   }
+   return 0;
+}
+int is_observer(string obs) {
+   if (member_array(obs, _observers) != -1) {
+      return 1;
+   }
+   return 0;
+}
+int add_observer(string obs) {
+   if (!is_observer(obs) &&
+       file_size(obs) > 0) {
+      _observers += ({ obs });
+      save_main();
+      return 1;
+   }
+   return 0;
+}
+int remove_observer(string obs) {
+   if (is_observer(obs)) {
+      _observers -= ({ obs });
+      save_main();
+      return 1;
+   }
+   return 0;
+}
+string *query_observers() {
+   return _observers;
+}
+protected void send_observer_event(string event_name,
+                                   string *args ...) {
+   string bing;
+   foreach (bing in _observers) {
+      if (file_size(bing) > 0) {
+         call_out((: call_other($1, $2, $3 ...) :),
+                  0,
+                  event_name,
+                  bing,
+                  args ...);
       } else {
-        if ( "/room/virtual" != file_name( environment( monster ) ) )
-          right = 1;
-        if ( right ) {
-          environment( monster )->set_destination( direc );
-          destination = environment( monster )->query_destination( direc, monster );
-        } else
-          destination = (string)MH->qdes( direc, true_location );
-        if ( right ) {
-          if ( monster->check_anyone_here() || find_object( destination ) ){
-            if(catch(monster->do_command( direc )))
-              catch(monster->do_command( direc ));
-          } else {
-            "/room/virtual"->force_load();
-            monster->move( find_object( "/room/virtual" ) );
-            true_location = destination;
-            monster->set_true_location( true_location );
-          }
-        } else {
-          if ( !find_object( destination ) ) {
-            true_location = destination;
-            monster->set_true_location( true_location );
-          } else {
-            object ob = environment(monster);
-            ob->remove_exit(direc);
-            ob->add_exit(direc, destination,
-               "plain" );
-            monster->do_command(direc);
-            ob->remove_exit(direc);
-          }
-        }
+         remove_observer(bing);
       }
-    }
-    tmp->movetime = time() + tmp->delay;
-    if ( direc && (!(refuse = monster->query_stop_moving()))) {
-      add_traveller( tmp );
-    } else {
-      if(!refuse)
-        refuse = (file_name(environment(tmp->monster)) != tmp->dest);
-      tmp->monster->stopped_route(!refuse);
-      map_delete( travelpos, tmp->monster );
-    }
-  } else
-    travelpos = filter(travelpos, (: $1 :));
-  if(find_call_out(move_call_out_id) == -1 && sizeof(travellers) ) {
-    move_call_out_id = call_out((: move_monsters :),
-                                      travellers[0]->movetime - time() );
-  }
-}
-private void add_move_after(object monster, int movetime) {
-  if(sizeof(wanderers)){
-    int found, mid;
-    reset_eval_cost();
-    if(sizeof(wanderers) > 5000){
-      wanderers=filter(wanderers, function(class wander_group thing){
-        return sizeof(filter(thing->monsters, (:$1:)));
-      });
-      reset_eval_cost();
-    }
-    if (find_call_out(after_call_out_id) == -1)
-      after_call_out_id = call_out((: do_move_after :), 0);
-    mid = find_pos(wanderers, (: $1->movetime :), movetime, ref found);
-    if(!found){
-      if(movetime > wanderers[mid]->movetime)
-        mid++;
-      if(mid == sizeof(wanderers)){
-        wanderers += ({ new(class wander_group, monsters:({monster}),
-                            movetime:movetime) });
-        wanderpos[monster] = wanderers[<1];
-        return;
-      }
-      if(mid == 0){
-        wanderers = ({ new(class wander_group, monsters:({monster}),
-                           movetime:movetime) }) + wanderers;
-        wanderpos[monster] = wanderers[0];
-        remove_call_out(after_call_out_id);
-        after_call_out_id = call_out((: do_move_after :), movetime - time());
-        return;
-        }
-      wanderers = insert(wanderers, new(class wander_group,
-                                        monsters:({monster}),
-                                        movetime:movetime), mid);
-      wanderpos[monster] = wanderers[mid];
-      return;
-    } else {
-      wanderers[mid]->monsters += ({ monster });
-      wanderpos[monster] = wanderers[mid];
-      return;
-    }
-  } else {
-    wanderers = ({ new(class wander_group, monsters:({monster}),
-                       movetime:movetime) });
-    wanderpos[monster] = wanderers[0];
-    after_call_out_id = call_out((: do_move_after :), movetime - time());
-  }
-}
-void move_after( int runaway ) {
-  mixed move_after;
-  if(runaway)
-    return do_wander(runaway, previous_object());
-  move_after = previous_object()->query_move_after();
-  delete_move_after(previous_object());
-  if (!arrayp(move_after) || (!move_after[0] && !move_after[1])) {
-    return;
-  }
-  add_move_after(previous_object(), time() + move_after[ 0 ] +
-                 random( move_after[ 1 ] ));
-}
-void delete_move_after(object monster) {
-  if(wanderpos[monster]) {
-    ((class wander_group)wanderpos[monster])->monsters -= ({monster});
-  }
-  map_delete(wanderpos, monster);
-}
-private void do_wander(int running_away, object monster) {
-  int right, virtual_move;
-  string destination, *direcs, *room_zones, true_location, *move_zones,
-         *last_locs;
-  if ( !monster )
-    return ;
-  if ( !environment( monster ) || monster->query_property( PASSED_OUT_PROP ) )
-    return ;
-  if ( !running_away &&
-       sizeof( (object *)monster->query_attacker_list() ) )
-    return ;
-  if ( (int)monster->query_hp() <= 0 )
-    return ;
-  virtual_move = monster->query_virtual_move();
-  true_location = monster->query_true_location();
-  if (1 || !virtual_move ||
-       (virtual_move && "/room/virtual" != file_name(environment(monster))))
-    right = 1;
-  if ( right )
-   direcs = (string *)environment( monster )->query_direc( monster );
-  else
-    direcs = (string *)MH->qdir( true_location );
-  last_locs = monster->query_propery( LAST_LOC_PROPERTY );
-  if (!pointerp(last_locs))
-    last_locs = ({ });
-   if (!direcs) direcs = ({ });
-  direcs = shuffle( direcs );
-  while ( sizeof( direcs ) ) {
-    if ( right ) {
-      direcs[ 0 ] = (string)environment( monster )->expand_alias( direcs[ 0 ] );
-      destination = environment( monster )->query_destination( direcs[0], monster );
-    } else
-      destination = (string)MH->qdes( direcs[ 0 ], true_location );
-    if ( (!destination && !virtual_move) || (sizeof(direcs) > 1 &&
-                          member_array(destination, last_locs) != -1 ) ||
-         (0 && stringp(destination) && !find_object(destination) && !virtual_move) ) {
-      direcs = direcs[1..];
-      continue;
-    }
-    move_zones = (string *)monster->query_move_zones();
-    if ( sizeof( move_zones ) ) {
-      if ( find_object( destination ) )
-        room_zones = (string *)destination->query_zones();
-      else
-        room_zones = (string *)MH->query_zones( destination );
-      if (!room_zones ||
-          (sizeof(room_zones) == sizeof(room_zones - move_zones))) {
-        direcs = direcs[1..];
-        continue;
-      }
-    }
-    break;
-  }
-  last_locs += ({ destination });
-  if (sizeof(last_locs) > 4)
-    last_locs = last_locs[sizeof(last_locs)-4..];
-  monster->add_property( LAST_LOC_PROPERTY, last_locs);
-  if (sizeof(direcs)) {
-    if (1 || !virtual_move ||
-        (right && monster->check_anyone_here()) ||
-        (find_object( destination ) ) ) {
-      object ob;
-      if (!right) {
-        ob = environment(monster);
-        ob->remove_exit(direcs[0]);
-        ob->add_exit(direcs[0], destination, "plain");
-        reset_eval_cost();
-      }
-      monster->do_move(direcs[0]);
-      if(!right)
-        ob->remove_exit(direcs[0]);
-    } else {
-      if (virtual_move) {
-        "/room/virtual"->force_load();
-        monster->move( find_object("/room/virtual"));
-        monster->set_true_location(destination);
-      }
-    }
-  }
-}
-private void do_move_after() {
-  object monster;
-  int movetime, *move_after, zero;
-  class wander_group tmp;
-  reset_eval_cost();
-  if(sizeof(wanderers) > 5000){
-    wanderers=filter(wanderers, function(class wander_group thing){
-      return sizeof(filter(thing->monsters, (:$1:)));
-    });
-    reset_eval_cost();
-  }
-  while (sizeof(wanderers) && wanderers[0]->movetime <= time()) {
-    reset_eval_cost();
-    tmp = wanderers[0];
-    wanderers = wanderers[1..];
-    foreach(monster in tmp->monsters){
-      map_delete(wanderpos, monster);
-      if (objectp(monster) && environment(monster)) {
-        move_after = monster->query_move_after();
-        if (move_after[0] || move_after[1]) {
-          movetime = time() + move_after[ 0 ] + random( move_after[ 1 ] );
-          if( movetime < (time() + 2) ) {
-            movetime = time() + 2;
-          }
-          add_move_after( monster, movetime );
-          reset_eval_cost();
-          if (!travelpos[monster]) {
-            do_wander(0, monster);
-          }
-        }
-      } else {
-        zero = 1;
-      }
-    }
-  }
-  if (find_call_out(after_call_out_id) == -1 && sizeof(wanderers)) {
-    after_call_out_id = call_out((: do_move_after :),
-                                        wanderers[0]->movetime - time());
-  }
-  if(zero) {
-    wanderpos = filter(wanderpos, (: $1 :));
-  }
-}
-mapping query_dynamic_auto_load() {
-   return ([
-    "wanderers" : wanderers,
-    "wanderpos" : wanderpos,
-    "travellers" : travellers,
-    "travelpos" : travelpos
-     ]);
-}
-void init_dynamic_arg(mapping map) {
-  if (map) {
-     wanderers = map["wanderers"];
-     wanderpos = map["wanderpos"];
-     travellers = map["travellers"];
-     travelpos = map["travelpos"];
-     do_move_after();
-  }
-}
-
-==================================================
-FILE: handlers/weather.c
-==================================================
-
-#include <climate.h>
-#include <am_time.h>
-#include <weather.h>
-#define FILE_NAME "/save/nweather"
-#define UPDATE_SPEED 300
-#define CYCLE_SPEED  3600
-#define DIY 400
-#define DIF(x, y) (x > y) ? (x-y) : (y-x)
-private mapping _pattern;
-private mapping _current;
-private int *_variance;
-private nosave mapping _rooms;
-private nosave int _lastupdate;
-private nosave int _day;
-private nosave int _sunrise;
-private nosave int _sunset;
-private nosave int _toy;
-private int mooncycle;
-private int moonupdate;
-void set_day();
-void update_pattern();
-int calc_actual(object env, int type);
-int cloud_index(object env);
-int query_day(object env);
-int query_rain_type(int temp, int rain);
-string sun_direction(int which);
-int temperature_index(object env);
-int rain_index(object env);
-void create() {
-  string str;
-  _rooms = ([ ]);
-  unguarded((: restore_object, FILE_NAME :));
-  if(!_pattern)
-    _pattern = ([ ]);
-  if(!_current)
-    _current = ([ ]);
-  if(!_variance)
-    _variance = ({ 10, 75, 20 });
-  foreach(str in CLIMATES) {
-    if(!_pattern[str])
-      _pattern[str] =  ({ 0, 0, 0 });
-    if(!_current[str])
-      _current[str] =  ({ 0, 0, 0 });
-  }
-  call_out("update_weather", UPDATE_SPEED);
-  set_day();
-  update_pattern();
-}
-int weather_notify( object which_room, int notifications ) {
-  if(notifications < 0 || notifications >
-     (NOTIFY_TEMPERATURE | NOTIFY_CLOUD | NOTIFY_RAIN | NOTIFY_DAY)) {
-    return 0;
-  }
-  _rooms[which_room] = notifications;
-  return 1;
-}
-void test_notifications() {
-  object room;
-  string w;
-  foreach( room in keys(_rooms)) {
-    w = sprintf("%O notified of %s%s%s%s\n", room,
-    ((_rooms[room] & NOTIFY_TEMPERATURE) ? "Temperature " : ""),
-                ((_rooms[room] & NOTIFY_CLOUD) ? "Clouds " : ""),
-                ((_rooms[room] & NOTIFY_RAIN) ? "Rain " : ""),
-                ((_rooms[room] & NOTIFY_DAY) ? "Day" : ""));
-    write( w );
-  }
-  write("test_notifications() done\n");
-}
-int day_number() {
-  return ( time() % AM_SECONDS_PER_HALF_YEAR ) / AM_SECONDS_PER_DAY;
-}
-int minute_number() {
-  return (( time() % AM_SECONDS_PER_DAY ) / AM_SECONDS_PER_MINUTE);
-}
-string query_moon_string(object env) {
-  string str;
-  if(mooncycle > 10)
-    return "It is night and there is no moon.\n";
-  if(calc_actual(env, CLOUD) > 70)
-    str = "It is night and the %s is hidden by the clouds.\n";
-  else if(env && env->query_water())
-    str = "The water is lit up by the eerie light of the %s.\n";
-  else
-    str = "The land is lit up by the eerie light of the %s.\n";
-  return sprintf(str, ({"waxing crescent moon",
-                        "waxing quarter moon",
-                        "waxing half moon",
-                        "waxing three quarter moon",
-                        "waxing gibbous moon",
-                        "full moon",
-                        "waning gibbous moon",
-                        "waning three quarter moon",
-                        "waning half moon",
-                        "waning quarter moon",
-                        "waning crescent moon",
-                        "no moon",
-                        "no moon",
-                        "no moon",
-                      })[mooncycle]);
-}
-int query_moon_state() {
-  if(mooncycle < 6)
-    return mooncycle+1;
-  if(mooncycle < 11)
-    return (11 - mooncycle);
-  return 0;
-}
-string query_moon_phase() {
-  return ({"crescent",
-           "quarter",
-           "half",
-           "three quarter",
-           "gibbous",
-           "full",
-           "gibbous",
-           "three quarter",
-           "half",
-           "quarter",
-           "crescent",
-           "",
-           "",
-           "",
-         })[mooncycle];
-}
-int query_stars( object env ) {
-    int clouds, stars ;
-    clouds = cloud_index(env) ;
-    if ( query_day(env) || clouds > 70 ) {
-        return 0 ;
-    }
-    switch( clouds ) {
-        case 0:
-            stars = 100 ;
-            break ;
-        case 1..39:
-            stars = 80 ;
-            break ;
-        case 40..59:
-            stars = 40 ;
-            break ;
-        case 60..69:
-            stars = 20 ;
-            break ;
-        default:
-            stars = 10 ;
-            break ;
-    }
-    return stars ;
-}
-string query_star_string( object env ) {
-    string str ;
-    if ( query_day(env) ) {
-        return "There are no stars visible during the day.\n" ;
-    }
-    switch( query_stars(env) ) {
-        case 1..20:
-            str = "one or two bright stars" ;
-            break ;
-        case 21..40:
-            str = "a few stars" ;
-            break ;
-        case 41..60:
-            str = "quite a few stars" ;
-            break ;
-        case 61..80:
-            str = "lots of stars" ;
-            break ;
-        case 81..100:
-            str = "countless stars" ;
-            break ;
-        default:
-            str = "no stars" ;
-            break ;
-    }
-    return "Tonight, there are " + str + " visible.\n" ;
-}
-string query_season() {
-  switch(day_number()) {
-  case 0..50: return "winter";
-  case 51..150: return "spring";
-  case 151..250: return "summer";
-  case 251..350: return "autumn";
-  case 351..400: return "winter";
-  }
-}
-string query_tod() {
-  if((minute_number() < _sunrise) || (minute_number() > _sunset))
-    return "night";
-  switch(minute_number()) {
-  case 0..700:
-    return "morning";
-  case 701..740:
-    return "midday";
-    break;
-  case 741..1080:
-    return "afternoon";
-    break;
-  default:
-    return "evening";
-  }
-}
-int query_day(object env) {
-  return _day;
-}
-int query_darkness(object env) {
-  int result, cloud, day;
-  result = 10;
-  day = query_day(env);
-  if(day == 10)
-    return 100;
-  if(mooncycle <= 10) {
-    if(mooncycle < 6)
-      result += mooncycle * 10;
-    else
-      result += (5 - (mooncycle % 6)) * 10;
-    }
-  if((cloud = cloud_index(env)) > 0)
-    result -= (cloud_index(env) / 15);
-  if(result < 0)
-    result = 0;
-  if(day > 0)
-    result += (100 - result) / (10 - day);
-  return result;
-}
-int query_visibility(object env) {
-  int result;
-  int temp;
-  int rain;
-  int rt;
-  result = 100;
-  temp = temperature_index(env);
-  rain = rain_index(env);
-  rt = query_rain_type(temp, rain);
-  if (rt ==  WEATHER_SNOW_TYPE) {
-     rain += 50;
-  } else if (rt == WEATHER_SLEET_TYPE) {
-     rain += 20;
-  }
-  if (rain > 0) {
-     if (rain > 100) {
-        result = 0;
-     } else {
-        result = (result * (100 - rain)) / 100;
-     }
-  }
-  return result;
-}
-int calc_actual(object env, int type) {
-  int *clim;
-  string climate;
-  if(env) {
-    climate = env->query_climate();
-    clim = (int *)env->query_property("climate");
-  }
-  if(!climate)
-    climate = DEFAULT_CLIMATE;
-  if(!clim)
-    return _current[climate][type];
-  return _current[climate][type] + clim[type];
-}
-int temperature_index(object env) {
-  int temp, tod, j, diurnal;
-  string climate;
-  temp = calc_actual(env, TEMP);
-  if(env)
-    climate = env->query_climate();
-  if(!climate)
-    climate = DEFAULT_CLIMATE;
-  tod = 10 - query_day(env);
-  if(tod) {
-    switch(climate) {
-    case "Af":
-    case "Am":
-    case "Aw":
-      diurnal = 10;
-      break;
-    case "Bw":
-    case "Bs":
-      diurnal = 15 + (_pattern[climate][0] / 2);
-      break;
-    case "Cfa":
-    case "Cs":
-    case "Cfb":
-    case "Dw":
-    case "Ds":
-    case "Df":
-      diurnal = 15;
-      break;
-    case "Et":
-    case "Ef":
-    case "H":
-      diurnal = 20;
-      break;
-    }
-    temp -= (diurnal * tod) / 10;
-  }
-  j = sqrt(_current[climate][CLOUD]);
-  if(j < 0)
-    j = 0;
-  if(temp < 10 && tod == 10)
-    temp += j;
-  else if(temp > 30 && !tod)
-    temp -= j;
-  temp -= sqrt(_current[climate][WINDSP]);
-  return temp;
-}
-int cloud_index(object env) {
-  int cloud;
-  cloud = calc_actual(env, CLOUD);
-  if(cloud < 0)
-    cloud = 0;
-  return cloud;
-}
-int rain_index(object env) {
-  int rain;
-  rain = calc_actual(env, CLOUD) - (calc_actual(env, TEMP) / 2) - 100;
-  return (rain > 0)? rain : 0;
-}
-string temp_string(int temp) {
-  switch(temp) {
-    case 51..1000: return "incredibly, unbelievably hot"; break;
-    case 46..50: return "amazingly hot"; break;
-    case 41..45: return "damn hot"; break;
-    case 36..40: return "very hot"; break;
-    case 31..35: return "hot"; break;
-    case 26..30: return "reasonably hot"; break;
-    case 23..25: return "very warm"; break;
-    case 20..22: return "warm"; break;
-    case 16..19: return "pleasantly warm"; break;
-    case 13..15: return "cool"; break;
-    case 10..12: return "slightly chilly"; break;
-    case 7..9: return "chilly"; break;
-    case 4..6: return "very chilly"; break;
-    case 1..3: return "cold"; break;
-    case -3..0: return "very cold"; break;
-    case -10..-4: return "freezing cold"; break;
-    case -20..-11: return "damn cold"; break;
-    case -30..-21: return "dangerously cold"; break;
-    case -50..-31: return "incredibly, unbelievably cold"; break;
-  }
-}
-private string precipitation_string(int rain, int rt, int wind) {
-  switch(rain) {
-  case -1000..20:
-    return "lightly";
-    break;
-  case 21..40:
-    if(wind < 20) {
-      return "steadily";
-    } else {
-      return "hard";
-    }
-    break;
-  case 41..60:
-    return "heavily";
-    break;
-  case 61..500:
-    if(rt == WEATHER_RAIN_TYPE) {
-      return "torrentially";
-    } else {
-      return "very heavily";
-    }
-    break;
-  }
-}
-string rain_string(object env) {
-  int rt, rain, wind, temp;
-  temp = temperature_index(env);
-  rain = rain_index(env);
-  rt = query_rain_type(temp, rain);
-  if (rt != WEATHER_RAIN_TYPE) {
-    return "There is no rain";
-  }
-  return "It is raining " + precipitation_string(rain, rt, wind);
-}
-string snow_string(object env) {
-  int rt, rain, wind, temp;
-  temp = temperature_index(env);
-  rain = rain_index(env);
-  rt = query_rain_type(temp, rain);
-  if (rt != WEATHER_SNOW_TYPE) {
-    return "There is no snow";
-  }
-  return "It is snowing " + precipitation_string(rain, rt, wind);
-}
-string sleet_string(object env) {
-  int rt, rain, wind, temp;
-  temp = temperature_index(env);
-  rain = rain_index(env);
-  rt = query_rain_type(temp, rain);
-  if (rt != WEATHER_SLEET_TYPE) {
-    return "There is no sleet";
-  }
-  return "It is sleeting " + precipitation_string(rain, rt, wind);
-}
-string cloud_string(object env) {
-  int cloud;
-  string str;
-  cloud = cloud_index(env);
-  switch(cloud) {
-    case -1000..5:
-       str = "a beautifully clear sky";
-       break;
-    case 6..10:
-       str = "a few high level cirrus clouds";
-       break;
-    case 11..25:
-       str = "scattered puffy clouds";
-       break;
-    case 26..40:
-       str = "some puffy clouds";
-       break;
-    case 41..60:
-       str = "many puffy clouds";
-       break;
-    case 61..80:
-       str = "medium cloud cover";
-       break;
-    case 81..110:
-       str = "dense cloud cover";
-       break;
-    case 111..130:
-       str = "packed cloud cover";
-       break;
-    case 131..160:
-       str = "thick black clouds";
-       break;
-    case 161..1000:
-       str = "thick heavy storm clouds";
-       break;
-  }
-  return str;
-}
-varargs string weather_string(object env, string obscured) {
-  int temp, cloud, wind, rain, rt;
-  int *warray;
-  string str, tstr;
-   if ( !env )
-     return 0;
-  temp = temperature_index(env);
-  cloud = cloud_index(env);
-  wind = calc_actual(env, WINDSP);
-  rain = rain_index(env);
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temp, cloud, wind, rain))) {
-    temp = warray[0];
-    cloud = warray[1];
-    wind = warray[2];
-    rain = warray[3];
-  }
-  rt = query_rain_type(temp, rain);
-  str = "It is ";
-  tstr = temp_string(temp);
-  switch(tstr[0]) {
-  case 'a':
-  case 'e':
-  case 'i':
-  case 'o':
-  case 'u':
-    str += "an ";
-    break;
-  default:
-    str += "a ";
-  }
-  str += tstr + " ";
-  switch((time() % (AM_SECONDS_PER_HALF_YEAR*2)) / AM_SECONDS_PER_DAY) {
-  case 51..150:
-    str += "spring prime";
-    break;
-  case 151..250:
-    str += "summer prime";
-    break;
-  case 251..350:
-    str += "autumn prime";
-    break;
-  case 351..450:
-    str += "spindlewinter";
-    break;
-  case 451..550:
-    str += "secundus spring";
-    break;
-  case 551..650:
-    str += "secundus summer";
-    break;
-  case 651..750:
-    str += "secundus autumn";
-    break;
-  default:
-    str += "backspindlewinter";
-  }
-  str += "'s "+ query_tod() +" with ";
-  switch(wind) {
-    case -1000..5: str += "almost no wind"; break;
-    case 6..10: str += "a gentle breeze"; break;
-    case 11..15: str += "a steady breeze"; break;
-    case 16..20: str += "a strong breeze"; break;
-    case 21..30: str += "a steady wind"; break;
-    case 31..40: str += "gusty winds"; break;
-    case 41..50: str += "strong winds"; break;
-    case 51..60: str += "gale-force winds"; break;
-    case 61..1000: str += "storm-force winds"; break;
-    default: str += "no wind at all"; break;
-  }
-  if (!obscured) {
-    if(rain)
-      str += ", ";
-    else
-      str += " and ";
-    switch(cloud) {
-      case -1000..5: str += "a beautifully clear sky"; break;
-      case 6..10: str += "a few high level cirrus clouds"; break;
-      case 11..25: str += "scattered puffy clouds"; break;
-      case 26..40: str += "some puffy clouds"; break;
-      case 41..60: str += "many puffy clouds"; break;
-      case 61..80: str += "medium cloud cover"; break;
-      case 81..110: str += "dense cloud cover"; break;
-      case 111..130: str += "packed cloud cover"; break;
-      case 131..160: str += "thick black clouds"; break;
-      case 161..1000: str += "thick heavy storm clouds"; break;
-    }
-  }
-  if(rain) {
-    str += " and ";
-    switch(rain) {
-      case -1000..20: str += "light"; break;
-      case 21..40:
-        if(wind < 20)
-          str += "steady";
-        else
-          str += "driving";
-      break;
-      case 41..60: str += "heavy"; break;
-      case 61..500:
-        if(rt == WEATHER_RAIN_TYPE)
-          str += "torrential";
-        else
-          str += "very heavy";
-      break;
-    }
-    str += " ";
-    str += ({"", "snow", "sleet", "rain"})[rt];
-  }
-  if (obscured) {
-    str += ".  " + obscured;
-  }
-  if((rain > 20) && (wind > 30)) {
-    if (obscured)
-      str += ".\nPeals of thunder echo overhead";
-    else
-      str += ".\nPeals of thunder and streaks of lightning rend the sky";
-  }
-  return str;
-}
-int next_update() {
-  return _lastupdate + UPDATE_SPEED;
-}
-void dest_me() {
-  unguarded((: save_object, FILE_NAME :));
-}
-int query_rain_type(int temp, int rain) {
-  int type;
-  if (rain > 0)
-    switch(temp) {
-    case -1000..-2:
-      type = WEATHER_SNOW_TYPE;
-      break;
-    case -1..3:
-      type = WEATHER_SLEET_TYPE;
-      break;
-    case 4..1000:
-      type = WEATHER_RAIN_TYPE;
-      break;
-    }
-  else
-    type = WEATHER_NO_RAIN_TYPE;
-  return type;
-}
-int query_snowing(object env) {
-  int *warray;
-  if(!env)
-    return 0;
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temperature_index(env),
-                                              cloud_index(env),
-                                              calc_actual(env, WINDSP),
-                                              rain_index(env))))
-    return (query_rain_type(warray[0], warray[3]) == WEATHER_SNOW_TYPE)? 1 : 0;
-  return (query_rain_type(temperature_index(env),
-                          rain_index(env)) == WEATHER_SNOW_TYPE) ? 1 : 0;
-}
-int query_raining(object env) {
-  int *warray;
-  if(!env)
-    return 0;
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temperature_index(env),
-                                              cloud_index(env),
-                                              calc_actual(env, WINDSP),
-                                              rain_index(env))))
-  {
-    return (query_rain_type(warray[0], warray[3]) > WEATHER_SNOW_TYPE) ? 1 : 0;
-  }
-  return (query_rain_type(temperature_index(env),
-                          rain_index(env)) > WEATHER_SNOW_TYPE) ? 1 : 0;
-}
-int query_temperature(object env) {
-  int *warray;
-  if(!env)
-    return 0;
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temperature_index(env),
-                                              cloud_index(env),
-                                              calc_actual(env, WINDSP),
-                                              rain_index(env))))
-    return warray[0];
-  return temperature_index(env);
-}
-int query_cloud(object env) {
-  int *warray;
-  if(!env)
-    return 0;
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temperature_index(env),
-                                              cloud_index(env),
-                                              calc_actual(env, WINDSP),
-                                              rain_index(env))))
-    return warray[1];
-  return cloud_index(env);
-}
-int query_windsp(object env) {
-  int *warray;
-  if(!env)
-    return 0;
-  if(function_exists("room_weather", env) &&
-     !catch(warray = (int *)env->room_weather(temperature_index(env),
-                                              cloud_index(env),
-                                              calc_actual(env, WINDSP),
-                                              rain_index(env))))
-    return warray[2];
-  return calc_actual(env, WINDSP);
-}
-int calc_variance(string climate, int type, int seasonal) {
-  int diff, ret;
-  diff = seasonal - _pattern[climate][type];
-  if(diff < 0)
-    ret = - random(diff * 2);
-  else
-    ret = random(diff * 2);
-  if(random(2))
-    ret += random(_variance[type]);
-  else
-    ret -= random(_variance[type]);
-  return ret;
-}
-void set_day() {
-  int min;
-  _toy = (day_number() < (DIY / 2)) ? day_number() :
-  (DIY / 2) - (day_number() % (DIY / 2));
-  min = minute_number();
-  _sunrise = 6 * AM_MINUTES_PER_HOUR;
-  _sunset = 20 * AM_MINUTES_PER_HOUR;
-  _sunrise += (100 - _toy);
-  _sunset -= (100 - _toy);
-  if((min <= _sunrise) || (min >= _sunset))
-    _day = 0;
-  else {
-    if((min > _sunrise) && (min < _sunrise + 30))
-      _day = (min-_sunrise) / 3;
-    else if((min < _sunset) && (min > _sunset - 30))
-      _day = (_sunset-min) / 3;
-    else
-      _day = 10;
-  }
-}
-void migrate(string climate, int type) {
-  int diff;
-  diff = _pattern[climate][type] - _current[climate][type];
-  if(diff > (_variance[type] / 2))
-    diff = _variance[type] / 2;
-  if(diff < 0)
-    _current[climate][type] -= random(random(-diff));
-  else
-    _current[climate][type] += random(random(diff));
-}
-int check_umbrella(object ob) {
-  if ( ob )
-    return (int)ob->query_property( "umbrella" );
-  return 0;
-}
-void do_inform(object who, int old_temp, int old_cloud, int old_rain,
-               int old_day) {
-  string str, where;
-  int new_temp, new_cloud, new_wind, new_rain;
-  int old_rain_type, new_rain_type;
-  int *warray;
-  new_temp = temperature_index(environment(who));
-  new_rain = rain_index(environment(who));
-  new_wind = calc_actual(environment(who), WINDSP);
-  new_cloud = cloud_index(environment(who));
-  if(function_exists("room_weather", environment(who)) &&
-     !catch(warray = (int *)environment(who)->room_weather(new_temp, new_cloud,
-                                                   new_wind, new_rain))) {
-    new_temp = warray[0];
-    new_cloud = warray[1];
-    new_wind = warray[2];
-    new_rain = warray[3];
-  }
-  if(who->query_name() == "ceres")
-    tell_object(who, sprintf("%s: ot %d, or: %d, oc: %d, "
-                             "nt %d, nr: %d, nc: %d, nw: %d",
-                             who->query_name(),
-                             old_temp, old_rain, old_cloud, new_temp,
-                             new_rain, new_cloud, new_wind));
-  old_rain_type = query_rain_type(old_temp, old_rain);
-  new_rain_type = query_rain_type(new_temp, new_rain);
-  str = "";
-  if(_day != old_day) {
-    where = sun_direction( 1 );
-    if((old_day == 10)  && (_day < 10))
-      str += "The sun starts to set slowly on the "+where+" horizon.\n";
-    else if((old_day > 0) && (_day == 0))
-      str += "The sun disappears from view below the "+where+" horizon.\n";
-    else if((old_day > _day) && (_day < 9) && (_day > 0))
-      str += "The sun sinks further below the "+where+" horizon.\n";
-    where = sun_direction( 0 );
-    if((_day > 0) && (old_day == 0))
-      str += "The "+where+" sky starts to lighten as the sun peeks over the "+
-        "horizon.\n";
-    else if((_day == 10) && (old_day < 10))
-      str += "The sun rises above the "+where+" horizon and greets you "+
-        "for a new day.\n";
-    else if((_day > old_day) && (_day < 9) && (_day > 0))
-      str += "The sun rises further above the "+where+" horizon lightening "+
-        "the sky as morning arrives.\n";
-  }
-  if(_day && (old_cloud != new_cloud)) {
-    if((old_cloud < 60) && (new_cloud > 20) && (!(new_cloud % 2)))
-      str += "The " + query_tod()+ " sun disappears behind a cloud.\n";
-    else if((old_cloud > 20) && (new_cloud < 60) && (new_cloud % 2))
-      str += "The " + query_tod() + " sun peeks out from behind a cloud.\n";
-  }
-  if(old_rain_type != new_rain_type) {
-    str += ({"", "It has stopped snowing", "It has stopped sleeting",
-             "It has stopped raining"})[old_rain_type];
-    if(old_rain_type && new_rain_type)
-      str += " and started ";
-    else if(new_rain_type)
-      str += "It has started ";
-    str += ({"", "snowing", "sleeting", "raining"})[new_rain_type];
-    str += ".\n";
-  } else if(new_rain_type > 0)
-    str += "The "+({"", "snow", "sleet", "rain"})[new_rain_type]+
-      " continues to fall.\n";
-  if(new_rain_type)
-    if((!sizeof(filter_array(who->query_holding(), "check_umbrella",
-                            this_object())) &&
-       !sizeof(filter_array(who->query_wearing(), "check_umbrella",
-                          this_object()))) || !random(50))
-    {
-      who->add_effect("/std/effects/other/wetness",
-                      ((new_rain * new_rain_type) / 2) * (UPDATE_SPEED/60));
-    }
-  if(str != "")
-    tell_object(who, who->colour_event("weather", "%^ORANGE%^")+str+
-                "%^RESET%^");
-}
-string sun_direction(int which) {
-  switch(((time()+(AM_SECONDS_PER_HALF_YEAR * which)) %
-          (AM_SECONDS_PER_HALF_YEAR*2)) / AM_SECONDS_PER_DAY) {
-  case 0..174:
-    return "widdershins";
-  case 175..225:
-    return "hubwards";
-  case 226..574:
-    return "turnwise";
-  case 575..625:
-    return "rimward";
-  default:
-    return "widdershins";
-  }
-}
-void do_room_inform(object what, int old_temp, int old_cloud, int old_rain,
-        int old_day, int notifications) {
-  int new_cloud, new_rain, new_wind, new_temp;
-  int *warray;
-  int has_changed = 0;
-  new_temp = temperature_index(what);
-  new_cloud = cloud_index(what);
-  new_wind = calc_actual(what, WINDSP);
-  new_rain = rain_index(what);
-  if(function_exists("room_weather", what) &&
-     !catch(warray = (int *)what->room_weather(new_temp, new_cloud,
-                                       new_wind, new_rain))) {
-    new_temp = warray[0];
-    new_cloud = warray[1];
-    new_wind = warray[2];
-    new_rain = warray[3];
-  }
-  if(_day != old_day && (notifications & NOTIFY_DAY))
-    has_changed += NOTIFY_DAY;
-  if(old_temp != new_temp && (notifications & NOTIFY_TEMPERATURE))
-    has_changed += NOTIFY_TEMPERATURE;
-  if(old_cloud != new_cloud && (notifications & NOTIFY_CLOUD))
-    has_changed += NOTIFY_CLOUD;
-  if(old_rain != new_rain && (notifications & NOTIFY_RAIN))
-    has_changed += NOTIFY_RAIN;
-  if(has_changed) {
-    call_out( "notify_room", 1, what, has_changed,
-      _day, new_temp, new_cloud, new_rain );
-  }
-}
-void notify_room( object what, int has_changed,
-  int day, int temp, int cloud, int rain)
-{
-  if(what)
-    what->event_weather( has_changed, day, temp, cloud, rain);
-}
-int query_sunrise(int doy) {
-  int toy;
-  toy = (doy < (DIY / 2)) ? doy : (DIY / 2) - (doy % (DIY / 2));
-  return (6 * AM_MINUTES_PER_HOUR) + (100 - toy);
-}
-int query_sunset(int doy) {
-  int toy;
-  toy = (doy < (DIY / 2)) ? doy : (DIY / 2) - (doy % (DIY / 2));
-  return (20 * AM_MINUTES_PER_HOUR) - (100 - toy);
-}
-void update_pattern() {
-  int toy, temp, wind, cloud, tvar, wvar, cvar;
-  string climate;
-  call_out("update_pattern", CYCLE_SPEED);
-  toy = (day_number() < (DIY / 2)) ? day_number() :
-    (DIY / 2) - (day_number() % (DIY / 2));
-  foreach(climate in CLIMATES) {
-    switch(climate) {
-    case "Af":
-      temp = 30 + (toy / 40);
-      cloud = 50 + random(100);
-      wind = random(10);
-      break;
-    case "Am":
-      temp = 30 + (toy / 20);
-      cloud = -25 + sqrt(toy) * 10;
-      wind = random(10);
-      break;
-    case "Aw":
-      temp = 20 + (toy / 10);
-      cloud = toy - 50;
-      wind = random(10);
-      break;
-    case "Bw":
-      temp = 30 + (toy / 20);
-      cloud = (100 - toy/2) - 50;
-      wind = random(10);
-      break;
-    case "Bs":
-      temp = 25 + (toy / 20);
-      cloud = ((200 - toy) / 2) - 12;
-      wind = random(10);
-      break;
-    case "Cfa":
-      temp = (toy / 8) + 15;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 10 - (toy / 8);
-      break;
-    case "Cs":
-      temp = (toy / 12) + 10;
-      cloud = ((225 - toy) / 2) - 50;
-      wind = 10 - (toy / 8);
-      break;
-    case "Cfb":
-      temp = (toy / 6) - 5;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 10 - (toy / 8);
-      break;
-    case "Dw":
-      temp = (toy / 5) - 10;
-      cloud = toy / 2;
-      wind = 15 - (toy / 8);
-      break;
-    case "Ds":
-      temp = (toy / 5) - 10;
-      cloud = (200 - toy) / 2;
-      wind = 15 - (toy / 8);
-      break;
-    case "Df":
-      temp = (toy / 5) - 10;
-      cloud = ((200 - toy) / 4) + 50;
-      wind = 15 - (toy / 8);
-      break;
-    case "Et":
-      temp = (toy / 20) - 10;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 25 - (toy / 8);
-      break;
-    case "Ef":
-      temp = (toy / 10) - 30;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 25 - (toy / 8);
-      break;
-    case "H":
-      temp = (toy / 10) - 10;
-      cloud = ((225 - toy) / 2);
-      wind = 35 - (toy / 8);
-      break;
-    }
-    tvar = calc_variance(climate, TEMP, temp);
-    cvar = calc_variance(climate, CLOUD, cloud);
-    wvar = calc_variance(climate, WINDSP, wind);
-    _pattern[climate] =  ({ temp + tvar, cloud + cvar, wind + wvar });
-  }
-  unguarded((: save_object, FILE_NAME :));
-}
-void update_weather() {
-  int *warray, notifications;
-  mapping list, roomlist, newrooms;
-  object user, room;
-  string climate;
-  _lastupdate = time();
-  call_out("update_weather", UPDATE_SPEED);
-  list = ([ ]);
-  roomlist = ([ ]);
-  foreach(user in filter(users(),
-                         (: $1 && environment($1) &&
-                          environment($1)->query_property("location") ==
-                          "outside" :))) {
-    if(function_exists("room_weather", environment(user)) &&
-       !catch(warray = (int *)environment(user)->room_weather(
-                                 (int)temperature_index(environment(user)),
-                                 (int)cloud_index(environment(user)),
-                                 (int)calc_actual(environment(user), WINDSP),
-                                 (int)rain_index(environment(user))))) {
-      list[user] = ({ warray[0], warray[1], warray[3], _day});
-    } else {
-      list[user] = ({ (int)temperature_index(environment(user)),
-                        (int)cloud_index(environment(user)),
-                        (int)rain_index(environment(user)),
-                        _day});
-    }
-  }
-  newrooms = ([ ]);
-  foreach (room, notifications in _rooms)  {
-    if (room)
-      newrooms[room] = notifications;
-  }
-  _rooms = copy(newrooms);
-  foreach(room, notifications in _rooms) {
-    if(function_exists("room_weather", room) &&
-       !catch(warray = (int *)room->room_weather((int)temperature_index(room),
-                                                 (int)cloud_index(room),
-                                               (int)calc_actual(room, WINDSP),
-                                                 (int)rain_index(room) ))) {
-      roomlist[room] = ({ warray[0], warray[1], warray[3], _day});
-    } else {
-      roomlist[room] = ({ (int)temperature_index(room),
-                            (int)cloud_index(room),
-                            (int)rain_index(room),
-                            _day });
-    }
-  }
-  if((moonupdate + (AM_SECONDS_PER_DAY * 2)) < time()) {
-    mooncycle++;
-    mooncycle %= 14;
-    moonupdate = time();
-  }
-  foreach(climate in CLIMATES) {
-    migrate(climate, TEMP);
-    migrate(climate, CLOUD);
-    migrate(climate, WINDSP);
-  }
-  set_day();
-  unguarded((: save_object, FILE_NAME :));
-  foreach(user, warray in list) {
-    do_inform(user, warray[0], warray[1], warray[2], warray[3]);
-  }
-  foreach(room, notifications in _rooms) {
-      do_room_inform(room, roomlist[room][0], roomlist[room][1],
-                     roomlist[room][2], roomlist[room][3], notifications);
-      map_delete(_rooms, room);
-  }
-}
-void print_stats(object here) {
-  string climate, *weather;
-  if(here)
-    climate = here->query_climate();
-  weather = ({ temperature_index(here), cloud_index(here),
-                 calc_actual(here, WINDSP) });
-  printf("Climate: %s toy: %d tod: %s [%d]\n"
-         "here: %O\ncurrent: %O\npattern: %O\nvariance: %O\n",
-         climate, _toy, query_tod(), 10 - query_day(here), weather,
-         _current[climate], _pattern[climate], _variance);
-  printf("Sunrise at: %d:%02d, sunset at: %d:%02d\n",
-         _sunrise/60, _sunrise%60, _sunset/60, _sunset%60);
-}
-int *query_mooncycle() {
-  return ({ mooncycle, 0});
-}
-void set_variance(int temp, int cloud, int wind) {
-  _variance = ({temp, cloud, wind});
-  unguarded((: save_object, FILE_NAME :));
-}
-void reset_weather() {
-  int toy, temp, wind, cloud;
-  string climate;
-  toy = (day_number() < (DIY / 2)) ? day_number() :
-    (DIY / 2) - (day_number() % (DIY / 2));
-  foreach(climate in CLIMATES) {
-    switch(climate) {
-    case "Af":
-      temp = 25 + (toy / 40);
-      cloud = 50 + random(100);
-      wind = random(10);
-      break;
-    case "Am":
-      temp = 20 + (toy / 20);
-      cloud = -25 + sqrt(toy) * 10;
-      wind = random(10);
-      break;
-    case "Aw":
-      temp = 20 + (toy / 20);
-      cloud = toy - 50;
-      wind = random(10);
-      break;
-    case "Bw":
-      temp = 30 + (toy / 20);
-      cloud = (100 - toy/2) - 50;
-      wind = random(10);
-      break;
-    case "Bs":
-      temp = 25 + (toy / 20);
-      cloud = ((200 - toy) / 2) - 12;
-      wind = random(10);
-      break;
-    case "Cfa":
-      temp = (toy / 8) + 15;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 10 - (toy / 8);
-      break;
-    case "Cs":
-      temp = (toy / 12) + 10;
-      cloud = ((225 - toy) / 2) - 50;
-      wind = 10 - (toy / 8);
-      break;
-    case "Cfb":
-      temp = (toy / 6) - 5;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 10 - (toy / 8);
-      break;
-    case "Dw":
-      temp = (toy / 5) - 10;
-      cloud = toy / 2;
-      wind = 15 - (toy / 8);
-      break;
-    case "Ds":
-      temp = (toy / 5) - 10;
-      cloud = (200 - toy) / 2;
-      wind = 15 - (toy / 8);
-      break;
-    case "Df":
-      temp = (toy / 5) - 10;
-      cloud = ((200 - toy) / 4) + 50;
-      wind = 15 - (toy / 8);
-      break;
-    case "Et":
-      temp = (toy / 20) - 10;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 25 - (toy / 8);
-      break;
-    case "Ef":
-      temp = (toy / 10) - 30;
-      cloud = ((225 - toy) / 2) - 25;
-      wind = 25 - (toy / 8);
-      break;
-    case "H":
-      temp = (toy / 10) - 10;
-      cloud = ((225 - toy) / 2);
-      wind = 35 - (toy / 8);
-      break;
-    }
-    _pattern[climate] =  ({ temp, cloud, wind });
-    _current[climate] = ({ temp, cloud, wind });
-  }
-  unguarded((: save_object, FILE_NAME :));
-}
-mapping query_dynamic_auto_load() {
-   return ([ "rooms" : _rooms ]);
-}
-void init_dynamic_arg(mapping map, object) {
-   _rooms = map["rooms"];
-   if (!_rooms) {
-      _rooms = ([ ]);
    }
+}
+protected void send_broadcast_message(string club,
+                                      string message) {
+   BROADCASTER->broadcast_to_channel(this_object(),
+                                     lower_case(query_club_name(club)),
+                                     ({ message, 0 }));
+}
+mixed *stats() {
+   return ({
+              ({ "cache hits", _no_cache_hits }),
+              ({ "cache requests", _no_cache_requests }),
+              ({ "cache miss", _no_cache_miss }),
+              ({ "percentage", _no_cache_hits * 100 / _no_cache_requests }),
+           });
 }

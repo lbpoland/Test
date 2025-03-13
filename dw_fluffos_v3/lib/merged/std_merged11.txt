@@ -1,1516 +1,1445 @@
-# Total Tokens: 14177
-# Total Files Merged: 5
-# Total Characters: 47277
+# Total Tokens: 13288
+# Total Files Merged: 7
+# Total Characters: 44309
 
-it/auction_house.c
+it/expression_util.c
 ==================================================
 
-#include <room/auction.h>
-#include <player.h>
-#include <money.h>
-#include <move_failures.h>
-#include <mail.h>
-#include <player_handler.h>
-#include <am_time.h>
-inherit "/std/shops/inherit/shop_event";
-inherit "/std/shops/inherit/open_shop";
-#define DEFAULT_QUICK_AUCTION_LENGTH (15 * 60)
-#define DEFAULT_SHORT_AUCTION_LENGTH (60 * 60)
-#define DEFAULT_MEDIUM_AUCTION_LENGTH (AM_SECONDS_PER_DAY)
-#define DEFAULT_LONG_AUCTION_LENGTH (AM_SECONDS_PER_DAY * 3)
-#define DEFAULT_VERY_LONG_AUCTION_LENGTH (AM_SECONDS_PER_DAY * 14)
-#define DEFAULT_RETRIEVAL_TIME (AM_SECONDS_PER_DAY * 7)
-#define DEFAULT_EXTENSION_TIME (20 * 60)
-class auction {
-   mixed save_stuff;
-   int time_started;
-   int auction_length;
-   string name;
-   string seller;
-   string current_bidder;
-   int bid;
-   int reserve;
-   int retries;
-   string end_function;
-   mixed extra;
-}
-private nosave mixed* _auction_obs;
-private nosave int _callout_id;
-private nosave string _save_file;
-private nosave int _max_auctions;
-private nosave mapping _auction_times;
-private nosave int _retrieval_time;
-private nosave int _max_retries;
-private nosave int _cut;
-private nosave int _minimum_bid_increase;
-private nosave function _can_bid;
-private nosave int _allow_add;
-private nosave string _bid_type_names;
-private class auction* _auctions;
-private class auction* _finished_auctions;
-private mapping _royalties;
-void next_auction_finish();
-mixed query_property(string name);
-class auction query_auction_item(string id);
-void retry_auction(class auction auction);
-void create() {
-   _auctions = ({ });
-   _finished_auctions = ({ });
-   _cut = 10;
-   _max_auctions = 20;
-   _auction_obs = ({ });
-   _royalties = ([ ]);
-   _auction_times = ([
-                      "quick" : DEFAULT_QUICK_AUCTION_LENGTH,
-                      "short" : DEFAULT_SHORT_AUCTION_LENGTH,
-                      "medium" : DEFAULT_MEDIUM_AUCTION_LENGTH,
-                      "long" : DEFAULT_LONG_AUCTION_LENGTH,
-                      "very long" : DEFAULT_VERY_LONG_AUCTION_LENGTH
-                    ]);
-   _retrieval_time = DEFAULT_RETRIEVAL_TIME;
-   _max_retries = 5;
-   _minimum_bid_increase = 10;
-   _allow_add = 1;
-   shop_event::create();
-}
-class auction *query_auctions() { return copy(_auctions); }
-class auction *query_finished_auctions() { return copy(_finished_auctions); }
-void load_me() {
-   unguarded( (: restore_object(_save_file, 1) :));
-   _auction_obs = allocate(sizeof(_auctions));
-   if (!_royalties) {
-      _royalties = ([ ]);
-   }
-   next_auction_finish();
-}
-void save_me() {
-   unguarded( (: save_object(_save_file) :));
-}
-void set_save_file(string fname) {
-   _save_file = fname;
-   load_me();
-}
-string query_save_file() {
-   return _save_file;
-}
-void set_check_can_bid(function f) {
-   _can_bid = f;
-}
-void set_allowed_add(int flag) {
-   _allow_add = flag;
-}
-void set_max_auctions(int i) { _max_auctions = i; }
-void set_auction_time(string index, int i) {
-   if (!i) {
-      map_delete(_auction_times, index);
-   } else {
-      if (!_auction_times[index]) {
-         _bid_type_names = 0;
-      }
-      _auction_times[index] = i;
-   }
-}
-mapping query_auction_times() { return _auction_times; }
-void set_retrieval_time(int i) { _retrieval_time = i; }
-void set_max_retries(int i) { _max_retries = i; }
-void set_min_bid_increase(int i) { _minimum_bid_increase = i; }
-int add_item_to_auction(object* obs, string name, int reserve,
-                        string seller, int length,
-                         string end_function, mixed extra) {
-   class auction new_auct;
-   if (sizeof(_auctions) + sizeof(_finished_auctions) >= _max_auctions) {
-      return 0;
-   }
-   if (!reserve) {
-      reserve = 40;
-   }
-   new_auct = new(class auction);
-   new_auct->save_stuff = AUTO_LOAD_OB->create_auto_load(obs);
-   new_auct->name = name;
-   new_auct->reserve = reserve;
-   new_auct->end_function = end_function;
-   new_auct->time_started = time();
-   if (!length) {
-      new_auct->auction_length = _auction_times["very long"];
-   } else {
-      new_auct->auction_length = length;
-   }
-   new_auct->seller = seller;
-   new_auct->extra = extra;
-   _auctions += ({ new_auct });
-   _auction_obs += ({ obs });
-   save_me();
-   next_auction_finish();
-   _auction_obs -= ({ obs });
-   _auction_obs += ({ 0 });
-   return 1;
-}
-object* query_auction_objects(class auction auct) {
-   int i;
-   for (i = 0; i < sizeof(_auctions); i++) {
-      if (_auctions[i] == auct) {
-         if (!_auction_obs[i]) {
-            _auction_obs[i] = AUTO_LOAD_OB->load_auto_load_to_array(auct->save_stuff);
-         }
-         return _auction_obs[i];
-      }
-   }
-   return ({ });
-}
-void bid_on_item(class auction auct,
-                 int bid, string person) {
-    if (bid > auct->bid && bid >= auct->reserve) {
-        auct->bid = bid;
-        auct->current_bidder = person;
-        if (auct->auction_length + auct->time_started - time() <
-            DEFAULT_EXTENSION_TIME) {
-            auct->auction_length = time() - auct->time_started +
-                DEFAULT_EXTENSION_TIME;
-        }
-    }
-}
-int reset_bid(string id, int bid, string person) {
-  class auction auct;
-  if(!(this_player()->query_lord()))
-    return 0;
-  auct = query_auction_item(id);
-  if(!auct)
-    return 0;
-  auct->bid = bid;
-  auct->current_bidder = person;
-  return 1;
-}
-void remove_finished_auction_item(class auction auction) {
-   int i;
-   for (i = 0; i < sizeof(_finished_auctions); i++) {
-      if (_finished_auctions[i] == auction) {
-         _finished_auctions = _finished_auctions[0..i-1] + _finished_auctions[i+1..];
-      }
-   }
-}
-void remove_auction_item(class auction auction) {
-   int i;
-   for (i = 0; i < sizeof(_auctions); i++) {
-      if (_auctions[i] == auction) {
-         if (i < sizeof(_auction_obs) && _auction_obs[i]) {
-            ((_auction_obs[i]) - ({ 0 }))->move("/room/rubbish");
-         }
-         _auctions = _auctions[0..i-1] + _auctions[i+1..];
-         _auction_obs = _auction_obs[0..i-1] + _auction_obs[i+1..];
-      }
-   }
-}
-void finish_auction(class auction auction) {
-   string place;
-   if (auction->end_function) {
-      call_other(this_object(), auction->end_function,
-                 AUCTION_FINISH_PHASE, auction, auction->extra,
-                 auction->current_bidder, auction->bid);
-   }
-   place = query_property("place");
-   remove_auction_item(auction);
-   if (!auction->current_bidder) {
-      auction->current_bidder = auction->seller;
-      auction->bid = 4000;
-   }
-   _finished_auctions += ({ auction });
-   save_me();
-   if (auction->current_bidder &&
-       PLAYER_HANDLER->test_user(lower_case(auction->current_bidder))) {
-      AUTO_MAILER->auto_mail(lower_case(auction->current_bidder),
-                              this_object()->query_short(),
-                              "Results of auction for " + auction->name,
-                              "",
-                              "Your auction for " + auction->name +
-                              " has completed.\nPlease pay the " +
-                              MONEY_HAND->money_value_string(auction->bid, place) +
-                              " as soon as you can.\n", 0, auction->current_bidder);
-   } else {
-      retry_auction(auction);
-   }
-   return ;
-}
-void force_finish_auction(string id) {
-   string place;
-   class auction auction;
-   auction = query_auction_item(id);
-   if (auction->end_function) {
-      call_other(this_object(), auction->end_function,
-                 AUCTION_FINISH_PHASE, auction, auction->extra,
-                 auction->current_bidder, auction->bid);
-   }
-   place = query_property("place");
-   remove_auction_item(auction);
-   if (!auction->current_bidder) {
-      auction->current_bidder = auction->seller;
-      auction->bid = 4000;
-   }
-   _finished_auctions += ({ auction });
-   save_me();
-   if (auction->current_bidder &&
-       PLAYER_HANDLER->test_user(lower_case(auction->current_bidder))) {
-      AUTO_MAILER->auto_mail(lower_case(auction->current_bidder),
-                              this_object()->query_short(),
-                              "Results of auction for " + auction->name,
-                              "",
-                              "Your auction for " + auction->name +
-                              " has completed.\nPlease pay the " +
-                              MONEY_HAND->money_value_string(auction->bid, place) +
-                              " as soon as you can.\n");
-   }
-   return ;
-}
-void retry_auction(class auction auction) {
-   string place;
-   if (auction->end_function) {
-      call_other(this_object(), auction->end_function,
-                 AUCTION_RETRY_PHASE, auction, auction->extra);
-   }
-   place = query_property("place");
-   remove_finished_auction_item(auction);
-   auction->bid = 0;
-   auction->current_bidder = 0;
-   auction->retries++;
-   auction->time_started = time();
-   if (auction->retries > _max_retries) {
-   } else {
-      _auctions += ({ auction });
-      _auction_obs += ({ 0 });
-   }
-   save_me();
-   if (auction->seller &&
-       PLAYER_HANDLER->test_user(lower_case(auction->seller))) {
-      AUTO_MAILER->auto_mail(lower_case(auction->seller),
-                              this_object()->query_short(),
-                              "Default on auction of " + auction->name,
-                              "",
-                              "Your auction for " + auction->name +
-                              " has completed and the payee defaulted.\n"
-                              "The item has been put up for reauctioning.\n");
-   }
-   return ;
-}
-class auction query_auction_item(string id) {
-   id = lower_case(id);
-   if (strlen(id) == 1 &&
-       id[0] >= 'a' && id[0] < 'a' + sizeof(_auctions)) {
-      return _auctions[id[0] - 'a'];
-   }
-   return 0;
-}
-string query_time_end_string(int left) {
-   string str;
-   string extra;
-   if (left >= AM_SECONDS_PER_DAY) {
-      str = (left / AM_SECONDS_PER_DAY) + " day";
-      if ((left / AM_SECONDS_PER_DAY) > 1) {
-         str += "s";
-      }
-      left = left % (AM_SECONDS_PER_DAY);
-      if (left >= (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) {
-         if ((left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) > 1) {
-             extra = "s";
-          } else {
-             extra = "";
-         }
-         return str + " and " +
-           (left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) + " hour" +
-           extra;
-      }
-      return str;
-   } else if (left >= AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR) {
-      if ((left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) > 1) {
-          extra = "s";
-       } else {
-          extra = "";
-      }
-      str = (left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) + " hour" +
-            extra;
-      left %= AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR;
-      if ((left / (AM_SECONDS_PER_MINUTE)) > 1) {
-          extra = "s";
-       } else {
-          extra = "";
-      }
-      if (left > AM_SECONDS_PER_MINUTE) {
-         return str + " and " + (left / AM_SECONDS_PER_MINUTE) + " minute" +
-                extra;
-      }
-      return str;
-   } else if (left <= 0) {
-      return "already finished";
-   }
-    if( !(left/60) ) {
-        return "less than a minute";
-    }
-    else {
-        str = "";
-        str += ( left / 60) + " minute";
-        if (left / 60 > 1) {
-            str += "s";
-        }
-        return str;
-    }
-}
-string query_auction_end_string(class auction auction) {
-   return query_time_end_string(auction->time_started +
-                                auction->auction_length - time());
-}
-int query_last_auction_finish_time() {
-   int tim;
-   class auction auction;
-   foreach (auction in _auctions) {
-      if (tim < auction->time_started + auction->auction_length) {
-         tim = auction->time_started + auction->auction_length;
-      }
-   }
-   return tim;
-}
-void next_auction_finish() {
-   class auction auct;
-   int next;
-   int tmp;
-   next = 0;
-   foreach (auct in _auctions) {
-      tmp = auct->time_started + auct->auction_length - time();
-      if (tmp <= 0) {
-         finish_auction(auct);
-      } else if (tmp < next || !next) {
-         next = tmp;
-      }
-   }
-   foreach (auct in _finished_auctions) {
-      tmp = auct->time_started + auct->auction_length + _retrieval_time -
-        time();
-      if (tmp <= 0) {
-         retry_auction(auct);
-         tmp = auct->time_started + auct->auction_length - time();
-         if (tmp < next || !next) {
-            next = tmp;
-         }
-      } else if (tmp < next || !next) {
-         next = tmp;
-      }
-   }
-   if (_callout_id) {
-      remove_call_out(_callout_id);
-      _callout_id = 0;
-   }
-   if (next) {
-      _callout_id = call_out("next_auction_finish", next);
-   }
-}
-int do_list() {
-   string str;
-   class auction bing;
-   int pos;
-   string place;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   if (!sizeof(_auctions)) {
-      add_failed_mess("Nothing currently on auction.\n");
-      return 0;
-   }
-   place = query_property("place");
-   str = "Items currently up for auction:\n";
-   foreach (bing in _auctions) {
-      str += sprintf("%c) %s", pos + 'A', bing->name);
-      if (bing->current_bidder) {
-         str += "; " +
-                MONEY_HAND->money_value_string(bing->bid, place) +
-                " by " + bing->current_bidder + "; finishes in " +
-                query_auction_end_string(bing) + ".\n";
-      } else {
-         str += "; no current bid; finishes in " +
-                query_auction_end_string(bing) + ".\n";
-      }
-      pos++;
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_LIST,
-                             this_player(), str)) {
-      write("$P$Auctions$P$" + str);
-   }
-   return 1;
-}
-int do_browse(string id) {
-   class auction bing;
-   string place;
-   string str;
-   object* obs;
-   object ob;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   bing = query_auction_item(id);
-   if (!bing) {
-      add_failed_mess("There is no auction item " + id + ".\n");
-      return 0;
-   }
-   place = query_property("place");
-   str = "Auction called " + bing->name + " started at " +
-        amtime(bing->time_started) + " finishes at " +
-        amtime(bing->time_started + bing->auction_length) + " (in " +
-        query_auction_end_string(bing) + ".\n";
-   str += "Reserve price " +
-          MONEY_HAND->money_value_string(bing->reserve, place);
-   if (bing->bid) {
-      str += "; current bid " +
-             MONEY_HAND->money_value_string(bing->bid, place) +
-             " by " + bing->current_bidder + ".\n";
-   } else {
-      str += "; no current bid.\n";
-   }
-   obs = query_auction_objects(bing);
-   foreach (ob in obs) {
-      str += "\n$I$0=$C$" + ob->the_short() + ":\n$I$3=   " +
-             ob->long();
-      if (ob->query_readable_message(this_player())) {
-         str += "$I$0=Read message:\n$I$3=   " + ob->query_readable_message(this_player()) + "\n";
-      }
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_BROWSE,
-                             this_player(), bing, obs, str)) {
-      write("$P$Browse Auction$P$" + str);
-   }
-   return 1;
-}
-int do_bid(string id, string bid) {
-   class auction auct;
-   string place;
-   int value;
-   int inc;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   auct = query_auction_item(id);
-   if (!auct) {
-      if (!broadcast_shop_event(AUCTION_EVENT_BAD_ITEM,
-                                 this_player(), id)) {
-         add_failed_mess("There is no auction item " + id + ".\n");
-      }
-      return 0;
-   }
-   place = query_property("place");
-   value = MONEY_HAND->value_from_string(bid, place);
-   if (_can_bid) {
-      if (!evaluate(_can_bid, this_player(), auct, value)) {
-         return 0;
-      }
-   }
-   inc = auct->bid + ((auct->bid * _minimum_bid_increase) / 100);
-   if (value < inc) {
-      if (!broadcast_shop_event(AUCTION_EVENT_BID_TOO_SMALL,
-                                 this_player(), auct, value, inc)) {
-         add_failed_mess("You must bid " + _minimum_bid_increase + "% more than "
-                         "the current bid, current bid is " +
-                         MONEY_HAND->money_value_string(auct->bid, place) +
-                         " so " + _minimum_bid_increase + "% more is " +
-                         MONEY_HAND->money_value_string(inc, place) +
-                         ".\n");
-      }
-      return 0;
-   }
-   if (value < auct->reserve) {
-      if (!broadcast_shop_event(AUCTION_EVENT_BID_BELOW_RESERVE,
-                                 this_player(), auct, value, auct->reserve)) {
-         add_failed_mess("You must bid more than the reserve bid, it is " +
-                      MONEY_HAND->money_value_string(auct->reserve, place) + ".\n");
-      }
-      return 0;
-   }
-   bid_on_item(auct, value, this_player()->query_cap_name());
-   save_me();
-   if (!broadcast_shop_event(AUCTION_EVENT_BID,
-                             this_player(), auct, value)) {
-      add_succeeded_mess("$N $V " +
-                         MONEY_HAND->money_value_string(value, place) +
-                         " on " + auct->name + ".\n");
-   }
-   return 1;
-}
-int do_withdraw(string id) {
-   class auction auct;
-   string place;
-   int value;
-   object* obs;
-   object ob;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   auct = query_auction_item(id);
-   if (!auct) {
-      if (!broadcast_shop_event(AUCTION_EVENT_BAD_ITEM,
-                                 this_player(), id)) {
-         add_failed_mess("There is no auction item " + id + ".\n");
-      }
-      return 0;
-   }
-   place = query_property("place");
-   if (lower_case(auct->seller) == this_player()->query_name() ||
-       this_player()->query_creator()) {
-      if (auct->reserve > auct->bid) {
-         value = auct->reserve;
-      } else {
-         value = auct->bid;
-      }
-      if (this_player()->query_value_in(place) < value) {
-         if (!broadcast_shop_event(AUCTION_EVENT_TOO_POOR,
-                              this_player(), auct,
-                              this_player()->query_value_in(place),
-                              auct->bid)) {
-            add_failed_mess("You need at least " +
-                            MONEY_HAND->money_value_string(value, place) +
-                            " to withdraw this item from auction.\n");
-         }
-         return 0;
-      }
-      obs = query_auction_objects(auct);
-      this_player()->pay_money(MONEY_HAND->create_money_array(value, place),
-        place);
-      remove_auction_item(auct);
-      save_me();
-      if (auct->end_function) {
-         call_other(this_object(), auct->end_function,
-                    AUCTION_WITHDRAW_PHASE, auct, auct->extra);
-      }
-      foreach (ob in obs) {
-         if (ob->move(this_player()) != MOVE_OK) {
-             ob->move(this_object());
-             write("Unable to move " + ob->the_short() +
-                   " into your inventory, put on the floor.\n");
-         }
-      }
-      if (!broadcast_shop_event(AUCTION_EVENT_WITHDRAW,
-                                 this_player(), auct)) {
-         add_succeeded_mess("$N remove$s " + auct->name + " from auction.\n");
-      }
-      return 1;
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_CANNOT_WITHDRAW,
-                              this_player(), auct)) {
-      add_failed_mess("You cannot withdraw that item from auction.\n");
-   }
-   return 0;
-}
-int do_claim() {
-   class auction auction;
-   int num;
-   string place;
-   object* obs;
-   object ob;
-   int i;
-   int value;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   place = query_property("place");
-   value = this_player()->query_value_in(place);
-   foreach (auction in _finished_auctions) {
-      if (!auction->current_bidder) {
-         remove_finished_auction_item(auction);
-      } else if (lower_case(auction->current_bidder) == this_player()->query_name()) {
-         if (value < auction->bid) {
-            if (!broadcast_shop_event(AUCTION_EVENT_TOO_POOR,
-                              this_player(), auction, value, auction->bid)) {
-               write("You do not have enough money to pay for " +
-                     MONEY_HAND->money_value_string(auction->bid, place) +
-                     ".\n");
-            }
-         } else {
-            this_player()->pay_money(
-                MONEY_HAND->create_money_array(auction->bid, place), place);
-            value -= auction->bid;
-            _royalties[lower_case(auction->seller)] += auction->bid -
-                                           auction->bid * _cut / 100;
-            obs = AUTO_LOAD_OB->load_auto_load_to_array(auction->save_stuff);
-            foreach (ob in obs) {
-               if (ob->move(this_player()) != MOVE_OK) {
-                  ob->move(this_object());
-                  write("Unable to move " + ob->the_short() +
-                        " into your inventory, put on the floor.\n");
-               }
-            }
-            if (!broadcast_shop_event(AUCTION_EVENT_CLAIM,
-                              this_player(), auction, auction->bid, obs)) {
-               write("You paid " +
-                     MONEY_HAND->money_value_string(auction->bid, place) +
-                     " for " +
-                     query_multiple_short(obs) + ".\n");
-            }
-            remove_finished_auction_item(auction);
-            save_me();
-            if (auction->end_function) {
-               call_other(this_object(), auction->end_function,
-                          AUCTION_CLAIM_PHASE, auction, auction->extra,
-                          auction->current_bidder, auction->bid, obs);
-            }
-         }
-         num++;
-      }
-      i++;
-   }
-   if (!num) {
-      if (!broadcast_shop_event(AUCTION_EVENT_NOTHING_TO_CLAIM,
-                              this_player())) {
-         add_failed_mess("You cannot find anything to claim.\n");
-      }
-   }
-   return num;
-}
-int do_add(string name, object* obs, string res_str, string length) {
-   int reserve;
-   string ret;
-   string place;
-   int len;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   place = query_property("place");
-   len = _auction_times[length];
-   if (sizeof(_auctions) >= _max_auctions) {
-      if (!broadcast_shop_event(AUCTION_EVENT_FULL,
-                             this_player(), name, obs, reserve, len)) {
-         add_failed_mess("The auction house is full.\n");
-      }
-      return 0;
-   }
-   if (res_str) {
-      reserve = MONEY_HAND->value_from_string(res_str, place);
-      if (!reserve) {
-         if (!broadcast_shop_event(AUCTION_EVENT_BAD_MONEY,
-                             this_player(), name, obs, reserve, len)) {
-            add_failed_mess("Unable to figure out how much " + res_str +
-                            " is.\n");
-         }
-         return 0;
-      }
-   }
-   ret = "You are putting " + query_multiple_short(obs) + " up for "
-         "auction as " + name + " for " +
-          query_time_end_string(len);
-   if (reserve) {
-     ret += " with a reserve price of " +
-            MONEY_HAND->money_value_string(reserve, place);
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_ADD_AUCTION,
-                             this_player(), name, obs, reserve, len, ret + ".")) {
-      write(ret + ".\n");
-      write("Are you sure you wish to do this? ");
-   }
-   input_to("confirm_auction", 0, name, obs, reserve, len);
-   add_succeeded_mess(({ "", "$N put$s $I up for auction.\n" }), obs);
-   return 1;
-}
-void confirm_auction(string check, string name, object* obs, int reserve, int len) {
-   string place;
-   string ret;
-   place = query_property("place");
-   check = lower_case(check);
-   if (!strlen(check) || check[0] != 'y') {
-      if (!broadcast_shop_event(AUCTION_EVENT_ADD_ABORT,
-                             this_player(), name, obs, reserve, len)) {
-         write("Ok, Aborting.\n");
-      }
-      return ;
-   }
-   add_item_to_auction(obs, name, reserve,
-                       this_player()->query_cap_name(), len, 0, 0);
-   ret = "You put " + query_multiple_short(obs) + " up for "
-         "auction as " + name + " for " +
-          query_time_end_string(len);
-   if (reserve) {
-     ret += " with a reserve price of " +
-            MONEY_HAND->money_value_string(reserve, place) + "";
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_CONFIRM_AUCTION,
-                             this_player(), name, obs, reserve, len, ret + ".")) {
-      write(ret + ".\n");
-   }
-   obs->move("/room/rubbish");
-}
-int do_info() {
-   string ret;
-   string name;
-   int len;
-   if (!is_open(this_player(), 0)) {
-      add_failed_mess(this_object()->the_short() + " is not open.\n");
-      return 0;
-   }
-   ret = "$I$3=The times for the auction are:\n";
-   foreach (name, len in _auction_times) {
-      ret += name + ": " + query_time_end_string(len) + "\n";
-   }
-   if (!broadcast_shop_event(AUCTION_EVENT_INFO, this_player(), ret)) {
-      write("$P$Auction lengths$P$" + ret);
-   }
-   return 1;
-}
-void init() {
-   add_command("list", "", (: do_list() :));
-   add_command("browse", "<string'auction id'>", (: do_browse($4[0]) :));
-   add_command("bid", "<string'auction id'> for <string'money'>",
-               (: do_bid($4[0], $4[1]) :));
-   add_command("bid", "<string'money'> on <string'auction id'>",
-               (: do_bid($4[1], $4[0]) :));
-   add_command("claim", "", (: do_claim() :));
-   add_command("withdraw", "<string'auction id'> [from auction]",
-                (: do_withdraw($4[0]) :));
-   if (_allow_add) {
-      if (!_bid_type_names) {
-         _bid_type_names = implode(keys(_auction_times), "|");
-      }
-      add_command("info", "", (: do_info() :));
-      add_command("add", "{" + _bid_type_names +
-                   "} auction of <indirect:object:me> as <string'name'>",
-                  (: do_add($4[2], $1, 0, $4[0]) :));
-      add_command("add", "{" + _bid_type_names +
-                  "}  auction of <indirect:object:me> as <string'name'> reserve <string'price'>",
-                  (: do_add($4[2], $1, $4[3], $4[0]) :));
-   }
-}
-
-==================================================
-FILE: shops/inherit/bank_base.c
-==================================================
-
-#include <money.h>
-#include <move_failures.h>
-#define NAME (string)this_player()->query_name()
-#define CAP_NAME (string)this_player()->one_short()
-#define POSS (string)this_player()->query_possessive()
-#define HANDLER "/obj/handlers/bank_handler"
-#define OLD_BANK "/d/am/save/bank"
-private string _franchise;
-private int _total_difference;
-private nosave int _account_cost;
-private nosave int _percentage;
-private nosave string _bank_name;
-string query_money_place();
-void adjust_float(int amount);
-int is_open_for(string type, string person);
+inherit "/std/basic/expressions";
+#include <expressions.h>
+#include <shops/craft_shop.h>
+#include <nroff.h>
+int is_allowed(string person);
 void event_save(object ob);
-void create() {
-  _account_cost = 400;
-  _total_difference = 0;
-  _percentage = 10;
+private nosave string _type;
+void set_expression_type(string type) {
+   _type = type;
 }
-int query_bank() {
-   return 1;
+string query_expression_type() {
+   return _type;
 }
-int query_account_cost() { return _account_cost; }
-void set_account_cost( int number ) { _account_cost = number; }
-int query_percentage() { return _percentage; }
-void set_percentage( int number ) { _percentage = number; }
-int query_total_difference() { return _total_difference; }
-void adjust_total_difference(int amount) {
-   _total_difference += amount;
-}
-void set_total_difference(int amount) {
-   _total_difference = amount;
-}
-string query_bank_name() { return _bank_name; }
-void set_bank_name( string word ) { _bank_name = word; }
-int get_account(string player) {
-  return HANDLER->query_account( player, _bank_name );
-}
-void set_account( string player, int amount ) {
-  HANDLER->set_account( player, _bank_name, amount );
-}
-void adjust_account(string person, int amount) {
-}
-string query_franchise() {
-   return _franchise;
-}
-void set_franchise(string franchise) {
-   _franchise = franchise;
-}
-int can_adjust_account(string person, int amount) {
-   if ( ( get_account( person ) + amount ) >= 0 ) {
+int do_user_function_add(string def, string expr) {
+   string name;
+if (this_player()->query_name() != "presto")
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to add functions to this store.\n");
+      return 0;
+   }
+   name = parse_user_expression(def, expr);
+   if (name) {
+      if (strlen(query_last_expression_warning())) {
+         write("WARNING!!! Any changes of types could cause expressions "
+               "currently using the functions to fail.\n" +
+               query_last_expression_warning());
+      }
+      write("You successfully add:\n" + query_user_function_string(name));
+      add_succeeded_mess(({ "",
+                         "$N fiddle$s with something in the shop.\n" }) );
+      event_save(this_object());
       return 1;
    }
-   add_failed_mess("You do not have enough money to complete the "
-                   "transaction.\n");
+   add_failed_mess(query_last_expression_error() + "\n");
    return 0;
 }
-object find_main_bank() {
-   object office;
-   string room;
-   room = BANK_HANDLER->query_bank_master_office(_bank_name);
-   if (!room) {
+int do_user_function_remove(string name) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to remove functions from this store.\n");
       return 0;
    }
-   office = load_object(room);
-   if (!office) {
-      return 0;
-   }
-   if (office->query_bank()) {
-      return office;
-   }
-   return 0;
-}
-string query_main_branch_owner() {
-   object branch;
-   branch = find_main_bank();
-   if (!branch) {
-      return "no owner";
-   }
-   if (branch->query_owner()) {
-      return lower_case(branch->query_owner());
-   }
-   return "no owner";
-}
-int do_balance() {
-  int amount;
-   if (!query_bank_name()) {
-      add_failed_mess("This is a forgotten bank in a dusty land.\n");
-      return 0;
-   }
-   if (!is_open_for("bank", this_player()->query_name())) {
-      add_failed_mess("The bank is not open for withdrawals.\n");
-      return 0;
-   }
-   amount = get_account(this_player()->query_name());
-  if ( amount < 0 ) {
-    notify_fail( "You do not have an account here.\n" );
-    return 0;
-  }
-  if ( !amount ) {
-     add_succeeded_mess(
-       ({ "Your account is empty.\n",
-           "$N checks the balance of $p account.\n" }));
-    return 1;
-  }
-  add_succeeded_mess(
-     ({ "You have "+ (string)MONEY_HAND->money_value_string( amount,
-         query_money_place() ) +
-        " in your account.\n",
-        "$N checks the balance of $p account.\n" }));
-  return 1;
-}
-int do_withdraw( string type ) {
-  int amount;
-  int total;
-  object money;
-   if (this_player()->query_property("dead"))  {
-      add_failed_mess("You are dead.  You know what they say; you can't take "
-         "it with you.\n");
-      return 0;
-   }
-   if (!query_bank_name()) {
-      add_failed_mess("This is a forgotten bank in a dusty land.\n");
-      return 0;
-   }
-   if (!is_open_for("withdraw", this_player()->query_name())) {
-      add_failed_mess("The bank is not open for withdrawals.\n");
-      return 0;
-   }
-   total = get_account(this_player()->query_name());
-   if ( total < 0 ) {
-      notify_fail( "You do not have an account here.\n" );
-      return 0;
-   }
-   amount = MONEY_HAND->value_from_string(type, query_money_place());
-   if ( amount <= 0 ) {
-      notify_fail( "You must withdraw something.\n" );
-      return 0;
-   }
-   if ( amount > total ) {
-      add_failed_mess( "You don't have that much money in your account!\n" );
-      return 0;
-   }
-   if (!can_adjust_account(this_player()->query_name(), -amount)) {
-      add_failed_mess("The bank cannot handle this transaction.\n");
-      return 0;
-   }
-   money = MONEY_VAULT->get_money_ob();
-   money->set_money_array(MONEY_HAND->create_money_array(amount,
-       query_money_place()));
-   if (money->move(this_player()) != MOVE_OK)  {
-      if (money->move(this_object()) != MOVE_OK) {
-         add_failed_mess("Unable to put the money on the floor, cancelling "
-               "the transaction.\n");
-         money->move("/room/rubbish");
-         return 0;
-      } else {
-         write("You are carrying too much weight to accept your money, "
-               "So it is placed on the floor for you.\n");
-      }
-   }
-   set_account(this_player()->query_name(), total - amount );
-   adjust_account(this_player()->query_name(), -amount);
-   _total_difference -= amount;
-   event_save(this_object());
-   add_succeeded_mess( ({
-      "You withdraw "
-      + MONEY_HAND->money_value_string( amount, query_money_place() )
-      +".\nYou have "
-      + MONEY_HAND->money_value_string( get_account( this_player()->query_name() ),
-                                        query_money_place() )
-      + " in your account after the withdrawal.\n",
-      "$N withdraws some money from $p account.\n"
-   }) );
-   this_player()->save();
-   return 1;
-}
-int do_deposit( string words ) {
-   int amount;
-   int total;
-   int tmp;
-   int howmuch;
-   mixed money;
-   if (!query_bank_name()) {
-      add_failed_mess("This is a forgotten bank in a dusty land.\n");
-      return 0;
-   }
-   if (!is_open_for("deposit", this_player()->query_name())) {
-      add_failed_mess("The bank is not open for deposits.\n");
-      return 0;
-   }
-   total = get_account(this_player()->query_name());
-   if ( total < 0 ) {
-      notify_fail("You don't have an account here.\n");
-      return 0;
-   }
-   money = MONEY_HAND->parse_money(words, this_player(), query_money_place());
-   if( money == NO_MATCH ) {
-      add_failed_mess( "Deposit what?\n" );
-      return 0;
-   }
-   else if( money == NO_MONEY ) {
-      add_failed_mess( "You can't deposit that.\n" );
-      return 0;
-   }
-   else if( money == NO_LEGAL ) {
-      add_failed_mess( "You can only deposit legal tender.\n");
-      return 0;
-   }
-   amount = money->query_value_in(query_money_place());
-   if(amount < 200) {
-      money->move(this_player());
-      add_failed_mess("That is too small an amount, you must deposit "
-                      "at least " +
-                      MONEY_HAND->money_value_string(200, query_money_place()) +
-                      ".\n");
-      return 0;
-   }
-   if (!can_adjust_account(this_player()->query_name(), amount)) {
-      money->move(this_player());
-      add_failed_mess("The bank cannot handle this transaction.\n");
-      return 0;
-   }
-   tmp = ( amount * _percentage ) / 100;
-   adjust_float(tmp);
-   howmuch = amount;
-   amount = amount - tmp;
-   set_account(this_player()->query_name(), total + amount );
-   _total_difference += amount;
-   adjust_account(this_player()->query_name(), amount);
-   event_save(this_object());
-   money->move("/room/rubbish");
-   this_player()->save();
-   add_succeeded_mess(
-       ({  "You give the teller "+ MONEY_HAND->
-           money_string(money->query_money_array(), query_money_place()) +
-           ", which after expenses leaves "+ MONEY_HAND->
-           money_value_string( amount, query_money_place() ) +".\n"
-           "This gives a total of " + MONEY_HAND->
-           money_value_string(total + amount, query_money_place() ) +
-           " in your account.\n",
-           "$N deposits some money into $p account.\n" }) );
-   return 1;
-}
-int do_open() {
-  int amount;
-  if (!is_open_for("open account", this_player()->query_name())) {
-     add_failed_mess("The bank is not open for new accounts.\n");
-     return 0;
-  }
-  if ( get_account(this_player()->query_name()) >= 0 ) {
-    notify_fail( "You already have an account here.\n" );
-    return 0;
-  }
-  if ( _account_cost ) {
-    amount = this_player()->query_value_in( query_money_place() );
-    if ( amount < _account_cost ) {
-      notify_fail( "You do not have enough money to open an account.\n" );
-      return 0;
-    }
-    write( "It will cost you "+ (string)MONEY_HAND->money_value_string(
-      _account_cost, query_money_place() ) +
-      " to open the account.\nDo you still wish to "+
-      "open an account here? " );
-    input_to( "check_open" );
-    return 1;
-  }
-  set_account(this_player()->query_name(), 0 );
-  add_succeeded_mess( "$N $V an account.\n" );
-  return 1;
-}
-void check_open( string word ) {
-  object money;
-  int amount;
-  object main;
-  word = lower_case( word );
-  if (!strlen(word) || word [ 0 ] !=  'y') {
-    write( "Okay, not opening an account.\n" );
-    return ;
-  }
-  amount = this_player()->query_value_in( query_money_place() );
-  if (amount < _account_cost) {
-    write("You lost all your money!\n");
-    return ;
-  }
-  set_account(this_player()->query_name(), 0 );
-  write( "You now have an account here.\n" );
-  money = this_player()->query_money_object(0);
-  money = MONEY_HAND->pay_amount_from( _account_cost, money, query_money_place() );
-  if (money  &&  money->move(this_player()) != MOVE_OK)  {
-    write("Your change is too heavy and you drop it on the floor.\n");
-    money->move(this_object());
-  }
-  amount = BANK_HANDLER->query_cost_for_new_account(_bank_name,
-                                                    query_franchise());
-  main = find_main_bank();
-  if (main) {
-     main->adjust_float(amount);
-  }
-  adjust_float(_account_cost - amount);
-  return ;
-}
-int do_close() {
-  int total;
-  object money;
-  total = get_account(this_player()->query_name());
-  if ( total < 0 ) {
-    notify_fail( "You do not have an account here.\n" );
-    return 0;
-  }
-  if ( total ) {
-    if ( money = (object)MONEY_HAND->make_new_amount( total, query_money_place() ) ) {
-      write( "You receive "+ (string)money->short() +" on closing "+
-        "your account.\n" );
-      if ( (int)money->move( this_player() ) != MOVE_OK ) {
-        write( "You are too heavily burdened to accept all that money, so "+
-          "the teller puts it on the counter for you.\n" );
-        money->move( this_object() );
-      }
-      adjust_float(-total);
-      _total_difference -= total;
-    } else {
-      write( "The amount of money in your account was not even worth a "+
-        "coin of the lowest denomination in the local currency.  Sorry.\n"+
-        "Your account is now closed.\n" );
-    }
-  } else {
-    write( "You close your account.\n" );
-  }
-  add_succeeded_mess("$N $V an account.\n");
-  set_account(this_player()->query_name(), -1 );
-  event_save(this_object());
-  this_player()->save();
-  return 1;
-}
-mixed *stats() {
-  return ({
-    ({ "account cost", _account_cost }),
-    ({ "percentage", _percentage }),
-    ({ "total difference", _total_difference }),
-    ({ "bank name", _bank_name }),
-    ({ "place", query_money_place() }) });
-}
-void init() {
-  add_command( "balance", "" );
-  add_command( "withdraw", "<string>",
-               (: do_withdraw($4[0]) :) );
-  add_command( "open", "account" );
-  add_command( "close", "account" );
-  add_command( "deposit", "<string>", (: do_deposit($4[0]) :) );
-}
-
-==================================================
-FILE: shops/inherit/bank_franchise.c
-==================================================
-
-inherit "/std/shops/inherit/bank_base";
-#include <money.h>
-#include <shops/bank.h>
-class credit_note {
-   int num;
-   int amt;
-   int made;
-   string maker;
-}
-private int _credit_num;
-private class credit_note* _notes;
-void create() {
-   _notes = ({ });
-   ::create();
-}
-int is_allowed(string name) {
-   return 0;
-}
-int is_allowed_credit(string name) {
-   return is_allowed(name) ||
-          name == query_main_branch_owner();
-}
-protected void set_credit_num(int num) {
-   _credit_num = num;
-}
-int query_credit_num() {
-   return _credit_num;
-}
-protected void set_credit_notes(class credit_note* notes) {
-   _notes = notes;
-}
-class credit_note* query_credit_notes() {
-   return copy(_notes);
-}
-int query_outstanding_credit_value() {
-   int diff;
-   class credit_note note;
-   foreach (note in _notes) {
-      diff += note->amt;
-   }
-   return diff;
-}
-int do_create() {
-   object ob;
-   int diff;
-   if (!is_allowed_credit(this_player()->query_name())) {
-      add_failed_mess("The bank is not open for creating credit notes.\n");
-      return 0;
-   }
-   diff = query_total_difference() - query_outstanding_credit_value();
-   if (diff == 0) {
-      add_failed_mess("The bank is currently at a zero balance with the "
-                      "outstanding credit notes.\n");
-      return 0;
-   }
-   ob = clone_object(BANK_CREDIT_NOTE);
-   ob->set_credit_num(++_credit_num);
-   ob->set_franchise(query_franchise());
-   ob->set_bank_name(query_bank_name());
-   ob->set_amount(query_total_difference());
-   ob->add_property("place", query_money_place());
-   ob->setup_read_messages();
-   ob->move(this_player());
-   if (!_notes) {
-      _notes = ({ });
-   }
-   _notes += ({ new(class credit_note, num : ob->query_credit_num(),
-                                   amt : ob->query_amount(),
-                                   maker : this_player()->query_cap_name(),
-                                   made : time()) });
-   event_save(this_object());
-   add_succeeded_mess("$N $V " + ob->a_short() + ".\n");
-   return 1;
-}
-int do_list() {
-   class credit_note note;
-   string ret;
-   string place;
-   if (!is_allowed_credit(this_player()->query_name())) {
-      add_failed_mess("The bank is not open for listing credit notes.\n");
-      return 0;
-   }
-   place = query_money_place();
-   if (!sizeof(_notes)) {
-      add_failed_mess("No credit notes to list.\n");
-      return 0;
-   }
-   ret = "Credit notes\n\n";
-   foreach (note in _notes) {
-      ret += "$I$6=" + sprintf("%3d) ", note->num) +
-             ctime(note->made) + ": by " +
-             note->maker + " for " +
-             MONEY_HAND->money_value_string(note->amt, place) + "\n";
-   }
-   write("$P$Credit Notes$P$" + ret);
-   return 1;
-}
-int do_recind(int id) {
-   class credit_note note;
-   int i;
-   string place;
-   if (!is_allowed_credit(this_player()->query_name())) {
-      add_failed_mess("The bank is not open for listing credit notes.\n");
-      return 0;
-   }
-   for (i = 0; i < sizeof(_notes); i++) {
-      note = _notes[i];
-      if (note->num == id) {
-          place = query_money_place();
-          _notes = _notes[0..i-1] + _notes[i+1..];
-          add_succeeded_mess(({
-             "You recind #" + note->num + " made at " +
-             ctime(note->made) + " by " +
-             note->maker + " for " +
-             MONEY_HAND->money_value_string(note->amt, place) + "\n", "" }));
-          return 1;
-      }
-   }
-   add_failed_mess("Unable to find credit note #" + id + ".\n");
-   return 0;
-}
-int is_valid_note(int id) {
-   int i;
-   for (i = 0; i < sizeof(_notes); i++) {
-      if (_notes[i]->num == id) {
+   if (query_user_function_return_type(name) != EXPRESSION_TYPE_ERROR) {
+      if (remove_user_expression(name)) {
+         add_succeeded_mess(({ "You remove the function " + name + ".\n",
+                         "$N fiddle$s with something in the shop.\n" }) );
          return 1;
       }
    }
+   add_failed_mess(query_last_expression_error() + "\n");
    return 0;
 }
-int process_note(int id) {
-   int i;
-   if (!is_valid_note(id)) {
+int do_approve_status_internal_functions() {
+   string* names;
+   string name;
+   string ret;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to see the status of this store.\n");
       return 0;
    }
-   for (i = 0; i < sizeof(_notes); i++) {
-      if (_notes[i]->num == id) {
-         adjust_total_difference(-_notes[i]->amt);
-         _notes = _notes[0..i-1] + _notes[i+1..];
-         i--;
-      }
+   names = query_function_names();
+   ret = "Functions:\n";
+   foreach (name in names) {
+      ret += query_type_name(query_function_type(name)) + " " + name +
+             "(" + implode(map(query_function_args_types(name),
+                               (: query_type_name($1) :)), ", ") +
+             ")\n";
    }
-   event_save(this_object());
+   ret += "\nVariables:\n";
+   names = query_variable_names();
+   foreach (name in names) {
+      ret += query_type_name(query_variable_type(name)) + " " + name +
+             "\n";
+   }
+   write("$P$Internal functions$P$" + ret);
+   add_succeeded_mess(({ "",
+                         "$N fiddle$s with something in the shop.\n" }) );
+   return 1;
+}
+int do_function_help(string name) {
+   string nroff_fn;
+   string str;
+   string fname;
+   fname = CRAFT_SHOP_EXPRESSION_HELP_DIR + name;
+   if (file_size(fname) <= 0) {
+      add_failed_mess("There is no help for the function '" + name + "'.\n");
+      return 0;
+   }
+   nroff_fn = NROFF_DIR + replace(fname, "/", ".");
+   str = NROFF_HAND->cat_file(nroff_fn, 1);
+   if (!str) {
+      NROFF_HAND->create_nroff(fname, nroff_fn);
+      str = NROFF_HAND->cat_file(nroff_fn, 0);
+   }
+   write("$P$function: " + name + "$P$" + str);
+   return 1;
+}
+int do_function_help_list() {
+   string *names;
+   names = get_dir(CRAFT_SHOP_EXPRESSION_HELP_DIR);
+   if (!sizeof(names)) {
+      add_failed_mess("There is no help on any functions.\n");
+      return 0;
+   }
+   names -= ({ ".", "..", "RCS" });
+   write(sprintf("%-#*s\n", this_player()->query_cols(), implode(names, "\n")));
+   return 1;
+}
+int do_approve_status_functions(int hints) {
+   string* names;
+   string name;
+   string ret;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to see the status of this store.\n");
+      return 0;
+   }
+   names = query_user_function_names();
+   if (!sizeof(names)) {
+      add_failed_mess("Could not find any user defined expressions.\n");
+      return 0;
+   }
+   ret = "";
+   foreach (name in names) {
+      ret += query_user_function_string(name) + "\n";
+   }
+   if (hints) {
+      ret += "$I$0=       Hint: add function <function> as <expression>";
+      ret += "$I$0=       Hint: remove function <function>";
+   }
+   write("$P$User functions$P$" + ret);
+   add_succeeded_mess(({ "",
+                         "$N fiddle$s with something in the shop.\n" }) );
    return 1;
 }
 void init() {
-   ::init();
-   add_command("create", "credit note");
-   add_command("list", "credit notes");
-   add_command("recind", "credit note <number'id'>", (: do_recind($4[0]) :));
+   if (!is_allowed(this_player()->query_name())) {
+      return ;
+   }
+   add_command("add",
+               _type + " function <string'function'> as <string'expression'>",
+               (: do_user_function_add($4[0], $4[1]) :));
+   add_command("remove",
+               _type + " function <string'function'>",
+               (: do_user_function_remove($4[0]) :));
+   add_command("functions", _type + " internal",
+               (: do_approve_status_internal_functions() :));
+   add_command("functions", _type,
+               (: do_approve_status_functions(0) :));
+   add_command("functions", _type +" help list",
+               (: do_function_help_list() :));
+   add_command("functions", _type + " help <string'function name'>",
+               (: do_function_help($4[0]) :));
+   add_command("functions", _type + " hints",
+               (: do_approve_status_functions(1) :));
 }
 
 ==================================================
-FILE: shops/inherit/bank_master.c
-==================================================
-
-inherit "/std/shops/inherit/bank_base";
-#include <money.h>
-int query_float();
-int do_process(object *obs) {
-   object ob;
-   int amount;
-   int found;
-   object* not_credit;
-   object* not_valid;
-   string place;
-   place = query_money_place();
-   not_valid = ({ });
-   not_credit = ({ });
-   foreach (ob in obs) {
-      if (ob->query_credit_note() ||
-          ob->query_bank_name() != query_bank_name()) {
-         not_credit += ({ ob });
-         obs -= ({ ob });
-      } else if (ob->is_valid_note()) {
-         amount += ob->query_credit_balance();
-      } else {
-         not_valid += ({ ob });
-         obs -= ({ ob });
-      }
-   }
-   if (!sizeof(obs)) {
-      if (sizeof(not_credit)) {
-         add_failed_mess("None of $I are credit notes.\n", not_credit);
-      }
-      if (sizeof(not_valid)) {
-         add_failed_mess("None of $I are valid credit notes.\n", not_valid);
-      }
-      return 0;
-   }
-   foreach (ob in obs) {
-      amount = ob->query_amount();
-      if (amount > 0) {
-         if (this_player()->query_value_in(query_money_place()) < amount) {
-            add_failed_mess("You do not have the needed " +
-                            MONEY_HAND->money_value_string(amount, place) +
-                            " to deposit.\n");
-            continue;
-         }
-         else if (ob->do_process()) {
-            this_player()->pay_money(MONEY_HAND->create_money_array(amount,
-                   place), place);
-            add_succeeded_mess("$N $V depositing " +
-                               MONEY_HAND->money_value_string(amount, place) +
-                               " from $I.\n", ({ ob }));
-            found++;
-         } else {
-            add_failed_mess("You cannot process $I for some reason.\n",
-                            ({ ob }));
-            continue;
-         }
-      } else if (amount < 0) {
-         if (ob->do_process()) {
-            this_player()->adjust_money(MONEY_HAND->create_money_array(-amount, place));
-            add_succeeded_mess("$N $V withdrawing " +
-                               MONEY_HAND->money_value_string(-amount, place) +
-                               " from $I.\n", ({ ob }));
-            found++;
-         } else {
-            add_failed_mess("You cannot process $I for some reason.\n",
-                            ({ ob }));
-            continue;
-         }
-      }
-      ob->move("/room/rubbish");
-   }
-   return found;
-}
-void init() {
-   ::init();
-   add_command("process", "<indirect:object>");
-}
-
-==================================================
-FILE: shops/inherit/clone_on_demand.c
+FILE: shops/inherit/item_shop.c
 ==================================================
 
 #include <armoury.h>
+#include <money.h>
+#include <move_failures.h>
+#include <shops/item_shop.h>
 #define INFINITE_LEFT 10000
-#define MAX_PROP "max per reset"
-#define NUM_REMOVED "number removed this reset"
-#define REFERENCE "name we are reference by"
+#define TYPE "item shop type"
 #define DISPLAY "display in shop"
-nosave object _cont;
-nosave string _domain;
-void create(){
+#define SHOP_INHERIT "/std/shops/inherit/"
+inherit SHOP_INHERIT + "clone_on_demand";
+inherit SHOP_INHERIT + "open_shop";
+inherit SHOP_INHERIT + "shop_event";
+private nosave int _no_steal;
+private nosave int _steal_difficulty;
+private nosave string _shoplift_handler;
+private nosave function _list_func;
+private nosave function _browse_func;
+private nosave function _buy_func;
+private nosave function _sort_func;
+void setup_safe();
+void do_banking();
+int do_word_buy(string str);
+int do_word_browse(string str);
+int do_buy( object *things );
+int do_browse( object *things );
+void remove_property(string name);
+mixed query_property(string name);
+void set_max_float( int );
+int query_max_float();
+private nosave object _safe;
+private nosave int _hidden_safe;
+private nosave int _max_float;
+void create() {
+  shop_event::create();
+  clone_on_demand::create();
+  this_object()->add_help_file("item_shop");
+  setup_safe();
+  set_max_float( 20000 + random( 50000 ) );
 }
-object query_cont(){  return _cont;  }
-void check_cont() {
-  if (!_cont) {
-     _cont = clone_object("/std/container");
-     _cont->set_name( "clone_on_demand-store" );
+object query_safe() {
+  return _safe;
+}
+void setup_safe() {
+  if( !_safe ) {
+    _safe = clone_object( ITEM_SHOP_ITEMS + "item_shop_safe" );
+    _safe->set_difficulty( 2 + random( 7 ) );
+    _safe->set_ownership( "shop" );
+    if ( this_object()->query_hidden_safe( _safe ) ) {
+        this_object()->add_hidden_object( _safe );
+    } else {
+        _safe->move( this_object() );
+    }
   }
+}
+void set_safe(object safe) {
+    _safe = safe;
+    if ( _safe ) {
+        _safe->set_ownership( "shop" );
+        if ( this_object()->query_hidden_safe( _safe ) ) {
+            this_object()->add_hidden_object( _safe );
+        } else {
+            _safe->move( this_object() );
+        }
+    }
 }
 void reset() {
-  object ob;
-  check_cont();
-  foreach( ob in all_inventory(_cont) ){
-    ob->remove_property(NUM_REMOVED);
+  ::reset();
+  if(!random(3)) {
+    remove_property("inventory_loss");
   }
+  do_banking();
 }
-void set_object_domain(string domain) {
-   _domain = domain;
+mixed *switch_extra_properties(){
+  return ({ TYPE, DISPLAY });
 }
-string query_object_domain() {
-   return _domain;
+int query_shop() {
+   return 1;
 }
-varargs int add_object( string name, int max_per_reset, string display_as ) {
-  object ob;
-  if(!_cont) {
-     _cont = clone_object("/std/container");
-     _cont->set_name( "clone_on_demand-store" );
-  }
-  if (!(ob = this_object()->create_object(name))) {
-    if(!ob = clone_object(name)) {
-      ob = ARMOURY->request_item(name, 100, _domain);
-    }
-  }
-  if(ob) {
-    if (ob->query_decays()) {
-      ob->set_decay_speed(0);
-    }
-    ob->move(_cont);
-    if (display_as) {
-         ob->add_property( DISPLAY, display_as);
-    }
-    ob->add_property( REFERENCE, name);
-    ob->add_property( MAX_PROP, max_per_reset );
-    return 1;
-  }
-  return 0;
+object *query_shop_lift_items(string str, object player) {
+   return filter(match_objects_for_existence(str, ({ query_cont() })),
+     (: query_num_items_left($1) > 0 :));
 }
-int query_num_items_left(object ob) {
-   int max;
-   int num;
-   max = ob->query_property( MAX_PROP );
-   num = ob->query_property( NUM_REMOVED );
-   if( max ){
-     return max - num;
+object shoplift_success(object ob) {
+   object real_ob;
+   real_ob = create_real_object(ob);
+   return real_ob;
+}
+string query_shoplift_response_handler() { return _shoplift_handler; }
+void set_shoplift_response_handler( string word ) { _shoplift_handler = word; }
+void set_open_func(function func) {
+   ::set_open_function(func);
+}
+void set_open_condition(function func) {
+   ::set_open_function(func);
+}
+void set_buy_function(function func) {
+  _buy_func = func;
+}
+function query_buy_function() {
+   return _buy_func;
+}
+void set_browse_function(function func) {
+  _browse_func = func;
+}
+function query_browse_function() {
+   return _browse_func;
+}
+void set_list_function(function func) {
+  _list_func = func;
+}
+function query_list_function() {
+   return _list_func;
+}
+void set_sort_function(function func) {
+   _sort_func = func;
+}
+function query_sort_function() {
+   return _sort_func;
+}
+void set_no_steal(int i) { _no_steal = i; }
+int query_no_steal() { return _no_steal; }
+void set_steal_difficulty(int i) { _steal_difficulty = i; }
+int query_steal_difficulty(int i) { return _steal_difficulty; }
+void init() {
+   if (query_cont()) {
+      add_command( "list", "[all]" );
+      add_command( "browse", "<indirect:object:"+file_name(query_cont())+">" );
+      add_command( "browse", "<word>", (: do_word_browse($4[0]) :) );
+      add_command( "buy", "<indirect:object:"+file_name(query_cont())+">" );
+      add_command( "buy", "<word>", (: do_word_buy($4[0]) :) );
    }
-   return INFINITE_LEFT;
 }
-int query_number_left(string name) {
-   object * things;
-   things = filter( all_inventory(_cont),
-     (: $1->query_short() == $(name) :) );
-   if( !sizeof(things) ) {
+private object find_object_from_number(int number) {
+   object *things;
+   things = all_inventory( query_cont() );
+   if ( number >= sizeof( things ) ) {
+      add_failed_mess( "There is no item with that label.\n" );
+      return 0;
+   }
+   if (_sort_func) {
+      things = sort_array(things, _sort_func);
+   }
+   return things[number];
+}
+private string letter_name(int letter,
+                           object* things) {
+   string bing;
+   if (sizeof(things) > 26) {
+      bing = "AA";
+      bing[0] = 'A' + (letter / 26);
+      bing[1] = 'A' + (letter % 26);
+      return bing;
+   }
+   bing = "A";
+   bing[0] = 'A' + letter;
+   return bing;
+}
+private string start_letter() {
+   object *things;
+   things = all_inventory( query_cont() );
+   return letter_name(0, things);
+}
+private string end_letter() {
+   object *things;
+   things = all_inventory( query_cont() );
+   return letter_name(sizeof(things) - 1, things);
+}
+private int query_number_from_string(string name) {
+   object *things;
+   int pos;
+   things = all_inventory( query_cont() );
+   if (sizeof(things) > 26) {
+      if (strlen(name) != 2) {
+         return -1;
+      }
+      name = lower_case(name);
+      if (name[0] < 'a' || name[0] > 'z') {
+         return -1;
+      }
+      if (name[1] < 'a' || name[1] > 'z') {
+         return -1;
+      }
+      pos = (name[0] - 'a') * 26 + name[1] - 'a';
+      if (pos >= sizeof(things)) {
+         return -1;
+      }
+      return pos;
+   }
+   if (strlen(name) != 1) {
       return -1;
    }
-   return query_num_items_left( things[0] );
+   name = lower_case(name);
+   if (name[0] < 'a' || name[0] > 'z') {
+      return -1;
+   }
+   pos = name[0] - 'a';
+   if (pos >= sizeof(things)) {
+      return -1;
+   }
+   return pos;
 }
-int * query_items_left( string *names ) {
-   if( !names )
+int query_cost( object thing ) {
+   int cost;
+   string place;
+   if (!thing) {
+      return 0;
+   }
+   if ( environment( thing ) == query_cont() ) {
+      cost = (int)thing->query_property( "cost here" );
+      if ( cost ) {
+         return cost;
+      }
+   }
+   cost = (int)thing->query_value_at( this_object() );
+   place = query_property( "place" );
+   if ( !place ) {
+      return cost;
+   }
+   cost = (int)MONEY_HAND->query_total_value(
+         (mixed *)MONEY_HAND->create_money_array( cost, place ), place );
+   if ( environment( thing ) == query_cont() ) {
+      thing->add_property( "cost here", cost );
+   }
+   return cost;
+}
+int do_list( string str ) {
+   int i;
+   int left;
+   string list;
+   string place;
+   string display;
+   object thing;
+   object *listed;
+   object *things;
+   if (!is_open(this_player(), 0)) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_CLOSE, this_player())) {
+         add_failed_mess("The shop is not open.\n");
+      }
+      return 0;
+   }
+   listed = ({ });
+   list = "";
+   place = query_property( "place" );
+   if ( !place || ( place == "" ) )  {
+      place = "default";
+   }
+   if ( !query_cont() ) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_NOTHING, this_player())) {
+         add_failed_mess( "There is nothing to buy here.\n" );
+      }
+      return 0;
+   }
+   things = all_inventory( query_cont() );
+   if (_sort_func) {
+      things = sort_array(things, _sort_func);
+   }
+   foreach ( thing in things ) {
+      left = query_num_items_left(thing);
+      if (!left) {
+         i++;
+         continue;
+      }
+      display = (string)thing->query_property( DISPLAY );
+      if ( !stringp( display )  && thing->short()) {
+         display = (string)thing->a_short();
+      }
+      if (display) {
+         list += "$I$6=   "+ letter_name(i, things) +": "+ display +" for "+
+               (string)MONEY_HAND->money_value_string(
+               (int)this_object()->query_cost( thing ), place );
+         if ( left == INFINITE_LEFT ) {
+            list += " (plenty left).$I$0=\n";
+         } else {
+            list += " (" + query_num( left, 0 ) +" left).\n";
+         }
+         listed += ({ thing });
+      }
+      i++;
+   }
+   if ( list == "" ) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_NOTHING, this_player())) {
+         add_failed_mess( "There is nothing to buy here.\n" );
+      }
+      return 0;
+   }
+   if (!broadcast_shop_event(ITEM_SHOP_EVENT_LIST, this_player(), list)) {
+      list = "/global/events"->convert_message(list);
+      write("$P$item list$P$" +
+         "The following items are for sale:\n" + list);
+      add_succeeded_mess(({ "", "$N list$s the inventory.\n" }), ({ }));
+   }
+   if (_list_func) {
+      evaluate(_list_func, this_player(), listed);
+   }
+   return 1;
+}
+int do_word_buy(string str) {
+   object thing;
+   int i;
+   if (!is_open(this_player(), 0)) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_CLOSE, this_player())) {
+         add_failed_mess("The shop is not open.\n");
+      }
+      return 0;
+   }
+   if ( strlen( str ) <= 2 ) {
+      i = query_number_from_string( str );
+      if ( i == -1) {
+         if (!broadcast_shop_event(ITEM_SHOP_EVENT_BAD_LABEL, this_player(), str)) {
+            add_failed_mess( "The item label must be from " +
+                             start_letter() + " to " + end_letter() + ".\n" );
+         }
+         return 0;
+      }
+      thing = find_object_from_number(i);
+      if ( !thing) {
+         return 0;
+      }
+      return do_buy( ({ thing }) );
+   }
+   return 0;
+}
+int do_buy( object *things ) {
+   int i, cost, value, ret, money_in_safe;
+   string place;
+   object thing, money, *sold, ob, *obs;
+   mixed *money_arr, temp;
+   if (!is_open(this_player(), 0)) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_CLOSE, this_player())) {
+         add_failed_mess("The shop is not open.\n");
+      }
+      return 0;
+   }
+   sold = ({ });
+   for (i = 0; i < sizeof(things); i++) {
+      if (query_num_items_left(things[i]) <= 0) {
+         if (!broadcast_shop_event(ITEM_SHOP_EVENT_SOLD_OUT, this_player(), things[i..i])) {
+            add_failed_mess( "The shop is sold out of "+
+                  (string)things[ i ]->query_plural() +".\n" );
+         }
+         return 0;
+      }
+      place = query_property( "place" );
+      if ( !place || ( place == "" ) ) {
+         place = "default";
+      }
+      value = (int)this_player()->query_value_in( place );
+      cost = (int)this_object()->query_cost( things[i] );
+      if ( cost > value ) {
+         if (!broadcast_shop_event(ITEM_SHOP_EVENT_TOO_EXPENSIVE, this_player(), things[i], cost, value)) {
+            add_failed_mess("You cannot afford to buy $I.\n", ({ things[i] }));
+         }
+      } else {
+        thing = create_real_object(things[i]);
+        if (!thing){
+          add_failed_mess( "Something is hosed.  Please file a bug "
+                           "report.  Thank you.\n" );
+          return 0;
+        }
+         ret = 1;
+         this_player()->pay_money( (mixed *)MONEY_HAND->create_money_array(
+               cost, place ), place );
+         if( _safe ) {
+           money_arr = MONEY_HAND->create_money_array( cost, place );
+           money = clone_object( "/obj/money" );
+           money->set_money_array( money_arr );
+           money->move( _safe );
+           _safe->set_closed();
+           _safe->set_locked();
+           obs = all_inventory( _safe );
+           money_in_safe = 0;
+           foreach( ob in obs ) {
+             if( ob->query_property( "money" ) ) {
+               temp = ob->query_money_array();
+               money_in_safe += MONEY_HAND->query_total_value( temp, place );
+             }
+           }
+           if( money_in_safe >= query_max_float() )
+            do_banking();
+         }
+         if (!broadcast_shop_event(ITEM_SHOP_EVENT_BUY_THING, this_player(), thing)) {
+            add_succeeded_mess("$N $V $I.\n", ({ thing }) );
+         }
+         this_object()->something_bought( thing, this_player(), cost );
+         if ( query_property( "package items" ) ) {
+            thing = (object)this_object()->package_item( thing );
+         }
+         if ( (int)thing->move( this_player() ) != MOVE_OK ) {
+            thing->move( this_object() );
+            write( "You cannot pick "+ (string)thing->a_short() +
+                  " up.  It's left on the floor for you.\n" );
+         }
+         sold += ({ thing });
+      }
+   }
+   if (_buy_func) {
+      evaluate(_buy_func, this_player(), sold);
+   }
+   return ret;
+}
+int do_word_browse( string words ) {
+   int i;
+   object thing;
+   if (!is_open(this_player(), 0)) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_CLOSE, this_player())) {
+         add_failed_mess("The shop is not open.\n");
+      }
+      return 0;
+   }
+   if ( strlen( words ) <= 2 ) {
+      i = query_number_from_string( words );
+      if ( i == -1) {
+         if (!broadcast_shop_event(ITEM_SHOP_EVENT_BAD_LABEL, this_player(), words)) {
+            add_failed_mess( "The item label must be from " +
+                          start_letter() + " to " + end_letter() + ".\n" );
+         }
+         return 0;
+      }
+      thing = find_object_from_number(i);
+      if ( !thing) {
+         return 0;
+      }
+      return do_browse( ({ thing }) );
+   }
+   return 0;
+}
+int do_browse( object *things ) {
+   int i;
+   int num;
+   string place;
+   string mess;
+   if (!is_open(this_player(), 0)) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_CLOSE, this_player())) {
+         add_failed_mess("The shop is not open.\n");
+      }
+      return 0;
+   }
+   place = query_property( "place" );
+   if ( !place || ( place == "" ) ) {
+      place = "default";
+   }
+   mess = "";
+   for (i = 0; i < sizeof(things); i++) {
+      if (query_num_items_left(things[i])) {
+         mess += things[i]->the_short() +
+                 " is priced at " + MONEY_HAND->money_value_string(
+                 this_object()->query_cost( things[ i ] ), place ) +
+                 " and looks like:\n" + things[ i ]->long();
+         num++;
+      }
+   }
+   if (!num) {
+      if (!broadcast_shop_event(ITEM_SHOP_EVENT_SOLD_OUT, this_player(), things)) {
+         add_failed_mess("The shop is sold out of $I.\n", things);
+      }
+      return 0;
+   }
+   if (!broadcast_shop_event(ITEM_SHOP_EVENT_BROWSE, this_player(), things, mess)) {
+      write("$P$Browse things$P$" + mess);
+      add_succeeded_mess(({ "", "$N $V $I.\n", }), things);
+   }
+   if (_browse_func) {
+      evaluate(_browse_func, this_player(), things);
+   }
+   return 1;
+}
+void dest_me() {
+  ::dest_me();
+}
+void event_theft( object command_ob, object thief, object victim,
+  object *stolen ) {
+  int stolen_from, difficulty;
+  if( _safe ) {
+    if( victim == _safe ) {
+      stolen_from = _safe->query_property( "stolen from" );
+      if( !stolen_from )
+        _safe->add_property( "stolen from", 1 );
+      else
+        _safe->add_property( "stolen from", stolen_from + 1 );
+      difficulty = _safe->query_difficulty();
+      if( difficulty + 1 <= 10 )
+        _safe->set_difficulty( difficulty + 2 );
+      else
+        if( difficulty <= 10 )
+          _safe->set_difficulty( difficulty + 1 );
+    }
+  }
+}
+void event_shoplift(object command_ob, object thief, object victim) {
+   if (stringp(_shoplift_handler)) {
+     if(_shoplift_handler != "none" ) {
+       _shoplift_handler->handle_shoplift(thief, victim);
+     }
+   } else {
+     "/obj/handlers/theft_handler"->handle_shoplift(thief, victim);
+   }
+}
+void do_banking() {
+  object ob, *obs;
+  debug_printf( "Doing banking.\n" );
+  if( _safe ) {
+    obs = all_inventory( _safe );
+     foreach( ob in obs ) {
+       if( ob->query_property( "money" ) ) {
+         ob->move( "/room/rubbish" );
+       }
+     }
+   }
+}
+void set_max_float( int f ) {
+  _max_float = f;
+}
+int query_max_float() {
+  return _max_float;
+}
+
+==================================================
+FILE: shops/inherit/newspaper_archive.c
+==================================================
+
+inherit "/std/shops/inherit/shop_event";
+#include <room/newspaper.h>
+#include <shops/newspaper_archive.h>
+#include <money.h>
+#include <move_failures.h>
+private nosave string _area;
+private nosave string _paper;
+mixed query_property(string name);
+void create() {
+   shop_event::create();
+}
+void set_paper_area(string area) {
+   _area = area;
+}
+string query_paper_area() {
+   return _area;
+}
+void set_paper(string paper) {
+   _paper = paper;
+}
+string query_paper() {
+   return _paper;
+}
+int do_list_papers() {
+   string paper;
+   string* papers;
+   string str;
+   int cost;
+   string place;
+   place = query_property("place");
+   if (_paper) {
+      papers = ({ _paper });
+   } else {
+      papers = NEWSPAPER_HANDLER->query_papers_in_area(_area);
+   }
+   if (!sizeof(papers)) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_NO_PAPERS, this_player())) {
+         add_failed_mess("There do appear to be any newspapers to get "
+                         "back issues of.\n");
+      }
+      return 0;
+   }
+   str = "Back issues of the following papers:\n";
+   foreach (paper in papers) {
+      cost = NEWSPAPER_HANDLER->query_paper_cost(paper) * 10;
+      if (NEWSPAPER_HANDLER->query_last_edition_num(paper)) {
+         if (NEWSPAPER_HANDLER->query_last_edition_num(paper) > 1) {
+            str += "$I$5=" + paper + " issues, 1 to " +
+                   NEWSPAPER_HANDLER->query_last_edition_num(paper);
+         } else {
+            str += "$I$5=" + paper + " issue, 1";
+         }
+         str += " for " + MONEY_HAND->money_value_string(cost, place);
+      } else {
+         str += "$I$5=" + paper + " has no back issues.\n";
+      }
+      str += ".\n";
+   }
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_LIST, this_player(),
+                             str, papers)) {
+      write("$P$Archives$P$" + str);
+   }
+   return 1;
+}
+int do_buy(string paper, int edition) {
+   string found_paper;
+   int pos;
+   object ob;
+   string place;
+   string* papers;
+   int cost;
+   int* editions;
+   place = query_property("place");
+   if (_paper) {
+      papers = ({ _paper });
+   } else {
+      papers = NEWSPAPER_HANDLER->query_papers_in_area(_area);
+   }
+   if (strlen(paper) == 1) {
+      pos = lower_case(paper)[0] - 'a';
+      if (pos < 0 || pos >= sizeof(papers)) {
+         found_paper = papers[pos];
+      }
+   } else {
+      for (pos = 0; pos < sizeof(papers); pos++) {
+         if (lower_case(paper) == lower_case(papers[pos])) {
+            found_paper = papers[pos];
+         }
+      }
+   }
+   if (!found_paper) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_INVALID_PAPER,
+                                this_player(), paper)) {
+         add_failed_mess("There is no paper called " + paper + ".\n");
+      }
+      return 0;
+   }
+   if (edition < 0 ||
+       edition > NEWSPAPER_HANDLER->query_last_edition_num(found_paper)) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_INVALID_EDITION,
+                                this_player(), paper, edition)) {
+         add_failed_mess("There is no edition " + edition + " of the "
+                         "paper " + found_paper + ".\n");
+      }
+      return 0;
+   }
+   cost = NEWSPAPER_HANDLER->query_paper_cost(found_paper) * 10;
+   if (this_player()->query_value_in(place) < cost) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_TOO_POOR,
+                                this_player(), paper, edition, cost)) {
+         add_failed_mess("You need " +
+                         MONEY_HAND->money_value_string(cost, place) +
+                         " to buy a back issue of " + found_paper + ".\n");
+      }
+      return 0;
+   }
+   ob = clone_object("/obj/misc/newspaper");
+   ob->set_paper(found_paper);
+   ob->set_edition(edition);
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_MOVE_PAPER,
+                             this_player(), paper, edition, cost, ob)) {
+      if (ob->move(this_player()) != MOVE_OK) {
+         ob->move(this_object());
+         write("Unable to move the paper into your inventory, putting it "
+               "on the floor.\n");
+      }
+   }
+   this_player()->pay_money(MONEY_HAND->create_money_array(cost, place), place);
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_BOUGHT,
+                             this_player(), paper, edition, cost, ob)) {
+      add_succeeded_mess("$N buy$s edition " + edition + " of " +
+                         found_paper + " for " +
+                         MONEY_HAND->money_value_string(cost, place) + ".\n");
+   }
+   editions = this_player()->query_property("Paper " + found_paper);
+   if (!editions) {
+      editions = ({ });
+   }
+   if (member_array(edition, editions) == -1) {
+      editions += ({ edition });
+      this_player()->add_property("Paper " + found_paper, editions);
+      NEWSPAPER_HANDLER->add_edition_paper_sold(_paper, edition,
+                        cost);
+   }
+   return 1;
+}
+void init() {
+   add_command("list", "[papers]", (: do_list_papers() :));
+   add_command("buy", "<number'edition number'> of <string'paper name'>",
+                (: do_buy($4[1], $4[0]) :));
+}
+
+==================================================
+FILE: shops/inherit/object_expressions.c
+==================================================
+
+#include <expressions.h>
+#include <player_handler.h>
+#define CHARGE_MULT 10
+string query_owner();
+string* query_allowed();
+void add_allowed_function(string name, int type, int* args, function value);
+void add_allowed_variable(string name, int type, function value);
+private int function_object_base_value(object* obs) {
+   int value;
+   object ob;
+   int tmp;
+   value = 1000000000;
+   foreach (ob in obs) {
+      tmp = ob->query_base_value();
+      if (tmp < value) {
+         value = tmp;
+      }
+   }
+   return value;
+}
+private int function_object_value(object* obs) {
+   int value;
+   object ob;
+   int tmp;
+   value = 1000000000;
+   foreach (ob in obs) {
+      tmp = ob->query_value();
+      if (tmp < value) {
+         value = tmp;
+      }
+   }
+   return value;
+}
+private int function_object_condition(object* obs) {
+   int cond;
+   object ob;
+   int tmp;
+   int max;
+   cond = 100;
+   foreach (ob in obs) {
+      tmp = ob->query_cond();
+      max = ob->query_max_cond();
+      if (max) {
+         tmp = tmp * 100 / max;
+         if (tmp < cond) {
+            cond = tmp;
+         }
+      }
+   }
+   return cond;
+}
+private int function_object_enchant(object*obs) {
+   int enchant;
+   object ob;
+   int tmp;
+   int max;
+   string bing;
+   if (!sizeof(obs)) {
+      return 0;
+   }
+   if (!PLAYER_HANDLER->test_guild(query_owner())->query_see_octarine()) {
+      foreach (bing in query_allowed()) {
+         if (PLAYER_HANDLER->test_guild(bing)->query_see_octarine()) {
+            tmp = 1;
+         }
+      }
+      if (!tmp) {
+         return 0;
+      }
+   }
+   enchant = 100;
+   foreach (ob in obs) {
+      tmp = ob->query_enchant();
+      max = ob->query_max_enchant();
+      tmp = tmp * 100 / max;
+      if (tmp < enchant) {
+         enchant = tmp;
+      }
+   }
+   return enchant;
+}
+private string function_object_type(object* obs) {
+   string type;
+   string old_type;
+   object ob;
+   if (!sizeof(obs)) {
+      return 0;
+   }
+   foreach (ob in obs) {
+      if (ob->query_weapon()) {
+         type = "weapon";
+      } else if (ob->query_armour()) {
+         type = "armour";
+      } else if (ob->query_clothing()) {
+         type = "clothing";
+      } else {
+         type = "misc";
+      }
+      if (old_type && old_type != type) {
+         type = "mixed";
+      }
+      old_type = type;
+   }
+   return type;
+}
+private object* function_object_stolen(object* obs) {
+   obs = filter(obs, (: $1->query_property("stolen") :));
+   return obs;
+}
+private object* function_object_warded(object* obs) {
+   string classification;
+   classification = "/std/effects/object/ward"->query_classification();
+   obs = filter(obs, (: sizeof($1->effects_matching($2)) :), classification);
+   return obs;
+}
+private object* function_object_contains_spell(object* obs, string spell_name) {
+   string bing;
+   int tmp;
+   if (!sizeof(obs)) {
+      return 0;
+   }
+   if (!PLAYER_HANDLER->test_guild(query_owner())->query_see_spells()) {
+      foreach (bing in query_allowed()) {
+         if (PLAYER_HANDLER->test_guild(bing)->query_see_spells()) {
+            tmp = 1;
+         }
+      }
+      if (!tmp) {
+         return 0;
+      }
+   }
+   obs = filter(obs, (: $1->query_magic_scroll() &&
+           ($2 == "any" || lower_case($1->query_spell_name()) == lower_case($2)) :), spell_name);
+   return obs;
+}
+private object* function_object_contains_imbue(object* obs, string ritual_name) {
+   if (!sizeof(obs)) {
       return ({ });
-   return map( names, (: query_number_left($1) :) );
-}
-private void switch_properties(object newone, object original) {
-  mixed *extra, *props, prop;
-  props = ({ MAX_PROP, NUM_REMOVED, REFERENCE });
-  extra = this_object()->switch_extra_properties();
-  if( sizeof(extra) )
-    props += extra;
-  foreach( prop in props ){
-    newone->add_property( prop, original->query_property( prop ) );
-    original->remove_property( prop );
-  }
-  if (newone->query_decay_speed()) {
-     original->set_decay_speed( newone->query_decay_speed() );
-     newone->set_decay_speed(0);
-  }
-}
-protected object create_real_object(object thing) {
-   string name;
-   object new_thing, *continv, temp_cont;
-   int j, max, num;
-   name = thing->query_property( REFERENCE );
-   if(!name)
-     return 0;
-   new_thing = this_object()->create_object( name );
-   if ( !new_thing )  {
-      new_thing = clone_object(name);
    }
-   if ( !new_thing )  {
-      new_thing = ARMOURY->request_item( name, 80 + random( 20 ), _domain );
+   obs = filter(obs, (: $1->query_faith_imbue() &&
+      ($2 == "any" ||
+       lower_case($1->query_ritual_name()) == lower_case($2)) :), ritual_name );
+   return obs;
+}
+private int function_object_percentage_liquid(object* obs, string liquid_name) {
+   object ob;
+   object* liquids;
+   object liq;
+   int volume;
+   int found;
+   int tmp;
+   if (!sizeof(obs)) {
+      return 0;
    }
-  if( new_thing ){
-    switch_properties( new_thing, thing );
-    continv = all_inventory(_cont);
-    j = member_array( thing, continv );
-    temp_cont = clone_object("/std/container");
-    thing->move("/room/void");
-    continv[j] = new_thing;
-    new_thing->move(_cont);
-      for (j=sizeof(continv)-1;j>=0;j--) {
-      continv[j]->move(temp_cont);
-      continv[j]->move(_cont);
+   volume = 100;
+   foreach (ob in obs) {
+      liquids = filter(all_inventory(ob), (: $1->query_liquid() :));
+      if (sizeof(liquids))  {
+         foreach (liq in liquids) {
+            if (liq->query_short() &&
+                lower_case(liq->query_short()) == lower_case(liquid_name)) {
+               tmp = liq->query_weight() * 100 / ob->query_max_weight();
+               if (tmp < volume) {
+                  volume = tmp;
+                  found = 1;
+               }
+            }
+         }
+      }
+      else if (ob->query_liquid_short() &&
+               lower_case(ob->query_liquid_short()) ==
+               lower_case(liquid_name))
+      {
+         tmp = ob->query_water_volume() * 100 / ob->query_max_volume();
+         if (tmp < volume)  {
+            volume = tmp;
+            found = 1;
+         }
+      }
+   }
+   if (found) {
+      return volume;
+   }
+   return 0;
+}
+private int function_object_charges(object* obs) {
+   int total = 0;
+   int possible = 0;
+   int charges;
+   mixed info;
+   object ob;
+   foreach (ob in obs)  {
+      charges = ob->query_charges();
+      if (charges)  {
+         info = ob->query_static_auto_load();
+         if (pointerp(info)  &&  sizeof(info) == 2  &&  info[0] == charges)  {
+            possible += info[1] * CHARGE_MULT;
+            total += charges;
+         }
+      }
+   }
+   if (possible)
+      return 100 * total / possible;
+   else
+      return 0;
+}
+private object* function_object_matching(object* obs, string match) {
+   object ob;
+   string *bits;
+   string bit;
+   object* ret;
+   bits = explode(match, ",");
+   ret = ({ });
+   foreach (ob in obs)  {
+      foreach(bit in bits)   {
+         if (ob && ob->full_id(bit)) {
+            ret += ({ ob });
+         }
+      }
+   }
+   return ret;
+}
+private object* function_object_short(object* obs, string match) {
+   string* bits;
+   object* result;
+   bits = explode(match, ",");
+   result = filter(obs, (: member_array(strip_colours($1->query_short()), $2) != -1 :),
+                   bits);
+   return result;
+}
+private object* function_contents(object ob) {
+   if (!ob) {
+      return ({ });
+   }
+   return all_inventory(ob);
+}
+void create() {
+   if (!function_exists("add_allowed_function", this_object())) {
+      return ;
+   }
+   add_allowed_function("objectenchant", EXPRESSION_TYPE_INTEGER,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_enchant :) );
+   add_allowed_function("objectvalue", EXPRESSION_TYPE_MONEY,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_value :) );
+   add_allowed_function("objectbasevalue", EXPRESSION_TYPE_MONEY,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_base_value :) );
+   add_allowed_function("objectcondition", EXPRESSION_TYPE_INTEGER,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_condition :) );
+   add_allowed_function("objecttype", EXPRESSION_TYPE_STRING,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_type :) );
+   add_allowed_function("objectwarded", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_warded :) );
+   add_allowed_function("objectstolen", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_stolen :) );
+   add_allowed_function("charges", EXPRESSION_TYPE_INTEGER,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET }),
+                        (: function_object_charges :) );
+   add_allowed_function("containsspell", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET,
+                           EXPRESSION_TYPE_STRING }),
+                        (: function_object_contains_spell :) );
+   add_allowed_function("containsimbue", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET,
+                           EXPRESSION_TYPE_STRING }),
+                        (: function_object_contains_imbue :) );
+   add_allowed_function("percentageliquid", EXPRESSION_TYPE_INTEGER,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET,
+                           EXPRESSION_TYPE_STRING }),
+                        (: function_object_percentage_liquid :) );
+   add_allowed_function("objectmatch", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET,
+                           EXPRESSION_TYPE_STRING }),
+                        (: function_object_matching :) );
+   add_allowed_function("objectshort", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT +
+                           EXPRESSION_TYPE_ARRAY_OFFSET,
+                           EXPRESSION_TYPE_STRING }),
+                        (: function_object_short :) );
+   add_allowed_function("contents", EXPRESSION_TYPE_OBJECT +
+                                    EXPRESSION_TYPE_ARRAY_OFFSET,
+                        ({ EXPRESSION_TYPE_OBJECT }),
+                        (: function_contents :) );
+}
+
+==================================================
+FILE: shops/inherit/open_shop.c
+==================================================
+
+private nosave function _open_func;
+void set_open_function(function func) {
+   _open_func = func;
+}
+function query_open_function() {
+   return _open_func;
+}
+int is_open(object player, int type) {
+   if (_open_func) {
+      return evaluate(_open_func, player, type);
+   }
+   return 1;
+}
+int test_open() {
+    return is_open( this_player(), 0 );
+}
+
+==================================================
+FILE: shops/inherit/pawn_shop.c
+==================================================
+
+#include <money.h>
+#include <move_failures.h>
+#define RECEIPT "/obj/misc/pawn_receipt"
+#define TO this_object()
+#define TP this_player()
+inherit "/std/shop" ;
+private int    _pawn_ttl ;
+private mixed  _pawn_mess ;
+private int    _pawn_markup ;
+private string _shop_language;
+void set_language( string lang ) {
+    _shop_language = lang;
+}
+string query_language() {
+    return _shop_language;
+}
+void set_pawn_markup( int percent ) {
+    _pawn_markup = percent ;
+}
+int query_pawn_markup() {
+    return _pawn_markup ;
+}
+void set_pawn_ttl( int ttl ) {
+    _pawn_ttl = ttl ;
+}
+int query_pawn_ttl() {
+    return _pawn_ttl ;
+}
+void set_pawn_mess( mixed mess ) {
+    _pawn_mess = mess ;
+}
+string query_pawn_mess() {
+    return _pawn_mess ;
+}
+void create() {
+    do_setup++ ;
+    ::create() ;
+    do_setup-- ;
+    add_help_file( "pawn_shop" ) ;
+    remove_help_file( "shop" );
+    _pawn_mess = ({
+        "You pawn $ob$ for $money$.\n",
+        "$client$ pawns $ob$.\n"
+    }) ;
+    _pawn_markup = 20 ;
+    _pawn_ttl = 7 * 24 * 60 * 60 ;
+    _shop_language = "morporkian" ;
+    set_min_amount( 400 ) ;
+    add_property( "no steal", 1 ) ;
+    if ( ! do_setup ) {
+        TO->setup() ;
+        TO->reset() ;
     }
-    temp_cont->dest_me();
-    max = new_thing->query_property( MAX_PROP );
-    num = new_thing->query_property( NUM_REMOVED );
-    if ( max ) {
-      new_thing->add_property( NUM_REMOVED, num + 1 );
+}
+void init() {
+    ::init() ;
+    add_command( "pawn", "<indirect:object:me'items'>" ) ;
+}
+int do_pawn( object *in_obs ) {
+    int value, total ;
+    mixed *m_array ;
+    object ob, money, receipt ;
+    object *cheap, *cre, *expensive, *kept, *nobuy, *stolen, *worn ;
+    string place, fn ;
+    string *text = ({ }) ;
+    if ( ! is_open( TP, 0 ) ) {
+        return 0 ;
     }
-  }
-  return thing;
+    in_obs = uniq_array( in_obs ) ;
+    cre = filter( in_obs, (: creator_object($1) :) ) ;
+    if ( sizeof(cre) ) {
+        if ( ! TP->query_creator() ) {
+            tell_object( TP,
+                "Oh dear, you shouldn't have " + query_multiple_short( cre ) +
+                "!  "
+                + ( sizeof(cre) > 1 ? "They disappear" : "It disappears" ) +
+                " with a flash of octarine light.\n" ) ;
+            cre->move( "/room/rubbish" ) ;
+        } else {
+            tell_object( TP,
+                "You decide not to pawn " + query_multiple_short( cre ) +
+                ", as " + ( sizeof(cre) > 1 ? "they are creator-only items"
+                : "it is a creator-only item" ) + ".\n" ) ;
+        }
+        foreach( ob in cre ) {
+            if ( fn = ob->query_property( "virtual name" ) ) {
+                fn = ob->query_property( "virtual name" ) ;
+            } else {
+                fn = base_name( ob ) ;
+            }
+            text += ({ fn }) ;
+        }
+        log_file( "ILLEGAL_OBJECT", "%s: %s tried to pawn %s at %s.\n\n",
+            ctime(time()), TP->query_name(), query_multiple_short( text ),
+            file_name( TO ) ) ;
+        in_obs -= cre ;
+    }
+    kept = filter_array( in_obs, (: $1->query_keep() :) ) ;
+    if ( sizeof(kept) ) {
+        tell_object( TP,
+            "You decide not to pawn " + query_multiple_short( kept ) +
+            ", as you are keeping " + ( sizeof(kept) > 1 ? "them" : "it" )
+            + ".\n" ) ;
+        in_obs -= kept ;
+    }
+    worn = filter( in_obs, (: $1->query_holder() || $1->query_worn_by() :) ) ;
+    if ( sizeof(worn) ) {
+        tell_object( TP, "You decide not to pawn "
+            + query_multiple_short( worn ) + ", because you are wearing or "
+            "holding " + ( sizeof(worn) > 1 ? "them" : "it" ) + ".\n" ) ;
+        in_obs -= worn ;
+    }
+    stolen = filter( in_obs, (: $1->query_property( "stolen" ) :) ) ;
+    if ( sizeof(stolen) ) {
+        tell_object( TP,
+            "You cannot pawn " + query_multiple_short( stolen ) +
+            " because " + ( sizeof(stolen) > 1 ? "they're" : "it's" ) +
+            " stolen!\n" ) ;
+        in_obs -= stolen ;
+    }
+    nobuy = filter( in_obs, (: $1->do_not_sell() || TO->do_not_buy($1) :) ) ;
+    if ( sizeof( nobuy ) ) {
+        tell_object( TP,
+            "You cannot pawn " + query_multiple_short( nobuy ) + ".\n" ) ;
+        in_obs -= nobuy ;
+    }
+    cheap = filter( in_obs, (: $1->query_value() < TO->query_min_amount() :) ) ;
+    if ( sizeof(cheap) ) {
+        tell_object( TP,
+            "You cannot pawn " + query_multiple_short( cheap ) +
+            " as " + ( sizeof(cheap) > 1 ? "they are" : "it is" ) +
+            " not expensive enough.\n" ) ;
+        in_obs -= cheap ;
+    }
+    expensive = filter( in_obs,
+        (: $1->query_value() > TO->query_max_amount() :) ) ;
+    if ( sizeof(expensive) ) {
+        tell_object( TP,
+            "You cannot pawn " + query_multiple_short( expensive ) +
+            " as " + ( sizeof(expensive) > 1 ? "they are" : "it is" ) +
+            " too expensive.\n" ) ;
+        in_obs -= expensive ;
+    }
+    if ( ! sizeof( in_obs ) ) {
+        add_failed_mess( "You have nothing to pawn.\n" ) ;
+        return 0 ;
+    }
+    foreach( ob in in_obs ) {
+        value = scaled_value( ob->query_value() ) ;
+        value = ( value * 90 ) / 100;
+        total += value ;
+        receipt = clone_object( RECEIPT ) ;
+        if ( ! receipt ) {
+            add_failed_mess(
+                "Oh dear, something went very wrong (can't clone receipt object).  "
+                "Please bugrep this room.\n" ) ;
+            return 0 ;
+        }
+        receipt->setup_receipt( ob ) ;
+        receipt->set_shop_path( TO ) ;
+        receipt->set_item_value( value ) ;
+        receipt->set_expiry_time( time() + query_pawn_ttl() ) ;
+        receipt->setup_read_mess( _shop_language );
+        receipt->move( TP ) ;
+        ob->move( "/room/rubbish" ) ;
+    }
+    place = query_property( "place" ) ;
+    if ( ! place || ( place == "" ) ) {
+        place = "default" ;
+    }
+    m_array = MONEY_HAND->create_money_array(total, place);
+    money = clone_object(MONEY_OBJECT);
+    if ( ! money ) {
+        add_failed_mess(
+            "Oh dear, something went very wrong (can't clone money object).  "
+            "Please bugrep this room.\n" ) ;
+        return 0 ;
+    }
+    money->set_money_array(m_array);
+    if ( money->move( TP ) != MOVE_OK ) {
+        tell_object( TP,
+            "You're too heavily burdened to accept all that money, so the "
+            "shopkeeper puts it on the floor.\n" ) ;
+        money->move( TO ) ;
+    }
+    do_parse( _pawn_mess, in_obs, TP,
+        MONEY_HAND->money_string( m_array ), "" ) ;
+    return 1 ;
 }
-void dest_me(){
-  if( _cont )
-    _cont->dest_me();
+int do_sell( object *in_obs ) {
+    add_failed_mess(
+        "If you just want to sell items, you'll need to find a general "
+        "store.  Pawn shops are for pawning in.\n" ) ;
+    return 0 ;
 }
-varargs int add_armour( string name, int max_per_reset, string display_as ) {
-  return add_object(name, max_per_reset, display_as);
+
+==================================================
+FILE: shops/inherit/person_expressions.c
+==================================================
+
+#include <expressions.h>
+#include <player_handler.h>
+#include <clubs.h>
+#include <nomic_system.h>
+void add_allowed_function(string name, int type, int* args, function value);
+void add_allowed_variable(string name, int type, function value);
+private int variable_player_level(string seller) {
+   return PLAYER_HANDLER->test_level(seller);
 }
-varargs int add_weapon( string name, int max_per_reset, string display_as ) {
-  return add_object(name, max_per_reset, display_as);
+private string variable_player_guild(string seller) {
+   string guild;
+   guild = PLAYER_HANDLER->test_guild(seller);
+   if (guild) {
+      return guild->query_name();
+   }
+   return "";
+}
+private string variable_player_order(string seller) {
+   string guild;
+   guild = PLAYER_HANDLER->test_guild(seller);
+   if (guild) {
+      guild = guild->query_wizard_order();
+      if (guild) {
+         return replace_string(lower_case(guild), "_", " ");
+      }
+   }
+   return "";
+}
+private string variable_player_name(string seller) {
+   return lower_case(seller);
+}
+private string variable_player_deity(string seller) {
+   string deity;
+   deity = PLAYER_HANDLER->test_deity(seller);
+   if (deity) {
+      return deity;
+   }
+   return "";
+}
+private string variable_player_family(string seller) {
+   string family;
+   family = PLAYER_HANDLER->test_family(seller);
+   if (family) {
+      return family;
+   }
+   return "";
+}
+private int function_club_member(string club, string seller) {
+   return CLUB_HANDLER->is_member_of(club, seller);
+}
+private int function_citizen_of(string region, string seller) {
+   return NOMIC_HANDLER->is_citizen_of(region, seller);
+}
+void create() {
+   if (!function_exists("add_allowed_variable", this_object())) {
+      return ;
+   }
+   add_allowed_variable("level", EXPRESSION_TYPE_INTEGER,
+                        (: variable_player_level :) );
+   add_allowed_variable("guild", EXPRESSION_TYPE_STRING,
+                        (: variable_player_guild :) );
+   add_allowed_variable("deity", EXPRESSION_TYPE_STRING,
+                        (: variable_player_deity :) );
+   add_allowed_variable("family", EXPRESSION_TYPE_STRING,
+                        (: variable_player_family :) );
+   add_allowed_variable("order", EXPRESSION_TYPE_STRING,
+                        (: variable_player_order :) );
+   add_allowed_variable("playername", EXPRESSION_TYPE_STRING,
+                        (: variable_player_name :) );
+   add_allowed_function("clubmember", EXPRESSION_TYPE_BOOLEAN,
+                        ({ EXPRESSION_TYPE_STRING }),
+                        (: function_club_member :) );
+   add_allowed_function("citizenof", EXPRESSION_TYPE_BOOLEAN,
+                        ({ EXPRESSION_TYPE_STRING }),
+                        (: function_club_member :) );
 }

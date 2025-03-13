@@ -16,7 +16,7 @@ def count_chars(content):
     """Count characters excluding newlines."""
     return len(content.replace('\n', ''))
 
-def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=75000, token_limit=100000, separator="=" * 50):
+def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=80000, token_limit=120000, separator="=" * 50):
     """Merge files into output_file(s) in output_dir, splitting when approaching limits."""
     dir_path = Path(source_dir)
     if not dir_path.exists():
@@ -33,6 +33,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
     file_count = 0
     outfile = None
     files_in_current = []
+    first_file = True  # Track first file to ensure header
     
     for root, dirs, files in os.walk(source_dir):
         for filename in sorted(files):
@@ -53,7 +54,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                 
                 print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
                 
-                if current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit:
+                if not first_file and (current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit):
                     if outfile:
                         outfile.seek(0)
                         outfile.write(f"# Total Tokens: {current_token_count}\n"
@@ -74,7 +75,8 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                     outfile = open(output_file, 'w', encoding='utf-8')
                     print(f"Starting new file: {output_file}")
                     outfile.write("\n\n\n\n")  # Reserve space for header
-                    
+                    first_file = False  # Reset after first file starts
+                
                 outfile.write(full_entry)
                 current_token_count += tokens_in_file
                 current_char_count += chars_in_file
@@ -99,7 +101,7 @@ def main():
         print(f"Base directory {base_dir} does not exist!")
         return
     
-    # .c files from multiple directories
+    # Individual directories for .c files
     c_directories = {
         'cmds': 'cmds_merged.txt',
         'd': 'd_merged.txt',
@@ -117,7 +119,7 @@ def main():
     print("====================================================")
     print("Grok Limits:")
     print("- Maximum Context Window: 128,000 tokens")
-    print("- Safe Cutoff Used: 75,000 chars or 100,000 tokens per file")
+    print("- Safe Cutoff Used: 80,000 chars or 120,000 tokens per file")
     print("- No strict line limit, but monitored")
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
@@ -128,21 +130,21 @@ def main():
     for dir_name, output_file in c_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=75000, token_limit=100000)
+        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=80000, token_limit=120000)
     
     # Process .h files
     print("\nProcessing .h files:")
     for dir_name, output_file in h_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=75000, token_limit=100000)
+        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=80000, token_limit=120000)
     
     # Process .s files
     print("\nProcessing .s files:")
     for dir_name, output_file in s_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=75000, token_limit=100000)
+        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=80000, token_limit=120000)
     
     print("\nExtraction and merging complete! All files are in", output_dir)
 

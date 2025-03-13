@@ -1,2069 +1,1250 @@
-# Total Tokens: 19555
-# Total Files Merged: 23
-# Total Characters: 65257
+# Total Tokens: 13617
+# Total Files Merged: 3
+# Total Characters: 45397
 
-.c
+o.c
 ==================================================
 
-#include <skills.h>
-#include <tune.h>
-#include <command.h>
-#include <cmds/teach.h>
-#include <playtesters.h>
-#include <player.h>
-inherit "/cmds/base";
-#define DEBUGGER "ceres"
-#undef ENFORCE_MAX_TEACH_LEVEL
-int command_teach( object *obs, string comm, object teacher );
-int spell_teach(object *obs, string spell, object teacher);
-int teach_skill(object *obs, string str, object teacher);
-int cmd_int(string str, object *obs, object teacher);
-int check_ignoring(object ignorer, object ignoree);
-int query_auto_teaching(object teacher, object learner) {
-   return teacher->query_property(TEACH_COMMAND_AUTO_PROPERTY);
-}
-int cmd(string str, object *obs, object player) {
-  int ret;
-  object ob;
-  object* ear;
-  if (this_player()->query_property(PASSED_OUT_PROP)) {
-     add_failed_mess("You cannot teach while passed out.\n");
-     return 0;
-  }
-  if (this_player()->query_fighting()) {
-    add_failed_mess("You cannot teach or learn anything while you are "
-                    "fighting!\n");
-    return 0;
-  }
-  if (this_player()->check_earmuffs("teach")) {
-    add_failed_mess("You have teaching earmuffed.\n");
-    return 0;
-  }
-  if (player) {
-    ear = filter(obs, (: userp($1) && !interactive($1) :));
-    if (sizeof(ear)) {
-      obs -= ear;
-      add_failed_mess("$C$$I does not have enough responsiveness to teach "
-                      "you.\n", ear);
-      if (!obs) {
-        return 0;
-      }
-    }
-    ear = filter(obs, (: $1->check_earmuffs("teach") :));
-    if (sizeof(ear)) {
-      obs -= ear;
-      if (sizeof(ear) == 1) {
-        add_failed_mess("$I has " + ear[0]->query_possessive() + " earmuffs "
-                        "on.\n", ear);
-      } else {
-        add_failed_mess("$I have their earmuffs on.\n", ear);
-      }
-      if (!obs) {
-        return 0;
-      }
-    }
-    ear = filter(obs, (: check_ignoring($1, this_player()) :));
-    if (sizeof(ear)) {
-      obs -= ear;
-      add_failed_mess("$I is ignoring you, or you are ignoring them.\n",
-                      ear);
-      if (!obs) {
-        return 0;
-      }
-    }
-    ear = filter(obs, (: $1->query_property(PASSED_OUT_PROP) :));
-    if (sizeof(ear)) {
-      obs -= ear;
-      add_failed_mess("$I is passed out and looks rather worse for wear.\n",
-                      ear);
-      if (!obs) {
-        return 0;
-      }
-    }
-    ear = filter(obs, (: $1->query_fighting() :));
-    if (sizeof(ear)) {
-      obs -= ear;
-      add_failed_mess("$I is currently beating stuff up, please wait "
-                      "for them to finish.\n", ear);
-      if (!obs) {
-        return 0;
-      }
-    }
-    obs = filter(obs, (: !$1->query_creator() :) );
-    if (!sizeof(obs)) {
-      add_failed_mess("None of those people are allowed to teach you.\n");
-      return 0;
-    }
-    obs = filter(obs, (: query_auto_teaching($1, this_player()) :));
-    if (!sizeof(obs)) {
-      add_failed_mess("None of those people have auto teaching turned "
-                      "on.\n");
-      return 0;
-    }
-    obs = filter(obs, (: $1->query_time_left() > 0 :));
-    if (!sizeof(obs)) {
-      add_failed_mess("All the people you are trying to learn from appear "
-                      "to be busy.\n");
-      return 0;
-    }
-    foreach (ob in obs) {
-      ret |= cmd_int(str, ({ this_player() }), ob);
-    }
-    return ret;
-  }
-  return cmd_int(str, obs, this_player());
-}
-int cmd_int(string str, object *obs, object teacher) {
-  if (teacher->query_property("dead")) {
-    add_failed_mess("You wave your arms around, and your lips move but "
-                       "they can't hear what you are saying.\n");
-    return 0;
-  }
-  obs = filter(obs,  (: !$1->query_property("dead") :));
-  if (!sizeof(obs)) {
-    add_failed_mess("You must teach someone, preferably living.\n");
-    return 0;
-  }
-  if (sizeof(obs) > 1) {
-    add_failed_mess("You can only teach one person at a time.\n");
-    return 0;
-  }
-  if (!command_teach(obs, str, teacher) &&
-      !spell_teach(obs, str, teacher) &&
-      !teach_skill(obs, str, teacher))
-  {
-    return 0;
-  }
-  return 1;
-}
-int check_ignoring(object ignorer, object ignoree) {
-  return (ignorer->query_property("ignoring") &&
-          member_array(ignoree->query_name(),
-                       ignorer->query_property("ignoring")) != -1);
-}
-int command_teach(object *obs, string comm, object teacher) {
-  string cmd_ob;
-  object *succ;
-  object *no_go;
-  object *me_low;
-  mixed *him_low;
-  object *know_already;
-  object *ear_muffed;
-  object *ignored;
-  object *ignoring;
-  object ob;
-  string *tmp_stuff;
-  int i;
-  class command cmd = new(class command, verb : comm);
-  mixed tmp;
-  if (member_array(comm, teacher->query_known_commands()) == -1 ||
-      !CMD_D->HandleStars(cmd))
-  {
-    if (CMD_D->HandleStars(cmd)) {
-      if (teacher == this_player()) {
-        add_failed_mess("You do not know the command " + comm + ".\n");
-      } else {
-        add_failed_mess(teacher->the_short(1) +
-                        " does not know the command " + comm + ".\n");
-      }
-    }
-    return 0;
-  }
-  obs -= ({ teacher });
-  if (!sizeof(obs)) {
-    add_failed_mess("You cannot teach yourself a command.\n");
-    return 0;
-  }
-  if (teacher->check_earmuffs("teach")) {
-    if (teacher == this_player()) {
-      add_failed_mess("You have teaching earmuffed.\n");
-    } else {
-      add_failed_mess(teacher->the_short(1) + " has teaching earmuffed.\n");
-    }
-    return 0;
-  }
-  cmd_ob = CMD_D->GetPaths(cmd->verb)[0] + "/" + cmd->verb;
-  succ = ({ });
-  ear_muffed = ({ });
-  know_already = ({ });
-  no_go = ({ });
-  me_low = ({ });
-  him_low = ({ });
-  ignored = ({ });
-  if (teacher->query_property("ignoring")) {
-    ignoring = filter(obs, (: check_ignoring($(teacher), $1) :));
-    obs -= ignoring;
-  }
-  foreach(ob in obs) {
-    if (!living(ob)) {
-      continue;
-    }
-    if (teacher == this_player()) {
-      tmp = ob;
-    } else {
-      tmp = "you";
-    }
-    if (member_array(comm, ob->query_known_commands()) != -1) {
-      know_already += ({ tmp });
-    } else if (ob->check_earmuffs("teach")) {
-      ear_muffed += ({ tmp });
-    } else if (check_ignoring(ob, teacher)) {
-      ignored += ({ tmp });
-    } else {
-      switch (cmd_ob->can_teach_command(teacher, ob)) {
-        case 1:
-          succ += ({ ob });
-          break;
-        case 0 :
-          no_go += ({ tmp });
-          break;
-        case -1 :
-          me_low += ({ tmp });
-          break;
-        case -2 :
-          him_low += ({ tmp });
-          break;
-      }
-    }
-  }
-  if (!succ || !sizeof(succ)) {
-    if (teacher != this_player()) {
-      tell_object(teacher, this_player()->the_short() + " tried to "
-                  "learn " + comm + " from you automatically, "
-                  "but failed.\n");
-    }
-    if (sizeof(no_go) > 0) {
-      add_failed_mess(teacher->the_short() + " cannot teach " + comm +
-                      " to $I.\n", no_go);
-    }
-    if (sizeof(me_low)) {
-      if (teacher == this_player()) {
-        add_failed_mess(teacher->the_short() +
-                        " are too low a level to teach " + comm +
-                        " to $I.\n", me_low);
-      } else {
-        add_failed_mess(teacher->the_short() +
-                        " is too low a level to teach " + comm +
-                        " to $I.\n", me_low);
-      }
-    }
-    if (sizeof(ear_muffed) > 0) {
-      add_failed_mess("$I has teaching events earmuffed, you are unable "
-                      "to teach them.\n", ear_muffed);
-    }
-    if (sizeof(him_low) > 0) {
-      add_failed_mess("$I " +
-                      ((sizeof(him_low) == 1  &&
-                        him_low[0] != this_player()) ? "is" : "are") +
-                      " too low a level to learn " + comm + ".\n", him_low);
-    }
-    if (sizeof(know_already)) {
-      add_failed_mess("$I already know" +
-                      (sizeof(know_already) > 1  ||
-                       teacher != this_player()? "" : "s") +
-                      " the command " + comm + ".\n", know_already);
-    }
-    if (sizeof(ignoring)) {
-      if (this_player() == teacher) {
-        add_failed_mess("You are ignoring $I.\n", ignoring);
-      } else {
-        add_failed_mess(teacher->the_short(1) + " is ignoring $I.\n",
-                        ignoring);
-      }
-    }
-    if (sizeof(ignored)) {
-      add_failed_mess("You are being ignored by $I.\n", ignored);
-    }
-    return 0;
-  }
-  write(teacher->the_short() + " offer" +
-        (this_player() == teacher ? "" : "s") + " to teach " + comm +
-        " to " + query_multiple_short(succ) + ".\n");
-  if (teacher == this_player()) {
-    if (sizeof(no_go)) {
-      write("You cannot teach " + comm + " to " +
-            query_multiple_short(no_go, "the", 0, 1 ) + ".\n");
-    }
-    if (sizeof(ear_muffed) > 0) {
-      write(capitalize(query_multiple_short(ear_muffed, "the", 0, 1)) +
-            " has teaching events earmuffed, you are unable "
-            "to teach them.\n");
-    }
-    if (sizeof(me_low) > 0) {
-      write("You are too low a level to teach " + comm + " to " +
-            query_multiple_short(me_low, "the", 0, 1) + ".\n");
-    }
-    if (sizeof(him_low) > 0) {
-      write(capitalize(query_multiple_short(him_low, "the", 0, 1)) +
-            ((sizeof(him_low) == 1) ? " is" : " are") +" too low a "
-            "level to learn " + comm + ".\n");
-    }
-  } else {
-    tell_object(teacher,
-                "You automatically offer to teach " + comm + " to " +
-                query_multiple_short(succ) + ".\n");
-  }
-  say(capitalize((string)teacher->short()) + " teaches something to " +
-      query_multiple_short(succ) + ".\n", succ + ({ teacher }));
-  for (i = 0; i < sizeof(succ); i++) {
-    tell_object(succ[i], capitalize(teacher->the_short()) +
-                " offers to teach " +
-                query_multiple_short(delete(succ, i, 1) +
-                ({ "you" }) ) + " the command \"" + comm + "\".\n"
-                "Type \"learn " + comm + " from " +
-                teacher->query_name() + "\" to learn the command.\n");
-    tmp_stuff = succ[i]->query_respond_command(TEACH_COMMAND_TYPE, teacher);
-    if (!tmp_stuff) {
-      tmp_stuff = ({ comm });
-    } else if (member_array(comm, tmp_stuff) == -1) {
-      tmp_stuff += ({ comm });
-    }
-    succ[i]->add_respond_command(TEACH_COMMAND_TYPE, teacher, tmp_stuff);
-  }
-  add_succeeded_mess("");
-  return 1;
-}
-int spell_teach(object *obs, string spell, object teacher) {
-  object *succ, *no_go, *me_low, *him_low, ob;
-  object *ignoring;
-  object *ignored;
-  object *ear_muffed;
-  string ret;
-  string is_are;
-  mapping spells;
-  mixed tmp;
-  spells = teacher->query_spells();
-  if (!spells[spell]) {
-    return 0;
-  }
-  if (teacher == this_player()) {
-    is_are = "are";
-  } else {
-    is_are = "is";
-  }
-  if (teacher->check_earmuffs("teach")) {
-    add_failed_mess("You have teaching earmuffed.\n");
-    return 0;
-  }
-  ear_muffed = succ = no_go = me_low = him_low = ({ });
-  ignored = ({ });
-  if (teacher->query_property("ignoring")) {
-    ignoring = filter(obs, (: check_ignoring($(teacher), $1) :));
-    obs -= ignoring;
-  }
-  foreach(ob in obs) {
-    if (living(ob)) {
-      if (ob->check_earmuffs("teach")) {
-        ear_muffed += ({ ob });
-        continue;
-      } else if (check_ignoring(ob, teacher)) {
-        ignored += ({ ob });
-      } else {
-        if (teacher == this_player()) {
-          tmp = ob;
-        } else {
-          tmp = "you";
-        }
-        switch (spells[spell][0]->teach(ob, spell)) {
-          case 1:
-            succ += ({ ob });
-            break;
-          case 0:
-            no_go += ({ ob });
-            break;
-          case -1:
-            me_low += ({ ob });
-            break;
-          case -2:
-            him_low += ({ ob });
-            break;
-        }
-      }
-    }
-  }
-  if (sizeof(succ) == 0) {
-    if (teacher != this_player()) {
-      tell_object(teacher, this_player()->the_short() + " tried to "
-                  "learn " + spell +
-                  " from you automatically, but failed.\n");
-    }
-    ret = "";
-    if (sizeof(no_go) > 0) {
-      add_failed_mess(teacher->the_short() +
-                      " cannot teach " + spell + " to $I.\n", no_go);
-    }
-    if (sizeof(me_low) > 0) {
-      add_failed_mess(teacher->the_short() +
-                      " " + is_are +
-                      " too low a level to teach $I " + spell + ".\n",
-                      me_low);
-    }
-    if (sizeof(him_low) > 0) {
-      add_failed_mess("$I " + is_are + " too low a level to learn " +
-                       spell + ".\n", him_low);
-    }
-    if (sizeof(ignoring)) {
-       add_failed_mess("You are ignoring $I.\n", ignoring);
-    }
-    if (sizeof(ignored) > 0) {
-       add_failed_mess("You are being ignored by $I.\n", ignored);
-    }
-    if (sizeof(ignored) > 0) {
-       add_failed_mess("$I has teaching earmuffed.\n", ignored);
-    }
-    return 0;
-   }
-   if (teacher == this_player()) {
-     write(teacher->the_short() +
-           " successfuly teach " + query_multiple_short(succ) + " " +
-           spell + ".\n");
-     if (sizeof(no_go) > 0) {
-       write("You cannot teach " + spell + " to " +
-             query_multiple_short(no_go, "the", 0, 1) + ".\n");
-     }
-     if (sizeof(me_low) > 0) {
-       write("You are too low a level to teach " +
-             query_multiple_short(me_low, "the", 0, 1) + " " + spell +
-             ".\n");
-     }
-     if (sizeof(him_low) > 0) {
-       write(capitalize(query_multiple_short(him_low, 0, 1)) +
-             (sizeof(him_low) == 1 ? " is " : " are ") +
-             "too low a level to learn " + spell + ".\n");
-     }
-     if (sizeof(ignoring) > 0) {
-       add_failed_mess("You are ignoring " +
-                       query_multiple_short(ignoring, "the", 0, 1) +
-                       ".\n");
-     }
-     if (sizeof(ignored) > 0) {
-       add_failed_mess("You are being ignored by " +
-                       query_multiple_short(ignored, "the", 0, 1) + ".\n");
-     }
-   } else {
-     write(teacher->the_short() +
-           " successfuly teaches " + query_multiple_short(succ) + " " +
-           spell + ".\n");
-   }
-   return 1;
-}
-#define CANNOT 0
-#define TOO_LOW 1
-#define ONLY_LEAF 2
-#define TOO_HIGH 3
-#define CANNOT_TEACH 4
-int teach_skill(object *obs, string str, object teacher) {
-  int num;
-  int lvl;
-  int my_lvl;
-  int lvl_up;
-  int j;
-  int cost;
-  int total;
-  int total2;
-  int sk;
-  int depth;
-  object *ok;
-  object *too_little;
-  mixed  *too_low;
-  object *cannot_teach;
-  object *only_leaf;
-  object *ignored;
-  object *ignoring;
-  object *ear_muffed;
-  object *too_high;
-  object ob;
-  string skill;
-  string skill_start;
-  mixed *bits;
-  class teaching_skill frog;
-  float k;
-  mixed tmp;
-  num = 1;
-  if (sscanf(str, "%d levels of %s", num, skill) != 2) {
-    if (sscanf(str, "%d level of %s", num, skill) != 2) {
-      if (sscanf(str, "%d %s", num, skill) != 2) {
-        num = 1;
-        skill = str;
-      }
-    }
-  }
-  if (num < 1) {
-    add_failed_mess("You cannot teach a negative or zero number of "
-                    "levels.\n");
-    return 0;
-  }
-  if (num > 50) {
-    add_failed_mess("You cannot teach more than 50 levels at a time.\n");
-    return 0;
-  }
-  if (teacher->check_earmuffs("teach")) {
-    add_failed_mess("You have teaching earmuffed.\n");
-    return 0;
-  }
-  skill_start = skill;
-  bits = explode(implode(explode(skill, " "), "."), ".") - ({ "" });
-  if (!bits || !(skill = (string)SKILL_OB->query_skill(bits))) {
-    if (member_array(skill_start, teacher->query_known_commands()) != -1) {
-      return 0;
-    }
-    add_failed_mess("The skill " + implode(bits, ".") + " is invalid.\n");
-    return 0;
-  }
-  bits = explode(skill, ".");
-  my_lvl = teacher->query_skill_bonus(skill, 1);
-  ear_muffed = ({ });
-  too_high = ({ });
-  only_leaf = ({ });
-  too_low = ({ });
-  ok = ({ });
-  too_little = ({ });
-  cannot_teach = ({ });
-  ignored = ({ });
-  if (teacher->query_property("ignoring")) {
-    ignoring = filter(obs, (: check_ignoring($(teacher), $1) :));
-    obs -= ignoring;
-  }
-  foreach (ob in obs) {
-    if (teacher == this_player()) {
-      tmp = ob;
-    } else {
-      tmp = "you";
-    }
-    if (!interactive(ob)) {
-      cannot_teach += ({ tmp });
-      continue;
-    }
-    if (!SKILL_OB->query_allowed_to_teach(skill)) {
-      cannot_teach += ({ tmp });
-      continue;
-    }
-    if (ob->check_earmuffs("teach")) {
-      ear_muffed += ({ tmp });
-      continue;
-    }
-    if (check_ignoring(ob, teacher)) {
-      ignored += ({ tmp });
-      continue;
-    }
-    if (SKILL_OB->query_only_leaf(skill) &&
-        sizeof((mixed *)SKILL_OB->query_immediate_children(skill)))
-    {
-      only_leaf += ({ tmp });
-      continue;
-    }
-    lvl = (int)ob->query_skill(skill);
-    if (ob != teacher) {
-      if ((int)ob->calc_bonus(lvl + num, skill, 1) > my_lvl) {
-        add_failed_mess(teacher->the_short() +
-                        " cannot teach $I, since their bonus is " +
-                        (teacher == this_player() ? "higher" : "lower") +
-                        " than yours.\n", ({ tmp }));
-        continue;
-      }
-#ifdef ENFORCE_MAX_TEACH_LEVEL
-      if (lvl + num > SKILL_MAX_TEACH) {
-        too_high += ({ tmp });
-        continue;
-      }
-#endif
-    }
-    if (sizeof(bits) > 1) {
-      lvl_up = ob->query_skill(implode(bits[0 .. sizeof(bits) - 2], "."));
-    } else {
-      lvl_up = lvl;
-    }
-    depth = SKILL_OB->query_skill_depth(bits);
-    if (!SKILL_OB->query_only_leaf(skill) && depth * 5 > lvl_up) {
-      too_low += ({ tmp });
-      continue;
-    }
-    total = 0;
-    total2 = 0;
-    foreach (sk in SKILL_OB->query_all_children(skill)) {
-      if (SKILL_OB->query_immediate_children(sk) != ({ })) {
-        continue;
-      }
-      my_lvl = teacher->query_skill_bonus(sk, 1);
-      lvl = (int)ob->query_skill(sk);
-      cost = DEFAULT_COST;
-      cost *= STD_COST / 5;
-      if (!my_lvl) {
-        my_lvl = 1;
-      }
-      for (j = 0; j < num; j++) {
-        k = 0.5 * (int)ob->calc_bonus(lvl + j, sk, 1 ) / my_lvl + 1.0;
-        total2 += 500 + to_int(cost * (lvl+j) * exp((lvl + j) / 500.0) * k);
-        if (total > total2) {
-          num = j;
-          break;
-        } else {
-          total = total2;
-        }
-      }
-#ifdef DEBUG
-      tell_object(find_player(DEBUGGER),
-                  sprintf("%s:%s j:%d, lvl: %d, mylvl: %d, newbonus: %d, "
-                          "total: %d\n",
-                          this_player()->query_name(),
-                          ob->query_name(),
-                          j, lvl,
-                          my_lvl,
-                          (int)ob->calc_bonus(lvl + j, sk, 1),
-                          lvl,
-                          total2));
-#endif
-      if (!total) {
-        total = cost;
-      }
-    }
-    if (total > (int)ob->query_xp()) {
-      if (teacher == this_player()) {
-        add_failed_mess("It would have cost " + total + " xp to teach " +
-                        num + " level" + (num > 1 ? "s" : "") + " of " +
-                        skill + " to $I.\n", ({ ob }));
-      } else {
-        add_failed_mess("It would have cost " + total + " xp to teach " +
-                        num + " level" + (num > 1 ? "s" : "") + " of " +
-                        skill + " to you from " + teacher->the_short() +
-                        ".\n");
-      }
-      too_little += ({ tmp });
-      continue;
-    }
-    if (ob != teacher) {
-      if (teacher == this_player()) {
-        tell_object(ob, teacher->the_short() + " offers to teach "
-                    "you " + num + " level" + (num > 1 ? "s" : "") +
-                    " of " + skill + " for " + total + " xp.\nUse "
-                    "\"learn\" to learn the skill.\n");
-        write("You offer to teach $M$$the_short:" + file_name(ob) +
-              "$$M$ " + num + " level" + (num > 1 ? "s" : "") + " of " +
-              skill + " for " + total + " xp.\n");
-      } else {
-        tell_object(ob, teacher->the_short() + " offers to teach "
-                    "you " + num + " level" + (num > 1 ? "s" : "") +
-                    " of " + skill + " for "+total+" xp.\nUse \"learn\" "
-                    "to learn the skill.\n");
-        tell_object(teacher,
-                    "You offer to teach $M$$the_short:" + file_name(ob) +
-                    "$$M$ " + num + " level" + (num > 1 ? "s" : "") +
-                    " of " + skill + " for " + total + " xp.\n");
-      }
-    } else {
-      write("You can teach yourself " + num + " level" +
-            (num > 1 ? "s" : "") + " of " + skill + " for " + total +
-            " xp.\nUse \"learn\" to learn the skill.\n");
-      write("You offer to teach $M$$the_short:" + file_name(ob) +
-            "$$M$ " + num + " level" + (num > 1 ? "s" : "") + " of " +
-            skill + " for " + total + " xp.\n");
-    }
-    ok += ({ tmp });
-    frog = new(class teaching_skill);
-    frog->num = num;
-    frog->lvl = ob->query_skill(skill);
-    frog->skill = skill;
-    frog->xp = total;
-    frog->room = environment(this_player());
-    ob->add_respond_command(TEACH_SKILL_TYPE, teacher, frog);
-  }
-  if (sizeof(ok) == 0) {
-    if (teacher != this_player()) {
-      tell_object(teacher,
-                  this_player()->the_short() + " tried to learn " + skill +
-                  " from you automatically but failed.\n");
-    }
-    if (sizeof(only_leaf) > 0) {
-      add_failed_mess("You cannot teach the skill " + skill +
-                      ", as it is only possible to teach leaf skills in "
-                      "this skill tree.\n");
-    }
-    if (sizeof(ear_muffed) > 0) {
-      add_failed_mess("You cannot teach any levels of " + skill +
-                      " to $I, they have teaching earmuffed and cannot "
-                      "hear you.\n", ear_muffed);
-    }
-    if (sizeof(cannot_teach) > 0) {
-      add_failed_mess("You cannot teach any levels of " + skill +
-                      "; you need to look for alternative methods of "
-                      "advancement.\n");
-    }
-    if (sizeof(too_low) > 0) {
-      add_failed_mess(query_multiple_short(too_low, "the", 0, 1) +
-                      ((sizeof(too_low) > 1    ||
-                        too_low[0] == teacher  ||
-                        teacher != this_player()) ? " are " : " is ") +
-                      "not at a high enough level in the outer skills to "
-                      "learn " + num + " levels of " + skill + ".   See "
-                      "'help skills' for more details.\n");
-    }
-    if (sizeof(too_high) > 0) {
-      add_failed_mess(query_multiple_short(too_low, "the", 0, 1) +
-                      ((sizeof(too_high) > 1     ||
-                        teacher != this_player() ||
-                        too_low[0] == teacher) ? " are " : " is ") +
-                      "too high a level to learn " + num + " levels of " +
-                      skill + ", they must be less than " +
-                      SKILL_MAX_TEACH + " to learn from someone else.\n");
-    }
-    if (sizeof(ignoring) > 0) {
-      add_failed_mess("You are ignoring $I.\n", ignoring);
-    }
-    if (sizeof(ignored) > 0) {
-      add_failed_mess("You are being ignored by $I.\n", ignored);
-    }
-  }
-  return sizeof(ok);
-}
-mixed *query_patterns() {
-   return ({
-      "<string:'skill|n levels of skill|command'> to <indirect:living>",
-                   (: cmd($4[0], $1, 0) :),
-      "me <string:'skill|n levels of skill|command'> from <indirect:living>",
-                   (: cmd($4[0], $1, this_player()) :)});
-}
-
-==================================================
-FILE: living/th_row.c
-==================================================
-
-#define CREATOR "Ceres"
-#include <player.h>
-#include <move_failures.h>
-#include <tasks.h>
-#define ASKILL "fighting.combat.range.thrown"
-#define DSKILL "fighting.combat.dodging.range"
-#define PSKILL "fighting.combat.parry.range"
-#define COMMAND_GP_COST 5
-inherit "/cmds/base";
-int valid_target( object target, object thrower, object item );
-int cmd( mixed *indirect_obs ) {
-    object target, item;
-    int dchance, damage;
-    if ( sizeof( indirect_obs[ 0 ] ) > 1 ) {
-        add_failed_mess( "You can only throw one item at a time!\n" );
-        return 0;
-    }
-    item = indirect_obs[ 0 ][ 0 ];
-    if ( sizeof( indirect_obs[ 1 ] ) > 1 ) {
-        add_failed_mess( "You can only throw $I at one target at a time!\n",
-            ({ item }) );
-        return 0;
-    }
-    target = indirect_obs[ 1 ][ 0 ];
-    if ( item->query_wielded() != this_player() ) {
-        add_failed_mess( "You must be holding $I to throw it.\n",
-            ({ item }) );
-        return 0;
-    }
-    if ( this_player() == target ) {
-        add_failed_mess( "You cannot throw $I at yourself!\n", ({ item }) );
-        return 0;
-    }
-    if ( !living( target ) && !target->query_property( "targetable" ) ) {
-        add_failed_mess( "Why do you want to throw $I at " +
-            target->the_short() + "?\n", ({ item }) );
-        return 0;
-    }
-    if (this_player()->query_gp() < COMMAND_GP_COST) {
-        add_failed_mess( "You need " + COMMAND_GP_COST + " points to "
-            "throw " + item->the_short() + " at " + target->the_short() +
-            ".\n");
-        return 0;
-    }
-    if ( !valid_target( target, this_player(), item ) ) {
-        add_failed_mess( "You decide against throwing $I at " +
-            target->the_short() + ".\n", ({ item }) );
-        return 0;
-    }
-    if ( living( target ) ) {
-        switch ( (string)target->query_combat_response() ) {
-            case "dodge" :
-                dchance = target->query_skill_bonus( DSKILL );
-            break;
-            default:
-                dchance = target->query_skill_bonus( PSKILL );
+#include <top_ten_tables.h>
+int cmd(string filter, string arg);
+string* determine_location( object person ) {
+    mixed *areas, *place;
+    areas = ({
+        ({ "/d/liaison/NEWBIE", ({ "Misc", "The newbie area" }) }),
+        ({ "/room/air", ({ "Misc", "The air" }) }),
+        ({ "/room/void", ({ "Misc", "The void" }) }),
+        ({ "/room/rubbish", ({ "Misc", "The rubbish room" }) }),
+        ({ "/room/departures", ({ "Misc", "The departures lounge" }) }),
+        ({ "/room/jail", ({ "Misc", "Jail" }) }),
+        ({ "/w/", ({ "Misc", "/w dirs" }) }),
+        ({ "/d/cwc/utils/interview", ({ "CWC", "Interview room" }) }),
+        ({ "/d/cwc/common", ({ "CWC", "Commonroom" }) }),
+        ({ "/d/cwc/Brown_Islands", ({ "CWC", "Brown Islands" }) }),
+        ({ "/d/cwc/Bes_Pelargic/Bad_Poo-Ning/roads/medina",
+            ({ "CWC", "Medina" }) }),
+        ({ "/d/cwc/Bes_Pelargic/Sum_Bing/roads/snail",
+            ({ "CWC", "The Snail" }) }),
+        ({ "/d/cwc/Bes_Pelargic", ({ "CWC", "Bes Pelargic" }) }),
+        ({ "/d/cwc/Hunghung", ({ "CWC", "HungHung" }) }),
+        ({ "/d/cwc/Isle_of_Tonahamen", ({ "CWC", "Isle of Tonahamen" }) }),
+        ({ "/d/cwc/families/mcsweeny", ({ "CWC", "McSweeney Estate" }) }),
+        ({ "/d/cwc/Maps", ({ "CWC", "Terrains" }) }),
+        ({ "/d/cwc", ({ "CWC", "?" }) }),
+        ({ "/d/guilds/assassins/Bes-Pelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/guilds/thieves/Bes-Pelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/guilds/warriors/BesPelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/guilds/warriors/Hunghung", ({ "CWC", "HH guilds" }) }),
+        ({ "/d/guilds/priests/Bes_Pelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/guilds/wizards/Bes_Pelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/guilds/witches/bespelargic", ({ "CWC", "BP guilds" }) }),
+        ({ "/d/underworld/moving_shop/rooms/cwc", ({ "CWC", "F-shop" }) }),
+        ({ "/d/am/utils/interview", ({ "AM", "Interview room" }) }),
+        ({ "/d/am/shades", ({ "AM", "The Shades" }) }),
+        ({ "/d/am/common", ({ "AM", "Commonroom" }) }),
+        ({ "/d/am", ({ "AM", "Ankh-Morpork" }) }),
+        ({ "/d/special/player_shops", ({ "AM", "Tarnach's" }) }),
+        ({ "/d/guilds/merchants", ({ "AM", "Ankh-Morpork" }) }),
+        ({ "/d/guilds/assassins/Ankh-Morpork", ({ "AM", "AM guilds" }) }),
+        ({ "/d/guilds/thieves/Ankh-Morpork", ({ "AM", "AM guilds" }) }),
+        ({ "/d/guilds/warriors/Ankh-Morpork", ({ "AM", "AM guilds" }) }),
+        ({ "/d/guilds/priests/Ankh-Morpork", ({ "AM", "AM guilds" }) }),
+        ({ "/d/guilds/wizards/Ankh-Morpork",
+            ({ "AM", "Unseen University" }) }),
+        ({ "/d/guilds/witches/Ankh-Morpork", ({ "AM", "AM guilds" }) }),
+        ({ "/d/guilds/witches/am", ({ "AM", "AM guilds" }) }),
+        ({ "/d/klatch/utils/interview", ({ "Klatch", "Interview room" }) }),
+        ({ "/d/klatch/common", ({ "Klatch", "Commonroom" }) }),
+        ({ "/d/klatch/djel/city", ({ "Klatch", "KLK" }) }),
+        ({ "/d/klatch/djel/necropolis", ({ "Klatch", "Necropolis" }) }),
+        ({ "/d/klatch/djel/netherworld", ({ "Klatch", "Netherworld" }) }),
+        ({ "/d/klatch/tsort/desert/roads",
+            ({ "Klatch", "Tsort desert road" }) }),
+        ({ "/d/klatch/tsort/desert", ({ "Klatch", "Tsort desert" }) }),
+        ({ "/d/klatch/tsort", ({ "Klatch", "Tsort" }) }),
+        ({ "/d/klatch/Maps", ({ "Klatch", "Terrains" }) }),
+        ({ "/d/klatch", ({ "Klatch", "?" }) }),
+        ({ "/d/guilds/assassins/Khot-lip-khin",
+            ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/thieves/Khot-lip-khin", ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/warriors/Khot-lip-khin",
+            ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/priests/Djelibeybi", ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/priests/Khot-lip-khin", ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/wizards/Khot-lip-khin", ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/guilds/wizards/Ephebe", ({ "Klatch", "Ephebe guilds" }) }),
+        ({ "/d/guilds/wizards/Tsort", ({ "Klatch", "Tsort guilds" }) }),
+        ({ "/d/guilds/witches/klk", ({ "Klatch", "KLK guilds" }) }),
+        ({ "/d/ram/utils/interview", ({ "Ram", "Interview room" }) }),
+        ({ "/d/ram/common", ({ "Ram", "Commonroom" }) }),
+        ({ "/d/ram/Gloomy_Forest", ({ "Ram", "Gloomy forest" }) }),
+        ({ "/d/ram/Lancre_Kingdom", ({ "Ram", "Lancre Kingdom" }) }),
+        ({ "/d/ram/Listening_Monks", ({ "Ram", "Listening Monks" }) }),
+        ({ "/d/ram/Razorback", ({ "Ram", "Razorback" }) }),
+        ({ "/d/ram/Slice", ({ "Ram", "Slice" }) }),
+        ({ "/d/ram/Sprite_Caverns", ({ "Ram", "Sprite caverns" }) }),
+        ({ "/d/ram/Temple_of_Soyin", ({ "Ram", "Temple of Soyin" }) }),
+        ({ "/d/ram/Uberwald", ({ "Ram", "Uberwald" }) }),
+        ({ "/d/ram/badass", ({ "Ram", "Bad Ass" }) }),
+        ({ "/d/ram/madstoat", ({ "Ram", "Mad Stoat" }) }),
+        ({ "/d/ram/ohulan", ({ "Ram", "Ohulan-Cutash" }) }),
+        ({ "/d/ram/foothills", ({ "Ram", "Connecting paths" }) }),
+        ({ "/d/ram/bridge", ({ "Ram", "Connecting paths" }) }),
+        ({ "/d/ram/moorland", ({ "Ram", "Connecting paths" }) }),
+        ({ "/d/ram/gorge_road", ({ "Ram", "Connecting paths" }) }),
+        ({ "/d/ram/Lower_Valleys", ({ "Ram", "Connecting paths" }) }),
+        ({ "/d/ram/lancre_town", ({ "Ram", "Lancre Town" }) }),
+        ({ "/d/ram/bandit_camp", ({ "Ram", "Bandit camp" }) }),
+        ({ "/d/ram/druid_circle", ({ "Ram", "Druid circle" }) }),
+        ({ "/d/ram/mountains", ({ "Ram", "Ramtops" }) }),
+        ({ "/d/ram", ({ "Ram", "?" }) }),
+        ({ "/d/guilds/assassins/Ohulan-Cutash", ({ "Ram", "OC guilds" }) }),
+        ({ "/d/guilds/thieves/Madstoat", ({ "Ram", "Mad Stoat guilds" }) }),
+        ({ "/d/guilds/warriors/Lancre", ({ "Ram", "Lancre guilds" }) }),
+        ({ "/d/guilds/priests/Monks-of-Cool", ({ "Ram", "Monks of Cool" }) }),
+        ({ "/d/guilds/priests/Ohulan-Cutash", ({ "Ram", "OC guilds" }) }),
+        ({ "/d/guilds/wizards/Creel-Springs",
+            ({ "Ram", "Creel Springs guilds" }) }),
+        ({ "/d/guilds/witches/badass", ({ "Ram", "Bad Ass guilds" }) }),
+        ({ "/d/guilds/witches/lancre", ({ "Ram", "Lancre guilds" }) }),
+        ({ "/d/guilds/witches/madstoat", ({ "Ram", "Mad Stoat guilds" }) }),
+        ({ "/d/guilds/witches/razorback", ({ "Ram", "Razorback guilds" }) }),
+        ({ "/d/sur/utils/interview", ({ "Sur", "Interview room" }) }),
+        ({ "/d/sur/common", ({ "Sur", "Commonroom" }) }),
+        ({ "/d/sur/Maps", ({ "Sur", "Terrains" }) }),
+        ({ "/d/sur/Dinky", ({ "Sur", "Dinky" }) }),
+        ({ "/d/sur/Sto_Helit", ({ "Sur", "Sto Helit" }) }),
+        ({ "/d/sur/StoLat", ({ "Sur", "Sto Lat" }) }),
+        ({ "/d/sur/Hillshire", ({ "Sur", "Hillshire" }) }),
+        ({ "/d/sur/Holywood", ({ "Sur", "Holywood" }) }),
+        ({ "/d/sur/Nowhere", ({ "Sur", "Nowhere" }) }),
+        ({ "/d/sur/PekanFord", ({ "Sur", "Pekan Ford" }) }),
+        ({ "/d/sur/Sheepridge", ({ "Sur", "Sheepridge" }) }),
+        ({ "/d/sur/Scrogden", ({ "Sur", "Scrogden" }) }),
+        ({ "/d/sur/items/carriage", ({ "Sur", "Carriage" }) }),
+        ({ "/d/sur", ({ "Sur", "?" }) }),
+        ({ "/d/guilds/assassins/Sto-Lat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/guilds/assassins/Sto-Helit", ({ "Sur", "SH guilds" }) }),
+        ({ "/d/guilds/assassins/Sheepridge",
+            ({ "Sur", "Sheepridge guilds" }) }),
+        ({ "/d/guilds/thieves/Sto-Lat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/guilds/thieves/Sto-Helit", ({ "Sur", "SH guilds" }) }),
+        ({ "/d/guilds/thieves/Pekan_Ford", ({ "Sur", "PF guilds" }) }),
+        ({ "/d/guilds/warriors/Sto-Lat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/guilds/priests/Sto-Lat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/guilds/wizards/Sto-Lat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/guilds/witches/skund", ({ "Sur", "Skund guilds" }) }),
+        ({ "/d/guilds/witches/stolat", ({ "Sur", "SL guilds" }) }),
+        ({ "/d/forn/utils/interview", ({ "Forn", "Interview room" }) }),
+        ({ "/d/forn/common", ({ "Forn", "Commonroom" }) }),
+        ({ "/d/forn/genua", ({ "Forn", "Genua" }) }),
+        ({ "/d/forn", ({ "Forn", "?" }) }),
+        ({ "/d/guilds/assassins/Genua", ({ "Forn", "Genua guilds" }) }),
+        ({ "/d/special/utils/interview", ({ "Special", "Interview room" }) }),
+        ({ "/d/special/common", ({ "Special", "Commonroom" }) }),
+        ({ "/d/special/ctf", ({ "Special", "CTF" }) }),
+        ({ "/d/special", ({ "Special", "?" }) }),
+        ({ "/d/playtesters/utils/interview", ({ "Playtesters",
+            "Interview room" }) }),
+        ({ "/d/playtesters/common", ({ "Playtesters", "Commonroom" }) }),
+        ({ "/d/playtesters/palace_rooms", ({ "Playtesters", "Palace" }) }),
+        ({ "/d/playtesters", ({ "Playtesters", "?" }) }),
+        ({ "/d/liaison/utils/interview", ({ "Liaison", "Interview room" }) }),
+        ({ "/d/liaison/common", ({ "Liaison", "Commonroom" }) }),
+        ({ "/d/liaison", ({ "Liaison", "?" }) }),
+        ({ "/d/underworld/common", ({ "Underworld", "Commonroom" }) }),
+        ({ "/d/underworld/death", ({ "Underworld", "Death's domain" }) }),
+        ({ "/d/underworld/lspace", ({ "Underworld", "L-space" }) }),
+        ({ "/d/underworld/moving_shop", ({ "Underworld", "T-shop" }) }),
+        ({ "/d/underworld", ({ "Underworld", "?" }) }),
+        ({ "/d/guilds/common", ({ "Guilds", "Commonroom" }) }),
+        ({ "/d/guilds/assassins", ({ "Guilds", "Assassins" }) }),
+        ({ "/d/guilds/thieves", ({ "Guilds", "Thieves" }) }),
+        ({ "/d/guilds/warriors", ({ "Guilds", "Warriors" }) }),
+        ({ "/d/guilds/priests/rooms", ({ "Guilds", "Passage rooms" }) }),
+        ({ "/d/guilds/priests", ({ "Guilds", "Priests" }) }),
+        ({ "/d/guilds/wizards", ({ "Guilds", "Wizards" }) }),
+        ({ "/room/magic_circle", ({ "Guilds", "Witches' circle" }) }),
+        ({ "/d/guilds/witches", ({ "Guilds", "Witches" }) }),
+        ({ "/d/guilds", ({ "Guilds", "?" }) }),
+        ({ "/d/admin/room/domain_control", ({ "Admin", "Domain control" }) }),
+        ({ "/d/admin", ({ "Admin", "?" }) }),
+        ({ "/d", ({ "Other", "Unknown /d room" }) }),
+    });
+    if( !environment(person) ) {
+        return ({ "Other", "No environment" });
+    }
+    foreach( place in areas ) {
+        if( strsrch( file_name(environment(person)), place[0] ) == 0 ) {
+            return place[1];
         }
     }
-    else {
-        dchance = target->query_property( "targetable" );
-    }
-    dchance += item->query_weight() / ( this_player()->query_str() / 2 );
-    if( !this_player()->query_visible( target ) ) {
-        dchance /= 2;
-    }
-    this_player()->adjust_gp(-COMMAND_GP_COST);
-    switch( TASKER->perform_task(this_player(), ASKILL, dchance, TM_FREE) ) {
-        case AWARD:
-            tell_object(this_player(), "%^YELLOW%^You feel that your "
-                "skill in throwing weapons has increased.%^RESET%^\n");
-        case SUCCEED:
-            tell_object( this_player(), "You throw " + item->the_short() +
-                " at " + target->the_short() + " and hit!\n" );
-            tell_room( environment( this_player() ),
-                this_player()->the_short() + " throws " + item->a_short() +
-                    " at " + target->the_short() + " and hits!\n",
-                    this_player() );
-            if ( living( target ) ) {
-                damage = ( item->query_weight() / 4 ) +
-                    ( this_player()->query_str() * 2) +
-                    ( this_player()->query_skill_bonus( ASKILL ) / 3 );
-                damage -= target->query_ac( "blunt", damage );
-                target->attack_by( this_player() );
-                target->adjust_hp( -damage, this_player() );
-                this_player()->attack_ob( target );
-                event( item, "thrown", this_player(), target );
-                    this_player()->adjust_time_left(-(ROUND_TIME*2));
-            }
-            target->thrown_at( this_player(), 1, item );
-            if ( item->move( target ) != MOVE_OK ) {
-                item->move( environment( target ) );
-            }
-        break;
-        default:
-            tell_object( this_player(), "You throw " + item->the_short() +
-                " at " + target->the_short() + " but miss.\n" );
-            tell_room( environment( this_player() ),
-                this_player()->the_short() + " throws " + item->a_short() +
-                " at " + target->the_short() + " but misses.\n", this_player() );
-            item->move( environment( target ) );
-            if( !interactive( target ) && living( target ) ) {
-                this_player()->attack_ob( target );
-                target->attack_by( this_player() );
-            }
-            target->thrown_at( this_player(), 0 );
-        break;
-    }
-    return 1;
+    return ({ "Other", "Unknown environment" });
 }
-int valid_target( object target, object thrower, object item ) {
-    mixed owner;
-    if ( target->query_property( "dead" ) || target->query_auto_loading() ) {
-        return 0;
-    }
-    if ( userp( target ) && !interactive( target ) ) {
-        return 0;
-    }
-    if ( pk_check( thrower, target ) )
-        return 0;
-    if ( ( owner = target->query_owner() ) && pk_check( thrower, owner ) ) {
-        return 0;
-    }
-    return 1;
-}
-mixed *query_patterns() {
-    return ({ "<indirect:object:me'weapon'> at <indirect:object'target'>",
-        (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/und_efend.c
-==================================================
-
-inherit "/cmds/base";
-#define TP this_player()
-mixed cmd(object *things) {
-  object *defendees;
-  object ob;
-  object *fail;
-  if(!things) {
-    things = ({ });
-  }
-  things -= ({ TP });
-  if ( !sizeof( things ) ) {
-    add_failed_mess("You cannot undefend yourself!\n");
-    return 0;
-  }
-  defendees = ({ });
-  fail = ({ });
-  foreach ( ob in things) {
-    if ( ob->remove_defender( TP ) ) {
-      defendees += ({ ob });
-    } else  {
-       fail += ({ ob });
-    }
-  }
-  if ( sizeof( fail ) ) {
-    add_failed_mess( "You are not defending " + query_multiple_short( fail ) +
-                     ".\n" );
-  }
-  if (sizeof(defendees)) {
-     add_succeeded_mess("$N stop$s defending $I.\n", defendees);
-     return 1;
-  } else {
-     return 0;
-  }
-}
-mixed *query_patterns() {
-   return ({ "<indirect:living>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/unf_ollow.c
-==================================================
-
-inherit "/cmds/base";
-#define TP this_player()
-int cmd(object *obs) {
-   mapping hide_invis;
-   int hiding, sneaking;
-  object *ok, ob;
-  string s;
-  ok = ({ });
-  foreach (ob in obs) {
-    if (ob->remove_follower(TP)) {
-      ok += ({ ob });
-    }
-  }
-  if (!sizeof(ok)) {
-    if (member_array(TP, obs) == -1) {
-      return notify_fail("You are not following "+query_multiple_short(obs)+
-                         ".\n");
-    } else {
-      return notify_fail("You are not following " +
-        query_multiple_short(obs - ({ TP }) + ({ "yourself" })) + ".\n");
-    }
-  }
-  hide_invis = ( mapping )this_player()->query_hide_invis();
-  hiding = hide_invis[ "hiding" ] ? 1 : 0;
-  sneaking = this_player()->query_sneak_level() ? 1 : 0;
-  if( hiding || sneaking )
-   write("You stop following "+(s=query_multiple_short(ok))+" unseen.\n");
-  else {
-    write("You stop following "+(s=query_multiple_short(ok))+".\n");
-    say(TP->the_short()+" stops following "+s+".\n", ok);
-    foreach (ob in ok) {
-      tell_object(ob, TP->the_short() +
-                  " stops following "+query_multiple_short((ok + ({"you"})) -
-                                                           ({ ob }))+".\n");
-    }
-  }
-  return 1;
-}
-mixed *query_patterns() {
-  return ({ "<indirect:living>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/unh_old.c
-==================================================
-
-inherit "/cmds/base";
-#define TP this_player()
-int cmd(object obs) {
-  object *ok, *zip, *failed, ob, *using;
-  string s;
-  mixed ret;
-  using = TP->query_holding();
-  failed = ok = zip = ({ });
-  foreach (ob in obs) {
-    if (member_array(ob, using) != -1) {
-      if (!sizeof(ret = TP->set_unhold(ob)) || !ret)
-        failed += ({ ob });
-      else
-        ok += ({ ob });
-    }
-    else
-      zip += ({ ob });
-  }
-  if (!sizeof(ok)) {
-    s = "";
-    if (sizeof(failed))
-      s += "Could not unhold "+query_multiple_short(failed)+".\n";
-    if (sizeof(zip))
-      s += capitalize("You are not holding " +
-                      query_multiple_short(zip, "the") + ".\n");
-    return notify_fail(s);
-  }
-  tell_object(TP, "You put down "+(s = query_multiple_short(ok))+".\n");
-  tell_room(environment(TP), TP->one_short()+" puts down "+s+".\n", TP);
-  TP->force_burden_recalculate();
-  return 1;
-}
-mixed *query_patterns() {
-  return ({ "<indirect:object:me>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/unp_rotect.c
-==================================================
-
-inherit "/cmds/base";
-#define TP this_player()
-mixed cmd(object *things) {
-  object *protectees;
-  object ob;
-  object *fail;
-  if(!things) {
-    things = ({ });
-  }
-  things -= ({ TP });
-  if ( !sizeof( things ) ) {
-    add_failed_mess("You cannot unprotect yourself!\n");
-    return 0;
-  }
-  protectees = ({ });
-  fail = ({ });
-  foreach ( ob in things) {
-    if ( ob->remove_protector( TP ) ) {
-      protectees += ({ ob });
-    } else  {
-       fail += ({ ob });
-    }
-  }
-  if ( sizeof( fail ) ) {
-    add_failed_mess( "You are not protecting " + query_multiple_short( fail ) +
-                     ".\n" );
-  }
-  if (sizeof(protectees)) {
-     add_succeeded_mess("$N stop$s protecting $I.\n", protectees);
-     return 1;
-  } else {
-     return 0;
-  }
-}
-mixed *query_patterns() {
-   return ({ "<indirect:living>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/watch.c
-==================================================
-
-#define COST 50
-inherit "/cmds/base";
-mixed cmd() {
-   if ( this_player()->query_blinded() ) {
-      add_failed_mess( "How can you watch anything?  You're blind.\n" );
-      return 0;
-   }
-   if (this_player()->query_property("dead")) {
-      add_failed_mess( "Dead people don't watch. It is rude!\n");
-      return 0;
-   }
-   if ( sizeof( (int *)this_player()->effects_matching( "mind.alertness" ) ) ) {
-      add_failed_mess( "You are already alert and watching "
-        "your surroundings.\n" );
-      return 0;
-   }
-   if ( this_player()->query_specific_gp( "other" ) < COST ) {
-      add_failed_mess( "You can't concentrate enough to watch "
-        "your surroundings.\n" );
-      return 0;
-   }
-   this_player()->adjust_gp( -COST );
-   this_player()->add_effect( "/std/effects/other/alertness", 60 +
-     (int)this_player()->query_skill_bonus( "other.perception" ) / 2 );
-   return 1;
-}
-int stop_watching() {
-   int *enums, id;
-   enums = this_player()->effects_matching( "mind.alertness" );
-   if ( sizeof( enums ) ) {
-      foreach( id in enums ) {
-         this_player()->delete_effect( id );
-      }
-   }
-   else {
-      add_succeeded_mess( ({ "You are not currently watching!\n", "" }) );
-   }
-   return 1;
-}
-mixed *query_patterns() {
-   return ({ "stop", (: stop_watching() :),
-     "", (: cmd() :) });
-}
-
-==================================================
-FILE: living/wea_r.c
-==================================================
-
-#include <clothing.h>
-#include <tasks.h>
-inherit "/cmds/base";
-#define TP this_player()
-#define SKILL "covert.manipulation.sleight-of-hand"
-mapping add_to_failed(mapping failed, string word, object thing);
-int cmd(object *things) {
-  int i;
-  string result;
-  string stuff;
-  string *reasons;
-  object *okay;
-  object *blocking;
-  object *total_blocking;
-  object ob;
-  object tmp;
-  mapping failed;
-  mapping hide_invis;
-  int hiding, sneaking, difficulty, light, my_light;
-  okay = ({ });
-  failed = ([ ]);
-  things = sort_array(things, (: CLOTHING_HANDLER->query_clothing_depth($2->query_type()) -
-                                 CLOTHING_HANDLER->query_clothing_depth($1->query_type()) :) );
-  total_blocking = ({ });
-  foreach (ob in things) {
-    if (environment(ob) != this_player())  {
-      failed = add_to_failed(failed, "not carrying", ob);
-      continue;
-    }
-    if ( !ob->query_wearable() ) {
-      failed = add_to_failed( failed, "cannot wear", ob);
-      continue;
-    }
-    if (member_array(ob, TP->query_wearing()) != -1) {
-      failed = add_to_failed(failed, "already wearing", ob);
-      continue;
-    }
-    if (ob->cannot_be_worn()) {
-      failed = add_to_failed(failed, "cannot wear", ob);
-      continue;
-    }
-    blocking = CLOTHING_HANDLER->query_items_blocking(ob, this_player());
-if (this_player() == find_player("presto"))
-printf("blocking == %O\n", blocking);
-    if (sizeof(blocking)) {
-       total_blocking += blocking;
-       foreach (tmp in blocking) {
-          TP->remove_armour(tmp);
-       }
-    }
-    result = CLOTHING_HANDLER->can_wear_or_remove(ob, this_player());
-if (this_player() == find_player("presto"))
-printf("ob == %s, result == %s\n", ob->short(), result);
-    if (result) {
-      failed = add_to_failed(failed, result, ob);
-      continue;
-    }
-    result = TP->wear_armour(ob, 0);
-    if (result) {
-      failed = add_to_failed(failed, result, ob);
-      continue;
-    }
-    okay += ({ ob });
-  }
-  if (total_blocking) {
-    foreach (tmp in total_blocking) {
-      TP->wear_armour(tmp);
-    }
-  }
-  result = "";
-  if (sizeof(failed)) {
-    reasons = keys(failed);
-    for (i = 0; i < sizeof(reasons); i++) {
-      stuff = query_multiple_short(failed[reasons[i]], "the");
-      switch (reasons[i]) {
-      case "cannot wear" :
-        if (!sizeof(okay)) {
-           result += capitalize(stuff) +" cannot be worn.\n";
-        }
-        break;
-      case "already wearing" :
-        result += "You are already wearing "+ stuff +".\n";
-        break;
-      case "already holding" :
-        result += "You cannot wear "+ stuff +" as you do not "
-          "have enough free limbs.\n";
-        break;
-      case "oh dear" :
-        result += "I'm not sure why you can't wear "+ stuff +
-          "; something has probably gone wrong, so please "
-          "contact a creator.\n";
-        break;
-      case "not carrying":
-        result += "You aren't carrying " + stuff + ".\n";
-        break;
-      default :
-        result += "You cannot put on "+ stuff +" "+ reasons[i] +".\n";
-      }
-    }
-  }
-  if (!sizeof(okay)) {
-    return notify_fail(result);
-  }
-  stuff = query_multiple_short(okay);
-  if (sizeof(total_blocking)) {
-     tell_room(environment(TP), TP->one_short() + " removes " +
-               query_multiple_short(total_blocking) + " so " +
-               TP->query_pronoun() + " can wear "+
-               stuff +".\n" + TP->one_short() + " wears " +
-               query_multiple_short(total_blocking) + ".\n",
-               TP);
-     write("You remove " +
-               query_multiple_short(total_blocking) + " so you can wear "+
-               stuff +".\nYou wear " +
-               query_multiple_short(total_blocking) + ".\n",
-               TP);
-  } else {
-    hide_invis = ( mapping )this_player()->query_hide_invis();
-    hiding = hide_invis[ "hiding" ] ? 1 : 0;
-    sneaking = this_player()->query_sneak_level() ? 1 : 0;
-    if( hiding || sneaking ) {
-      my_light = this_player()->query_light();
-      light = environment( this_player() )->query_light();
-      difficulty = light + ( 4 * my_light ) / ( light + 1 );
-      if( sizeof( total_blocking ) ) {
-        difficulty += 50 * sizeof( total_blocking );
-      }
-      difficulty += okay[0]->query_complete_weight();
-      debug_printf( "Difficulty = %d.\n Skill = %s\n Bonus = %d\n",
-                    difficulty, SKILL, this_player()->
-                    query_skill_bonus( SKILL ) );
-      switch( TASKER->perform_task( this_player(), SKILL, difficulty,
-        TM_FREE ) ) {
-        case AWARD :
-          write( "%^YELLOW%^" + ({
-            "You discover something that lets your fingers move more "
-              "nimbly.",
-            "You find yourself capable of deceiving the eye with greater "
-              "ease than before.",
-            "You realise how to deceive the eye more effectively."
-          })[ random(3) ] + "%^RESET%^\n" );
-        case SUCCEED :
-          add_succeeded_mess( ({ "$N $V " + stuff + ", managing to stay "
-            "unnoticed.\n",
-            "" }) );
-          break;
-        default :
-          this_player()->add_succeeded_mess( this_object(), "$N "
-            "unsuccessfully tr$y to " + query_verb() + " " + stuff +
-            " while staying unnoticed.\n", ({ }) );
-          break;
-      }
-    } else {
-      this_player()->add_succeeded_mess( this_object(), "$N $V " + stuff +
-        ".\n", ({ }) );
-    }
-  }
-  return 1;
-}
-mapping add_to_failed(mapping failed, string word, object thing) {
-  if (!failed[word]) {
-    failed += ([ word : ({ thing }) ]);
-  } else {
-    failed[word] += ({ thing });
-  }
-  return failed;
-}
-mixed *query_patterns() {
-  return ({ "<indirect:object:me>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: living/whi_sper.c
-==================================================
-
-inherit "/cmds/base";
-inherit "/cmds/speech";
-mixed cmd( object *others, string last ) {
-  class message mess;
-  if (sizeof(others) == 1 && others[0] == this_player()) {
-     add_failed_mess("Whispering to yourself?  Neat trick.\n");
-     return 0;
-  }
-  mess = build_message(last, others, "whisper");
-  mess->type = "whisper";
-  return say_it_to(mess, others, 1, "whisper");
-}
-mixed *query_patterns() {
-   return ({ "<string'message'> to <indirect:living>", (: cmd($1, $4[0]) :),
-             "<indirect:living> <string'message'>", (: cmd($1, $4[1]) :) });
-}
-
-==================================================
-FILE: living/wi_eld.c
-==================================================
-
-inherit "/cmds/base";
-mixed cmd(string str) {
-  if (!interactive(this_player()))
-    return "/cmds/living/ho_ld"->cmd(str);
-  return notify_fail("Use hold; see help hold for more details.\n");
-}
-
-==================================================
-FILE: living/withdraw.c
-==================================================
-
-#include <money.h>
-#include <cmds/offer.h>
-inherit "/cmds/base";
-int withdraw_offer(object *sell_to) {
-   object *removed;
-   object ob;
-   removed = ({ });
-   foreach (ob in sell_to) {
-      if (ob->query_respond_command("sell", this_player())) {
-         ob->remove_respond_command("sell", this_player());
-         removed += ({ ob });
-      }
-   }
-   if (sizeof(removed)) {
-      add_succeeded_mess("$N withdraw$s $p offer of sale to $I.\n", removed);
-      return 1;
-   }
-   add_failed_mess("You cannot withdraw your offer of sale to $I since "
-                   "you have not offered to sell them anything in the "
-                   "first place.\n", sell_to);
-   return 0;
-}
-mixed *query_patterns() {
-   return ({ "offer {from|to} <indirect:living>",
-             (: withdraw_offer($1) :) });
-}
-
-==================================================
-FILE: living/wring.c
-==================================================
-
-inherit "/cmds/base";
-int cmd(object *things)  {
-   object *towels;
-   int    *enums;
-   int     wetness;
-   int     success;
-   string  str;
-   towels = filter(things,
-                   (: $1->id("towel")  ||  $1->query_property("dryer") :));
-   things -= towels;
-   str = "";
-   if (sizeof(towels) == 1)  {
-      enums = towels[0]->effects_matching("object.wet");
-      if (sizeof(enums)) {
-         wetness = towels[0]->arg_of(enums[0]);
-      }
-      if (wetness < 36 - this_player()->query_str())  {
-         str = "You can't wring any more moisture out of " +
-               towels[0]->one_short();
-         success = 0;
-      } else  {
-         towels[0]->add_effect("/std/effects/object/wet",
-            -wetness / ((36 - this_player()->query_str()) / 4));
-         str = "You wring some moisture out of " +
-               towels[0]->one_short();
-         success = 1;
-      }
-   } else if (sizeof(towels))  {
-      str = "You can only wring out one thing at a time";
-      success = 0;
-   }
-   if (sizeof(things))  {
-      if (success) {
-         str += ", but you can't wring out " +
-                query_multiple_short(things) + " at all.\n";
-      } else {
-         str += ", and you can't wring out " +
-                query_multiple_short(things) + " at all.\n";
-      }
-   } else {
-      str += ".\n";
-   }
-   write(str);
-   return 1;
-}
-mixed *query_patterns()  {
-   return ({ "[out] <indirect:object:me'towel'>", (: cmd($1) :) });
-}
-
-==================================================
-FILE: creator/auto_doc.c
-==================================================
-
-inherit "/cmds/base";
-#include <autodoc.h>
-int cmd(string str) {
-   string *files;
-   string file;
-   files = this_player()->get_files(str);
-   if (!sizeof(files)) {
-      notify_fail("Unable to find the files " + str + ".\n");
-      return 0;
-   }
-   foreach (file in files) {
-      if (AUTODOC_HANDLER->recreate_documentation(file)) {
-         write("Recreating documentation for " + file + ".\n");
-      } else {
-         write("Unable to recreate documentation for " + file + ".\n");
-      }
-   }
-   return 1;
-}
-mixed *query_patterns() {
-   return ({ "<string>", (: cmd($4[0]) :) });
- }
-
-==================================================
-FILE: creator/jumps.c
-==================================================
-
-inherit "/cmds/base";
-#include <playtesters.h>
-object find_location(string str) {
-   if (find_object(str)) {
-      return find_object(str);
-   }
-   return load_object(str);
-}
-int do_add_jump(string from, string to) {
-   object from_ob;
-   object to_ob;
-   from_ob = find_location(from);
-   to_ob = find_location(to);
-   if (!from_ob) {
-      add_failed_mess("The from location does not exist.\n");
-      return 0;
-   }
-   if (!to_ob) {
-      add_failed_mess("The to location does not exist.\n");
-      return 0;
-   }
-   PLAYTESTER_HAND->add_jump_point(from, to);
-   write("You added the jump point from " + from + " to " + to + ".\n");
-   return 1;
-}
-int do_path_list() {
-   string str;
-   string from;
-   string* dest;
-   str = "";
-   foreach (from, dest in PLAYTESTER_HAND->query_jump_points()) {
-      str += from + ": " + query_multiple_short(dest) + ".\n";
-   }
-   write(str);
-   return 1;
-}
-int do_remove_jump(string from, string to) {
-   string* dests;
-   dests = PLAYTESTER_HAND->query_jump_destination(from);
-   if (!sizeof(dests)) {
-      add_failed_mess("There are no destiations from " + from + ".\n");
-      return 0;
-   }
-   if (member_array(to, dests) == -1) {
-      add_failed_mess("Unable to remove a jump from " + from + " to " +
-                      to + ".\nValid to's are: " +
-                      query_multiple_short(dests) + ".\n");
-      return 0;
-   }
-   PLAYTESTER_HAND->remove_jump_point(from, to);
-   write("Removed the jump from " + from + " to " + to + ".\n");
-   return 1;
-}
-mixed* query_patterns() {
-   return ({ "add <string'from'> <string'to'>", (: do_add_jump($4[0], $4[1]) :),
-        "remove <string'from'> <string'to'>", (: do_remove_jump($4[0], $4[1]) :),
-        "creator list", (: do_path_list :) });
-}
-
-==================================================
-FILE: creator/mem_stat.c
-==================================================
-
-#include <creator.h>
-#define OBJ_LIMIT 50
-#define TP this_player()
-inherit "/cmds/base";
-string help();
-mixed cmd(string str) {
-  int memtotal, limit, i = TP->query_cols() -7 -1, j;
-  string ret, str2, str3;
-   object *objlist;
-  if (!str || str == "")
-    return notify_fail(help());
-  while (strlen(str) && str[0] == ' ')
-    str = str[1..];
-  if (sscanf(str, "-%s%d %s", str3, limit, str2) == 3) {
-    if (str3[0..0] != "l")
-      return notify_fail("Error: Only valid character following '-' is 'l' at "
-                         "this time.\n");
-    str = str2;
-  }
-  seteuid(geteuid(TP));
-  objlist = WIZ_PRESENT->wiz_present(str, TP);
-  if (!arrayp(objlist) || sizeof(objlist) < 1) {
-    mixed *filelist;
-    str = TP->get_path(str);
-    notify_fail("Unable to find any objects or files corresponding"
-                " to the given name.\n");
-    if (sizeof(filelist = TP->get_files(str)) > 0) {
-      filelist = filter(filelist, (: (sizeof($1) > 2) &&
-                                   ($1[sizeof($1) - 2..] == ".c") :));
-      if (sizeof(filelist) < 1)
-        return 0;
-      filelist = filter(filelist, (: find_object($1) :));
-      objlist = map(filelist, (: find_object($1) :));
-    } else
-      return 0;
-  }
-  ret = sprintf("%-"+ i +"s %-7s\n", "Object name", "Memory");
-  ret += sprintf("%-"+ i +"s %-7s\n", "------------", "-------");
-  if (!limit)
-    limit = OBJ_LIMIT;
-  if (limit > sizeof(objlist))
-    limit = sizeof(objlist);
-  if (limit == 1)
-    ret += sprintf("%-"+ i +"."+ i +"s %7.7d\n",
-                   WIZ_PRESENT->desc_f_object(objlist[sizeof(objlist) - 1]),
-                   memory_info(objlist[sizeof(objlist) - 1]));
-  else
-    for (j = 0; j < limit; j++)
-      ret += sprintf("%-"+ i +"."+ i +"s %7.7d\n",
-                     WIZ_PRESENT->desc_f_object(objlist[j]),
-                     memory_info(objlist[j]));
-  if (sizeof(objlist) > 1) {
-    for (j = 0; j < sizeof(objlist); j++)
-      memtotal += memory_info(objlist[j]);
-    ret += sprintf("%-"+ i +"."+ i +"s %7.7s\n",
-                   "", "=======");
-    ret += sprintf("%-"+ i +"."+ i +"s %7.7d\n",
-                   "Total memory used for all "+ sizeof(objlist) +
-                   " object(s):", memtotal);
-  }
-  TP->more_string(ret);
-  return 1;
-}
-string help() {
-  return "Usage: memstat [-l<number>] [<filename(s)>|<wiz_present syntax>]\n\n"
-"Memstat lists the guestimated amount of memory the specified object(s) use. "
-"Using the -l option, a maximum amount of objects to be listed may be "
-"specified otherwise a default limit of "+ OBJ_LIMIT +" objects are listed. "
-"Paths including wildcards are taken as a way of specifying more than one "
-"file.\n";
-}
-mixed *query_patterns() {
-    return ({ "<string>", (: cmd( $4[0] ) :) });
-}
-
-==================================================
-FILE: creator/mudinfo.c
-==================================================
-
-inherit "/cmds/base";
-#ifndef __COMPILER__
-#define __COMPILER__     "probably gcc"
-#define __OPTIMIZATION__ "bugged driver?"
-#endif
-#define WIDTH 15
-#define PAD(x,y)      sprintf("%-*s: %s\n", WIDTH, x,"" + y)
-varargs string pretty_time(int tim, int len);
-private nosave int num_obs;
-mixed cmd(string str) {
-   mapping r;
-   float cpu;
-   string name, cc, tmp;
-   int *ltype;
-   name = capitalize(mud_name()) + "   (" + query_host_name() + " " +
-          __PORT__ + ")";
-   cc = __COMPILER__ + "   (" + __OPTIMIZATION__ + ")";
-   r = rusage();
-   cpu = ((r["utime"] + r["stime"]) / uptime() / 10.0);
-   num_obs = 0;
-   objects((: num_obs++ :));
-   ltype = implode(users(), (:$1[compressedp($2)]++, $1:), ({0,0}));
-   tmp = PAD("Mud name", name) +
-         PAD("Driver", __VERSION__) +
-         PAD("Architecture", __ARCH__) +
-         PAD("Compiler", cc) +
-         PAD("Driver uptime", pretty_time(uptime(), 4)) +
-         PAD("Avg Cpu usage", sprintf("%4.2f%%",cpu)) +
-         PAD("Load Average", query_load_average()) +
-         PAD("No of users", sizeof(users())) +
-         PAD("Using MCCP", ltype[1]) +
-         PAD("Plain telnet", ltype[0]) +
-         PAD("Named Livings", sizeof(named_livings())) +
-         PAD("Objects", num_obs) +
-         PAD("Call Outs", sizeof(call_out_info()) + " pending.") +
-         PAD("Memory usage", memory_info());
-   tell_object(this_player(), tmp);
-   return 1;
-}
-varargs string pretty_time(int tim, int len) {
-   int num;
-   string *bits, tmp;
-   if(!len)
-     len = 99999;
-   bits = ({ });
-   if(tim >= 60*60*24 && sizeof(bits) < len)
-      bits += ({ (num=tim/(60*60*24))+" day"+(num==1?"":"s") });
-   if(tim >= 60*60 && tim%(60*60*24) && sizeof(bits) < len)
-      bits += ({ (num=(tim/(60*60))%24)+" hour"+(num==1?"":"s") });
-   if(tim >= 60 && tim%(60*60) && sizeof(bits) <len)
-      bits += ({ (num=(tim/60)%60)+" minute"+(num==1?"":"s") });
-   if(tim%60 && sizeof(bits) <len)
-      bits += ({ (num=tim%60)+" second"+(num==1?"":"s") });
-   for(len =0; len<sizeof(bits); len++)
-      if(sscanf(bits[len],"%d %s", num, tmp) == 2 && num == 0)
-         bits[len] = 0;
-   return implode(bits, ", ");
-}
-
-==================================================
-FILE: creator/playerskills.c
-==================================================
-
-#include <skills.h>
-private string rec_list( mixed *args, string path, int all, int lvl,
-                 int only_leaf, object pl ) {
-   int i, sk, o_l;
-   string str, tp, tmp;
-   str = "";
-   for ( i = 0 ; i < sizeof( args ) ; i += SKILL_ARR_SIZE ) {
-      o_l = 0;
-      tp = path +"."+ args[ i ];
-      sk = (int)pl->query_skill( tp );
-      reset_eval_cost();
-      if (lvl == 1 && SKILL_OB->query_only_leaf(tp))
-        o_l = 1;
-      if (!(only_leaf || o_l) || (!sizeof(args[i+SKILL_BIT]) &&
-                                  (sk > 0 || all)))
-        str += sprintf( "%*'| 's%*'.'-s %4d %4d\n", ( lvl-1 ) * 2, "",
-              20 - ( ( lvl - 1 ) * 2 ), args[ i ], sk,
-              (int)pl->query_skill_bonus( tp ) );
-      if ( sizeof( args[ i + SKILL_BIT ] ) && ( only_leaf || o_l || all
-                                                || ( sk > 5 * lvl ) ) ) {
-         tmp = rec_list( args[ i + SKILL_BIT ], path +"."+ args[i],
-                         all, lvl + 1, only_leaf || o_l, pl );
-         if ((only_leaf || o_l) && (tmp != "" || (!all && lvl == 1)))
-           str += sprintf( "%*'| 's%*'.'-s    -    -\n", ( lvl-1 ) * 2, "",
-                           20 - ( ( lvl - 1 ) * 2 ), args[ i ]) + tmp;
-         else
-           str += tmp;
-      }
-   }
-   return str;
-}
-private int real_cmd( object *players, string word ) {
-   int i;
-   string result, *bits;
-   object pl;
-   mixed *args;
-   pl = players[0];
-   result = "";
-   bits = ({ });
-   if ( word ) {
-      args = (mixed *)SKILL_OB->query_skills();
-      if ( ( i = member_array( word, args ) ) == -1 ) {
-         notify_fail( "Usage: "+ query_verb() +" <skill>\n" );
-         return 0;
-      }
-      args = args[ i + SKILL_BIT ];
-      result = sprintf( "%'='*-s\n", (int)this_player()->query_cols(),
-            "=======SKILLS=======Level/Bonus" );
-      result += sprintf( "%#*-s\n", (int)this_player()->query_cols(),
-            rec_list( args, word, 1, 1, 0, pl ) );
-      this_player()->more_string( result, "Skills" );
-    tell_object( pl, this_player()->query_cap_name() + " is checking "
-        "your skills.\n" );
-      return 1;
-   }
-   args = (mixed *)SKILL_OB->query_skills();
-   result += sprintf( "%'='*-s\n", (int)this_player()->query_cols(),
-         "=======SKILLS=======Level/Bonus");
-   result += sprintf( "%#*-s\n", (int)this_player()->query_cols(),
-         rec_list( args, "", ( member_array( "all", bits ) != -1 ), 1, 0, pl ) );
-   this_player()->more_string( result, "Skills" );
-   tell_object( pl, this_player()->query_cap_name() + " is checking your "
-       "skills.\n" );
-   return 1;
-}
-private void check_response( string txt, object *indirect_obs, string skill ) {
-    int result;
-    if ( upper_case( txt ) == "Y" ) {
-        result = real_cmd( indirect_obs, skill );
-        return;
-    }
-    tell_object( this_player(), "Not viewing skills.\n" );
-}
-private int cmd( object *indirect_obs, string skill ) {
-   if ( !sizeof( filter( indirect_obs, (: userp :) ) ) ) {
-      check_response( "Y", indirect_obs, skill );
-      return 1;
-   }
-   tell_object( this_player(), "Are you sure you wish to view " +
-      query_multiple_short( indirect_obs ) + "'s skills?  You should ask "
-      "$V$0=" + indirect_obs[0]->query_possessive() + ",their$V$ "
-   "permission first.\n" );
-   tell_object( this_player(), "Enter 'Y' to view " +
-      query_multiple_short( indirect_obs ) + "'s skill tree.\n" );
-   input_to( (: check_response :), 0, indirect_obs, skill );
-   return 1;
-}
-mixed *query_patterns() {
-  return ({ "<indirect:wiz-present> <string>",
-            (: cmd($1, $4[1]) :),
-            "<indirect:wiz-present>",
-            (: cmd($1, 0) :) });
-}
-
-==================================================
-FILE: creator/pquests.c
-==================================================
-
-#include <quest_handler.h>
-#include <library.h>
-inherit "/cmds/base";
-string quest_text(string quest);
-int cmd( string player, int sorted ) {
-    string *quests, text;
-    int i, size;
-    if ( !player ) {
-        quests = QUEST_HANDLER->query_quest_names();
-        text = "$P$Quest list$P$\nTotal quests on " + mud_name() + " :-\n\n";
-    }
-    else {
-        quests = LIBRARY->query_quests(player);
-        if (!quests) {
-            add_failed_mess( "That player has not done any "
-                "quests.\n" );
+int get_guild_id(object person) {
+    switch(person->query_guild_ob()) {
+        case "/std/guilds/warrior":
             return 0;
+        case "/std/guilds/assassin":
+            return 1;
+        case "/std/guilds/thief":
+            return 2;
+        case "/std/guilds/wizard":
+            return 3;
+        case "/std/guilds/priest":
+            return 4;
+        case "/std/guilds/witch":
+            return 5;
+        default:
+            return 6;
+    }
+}
+mapping get_dist( string filter, string arg ) {
+    mapping ps;
+    object *people, person;
+    string *loc;
+    int to_add;
+    people = filter( users(), (: !$1->query_creator() &&
+        $1->query_name() != "logon" :) );
+    ps = ([ ]);
+    foreach( person in people ) {
+        loc = determine_location(person);
+        if( !ps[loc[0]] ) {
+            if( filter == "average" ) {
+                ps[loc[0]] = ({ ([ ]), 0, ({ -1, 0, 0 }) });
+            }
+            else {
+                ps[loc[0]] = ({ ([ ]), 0, 0 });
+            }
         }
-    if ( sorted )
-        quests = sort_array( quests, 1 );
-        text = "$P$Quest list$P$\nQuests done for player " + player + " :-\n\n";
+        ps[loc[0]][1]++;
+        if( !ps[loc[0]][0][loc[1]] ) {
+            if( filter == "average" ) {
+                ps[loc[0]][0][loc[1]] = ({ 0, ({ -1, 0, 0 }) });
+            }
+            else {
+                ps[loc[0]][0][loc[1]] = ({ 0, 0 });
+            }
+        }
+        ps[loc[0]][0][loc[1]][0]++;
+        switch(filter) {
+            case "verbosity":
+                if( person->query_verbose(arg) ) {
+                    ps[loc[0]][2]++;
+                    ps[loc[0]][0][loc[1]][1]++;
+                }
+                break;
+            case "average":
+                to_add = 0;
+                if( arg == "guild level" ) {
+                    to_add = person->query_level();
+                }
+                if( arg == "rating" ) {
+                    to_add = (int)TOP_TEN_HANDLER->calculate_rating(person);
+                }
+                if( arg == "age" ) {
+                    to_add = -person->query_time_on();
+                }
+                if( to_add < ps[loc[0]][2][0] || ps[loc[0]][2][0] == -1 ) {
+                    ps[loc[0]][2][0] = to_add;
+                }
+                ps[loc[0]][2][1] += to_add;
+                if( to_add > ps[loc[0]][2][2] ) {
+                    ps[loc[0]][2][2] = to_add;
+                }
+                if( to_add < ps[loc[0]][0][loc[1]][1][0] ||
+                    ps[loc[0]][0][loc[1]][1][0] == -1 ) {
+                    ps[loc[0]][0][loc[1]][1][0] = to_add;
+                }
+                ps[loc[0]][0][loc[1]][1][1] += to_add;
+                if( to_add > ps[loc[0]][0][loc[1]][1][2] ) {
+                    ps[loc[0]][0][loc[1]][1][2] = to_add;
+                }
+                break;
+            case "category":
+                if( arg == "guild" ) {
+                    if( !ps[loc[0]][2] ) {
+                        ps[loc[0]][2] = ({0,0,0,0,0,0,0});
+                    }
+                    if( !ps[loc[0]][0][loc[1]][1] ) {
+                        ps[loc[0]][0][loc[1]][1] = ({0,0,0,0,0,0,0});
+                    }
+                    to_add = get_guild_id(person);
+                    ps[loc[0]][2][to_add]++;
+                    ps[loc[0]][0][loc[1]][1][to_add]++;
+                }
+                break;
+            default:
+        }
     }
-    size = sizeof(quests);
-    for ( i = 0; i < size; i++ ) {
-        text += sprintf("%d. %s (%s) %s\n", i + 1, quests[i],
-            QUEST_HANDLER->query_quest_title (quests[i]),
-            quest_text( quests[i] ) );
+    return ps;
+}
+int cmd( string filter, string arg, int verbose ) {
+    string place, zone, *guilds;
+    mapping players, zones;
+    int total, i, j;
+    string tmp;
+    string ret;
+    ret = "";
+    players = get_dist(filter,arg);
+    total = sizeof(filter( users(), (: !$1->query_creator() &&
+        $1->query_name() != "logon" :) ));
+    guilds = ({ "Warriors", "Assassins", "Thieves", "Wizards", "Priests",
+        "Witches", "Adventurers" });
+    tmp = "\n";
+    tmp+= sprintf( "%-27s", "Distribution of players:" );
+    if( filter == "category" && arg == "guild" ) {
+        j = (this_player()->query_cols() - 27) / (sizeof(guilds));
+        for( i=0; i<sizeof(guilds); i++ ) {
+            tmp += sprintf( "%" + j + ".3s", guilds[i] );
+        }
     }
-    tell_object( this_player(), text );
+    if( filter == "average" ) {
+        if( arg == "age" ) {
+            j = (this_player()->query_cols() - 27);
+            tmp += sprintf( "%-" + j + "s", "   Average age" );
+        }
+        else {
+            j = (this_player()->query_cols() - 27) / 3;
+            tmp += sprintf( "%" + j + "s", "Lowest" );
+            tmp += sprintf( "%" + j + "s", "Average" );
+            tmp += sprintf( "%" + j + "s", "Highest" );
+        }
+    }
+    tmp += "\n\n";
+    ret += tmp;
+    foreach( place in keys(players) ) {
+        tmp = "%^YELLOW%^";
+        tmp+= sprintf( "%-24.24s", place );
+        tmp+= sprintf( "%3.1i", players[place][1] );
+        switch( filter ) {
+            case "verbosity":
+                tmp += players[place][2] + "/" +
+                    players[place][1] + " verbose " + arg;
+                break;
+            case "average":
+                if( arg == "age" ) {
+                    tmp += sprintf( "%-"+ j +"s", "   " + query_time_string(
+                        players[place][2][1] / players[place][1] ) );
+                }
+                else {
+                    tmp += sprintf( "%"+ j +".1i", players[place][2][0] );
+                    tmp += sprintf( "%"+ j +".1i", players[place][2][1] /
+                        players[place][1] );
+                    tmp += sprintf( "%"+ j +".1i", players[place][2][2] );
+                }
+                break;
+            case "category":
+                if( arg == "guild" ) {
+                    for( i=0; i<sizeof(guilds); i++ ) {
+                        tmp += sprintf( "%" + j + ".1i",
+                            players[place][2][i] );
+                    }
+                }
+                break;
+            default:
+                tmp += "   (";
+                tmp += sprintf( "%3s",
+                    ((100 * players[place][1]) / total + "%") );
+                tmp += ")";
+                break;
+        }
+        tmp += "%^RESET%^";
+        tmp += "\n";
+        ret += tmp;
+        if (verbose) {
+           zones = players[place][0];
+           foreach( zone in keys( zones ) ) {
+               tmp = sprintf( "%-24.24s", ("  - " + zone) );
+               tmp+= sprintf( "%3.1i", zones[zone][0] );
+               switch( filter ) {
+                   case "verbosity":
+                       tmp += " (" + zones[zone][1] + "/" + zones[zone][0] +
+                           " verbose " + arg + ")";
+                       break;
+                   case "average":
+                       if( arg == "age" ) {
+                           tmp += sprintf( "%-"+ j +"s", "   " +
+                               query_time_string( zones[zone][1][1] /
+                               zones[zone][0] ) );
+                       }
+                       else {
+                           tmp += sprintf( "%"+ j +".1i", zones[zone][1][0] );
+                           tmp += sprintf( "%"+ j +".1i", zones[zone][1][1] /
+                               zones[zone][0] );
+                           tmp += sprintf( "%"+ j +".1i", zones[zone][1][2] );
+                       }
+                       break;
+                   case "category":
+                       if( arg == "guild" ) {
+                           for( i=0; i<sizeof(guilds); i++ ) {
+                               if( !zones[zone][1][i] ) {
+                                   tmp += "%^BLACK%^";
+                                   tmp += sprintf( "%" + j + ".1i",
+                                        zones[zone][1][i] );
+                                   tmp += "%^RESET%^";
+                               }
+                               else {
+                                   tmp += sprintf( "%" + j + ".1i",
+                                       zones[zone][1][i] );
+                               }
+                           }
+                       }
+                       break;
+                   default:
+                       tmp += "   (";
+                       tmp += sprintf( "%3s",
+                           ((100 * zones[zone][0]) / total + "%") );
+                       tmp += ")";
+                       break;
+               }
+               tmp += "\n";
+               ret += tmp;
+           }
+        }
+        if (verbose) {
+           ret += "\n";
+        }
+    }
+    ret += "Total = " + total + "\n";
+    write("$P$Distribution$P$" + ret);
     return 1;
 }
-string quest_text(string quest) {
-    switch ( QUEST_HANDLER->query_quest_status(quest) ) {
-        case 0:
-            return "(inactive)";
-        case 1:
-            return "";
-        default:
-            return "(broken)";
-    }
-}
 mixed *query_patterns() {
-    return ({ "", (: cmd(0, 0) :),
-        "<string'player'>", (: cmd($4[0], 0) :),
-        "<string'player'> sorted", (: cmd($4[0], 1) :)
+    return ({
+        "by domain", (: cmd(0, 0, 0) :),
+        "by guild level",  (: cmd("average", "guild level", 0) :),
+        "by rating",  (: cmd("average", "rating", 0) :),
+        "by age",  (: cmd("average", "age", 0) :),
+        "by guild",  (: cmd("category", "guild", 0) :),
+        "verbose by domain", (: cmd(0, 0, 1) :),
+        "verbose by guild level",  (: cmd("average", "guild level", 1) :),
+        "verbose by rating",  (: cmd("average", "rating", 1) :),
+        "verbose by age",  (: cmd("average", "age", 1) :),
+        "verbose by guild",  (: cmd("category", "guild", 1) :),
     });
 }
 
 ==================================================
-FILE: creator/prof.c
+FILE: creator/todo.c
 ==================================================
 
-#include <housing.h>
 inherit "/cmds/base";
-#define MAX 500
-int last_got;
-mixed *data, *tot;
-int total(mapping *info) {
-  int ret;
-  mapping item;
-  foreach(item in info)
-    ret += item["self"];
-  return ret;
+class todo_item {
+   string type;
+   int id;
+   int priority;
+   string description;
+   int time_added;
+   int time_to_finish;
 }
-int cmd(string thing) {
-  int i, j;
-  mapping stuff;
-  object ob;
-  mixed foo;
-  string ret;
-  if(last_got < time() - 900) {
-    data = map(objects((: !clonep($1) :)),
-               (: ({ $1, function_profile($1) }) :));
-    tot = allocate(sizeof(data));
-    for(i=0; i<sizeof(data); i++) {
-      tot[i] = ({ data[i][0], total(data[i][1]) });
-    }
-    for(i=0; i<24; i++) {
-      reset_eval_cost();
-      for (j = i; j < sizeof(tot); j++)
-        if (tot[i][1] < tot[j][1]) {
-          foo = tot[i];
-          tot[i] = tot[j];
-          tot[j] = foo;
-        }
-    }
-    last_got = time();
-  }
-  ret = "";
-  if(!thing) {
-    for (i = 0; i < 50 && i<sizeof(tot); i++) {
-      if(tot[i][1])
-        ret += sprintf("%60-O %i\n", tot[i][0], tot[i][1]);
-    }
-  } else {
-    ob = find_object(thing);
-    if(!ob)
-      return notify_fail("No such object.\n");
-    ret += sprintf("%30-s %10s %10s %10s\n", "function", "calls", "self", "children");
-    i = 0;
-    for(j=0; j<sizeof(data); j++)
-      if(data[j][0] == ob) {
-        i = 1;
-        break;
+#define TODO_PRIVATE 0x8000
+#define TODO_PRIORITY_MASK (~TODO_PRIVATE)
+private mapping todo_lists;
+private mapping changed;
+private int save_callout_id;
+void create() {
+   ::create();
+   todo_lists = ([ ]);
+   changed = ([ ]);
+   seteuid("Root");
+}
+private class todo_item *query_todo_list(string player) {
+   string data;
+   class todo_item *stuff;
+   class todo_item *new_stuff;
+   class todo_item item;
+   class todo_item new_item;
+   if (todo_lists[player]) {
+      return todo_lists[player];
+   }
+   data = read_file("/w/" + player + "/save/todo_list.o");
+   if (!data) {
+      return ({ });
+   }
+   stuff = restore_variable(data);
+   if (!stuff) {
+      return ({ });
+   }
+   if (sizeof(stuff) &&
+       sizeof(stuff[0]) != 6) {
+      new_stuff = ({ });
+      foreach (item in stuff) {
+         new_item = new(class todo_item);
+         new_item->priority = item->priority;
+         new_item->type = item->type;
+         new_item->description = item->description;
+         new_item->id = item->id;
+         new_item->time_added = time();
+         new_item->time_to_finish = time();
+         new_stuff += ({ new_item });
       }
-    if(!i)
-      return notify_fail("No such object in data.\n");
-    foreach(stuff in data[j][1]) {
-      ret += sprintf("%30-s %10d %10d %10d\n", stuff["name"], stuff["calls"],
-             stuff["self"], stuff["children"]);
-    }
+      stuff = new_stuff;
+   }
+   return stuff;
+}
+private void save_todo_lists() {
+   int times;
+   string player;
+   string data;
+   save_callout_id = 0;
+   foreach (player, times in changed) {
+      data = save_variable(todo_lists[player]);
+      write_file("/w/" + player + "/save/todo_list.o", data, 1);
+   }
+   changed = ([ ]);
+   todo_lists = ([ ]);
+}
+private void set_todo_list(string player, class todo_item *data) {
+   todo_lists[player] = data;
+   changed[player] = time();
+   if (!save_callout_id) {
+      save_callout_id = call_out((: save_todo_lists :), 120);
+   }
+}
+private int query_next_id(string player) {
+   class todo_item *data;
+   class todo_item item;
+   int id;
+   data = query_todo_list(player);
+   id = 1;
+   foreach (item in data) {
+      if (item->id >= id) {
+         id = item->id + 1;
+      }
+   }
+   return id;
+}
+string query_priority_name(int priority) {
+   string extra;
+   extra = " ";
+   if (priority & TODO_PRIVATE) {
+      extra = "P";
+   }
+   switch (priority & TODO_PRIORITY_MASK) {
+      case 0 :
+         return "VL" + extra;
+      case 1 :
+         return " L" + extra;
+      case 2 :
+         return " H" + extra;
+      case 3 :
+         return "VH" + extra;
+      case 4 :
+         return " U" + extra;
+      default :
+         return " F" + extra;
+   }
+}
+int query_priority_number(string priority) {
+   int mask;
+   priority = lower_case(priority);
+   mask = 0;
+   if (priority[<1] == 'p') {
+      mask = TODO_PRIVATE;
+      priority = priority[0..<2];
+   }
+   switch (priority) {
+      case "vl" :
+         return 0 | mask;
+      case "l" :
+         return 1 | mask;
+      case "h" :
+         return 2 | mask;
+      case "vh" :
+         return 3 | mask;
+      case "u" :
+         return 4 | mask;
+   }
+   return -1;
+}
+string query_todo_line(class todo_item item, int brief, int cols) {
+  if(brief) {
+  return sprintf("%s%-=*s\n",
+                  query_priority_name(item->priority),
+                  cols - 3,
+                  item->description);
   }
-  write("$P$Profile$P$" + ret);
+  return sprintf("#%3d %s (%s) Added at %s\n    %-=*s\n",
+                  item->id,
+                  query_priority_name(item->priority),
+                  item->type,
+                  ctime(item->time_added),
+                  cols - 4,
+                  item->description);
+}
+int sort_function(class todo_item bing,
+                  class todo_item bing2) {
+   if ((bing->priority & TODO_PRIORITY_MASK) == (bing2->priority & TODO_PRIORITY_MASK)) {
+      if (bing->type == bing2->type) {
+         return bing->id - bing2->id;
+      }
+      return strcmp(bing->type, bing2->type);
+   }
+   return (bing2->priority & TODO_PRIORITY_MASK) - (bing->priority & TODO_PRIORITY_MASK);
+}
+class todo_item *sort_todo_list(class todo_item *data) {
+   return sort_array(data, (: sort_function :));
+}
+string query_todo_list_string(class todo_item *items, int brief) {
+   class todo_item bing;
+   string data;
+   data = "";
+   if (sizeof(items)) {
+      foreach (bing in items) {
+         data += query_todo_line(bing, brief, this_player()->query_cols());
+      }
+   }
+   return data;
+}
+private int list_todo(int brief) {
+   class todo_item* items;
+   string data;
+   items = query_todo_list(this_player()->query_name());
+   if (sizeof(items)) {
+     data = query_todo_list_string(items, brief);
+   } else {
+      data = "No items in your todo list.\n";
+   }
+   write("$P$Todo list$P$" + data);
+   add_succeeded_mess("");
+   return 1;
+}
+private int list_todo_creator(string player) {
+   class todo_item* items;
+   string data;
+   items = query_todo_list(player);
+   if (sizeof(items)) {
+      items = filter(items, (: !($1->priority & TODO_PRIVATE) :));
+      data = query_todo_list_string(items, 0);
+   } else {
+      data = "No items in " + capitalize(player) + "'s todo list.\n";
+   }
+   write("$P$Todo list$P$" + data);
+   add_succeeded_mess("");
+   return 1;
+}
+private int list_todo_priority(int priority) {
+   class todo_item *items;
+   string data;
+   items = query_todo_list(this_player()->query_name());
+   items = filter(items, (: ($1->priority & TODO_PRIORITY_MASK) == $(priority) :) );
+   if (sizeof(items)) {
+      data = query_todo_list_string(items, 0);
+   } else {
+      data = "No items in your todo list with the specified priority.\n";
+   }
+   write("$P$Todo list$P$" + data);
+   add_succeeded_mess("");
+   return 1;
+}
+private int list_todo_type(string type) {
+   class todo_item *items;
+   string data;
+   type = lower_case(type);
+   items = query_todo_list(this_player()->query_name());
+   items = filter(items, (: $1->type == $(type) :) );
+   if (sizeof(items)) {
+      data = query_todo_list_string(items, 0);
+   } else {
+      data = "No items in your todo list with a type of " + type + ".\n";
+   }
+   write("$P$Todo list$P$" + data);
+   add_succeeded_mess("");
+   return 1;
+}
+private int add_item(string priority, string type, string description) {
+   int priority_num;
+   class todo_item frog;
+   class todo_item *data;
+   priority_num = query_priority_number(priority);
+   if (priority_num == -1) {
+      add_failed_mess("Unknown priority '" + priority +
+                      "', only VL, L, H, VH and U allowed.\n");
+      return 0;
+   }
+   if (strlen(type) > 10) {
+      add_failed_mess("The type cannot be more than 10 characters long.\n");
+      return 0;
+   }
+   if (file_size("/w/" + this_player()->query_name() + "/save") != -2) {
+      add_failed_mess("There is no save directory in your home directory.  "
+                      "This is needed for operation of this command.\n");
+      return 0;
+   }
+   frog = new(class todo_item);
+   frog->priority = priority_num;
+   frog->description = description;
+   frog->type = lower_case(type);
+   frog->id = query_next_id(this_player()->query_name());
+   frog->time_added = time();
+   frog->time_to_finish = time() + (60 * 60 * 24) * 7;
+   data = query_todo_list(this_player()->query_name());
+   data += ({ frog });
+   data = sort_todo_list(data);
+   set_todo_list(this_player()->query_name(), data);
+   add_succeeded_mess(({ "You added a new item #" + frog->id +
+                         " to your todo list.\n", "" }));
+   return 1;
+}
+private void confirm_complete_item(string response, int id) {
+   class todo_item *data;
+   class todo_item item;
+   response = lower_case(response);
+   if (!strlen(response) || response[0] != 'y') {
+      write("Ok, canceling the completion of the item.\n");
+      return ;
+   }
+   data = query_todo_list(this_player()->query_name());
+   foreach (item in data) {
+      if (item->id == id) {
+         data -= ({ item });
+         set_todo_list(this_player()->query_name(), data);
+         write("Ok, completed list id #" + id + ".\n");
+         return ;
+      }
+   }
+   write("Unable to find the item.  Someone must have run off with it!\n");
+   return ;
+}
+class todo_item find_todo_id(class todo_item *data, int id) {
+   class todo_item item;
+   foreach (item in data) {
+      if (item->id == id) {
+         return item;
+      }
+   }
+   return 0;
+}
+private int complete_item(int id) {
+   class todo_item *data;
+   class todo_item item;
+   data = query_todo_list(this_player()->query_name());
+   item = find_todo_id(data, id);
+   if (item) {
+      write(query_todo_line(item, 0, this_player()->query_cols()) +
+            "Are you sure you wish to complete this todo list item? ");
+      input_to((: confirm_complete_item :), 0, id);
+      return 1;
+   }
+   add_failed_mess("Unable to find an item of id #" + id + " to complete.\n");
+   return 0;
+}
+private int change_priority(int id, string new_priority) {
+   class todo_item *data;
+   class todo_item item;
+   int priority_num;
+   priority_num = query_priority_number(new_priority);
+   if (priority_num == -1) {
+      add_failed_mess("Unknown priority '" + new_priority +
+                      "', only VL, L, H, VH and U allowed.\n");
+      return 0;
+   }
+   data = query_todo_list(this_player()->query_name());
+   item = find_todo_id(data, id);
+   if (item) {
+      item->priority = priority_num;
+      add_succeeded_mess(({ "Change the priority of #" + id +
+                            " to " + new_priority + ".\n", "" }));
+      set_todo_list(this_player()->query_name(), data);
+      return 1;
+   }
+   add_failed_mess("Unable to find an item of id #" + id +
+                   " to change the priority of.\n");
+   return 0;
+}
+private int change_description(int id, string new_description) {
+   class todo_item *data;
+   class todo_item item;
+   data = query_todo_list(this_player()->query_name());
+   item = find_todo_id(data, id);
+   if (item) {
+      item->description = new_description;
+      set_todo_list(this_player()->query_name(), data);
+      return 1;
+   }
+   add_failed_mess("Unable to find an item of id #" + id +
+                   " to change the description of.\n");
+   return 0;
+}
+mixed *query_patterns() {
+   return ({
+             "", (: list_todo(1) :),
+             "list", (: list_todo(0) :),
+             "list type <string'type'>", (: list_todo_type($4[0]) :),
+             "list urgent", (: list_todo_priority(4) :),
+             "list very high", (: list_todo_priority(3) :),
+             "list high", (: list_todo_priority(2) :),
+             "list low", (: list_todo_priority(1) :),
+             "list very low", (: list_todo_priority(0) :),
+               "list brief", (: list_todo(1) :),
+             "creator <string'name'>", (: list_todo_creator($4[0]) :),
+             "add <word'priority'> <word'type'> <string'description'>",
+                   (: add_item($4[0], $4[1], $4[2]) :),
+             "complete <number'todo id'>", (: complete_item($4[0]) :),
+             "change priority <number'todo it'> <word'priority'>",
+                   (: change_priority($4[0], $4[1]) :),
+             "change description <number'todo id'> <string'description'>",
+                   (: change_description($4[0], $4[1]) :),
+           });
+}
+void dest_me() {
+   save_todo_lists();
+   ::dest_me();
+}
+
+==================================================
+FILE: creator/weapons.c
+==================================================
+
+#include <weapon.h>
+inherit "/cmds/base";
+mapping _weapons;
+mapping _items;
+mapping _matched;
+mapping _conditions = ([ "cloth" : 800, "rubber" : 100, "hide" : 700, "leather" : 600, "wood" : 500, "bone" : 200, "silver" : 300, "copper" : 400, "stone" : 400, "bronze" : 500, "iron" : 700, "steel" : 900, "klatchian steel" : 1100, "octiron" : 1300 ]);
+mapping _chances = ([ "cloth" : 20, "rubber" : 19, "hide" : 17, "leather" : 15, "wood" : 12, "bone" : 8, "silver" : 15, "copper" : 10, "stone" : 3, "bronze" : 8, "iron" : 6, "steel" : 4, "klatchian steel" : 2, "octiron" : 0 ]);
+mapping _weights = ([ "cloth" : 1, "rubber" : 3, "hide" : 2, "leather" : 2, "wood" : 3, "bone" : 3, "silver" : 6, "copper" : 6, "stone" : 5, "bronze" : 5, "iron" : 5, "steel" : 5, "klatchian steel" : 5, "octiron" : 5 ]);
+mapping _equivalents = ([ "chocolate" : "rubber",
+                          "earthworm" : "octiron" ]);
+mapping _specials = ([ "bash" : "smash",
+                       "hack" : "chop",
+                       "stab" : "pierce",
+                       "slash" : "slice" ]);
+mapping _types = ([ "strike" : "blunt",
+                    "bash" : "blunt",
+                    "smash" : "blunt",
+                    "hack" : "sharp",
+                    "chop" : "sharp",
+                    "poke" : "pierce",
+                    "stab" : "pierce",
+                    "pierce" : "pierce",
+                    "cut" : "sharp",
+                    "slash" : "sharp",
+                    "slice" : "sharp",
+                    "spike" : "pierce",
+                    "fire" : "any" ]);
+nosave string *_attack_types = ({ "blunt", "sharp", "pierce", "fire" });
+void create() {
+  ::create();
+  _weapons = "/obj/handlers/armoury"->make_list("/obj/nweapons/",
+                                                ({".c", ".wep"}));
+}
+string warn(int i) {
+  switch(i) {
+  case 2:
+    return "  %^BOLD%^%^RED%^!%^RESET%^ ";
+  case 1:
+    return "  %^ORANGE%^o%^RESET%^ ";
+  default:
+    return "  %^GREEN%^-%^RESET%^ ";
+  }
+}
+int *calc_rating(object weapon) {
+    int i, size;
+    int ave = 0;
+    int max = 0;
+    int *damage;
+    mixed *data;
+    data = (mixed *)weapon->query_attack_data();
+    if ( !( size = sizeof( data ) ) )
+      return ({ 0, 0 });
+    for ( i = 0; i < size; i += W_ARRAY_SIZE ) {
+      if ( member_array( data[ i + W_SKILL ], _attack_types ) == -1 )
+        continue;
+      damage = data[ i + W_DAMAGE ];
+      ave += ( data[ i + W_CHANCE ] * ( damage[ F_FIXED ] +
+            ( damage[ F_NUM ] * ( 1 + damage[ F_DIE ] ) ) / 2 ) ) / 100;
+      if(damage[ F_FIXED ] + damage[ F_NUM ] * damage[ F_DIE ] > max)
+        max = damage[ F_FIXED ] + damage[ F_NUM ] * damage[ F_DIE ];
+    }
+    return ({ ave, max });
+}
+int calc_ave(mixed damage) {
+  if(arrayp(damage))
+    return damage[F_FIXED] + (damage[F_NUM] * (1 + damage[F_DIE])) / 2;
+  return damage;
+}
+int calc_max(mixed damage) {
+  if(arrayp(damage))
+    return damage[F_FIXED] + (damage[F_NUM] * damage[F_DIE]);
+  return damage;
+}
+object *filter(object who) {
+  object *tmp;
+  if(who->query_creator())
+    return ({});
+  tmp = who->query_weapons();
+  switch(sizeof(tmp)) {
+  case 2:
+    if(tmp[0]->query_property("virtual name")) {
+      if(tmp[0]->query_property("virtual name") ==
+         tmp[1]->query_property("virtual name"))
+        return ({ tmp[0] });
+    } else {
+      if(base_name(tmp[0]) == base_name(tmp[1]))
+        return ({ tmp[0] });
+    }
+    break;
+  default:
+  }
+  return tmp;
+}
+int list(string type) {
+  mapping weapons;
+  object wep;
+  mixed *data;
+  string *names, *types, str;
+  int i;
+  weapons = "/obj/handlers/armoury"->query_items("weapons");
+  foreach(str in keys(weapons)) {
+    if(str == "twoedge" || str == "kring" ||
+       strsrch(weapons[str], "ranged") != -1 ||
+       strsrch(weapons[str], "misc") != -1)
+      continue;
+    wep = "/obj/handlers/armoury"->request_item(str);
+    if(!wep)
+      continue;
+    types = wep->query_attack_types();
+    if(type && types && member_array(type, types) == -1)
+      continue;
+    data = wep->query_attack_data();
+    names = wep->query_attack_names();
+    for(i=0; i<sizeof(data); i += W_ARRAY_SIZE) {
+      printf("%-30s %8s %3d %3d %3d %6s\n",
+             wep->query_short(),
+             names[i / W_ARRAY_SIZE],
+             data[i + W_CHANCE],
+             calc_ave(data[i+W_DAMAGE]),
+             calc_max(data[i+W_DAMAGE]),
+             data[i+W_SKILL]);
+      write_file("/w/ceres/WEAPONS.csv",
+                 sprintf("%s,%s,%d,%d,%d,%s\n",
+                         wep->query_short(),
+                         names[i / W_ARRAY_SIZE],
+                         data[i + W_CHANCE],
+                         calc_ave(data[i+W_DAMAGE]),
+                         calc_max(data[i+W_DAMAGE]),
+                         data[i+W_SKILL]));
+    }
+    wep->dest_me();
+  }
   return 1;
 }
-
-==================================================
-FILE: creator/pstat.c
-==================================================
-
-inherit "/cmds/base";
-int cmd( object *indirect_obs ) {
-    object ob;
-    mapping prop;
-    string *sorted, property;
-    string txt;
-    txt = "$P$Properties$P$";
-    foreach( ob in indirect_obs ) {
-        prop = filter( ob->query_properties(), (: $2 :) );
-        sorted = sort_array( keys( prop ), 1 );
-        foreach( property in sorted ) {
-            txt += sprintf( "$I$0,5=(%s): %O$I$0,-5=\n", property, prop[ property ] );
-        }
-    }
-    tell_object( this_player(), txt );
+int sort_weapons(int wep1, int wep2) {
+  if(wep1 > wep2)
+    return -1;
+  if(wep1 < wep2)
     return 1;
+  return 0;
 }
-mixed *query_patterns() {
-    return ({ "<indirect:wiz-present>", (: cmd( $1 ) :) });
-}
-
-==================================================
-FILE: creator/ptest_ers.c
-==================================================
-
-inherit "/cmds/base";
-#include <playtesters.h>
-#include <project_management.h>
-string query_applicant_text();
-varargs int cmd(string check, string name, string reason) {
-  int i;
-  string *names, *projects;
-  string ret = "";
-  class project *tmp, *tmp2;
-  switch (check) {
-    case "ptinfo":
-      ret = PLAYTESTER_HAND->query_show_list_colour();
-      tell_object (this_player(), ret);
-      return 1;
-    break;
-    case "assign":
-      i = PROJECT_HANDLER->find_project (name);
-      if (i == -1) {
-        this_player()->add_failed_mess (this_object(), "There is no project "
-          "of that ID.\n", ({ }));
-        return 0;
-      }
-      else {
-        names = PROJECT_HANDLER->assign_pts_to_project (i);
-        if (!sizeof (names)) {
-          this_player()->add_failed_mess (this_object(), "Something went "
-            "wrong!\n", ({ }));
-            return 0;
-        }
-        else {
-          tell_object (this_player(), sprintf ("$I$5=You assign %s to project %s.\n",
-          query_multiple_short (map (names, (: capitalize ($1) :))), name));
-        return 1;
+int players() {
+  mapping weapons;
+  object wep, *weps;
+  mixed *data;
+  string str;
+  data = map(users(), "filter");
+  weapons = ([ ]);
+  foreach(weps in data) {
+    if(weps) {
+      foreach(wep in weps) {
+        if(wep->query_property("virtual name"))
+          str = (clone_object(wep->query_property("virtual name"))->query_short());
+        else
+          str = base_name(wep)->query_short();
+        if(!weapons[str])
+          weapons[str] = 1;
+        else
+          weapons[str] += 1;
       }
     }
-    break;
-    case "allassign":
-      tmp = PROJECT_HANDLER->get_playtesting_projects();
-      tmp2 = filter (tmp, (: sizeof ($1->guild_specific) :));
-      tmp -= tmp2;
-      if (!sizeof (tmp) && !sizeof (tmp2)) {
-          this_player()->add_failed_mess (this_object(), "There are no "
-            "projects currently in playtesting.\n", ({ }));
-          return 0;
-      }
-      else {
-        for (int c = 0; c < 2; c++) {
-          if (c == 0) {
-            projects = map (tmp2, (: $1->id :));
-          }
-          else {
-            projects = map (tmp, (: $1->id :));
-          }
-          foreach (string p in projects) {
-            names = PROJECT_HANDLER->assign_pts_to_project (p);
-            if (!sizeof (names)) {
-              continue;
-            }
-            ret += sprintf ("$I$5=You assign %s to project %s.\n",
-              query_multiple_short (map (names, (: capitalize ($1) :))), p);
-          }
-        }
-        tell_object (this_player(), ret);
-        return 1;
-    }
-    break;
-    case "add":
-      i = PLAYTESTER_HAND->add_playtester (name);
-      if (i) {
-        this_player()->add_succeeded_mess (this_object(), "$N add$s someone "
-          "as a playtester.\n", ({ }));
-        return 1;
-      }
-      else {
-        this_player()->add_failed_mess (this_object(), "You cannot add this "
-          "player as a playtester.\n", ({ }));
-        return 0;
-      }
-    break;
-    case "remove":
-      i = PLAYTESTER_HAND->remove_playtester (name, reason);
-      if (i) {
-        this_player()->add_succeeded_mess (this_object(), "$N remove$s someone "
-          "as a playtester.\n", ({ }));
-        return 1;
-      }
-      else {
-        this_player()->add_failed_mess (this_object(), "You cannot remove this "
-          "player as a playtester.\n", ({ }));
-        return 0;
-      }
-    break;
-    case "shortlist":
-      PT_APPLICATION_HANDLER->set_shortlist (name);
-        this_player()->add_succeeded_mess (this_object(), "$N toggle$s "
-          "something.\n", ({ }));
-      return 1;
-    break;
-    case "investigate":
-        PT_APPLICATION_HANDLER->set_considering (name);
-        this_player()->add_succeeded_mess (this_object(), "$N toggle$s "
-          "something.\n", ({ }));
-        return 1;
-    break;
-    case "delete":
-      i =  PT_APPLICATION_HANDLER->delete_applicant (name);
-      if (i) {
-        this_player()->add_succeeded_mess (this_object(), "$N delete$s someone "
-          "as from the application process.\n", ({ }));
-        return 1;
-      }
-      else {
-        this_player()->add_failed_mess (this_object(), "You cannot remove this "
-          "player from the application process.\n", ({ }));
-        return 0;
-      }
-    break;
-    case "holiday":
-      i =  PLAYTESTER_HAND->query_leave(name);
-      if (i) {
-        PLAYTESTER_HAND->reset_leave(name);
-        this_player()->add_succeeded_mess (this_object(), "$N reset$s someones "
-          "playtester leave.\n", ({ }));
-        return 1;
-      }
-      else {
-        PLAYTESTER_HAND->set_leave(name, reason);
-        this_player()->add_succeeded_mess (this_object(), "$N set$s someone "
-          "as on leave.\n", ({ }));
-        return 1;
-      }
-    break;
   }
+  foreach(str in sort_array(keys(weapons),
+                            (: sort_weapons($(weapons)[$1],
+                                            $(weapons)[$2]) :)))
+    if(str && weapons[str])
+      printf("%d %s\n", weapons[str], str);
+  return 1;
 }
-mixed *query_patterns() {
-   mixed *patterns =
-    ({
-      "add <word>", (: cmd ("add", $4[0]) :),
-      "remove <word'name'> <string'reason'>", (: cmd ("remove", $4[0], $4[1]) :),
-      "holiday <word> <string>", (: cmd ("holiday", $4[0], $4[1]) :),
-      "shortlist <word>", (: cmd ("shortlist", $4[0]) :),
-      "investigate <word>", (: cmd ("investigate", $4[0]) :),
-      "delete <word>", (: cmd ("delete", $4[0]) :),
-      "assign all", (: cmd ("allassign", "all") :),
-      "assign <word>", (: cmd ("assign", $4[0]) :),
-      "info", (: cmd ("ptinfo") :)
-      });
-  return patterns;
-}
-
-==================================================
-FILE: creator/ptguilds.c
-==================================================
-
-#include <player.h>
-string format_guild_list( string guild_path, string *members ) {
-    return "Members of the " + (guild_path->query_short()
-      ? guild_path->query_short() : "Misc.") + ": " +
-        query_multiple_short( sort_array( map( members,
-           (: capitalize( $1 ) :) ), 1 ) ) + ".";
-}
-int cmd( string guild ) {
-    mapping data;
-    string txt;
-    string *members;
-    data = PLAYTESTER_HAND->query_playtester_guilds();
-    txt = "Playtester listing by Guild\n\n";
-    if ( guild && ( members = data[ guild ] ) ) {
-        txt = format_guild_list( guild, members );
+private string *map_materials(string *materials) {
+  string str;
+  foreach(str in materials) {
+    if(_equivalents[str]) {
+      materials -= ({ str });
+      materials += ({ _equivalents[str] });
     }
-    else {
-        txt += implode( values( map( data,
-            (: format_guild_list( $1, $2 ) :) ) ), "\n\n" );
+  }
+  return materials;
+}
+void total(object pl) {
+  write("Total of " + _matched[pl] + " weapons found.\n");
+}
+void check(int bad_only, string type, string search, string *weapons,
+           object pl) {
+  string str, *materials, att, ret;
+  string *tstr, *anames;
+  object wep;
+  int cond, dc, ave, max, weight, tmp, bad, count;
+  mixed *data;
+  float wf;
+  count = 0;
+  foreach(str in weapons) {
+    bad = 0;
+    if(wep)
+      wep->dest_me();
+    if(str == "twoedge" || str == "kring")
+      continue;
+    if(bad_only && (strsrch(str, "bow") != -1 ||
+                    str == "satin knife boots" || str == "knife boots" ||
+                    strsrch(_items[pl][str], "ranged") != -1 ||
+                    strsrch(_items[pl][str], "misc") != -1))
+      continue;
+    if(search != "" && strsrch(str, search) == -1 &&
+       strsrch(_items[pl][str], search) == -1)
+      continue;
+    wep = clone_object(_items[pl][str]);
+    if(!wep || !wep->query_short())
+      continue;
+    materials = map_materials(wep->query_materials());
+    cond = wep->query_max_cond();
+    dc = wep->query_damage_chance();
+    ret = "";
+    if(search)
+      ret = sprintf("\n");
+    ret += sprintf("%s (%s)\n", capitalize(wep->query_short()),
+                   _items[pl][str]);
+    tstr = ({ });
+    if(!sizeof(materials) || sizeof(materials - keys(_conditions)))
+      tstr += ({ "materials" });
+    else
+      ret += warn(0) + sprintf("is made of %s\n",
+                               query_multiple_short(materials));
+    if(wep->query_length() == 1)
+      tstr += ({ "length" });
+    if(wep->query_width() == 1)
+      tstr += ({ "width" });
+    if(!wep->query_weight())
+      tstr += ({ "weight" });
+    if(sizeof(tstr)) {
+      if(sizeof(tstr) == 1 && tstr[0] == "width") {
+        ret += warn(1);
+      } else {
+        ret += warn(2);
+        bad = 2;
+      }
+      ret += sprintf("has no %s\n", replace(query_multiple_short(tstr),
+                                            "and", "or"));
+      if(member_array("materials", tstr) != -1) {
+        tell_object(pl, ret);
+        continue;
+      }
     }
-    tell_object( this_player(), txt + "\n" );
-    return 1;
+    if(wep->query_length() != 1 && wep->query_width() != 1)
+      ret += warn(0) + sprintf("is %s%d\" (%dcm) by %s%d\" (%dcm) "
+                               "and weighs %.1f%s (%.1fkg)\n",
+                               (wep->query_length() / 12) > 0 ?
+                               (wep->query_length() / 12) + "'" : "",
+                               wep->query_length() % 12,
+                               to_int(wep->query_length() * 2.54),
+                               (wep->query_width() / 12) > 0 ?
+                               (wep->query_width() / 12) + "'" : "",
+                               wep->query_width() % 12,
+                               to_int(wep->query_width() * 2.54),
+                               wep->query_weight() / 9.0,
+                               (wep->query_weight() / 9.0) == 1.0 ? "lb" :
+                               "lbs",
+                               wep->query_weight() / 20.0);
+    wf = 0;
+    foreach(tstr in materials)
+      wf += _weights[tstr];
+    wf /= sizeof(materials);
+    wf = (wep->query_weight() * (wep->query_weight() / 2)) /
+      (wep->query_length() * wep->query_width() * wf);
+    if(wf < 0.5 || wf > 3.0) {
+      ret += warn(1);
+      if(bad < 2)
+        bad = 1;
+    } else
+      ret += warn(0);
+    ret += sprintf("has weight factor of %.1f [0.5/1.0/3.0] "
+                   "(%%^ORANGE%%^Experimental%%^RESET%%^)\n", wf);
+    switch(type) {
+    case "weapons":
+      weight = 10 + 2 * sqrt(wep->query_weight());
+      break;
+    case "armours":
+      weight = 5 + 2 * sqrt(wep->query_weight());
+      break;
+    case "clothes":
+      weight = 2 * sqrt(wep->query_weight());
+      break;
+    }
+    tmp = 0;
+    foreach(tstr in materials)
+      tmp += _conditions[tstr];
+    tmp /= sizeof(materials);
+    tmp *= weight;
+    if((cond < tmp - tmp/10) || (cond > tmp + tmp/10)) {
+      ret += warn(2) + sprintf("has max cond of %d should be [%d/%d/%d]\n",
+                               cond, tmp - tmp/10, tmp, tmp + tmp/10);
+      tell_object(pl, ret);
+      continue;
+    } else if(search)
+      ret += warn(0) + sprintf("has max cond of %d [%d/%d/%d]\n",
+                               cond, tmp - tmp/10, tmp, tmp + tmp/10);
+    tmp = 0;
+    foreach(tstr in materials)
+      tmp += _chances[tstr];
+    tmp /= sizeof(materials);
+    if(dc < tmp -1 || dc > tmp+1) {
+      ret += warn(2) + sprintf("has damage chance of %d should be "
+                               "[%d/%d/%d]\n",
+                               dc, tmp-1, tmp, tmp+1);
+      bad = 2;
+    } else if(search)
+      ret += warn(0) + sprintf("has damage chance of %d [%d/%d/%d]\n",
+                               dc, tmp-1, tmp, tmp+1);
+    anames = wep->query_attack_names();
+    if(!sizeof(anames)) {
+      ret += warn(2) + sprintf("has no attacks.\n");
+      tell_object(pl, ret);
+      continue;
+    }
+    foreach(att in anames) {
+      if(!_specials[att] && member_array(att, keys(_types)) == -1) {
+        ret += warn(1) + sprintf("has non-standard %s attack\n", att);
+        if(bad < 2)
+          bad = 1;
+      } else if(wep->query_weight() < 30 &&
+         member_array(att, values(_specials)) != -1) {
+        ret += warn(2) + sprintf("has %s but is too light\n", att);
+        bad = 2;
+      } else if(wep->query_weight() > 50 && _specials[att] &&
+                member_array(_specials[att], anames) == -1) {
+        ret += warn(1) + sprintf("has %s but not %s\n", att, _specials[att]);
+        if(bad < 2)
+          bad = 1;
+      }
+    }
+    data = wep->query_attack_data();
+    for(tmp=0; tmp < sizeof(data); tmp += W_ARRAY_SIZE) {
+      if(member_array(data[tmp+W_TYPE], _attack_types) == -1) {
+        ret += warn(2) + sprintf("has unknown attack type %s\n",
+                                 data[tmp+W_TYPE]);
+        bad = 2;
+      }
+      if(member_array(data[tmp+W_SKILL], values(_types)) == -1) {
+        ret += warn(2) + sprintf("has unknown attack skill %s\n",
+                                 data[tmp+W_SKILL]);
+        bad = 2;
+      }
+      if(_types[anames[tmp/W_ARRAY_SIZE]] &&
+         _types[anames[tmp/W_ARRAY_SIZE]] != "any" &&
+         _types[anames[tmp/W_ARRAY_SIZE]] != data[tmp+W_SKILL]) {
+        ret += warn(2) + sprintf("has attack %s with skill of %s\n",
+                                 anames[tmp/W_ARRAY_SIZE], data[tmp+W_SKILL]);
+        bad = 2;
+      }
+      if(data[tmp+W_FUNCTION]) {
+        ret += warn(1) + sprintf("has attack function %s on %s attack\n",
+                                 data[tmp+W_FUNCTION],
+                                 anames[tmp/W_ARRAY_SIZE]);
+        bad = 1;
+      }
+    }
+    if(strsrch(_items[pl][str], "axe") == -1 &&
+       strsrch(wep->query_long(), "axe") == -1) {
+      if(member_array("chop", wep->query_attack_names()) != -1) {
+        ret += warn(1) + sprintf("has chop attack but is not an axe.\n");
+        if(bad < 2)
+          bad = 1;
+      }
+      if(member_array("hack", wep->query_attack_names()) != -1) {
+        ret += warn(1) + sprintf("has chop attack but is not an axe.\n");
+        if(bad < 2)
+          bad = 1;
+      }
+    } else {
+      if(member_array("slash", wep->query_attack_names()) != -1) {
+        ret += warn(1) + sprintf("has slash attack but is an axe.\n");
+        if(bad < 2)
+          bad = 1;
+      }
+      if(member_array("slice", wep->query_attack_names()) != -1) {
+        ret += warn(1) + sprintf("has slice attack but is an axe.\n");
+        if(bad < 2)
+          bad = 1;
+      }
+    }
+    if(cond) {
+      data = calc_rating(wep);
+      ave = data[0];
+      max = data[1];
+      if(ave > 140 || max > 300) {
+        ret += warn(2);
+        bad = 2;
+      } else
+        ret += warn(0);
+      ret += sprintf("has damage of %d/%d max permitted is [140/300]\n",
+                     ave, max);
+      tmp = (100 * ave * max) / cond;
+      if(tmp < 75 || tmp > 150) {
+        ret += warn(1);
+        if(bad < 2)
+          bad = 1;
+      } else
+        ret += warn(0);
+      ret += sprintf("has damage factor of %d [75/150] "
+                     "(%%^ORANGE%%^Experimental%%^RESET%%^)\n",
+                     tmp);
+    }
+    if(bad >= bad_only) {
+      tell_object(pl, ret);
+      count++;
+    }
+  }
+  _matched[pl] += count;
+  return;
+}
+int do_check(int bad_only, string type) {
+  string *tmp, search;
+  int i;
+  if(!_items)
+    _items = ([ ]);
+  if(!_matched)
+    _matched = ([ ]);
+  if(type == "armours" || type == "clothes") {
+    _items[this_player()] = "/obj/handlers/armoury"->query_items(type);
+    search = "";
+  } else if(type == "weapons") {
+    _items[this_player()] = _weapons;
+    search = "";
+  } else {
+    search = type;
+    type = "weapons";
+    _items[this_player()] = _weapons;
+  }
+  _matched[this_player()] = 0;
+  tmp = keys(_items[this_player()]);
+  if(!sizeof(tmp))
+    return notify_fail("No items matched.\n");
+  for(i=0; i<sizeof(tmp); i+= 50) {
+    if(i+50 < sizeof(tmp)) {
+      call_out("check", 0, bad_only, type, search, tmp[i..i+49],
+               this_player());
+    } else
+      call_out("check", 0, bad_only, type, search, tmp[i..], this_player());
+  }
+  call_out("total", 1, this_player());
+  return 1;
 }
 mixed *query_patterns() {
-    return ({ "", (: cmd(0) :),
-              "<string'guild'>", (: cmd($4[0]) :) });
-}
-
-==================================================
-FILE: creator/ptobj_ect.c
-==================================================
-
-inherit "/cmds/base";
-#define PT_ARMOURY "/d/playtesters/palace_rooms/armoury"
-mixed *query_patterns() {
-    return ({ "info",
-                  (: PT_ARMOURY->do_info() :),
-              "help",
-                  (: PT_ARMOURY->do_info() :),
-              "list",
-                  (: PT_ARMOURY->do_list_all() :),
-              "list commands",
-                  (: PT_ARMOURY->do_list_commands() :),
-              "list objects",
-                  (: PT_ARMOURY->do_list_commands() :),
-              "control",
-                  (: PT_ARMOURY->do_list_control_all() :),
-              "control commands",
-                  (: PT_ARMOURY->do_list_control_commands() :),
-              "control objects",
-                  (: PT_ARMOURY->do_list_control_commands() :),
-              "request <string:'item'>",
-                  (: PT_ARMOURY->do_request_object( lower_case( $4[ 0 ] ) ) :),
-              "add object <word:'path of object'> as <string:'item name'>",
-                  (: PT_ARMOURY->do_add_object( $4[ 0 ],
-                                                lower_case( $4[ 1 ] ) ) :),
-              "remove object <string:'item name'>",
-                  (: PT_ARMOURY->do_remove_object( $4[ 0 ] ) :),
-              "allow <word:'guilds'> to use object <string:'item name'>",
-                  (: PT_ARMOURY->do_allow_object( $4[ 0 ],
-                                                  lower_case( $4[ 1 ] ) ) :),
-              "add command <string:'command name'>",
-                  (: PT_ARMOURY->do_add_command( $4[ 0 ] ) :),
-              "remove command <string:'command name'>",
-                  (: PT_ARMOURY->do_remove_command( $4[ 0 ] ) :),
-              "allow <word:'guilds'> to use command <string:'command name'>",
-                  (: PT_ARMOURY->do_allow_command( $4[ 0 ], $4[ 1 ] ) :)
-              });
+  return ({
+              "players", (: players() :),
+              "check", (: do_check(0, "") :),
+              "check <string'type'>", (: do_check(0, $4[0]) :),
+              "check bad", (: do_check(2, "") :),
+                "check bad <string'type'>", (: do_check(2, $4[0]) :),
+              "check warn", (: do_check(1, "") :),
+              "check warn <string'type'>", (: do_check(1, $4[0]) :)
+                });
 }

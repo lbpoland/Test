@@ -1,2229 +1,2067 @@
-# Total Tokens: 18553
-# Total Files Merged: 6
-# Total Characters: 61861
+# Total Tokens: 18089
+# Total Files Merged: 7
+# Total Characters: 60313
 
-wbiehelpers.c
+rcel.c
 ==================================================
 
-#include <playerinfo.h>
+#define BASE_PATH "/save/parcels/"
+#define SAVE_PATH BASE_PATH + location + "/" + name[0..0]
+#define SAVE_FILE BASE_PATH + location + "/" + name[0..0] + "/" + name + ".o"
+#define POST_LOG "PARCEL_LOG"
+inherit "/global/auto_load";
+#undef USE_COMPRESSION
 #include <player_handler.h>
-#include <mail.h>
-#define PI_TYPE "misc"
-#define SAVE_FILE "/save/newbiehelpers"
-#define TO this_object()
-#define TP this_player()
-private mapping admin;
-private mapping helpers;
-private mapping applicants;
-private int minimum_apply_age, minimum_vouch_age;
-protected void log_message( string message );
-protected void load_file();
-protected void save_file();
+class parcel {
+  string from;
+  string *autoloadinfo;
+  int exp_time;
+}
+mapping parcels;
+private nosave string _current_name, _current_location;
+nosave class parcel *_parcels;
+int test_expire( class parcel temp );
 void create() {
-    admin = ([ ]);
-    helpers = ([ ]);
-    applicants = ([ ]);
-    minimum_apply_age = 0;
-    minimum_vouch_age = 0;
-    load_file();
+  string dir;
+  seteuid( master()->creator_file( base_name( this_object() ) ) );
+  parcels = ([ ]);
+  if(parcels) {
+    parcels = copy(parcels);
+    parcels = ([ ]);
+  }
+  _parcels = ({ });
 }
-string query_list( object lister ) {
-    string list_mess, person;
-    if( !sizeof( admin ) ) {
-        list_mess = "There are no newbie helpers admin at present.\n";
-    }
-    else {
-        list_mess = "Current newbie helpers admin:\n";
-        foreach( person in keys(admin) ) {
-            list_mess += "    $C$" + person + "\n";
-        }
-    }
-    list_mess += "\n";
-    if( !sizeof( helpers ) ) {
-        list_mess += "There are no newbie helpers at present.\n";
-    }
-    else {
-        list_mess += "Current newbie helpers:\n";
-        foreach( person in keys(helpers) ) {
-            list_mess += "    $C$" + person + "\n";
-        }
-    }
-    if( admin[lister->query_name()] ) {
-        list_mess += "\n";
-        if( !sizeof( applicants ) ) {
-            list_mess += "There are no outstanding newbie helper "
-                "applications at present.\n";
-        }
-        else {
-            list_mess += "Current applications to newbie helpers:\n";
-            foreach( person in keys(applicants) ) {
-                list_mess += "    $C$" + person + "\n";
-            }
-        }
-    }
-    return list_mess;
+private void save_file(string name, string location) {
+  string str;
+  map_delete(parcels, name);
+  if(sizeof(keys(parcels)))
+    unguarded( (: save_object, SAVE_PATH, 2 :));
+  if(file_size(SAVE_PATH) == -1)
+    unguarded( (: mkdir, SAVE_PATH :) );
+  if(_parcels != ({ })) {
+    str = save_variable(_parcels);
+#ifdef USE_COMPRESSION
+    if(!ungarded( (: write_buffer, SAVE_FILE + ".gz", 0, compress(str) :) ))
+#else
+    if(!unguarded((: write_file, SAVE_FILE, str, 1 :) ))
+#endif
+      log_file(POST_LOG, "%s: error writing to %s\n",
+               ctime(time()), SAVE_FILE);
+  } else {
+    if(file_size(SAVE_FILE) > 0)
+      unguarded( (: rm, SAVE_FILE :));
+    if(file_size(SAVE_FILE+".gz") > 0)
+      unguarded( (: rm, SAVE_FILE + ".gz" :));
+  }
 }
-private string helper_info( string name, object tp ) {
-    string helper_mess, *vouches;
-    helper_mess = "Details for $C$" + name + ":\n";
-    helper_mess += "    Hired by $C$" + helpers[name]["employer"] +
-        ", " + ctime(helpers[name]["time"]) + ".\n";
-    if( helpers[name] ) {
-        vouches = helpers[name]["vouches"];
-        if( !vouches || !sizeof(vouches) ) {
-            helper_mess += "    No vouches.\n";
-        }
-        else {
-            helper_mess += "    Vouches were: " +
-                query_multiple_short( map( vouches, (: "$C$" + $1 :) ) ) +
-                ".\n";
-        }
-        if( !helpers[name]["guild"] || helpers[name]["guild"] == "unknown" ) {
-            helper_mess += "    Guild: Unknown.\n";
-        }
-        else {
-            helper_mess += "    Guild: " + helpers[name]["guild"] +
-                ".\n";
-        }
-        if( !helpers[name]["nationality"] ||
-            helpers[name]["nationality"] == "unknown" ) {
-            helper_mess += "    Nationality: Unknown.\n";
-        }
-        else {
-            helper_mess += "    Nationality: " + helpers[name]["nationality"]
-                + ".\n";
-        }
-    }
-    if( admin[name] ) {
-        helper_mess += "    $C$" + name + " is a newbie helpers admin.\n";
-    }
-    return helper_mess;
+private void load_file( string name, string location ) {
+  if(_current_name == name && _current_location == location)
+    return;
+#ifdef USE_COMPRESSION
+  if(file_size(SAVE_FILE + ".gz") > 0) {
+    _parcels = restore_variable(uncompress(read_file(SAVE_FILE)));
+  } else
+#endif
+  if(file_size(SAVE_FILE) > 0) {
+    debug_printf("%s", SAVE_FILE);
+    _parcels = restore_variable(unguarded( (: read_file, SAVE_FILE :) ));
+  } else if (file_size(SAVE_PATH+ ".o.gz") > 0) {
+    unguarded( (: restore_object, SAVE_PATH+".o.gz" :));
+    _parcels = parcels[name];
+  } else if(file_size(SAVE_PATH+".o") > 0) {
+    unguarded( (: restore_object, SAVE_PATH :) );
+    _parcels = parcels[name];
+  } else {
+    parcels = ([ ]);
+    _parcels = ({ });
+  }
+  _current_name = name;
+  _current_location = location;
 }
-private string applicant_info( string name, object tp ) {
-    string app_mess, voucher;
-    mapping vouches;
-    app_mess = "Details for $C$" + name + ":\n";
-    app_mess += "    Applied: " +
-        ctime(applicants[name]["time"]) + ".\n";
-    app_mess += "    Age: " + query_time_string(applicants[name]["age"],-1) +
-        ".\n";
-    app_mess += "    Guild: " + applicants[name]["guild"] + ".\n";
-    app_mess += "    Nationality: " + applicants[name]["nationality"] + ".\n";
-    vouches = applicants[name]["vouches"];
-    if( !vouches || !sizeof(vouches) ) {
-        app_mess += "    No vouches.\n";
+public int deposit(string to, string from, string location, object *obs) {
+  class parcel temp;
+  object boxy;
+  string obsstuff, tmp;
+  obsstuff = "/global/events"->convert_message(query_multiple_short (obs));
+  if(!PLAYER_HANDLER->test_user(to))
+    return 0;
+#ifndef __DISTRIBUTION_LIB__
+    if("/secure/alist"->query_alt(from, to) == 100) {
+      tmp = capitalize(from) + " sent a parcel containing " +
+        obsstuff + " to his/her alt " + capitalize(to) + ".";
+      user_event("inform", tmp, "multiplayer");
+      log_file("MULTIPLAYERS", ctime(time()) + ": " +
+               this_player()->convert_message(tmp) + "\n");
+    } else if("/secure/alist"->query_alt(from, to) > 40) {
+      tmp = capitalize(from) + " sent a parcel containing " +
+        obsstuff + " to his/her POSSIBLE alt "+ capitalize(to) + ".";
+      user_event("inform", tmp, "multiplayer");
+      log_file("MULTIPLAYERS", ctime(time()) + ": " +
+               this_player()->convert_message(tmp) + "\n");
     }
-    else {
-        app_mess += "    Vouches:\n";
-        foreach( voucher in keys(vouches) ) {
-            app_mess += "        $C$" + voucher + " (" +
-                query_time_string(
-                    applicants[name]["vouches"][voucher]["age"], -1
-                ) + " old)\n";
-        }
-    }
-    app_mess += "\n";
-    app_mess += "    $C$" + name + "'s application:$I$8=\n\n";
-    app_mess += applicants[name]["statement"] + "$I$0=\n\n";
-    if( !vouches || !sizeof(vouches) ) {
-        app_mess += "    No vouches.\n";
-    }
-    else {
-        foreach( voucher in keys(vouches) ) {
-            app_mess += "    Vouch by $C$" + voucher + " made " +
-                ctime(applicants[name]["vouches"][voucher]["time"]) +
-                ":$I$8=\n\n";
-            app_mess += applicants[name]["vouches"][voucher]["statement"] +
-                "$I$0=\n\n";
-        }
-    }
-    if( admin[name] ) {
-        app_mess += "    $C$" + name + " is a newbie helpers admin.\n";
-    }
-    return app_mess;
+#endif
+  load_file(to, location );
+  if(undefinedp(_parcels) || !arrayp(_parcels))
+    _parcels = ({ });
+  boxy = clone_object("/obj/baggage");
+  boxy->set_name("boxy");
+  boxy->set_max_weight(100000);
+  obs->move( boxy );
+  temp = new( class parcel,
+              from : from,
+              exp_time: time() + ( 14 * 24 * 60 * 60));
+  temp->autoloadinfo = create_auto_load( ({ boxy }), 0 );
+  _parcels += ({ temp });
+  save_file(to, location);
+  boxy->dest_me();
+  log_file (POST_LOG, "%s: %s deposited %s at %s for %s.\n", ctime(time()),
+      from, obsstuff, location, to);
 }
-string query_check_player( object checker, string player ) {
-    if( !helpers[player] && !admin[player] && !applicants[player] ) {
-        return "$C$" + player + " is not registered with the newbie "
-            "helpers handler.\n";
+public int collect(string name, string location, object target, int copy) {
+  class parcel temp;
+  object *box_array = ({ });
+  object *obs = ({ });
+  string tmp;
+  load_file(name, location );
+  if(!_parcels || _parcels == ({ }))
+    return 0;
+  foreach(temp in _parcels) {
+    box_array += load_auto_load_to_array(temp->autoloadinfo, this_player());
+#ifndef __DISTRIBUTION_LIB__
+    obs = all_inventory(box_array[<1]);
+    if("/secure/alist"->query_alt(name, temp->from) == 100) {
+      tmp = capitalize(name) + " received a parcel containing " +
+        "/global/events"->convert_message(query_multiple_short(obs)) +
+        " from his/her alt " + capitalize(temp->from) + ".";
+      user_event("inform", tmp, "multiplayer");
+      log_file("MULTIPLAYERS", ctime(time()) + ": " +
+               this_player()->convert_message(tmp) + "\n");
+    } else if("/secure/alist"->query_alt(name, temp->from) > 40) {
+      tmp = capitalize(name) + " received a parcel containing " +
+        "/global/events"->convert_message(query_multiple_short(obs)) +
+        " from his/her POSSIBLE alt "+ capitalize(temp->from) + ".";
+      user_event("inform", tmp, "multiplayer");
+      log_file("MULTIPLAYERS", ctime(time()) + ": " +
+               this_player()->convert_message(tmp) + "\n");
     }
-    if( !admin[checker->query_name()] ) {
-        return "You are not a member of newbiehelpers admin.\n";
-    }
-    TP->add_succeeded_mess(TO, "", ({ }) );
-    if( helpers[player] ) {
-        return helper_info( player, TP );
-    }
-    if( applicants[player] ) {
-        return applicant_info( player, TP );
-    }
-    return "$C$" + player + " is just an admin.\n";
+#endif
+  }
+  foreach( object box in box_array ) {
+    obs += all_inventory (box);
+    all_inventory( box )->move( target );
+    box->dest_me();
+  }
+  if ( !copy )
+    _parcels = ({ });
+  log_file (POST_LOG, "%s: %s collected %s at %s.\n", ctime(time()),
+            name, "/global/events"->convert_message(query_multiple_short(obs)),
+            location);
+  save_file(name, location);
+  return 1;
 }
-int add_helper( object adder, string player ) {
-    string *player_vouches, player_guild, player_nationality, name;
-    name = adder->query_name();
-    if( !admin[name] ) {
-        tell_object( TP, "You are not a member of newbiehelpers admin.\n" );
-        return 0;
-    }
-    if( !PLAYER_HANDLER->test_user(player) ) {
-        tell_object( TP, "There is no player $C$" + player + "!\n" );
-        return 0;
-    }
-    if( helpers[player] ) {
-        tell_object( TP, "$C$" + player + " is already a newbie "
-            "helper.\n" );
-        return 0;
-    }
-    if( applicants[player] ) {
-        player_vouches = keys( applicants[player]["vouches"] );
-        player_guild = applicants[player]["guild"];
-        player_nationality = applicants[player]["nationality"];
-        map_delete( applicants, player );
-            AUTO_MAILER->auto_mail(player, name, "Your newbie helpers "
-                "application", "", "Hello,\n\nI am pleased to inform you "
-                "that your newbie helpers application was successful, and "
-                "that you have now been hired as a newbie helper.  This was "
-                "an automatic mail.\n\n$C$" + name, 0, 0);
-    }
-    else {
-        player_vouches = ({ });
-        player_guild = "unknown";
-        player_nationality = "unknown";
-    }
-    helpers[player] = ([ ]);
-    helpers[player]["time"] = time();
-    helpers[player]["employer"] = name;
-    helpers[player]["vouches"] = player_vouches;
-    helpers[player]["guild"] = player_guild;
-    helpers[player]["nationality"] = player_nationality;
-    save_file();
-    log_message( player + " added as a helper by " + name );
-    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
-        "Added as a newbiehelper.", 0 ) ) {
-        log_message( player + "'s playerinfo updated" );
-    }
-    else {
-        log_message( player + "'s playerinfo NOT updated (an error "
-            "occurred)" );
-    }
+class parcel *queryparcels_for(string name, string location) {
+  load_file(name, location);
+  return _parcels;
+}
+void do_migrate(int letter, string location) {
+  string name;
+  class parcel temp2;
+  tell_creator("ceres", "Processing %c in %s\n", letter, location);
+  load_file(sprintf("%c", letter), location);
+  foreach(name, temp2 in parcels) {
+    _parcels = filter(temp2, (: test_expire :));
+    save_file(name, location);
+  }
+  if(!sizeof(keys(parcels))) {
+    name = BASE_PATH + location + "/" + sprintf("%c", letter) + ".o.gz";
+    unguarded((: rm, name :));
+  }
+  if(letter < 'z') {
+    letter++;
+    call_out("do_migrate", 15 + random(30), letter, location);
+  }
+}
+int test_expire(class parcel temp ) {
+  if ( temp->exp_time > time() )
     return 1;
+  return 0;
 }
-string remove_helper( object remover, string player, string reason ) {
-    string name;
-    name = remover->query_name();
-    if( !admin[name] ) {
-        tell_object( TP, "You are not a member of newbiehelpers admin.\n" );
-        return 0;
-    }
-    if( !helpers[player] ) {
-        return "$C$" + player + " is not a newbie helper.\n";
-    }
-    map_delete( helpers, player );
-    save_file();
-    log_message( player + " removed as a helper by " + name + ", reason: " +
-        reason );
-    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
-        "Removed as a newbiehelper (" + reason + ").", 0 ) ) {
-        log_message( player + "'s playerinfo updated" );
-    }
-    else {
-        log_message( player + "'s playerinfo NOT updated (an error "
-            "occurred)" );
-    }
-    return "You remove $C$" + player + "'s helper status.\n";
+void player_refreshed(mixed name, int total ) {
+  string location;
+  string *dirs = map( filter( get_dir( BASE_PATH, -1 ),
+                              (: $1[1] == -2 :) ), (: $1[0] :) );
+  if (objectp(name))
+    name = name->query_name();
+  foreach(location in dirs) {
+    load_file(name, location);
+    map_delete(parcels, name);
+    save_file(name, location);
+  }
 }
-void submit_vouch(string statement, mixed args) {
-    string name, player;
-    object voucher;
-    voucher = args[0];
-    player = args[1];
-    name = voucher->query_name();
-    applicants[player]["vouches"][name] = ([ ]);
-    applicants[player]["vouches"][name]["time"] = time();
-    applicants[player]["vouches"][name]["age"] = -voucher->query_time_on();
-    applicants[player]["vouches"][name]["statement"] = statement;
-    save_file();
-    log_message( name + " submits a vouch for " + player );
+
+==================================================
+FILE: handlers/pattern_compiler.c
+==================================================
+
+#include <user_parser.h>
+#define PATTERN_CACHE_SIZE 200
+nosave mapping patterns;
+nosave mapping pattern_short;
+nosave string *pattern_order;
+nosave int hits, reqs, cache_callout;
+nomask mixed *compile_pattern(string str);
+void create() {
+   patterns = ([ "" : ({ 100 }) ]);
+   pattern_short = ([ "" : "" ]);
 }
-string no_vouch_reason( object voucher, string applicant ) {
-    string name;
-    name = voucher->query_name();
-    if( !applicants[applicant] ) {
-        return "$C$" + applicant + " isn't applying to be a newbie helper, "
-            "so you can't vouch for them.\n";
-    }
-    if( applicants[applicant]["vouches"][name] ) {
-        return "You already have already vouched for $C$" + applicant + " on "
-            "this application, you cannot vouch again.\n";
-    }
-    if( applicant == name ) {
-        return "You cannot vouch for yourself!\n";
-    }
-    if( -voucher->query_time_on() < minimum_vouch_age ) {
-        return "You cannot vouch for $C$ " + applicant + " as you are too "
-            "young to vouch.  You need to be " +
-            query_time_string( minimum_vouch_age, -1 ) + " old before you "
-            "can vouch on people's applications to be a newbie helper.\n";
-    }
-    return 0;
+void clean_cache() {
+  int i;
+  for(i=0; i<(sizeof(pattern_order)-PATTERN_CACHE_SIZE); i++) {
+    map_delete(patterns, pattern_order[i]);
+    map_delete(pattern_short, pattern_order[i]);
+  }
+  pattern_order = pattern_order[i..];
+  cache_callout = 0;
 }
-void submit_application(string statement, object player) {
-    string name;
-    name = player->query_name();
-    applicants[name] = ([ ]);
-    applicants[name]["time"] = time();
-    applicants[name]["age"] = -player->query_time_on();
-    applicants[name]["statement"] = statement;
-    applicants[name]["vouches"] = ([ ]);
-    applicants[name]["guild"] =
-        (load_object(player->query_guild_ob()))->query_short();
-    if( player->query_nationality() ) {
-        applicants[name]["nationality"] = "$C$" +
-            (load_object(player->query_nationality()))->query_name();
+nomask mixed *query_pattern(string pattern) {
+  if (!patterns[pattern]) {
+    patterns[pattern] = compile_pattern(pattern);
+  }
+  return patterns[pattern];
+}
+nomask mixed *compile_pattern(string str) {
+   mixed *pattern;
+   mixed *bits;
+   int i;
+   int failed;
+   int type;
+   int weight;
+   mixed env;
+   string short;
+   string short_bit;
+   int pos;
+   int pos2;
+   int j;
+   int k;
+   bits = explode(str, " ") - ({ 0, "" });
+   pattern = ({ });
+   short = "";
+   for (i = 0; i < sizeof(bits) && !failed; i++) {
+      switch (bits[i][0]) {
+      case '<' :
+         pos = strsrch(bits[i], "'");
+         if (pos != -1) {
+             pos2 = strsrch(bits[i][pos + 1..], "'", pos + 1);
+             if (pos2 == -1) {
+                for (j = i + 1; j < sizeof(bits); j++) {
+                   pos2 = strsrch(bits[j], "'");
+                   if (pos2 != -1) {
+                      break;
+                   }
+                }
+                if (j < sizeof(bits)) {
+                   for (k = i + 1; k <= j; k++) {
+                      bits[i] += " " + bits[k];
+                   }
+                   bits[j] = bits[i];
+                   i = j;
+                   pos2 = strsrch(bits[i], "'", -1);
+                }
+             } else {
+                pos2 += pos + 1;
+             }
+             if (pos2 != -1) {
+                short_bit = bits[i][pos+1..pos2-1];
+                bits[i] = bits[i][0..pos-1] + bits[i][pos2+1..];
+             } else {
+                short_bit = 0;
+             }
+         } else {
+             short_bit = 0;
+         }
+         bits[i] = bits[i][1..<2];
+         bits[i] = explode(bits[i], ":");
+         if (!bits[i]) {
+            bits[i] = ({ "" });
+         }
+         switch (bits[i][0]) {
+         case "direct" :
+            weight += 7;
+            if (sizeof(bits[i]) > 1) {
+               switch (bits[i][1]) {
+               case "living" :
+                  type = LIVING;
+                  break;
+               case "distant-living" :
+                  type = DISTANT_LIVING;
+                  break;
+               case "any-living" :
+                  type = ANY_LIVING;
+                  break;
+               case "object" :
+                  type = ANY_OBJECT;
+                  break;
+               case "player" :
+                  type = TARGET_PLAYER;
+                  break;
+               default :
+                  failed = 1;
+                  printf("Unknown type of direct (%s).\n", bits[i][1]);
+                  break;
+               }
+               if (!short_bit) {
+                   short += "<"+bits[i][1]+"> ";
+               } else {
+                   short += "<" + short_bit + "> ";
+               }
+            } else {
+               type = ANY_OBJECT;
+               bits[i] += ({ "object" });
+               if (!short_bit) {
+                  short += "<object> ";
+               } else {
+                   short += "<" + short_bit + "> ";
+               }
+            }
+            env = ENV_ME_HERE;
+            if (sizeof(bits[i]) > 2)
+               switch (bits[i][2]) {
+               case "here" :
+                  env = ENV_HERE;
+                  break;
+               case "me" :
+                  env = ENV_ME;
+                  break;
+               case "direct-obs" :
+                  env = ENV_DIRECT_OBS;
+                  break;
+               case "me-here" :
+                  env = ENV_ME_HERE;
+                  break;
+               case "here-me" :
+                  env = ENV_HERE_ME;
+                  break;
+               default :
+                  env = bits[i][2];
+                  break;
+               }
+            pattern += ({ DIRECT_OBJECT, type, env });
+            break;
+         case "indirect" :
+            weight += 7;
+            if (sizeof(bits[i]) > 1) {
+               switch (bits[i][1]) {
+               case "living" :
+                  type = LIVING;
+                  break;
+               case "distant-living" :
+                  type = DISTANT_LIVING;
+                  break;
+               case "any-living" :
+                  type = ANY_LIVING;
+                  break;
+               case "object" :
+                  type = ANY_OBJECT;
+                  break;
+               case "player" :
+                  type = TARGET_PLAYER;
+                  break;
+               case "wiz-present" :
+                  type = WIZ_PRESENT_TARGET;
+                  break;
+               default :
+                  failed = 1;
+                  printf("Unknown type of indirect (%s).\n", bits[i][1]);
+                  break;
+               }
+               if (!short_bit) {
+                  short += "<"+bits[i][1]+"> ";
+               } else {
+                   short += "<" + short_bit + "> ";
+               }
+            } else {
+               type = ANY_OBJECT;
+               bits[i] += ({ "object" });
+               if (!short_bit) {
+                  short += "<object> ";
+               } else {
+                   short += "<" + short_bit + "> ";
+               }
+            }
+            env = ENV_ME_HERE;
+            if (sizeof(bits[i]) > 2)
+               switch (bits[i][2]) {
+               case "here" :
+                  env = ENV_HERE;
+                  break;
+               case "me" :
+                  env = ENV_ME;
+                  break;
+               case "direct-obs" :
+                  env = ENV_DIRECT_OBS;
+                  break;
+               case "me-here" :
+                  env = ENV_ME_HERE;
+                  break;
+               case "here-me" :
+                  env = ENV_HERE_ME;
+                  break;
+               default :
+                  env = bits[i][2];
+                  break;
+               }
+            pattern += ({ INDIRECT_OBJECT, type, env });
+            break;
+         case "string" :
+            if (sizeof(bits[i]) > 1) {
+               switch (bits[i][1]) {
+               case "small" :
+                  if (!short_bit) {
+                     short += "<string> ";
+                  } else {
+                     short += "<" + short_bit + "> ";
+                  }
+                  weight += 6;
+                  pattern += ({ SHORT_STRING });
+                  break;
+               case "long" :
+                  if (!short_bit) {
+                     short += "<string> ";
+                  } else {
+                     short += "<" + short_bit + "> ";
+                  }
+                  weight += 5;
+                  pattern += ({ STRING });
+                  break;
+               case "quoted" :
+                  if (!short_bit) {
+                     short += "\"<string>\" ";
+                  } else {
+                     short += "\"<" + short_bit + ">\" ";
+                  }
+                  weight += 8;
+                  pattern += ({ QUOTED_STRING });
+                  break;
+               default :
+                  printf("Invalid type of string (%s).\n", bits[i][1]);
+                  failed = 1;
+                  break;
+               }
+            } else {
+               if (!short_bit) {
+                  short += "<string> ";
+               } else {
+                  short += "<" + short_bit + "> ";
+               }
+               weight += 5;
+               pattern += ({ STRING });
+            }
+            break;
+         case   "number" :
+            if (!short_bit) {
+               short += "<number> ";
+            } else {
+               short += "<" + short_bit + "> ";
+            }
+            weight += 10;
+            pattern += ({ NUMBER });
+            break;
+         case "word" :
+            if (!short_bit) {
+               short += "<word> ";
+            } else {
+               short += "<" + short_bit + "> ";
+            }
+            weight += 7;
+            pattern += ({ SINGLE_WORD });
+            break;
+         case "fraction" :
+            if (!short_bit) {
+               short += "<fraction> ";
+            } else {
+               short += "<" + short_bit + "> ";
+            }
+            weight += 10;
+            pattern += ({ FRACTION });
+            break;
+         default :
+            weight += 10;
+            bits[i] = implode(bits[i], ":");
+            if (master()->query_word_list(bits[i])
+                  || this_player()->query_word_list(bits[i])) {
+               if (!short_bit) {
+                  short += "<"+bits[i]+"> ";
+               } else {
+                  short += "<" + short_bit + "> ";
+               }
+               pattern += ({ WORD_LIST, bits[i] });
+            } else {
+               printf("Unknown word list name (%s)\n", bits[i]);
+               failed = 1;
+            }
+            break;
+         }
+         break;
+      case '{' :
+         weight += 10;
+         if (bits[i][<1] == '}') {
+            pattern += ({ WORD_LIST, explode(bits[i][1..<2], "|") });
+            short += bits[i]+" ";
+         } else {
+            int old = i;
+            string elm, *res;
+            for (++i; bits[i][<1] != '}'; i++);
+            res = ({});
+            foreach (elm in explode(implode(bits[old..i], " ")[1..<2], "|"))
+               res += ({ explode(elm, " ") });
+            pattern += ({ WORD_LIST_SPACES, res });
+            short += implode(bits[old..i], " ")+" ";
+         }
+         break;
+      case '[' :
+         weight += 4;
+         if (bits[i][1] == '<') {
+            if (MASTER->query_word_list(bits[i][2..<3])
+                  || this_player()->query_word_list(bits[i][2..<3]))
+               pattern += ({ OPTIONAL, bits[i][2..<3] });
+            else {
+               printf("Unknown word list name (%s)\n", bits[i]);
+               failed = 1;
+               pattern += ({ OPTIONAL, bits[i][2..<3] });
+            }
+            short += bits[i]+" ";
+         } else if (bits[i][1] == '{') {
+            if (bits[i][<1] == ']') {
+               pattern += ({ OPTIONAL, explode(bits[i][2..<3], "|") });
+               short += bits[i]+" ";
+            } else {
+               int old = i;
+               string elm, *res;
+               for (++i; bits[i][<1] != ']'; i++);
+               res = ({});
+               foreach (elm in explode(implode(bits[old..i], " ")[2..<3], "|"))
+                  res += ({ explode(elm, " ") });
+               pattern += ({ OPTIONAL_SPACES, res });
+               short += implode(bits[old..i], " ")+" ";
+            }
+         } else if (bits[i][<1] == ']') {
+            pattern += ({ OPTIONAL, explode(bits[i][1..<2], "|") });
+            short += bits[i]+" ";
+         } else {
+            int old = i;
+            string elm, *res;
+            for (++i; bits[i][<1] != ']'; i++);
+            res = ({});
+            foreach (elm in explode(implode(bits[old..i], " ")[1..<2], "|"))
+               res += ({ explode(elm, " ") });
+            pattern += ({ OPTIONAL_SPACES, res });
+            short += implode(bits[old..i], " ")+" ";
+         }
+         break;
+      default :
+         weight += 10;
+         short += bits[i]+" ";
+         pattern += ({ WORD_LIST, ({ bits[i] }) });
+         break;
+      }
+   }
+   if (failed) {
+      return 0;
+   }
+   pattern_short[str] = short;
+   return ({ weight }) + pattern;
+}
+string query_short_pattern(string str) {
+  reqs++;
+  if(!pattern_short[str])
+    compile_pattern(str);
+  else
+    hits++;
+  return pattern_short[str];
+}
+mixed *stats() {
+  return  ({
+    ({ "patterns", sizeof(keys(pattern_short)), }),
+        ({ "requests", reqs, }),
+          ({ "cache hit percent", (hits * 100) / reqs, }),
+            });
+}
+
+==================================================
+FILE: handlers/peopler.c
+==================================================
+
+#include <peopler.h>
+#define MULTIPLAYER "/obj/handlers/multiplayer"
+string *de_names,
+       *abbrev,
+       *var_names;
+void create() {
+  de_names = DE_NAMES;
+  abbrev = ABBREV;
+  var_names = ({
+      "dirs",
+      "netstat",
+      "people",
+      "qpeople",
+      "terms",
+      "netdups",
+    });
+}
+object *get_people(string str) {
+  object *ob;
+  int i;
+  string s1;
+  ob = users();
+  for(i = 0; i<sizeof(ob); i++) {
+    if (str && (sscanf(ob[i]->query_name(),str+"%s", s1) != 1)) {
+      ob = ob[0..i - 1] + ob[i+1..];
+      i--;
+    }
+  }
+  return ob;
+}
+private string create_title(mixed *bits) {
+  int i, pos;
+  string str;
+  str = "";
+  for (i=0;i<sizeof(bits);i+=2) {
+    if ((pos = (bits[i]&~MASK)) == STRING)
+      str += bits[i+1];
+    else
+      if (strlen(de_names[pos]) > bits[i+1])
+        str += sprintf("%"+bits[i+1]+"."+bits[i+1]+"s", "");
+      else
+        switch (bits[i]&MASK) {
+          case CENTER :
+            str += sprintf("%"+bits[i+1]+"."+bits[i+1]+"|s", de_names[pos]);
+            break;
+          case RIGHT :
+            str += sprintf("%"+bits[i+1]+"."+bits[i+1]+"s", de_names[pos]);
+            break;
+          default :
+            str += sprintf("%"+bits[i+1]+"."+bits[i+1]+"-s", de_names[pos]);
+            break;
         }
-    else {
-        applicants[name]["nationality"] = "unknown";
-    }
-    save_file();
-    log_message( name + " submits an application to newbiehelpers" );
+  }
+  return str;
 }
-string no_apply_reason( object player ) {
-    string name;
-    name = player->query_name();
-    if( helpers[name] ) {
-        return "You are already a newbie helper, why are you applying "
-            "again?\n";
+private string review_thingy(mixed *bing) {
+  int i;
+  string str;
+  str = "";
+  for (i = 0; i < sizeof(bing); i += 2) {
+    if (bing[i] == STRING) {
+      str += bing[i+1];
+    } else {
+      switch (bing[i]&MASK) {
+        case CENTER :
+          str += "%|"+bing[i+1]+abbrev[bing[i]&~MASK];
+          break;
+        case RIGHT :
+          str += "%"+bing[i+1]+abbrev[bing[i]&~MASK];
+          break;
+        default :
+          str += "%-"+bing[i+1]+abbrev[bing[i]&~MASK];
+          break;
+      }
     }
-    if( applicants[name] ) {
-        return "You already have a newbie helper application open, you "
-            "should wait to hear back about it.\n";
+  }
+  return str;
+}
+private void print_entrys(object *obs, mixed *format, int with_dups,
+                          string constraint) {
+  int age, j;
+  mixed g;
+  string form, str, mess, *not_allowed;
+  object ob, env, *dups;
+  mapping per_ip;
+  reset_eval_cost();
+  if (with_dups) {
+    per_ip = unique_mapping(obs, (: query_ip_number($1) :));
+  }
+  mess = sprintf("%s\n", create_title(format));
+  foreach(ob in obs) {
+    str = "";
+    for (j=0;j<sizeof(format);j+=2) {
+      switch (format[j]&MASK) {
+        case RIGHT :
+          form = "%"+format[j+1]+"."+format[j+1];
+          break;
+        case CENTER :
+          form = "%|"+format[j+1]+"."+format[j+1];
+          break;
+        default :
+          form = "%-"+format[j+1]+"."+format[j+1];
+          break;
+      }
+      switch (format[j]&~MASK) {
+        case STRING :
+          str += format[j+1];
+          break;
+        case C_NAME :
+          str += sprintf(form+"s", capitalize( (string)ob->query_name() ) );
+          break;
+        case GENDER :
+          str += sprintf(form+"s", ob->query_gender_string());
+          break;
+        case NAME :
+          str += sprintf(form+"s", (ob->query_in_editor()?"*":"")+
+              ( ob->query_invis() ? "("+ (string)ob->query_name() +")" :
+              (string)ob->query_name() ) );
+          break;
+        case GUILD :
+          if(ob)
+            str += sprintf(form+"s",
+                           ((g=(object)ob->query_guild_ob())?
+                            g->query_name():"No guild"));
+          else
+            str += sprintf(form+"s", "Broken guild");
+          break;
+        case LEVEL :
+          str += sprintf(form+"s", ""+ ob->query_level());
+          break;
+        case ROWS :
+          str += sprintf(form+"s", ""+ ob->query_rows());
+          break;
+        case COLS :
+          str += sprintf(form+"s", ""+ ob->query_cols());
+          break;
+        case TERMINAL :
+          str += sprintf(form+"s",
+                         ((g = ob->query_term_name()) ?
+                          g + (g == "network" ? " (" +
+                               ob->query_cur_term() + ")" : "") : ""));
+          break;
+        case IP_NUMBER :
+          str += sprintf(form+"s", query_ip_number(ob));
+          break;
+        case IP_NAME :
+          str += sprintf(form+"s",
+                           (query_ident(ob)?query_ident(ob)+"@":"")+
+                           query_ip_name(ob));
+          break;
+        case TYPE :
+          str += sprintf(form+"s", ob->query_object_type()+"");
+          break;
+        case AGE :
+          age = (int)ob->query_time_on();
+          if (age < -86400)
+            str += sprintf(form+"s", (age/-86400)+"D");
+          else if (age < -3600)
+            str += sprintf(form+"s", (age/-3600)+"h");
+          else if (age < -60)
+            str += sprintf(form+"s", (age/-60)+"m");
+          else
+            str += sprintf(form+"s", (age/-1)+"s");
+          break;
+        case ROOM :
+          env = environment(ob);
+          str += sprintf(form+"s",env?file_name(env):"No environment");
+          break;
+        case EUID :
+          env = environment(ob);
+          str += sprintf(form+"s",env?geteuid(env):"No environment");
+          break;
+        case UID :
+          env = environment(ob);
+          str += sprintf(form+"s",env?getuid(env):"No environment");
+          break;
+        case CFILE :
+          env = environment(ob);
+          str += sprintf(form+"s",env?"/secure/master"->creator_file(env)
+                         :"No environment");
+          break;
+        case CUR_DIR :
+          str += sprintf(form+"s", (ob->query_current_path()?
+                                    ob->query_current_path():"No dir"));
+          break;
+        case ND_ALLOWED :
+          dups = per_ip[query_ip_number(ob)] - ({ ob });
+          not_allowed = MULTIPLAYER->check_allowed(ob, dups);
+          str += sprintf(form+"s", (sizeof(not_allowed) ?
+                                    query_multiple_short(not_allowed) :
+                                    ""));
+          break;
+      }
     }
-    if( -player->query_time_on() < minimum_apply_age ) {
-        return "You cannot apply to be a newbie helper as you are too "
-            "young.  You need to be " +
-            query_time_string( minimum_apply_age, -1 ) + " before you can "
-            "apply to be a newbie helper.\n";
+    if(!constraint || strsrch(str, constraint) != -1)
+      mess += sprintf("%s\n", str);
+  }
+  this_player()->more_string( mess );
+}
+int do_command(mixed *pattern, string constraint, function sort_func,
+               int only_duplicates) {
+   object *obs;
+   object *tmpobs;
+   int i;
+   obs = get_people("");
+   if (!sizeof(obs)) {
+      notify_fail("Nobody seems to start with '" + constraint + "'.\n");
+      return 0;
+   }
+   if (!sort_func) {
+      sort_func = (: strcmp($1->query_name(), $2->query_name()) :);
+   }
+   obs = sort_array(obs, sort_func);
+   if (only_duplicates) {
+      tmpobs = ({ });
+      for (i = 1; i <sizeof(obs); i++) {
+         if (!evaluate(sort_func, obs[i - 1], obs[i])) {
+            if (member_array(obs[i - 1], tmpobs) == -1) {
+               tmpobs += obs[i - 1..i];
+            } else {
+               tmpobs += ({ obs[i] });
+            }
+         }
+      }
+      if (!sizeof(tmpobs)) {
+         notify_fail("Unable to find any duplicates.\n");
+         return 0;
+      }
+      obs = tmpobs;
+   }
+   print_entrys(obs, pattern, only_duplicates, constraint);
+   return 1;
+}
+int review() {
+  mixed *bing;
+  bing = (mixed *)this_player()->query_property("people list");
+  if (!bing)
+    bing = P_DEFAULT;
+  write("People : "+review_thingy(bing)+"\n");
+  bing = (mixed *)this_player()->query_property("qpeople list");
+  if (!bing)
+    bing = QP_DEFAULT;
+  write("Qpeople: "+review_thingy(bing)+"\n");
+  bing = (mixed *)this_player()->query_property("netstat list");
+  if (!bing)
+    bing = N_DEFAULT;
+  write("Netstat: "+review_thingy(bing)+"\n");
+  bing = (mixed *)this_player()->query_property("term list");
+  if (!bing)
+    bing = T_DEFAULT;
+  write("Terms  : "+review_thingy(bing)+"\n");
+  bing = (mixed *)this_player()->query_property("dir list");
+  if (!bing)
+    bing = D_DEFAULT;
+  write("Dirs   : "+review_thingy(bing)+"\n");
+  bing = (mixed *)this_player()->query_property("netdup list");
+  if (!bing)
+    bing = ND_DEFAULT;
+  write("Netdups: "+review_thingy(bing)+"\n");
+}
+private mixed *create_review(string str) {
+  string *bits, rest;
+  int i, bing, width, tmp;
+  mixed *ret;
+  bits = explode("$"+str, "%");
+  bits[0] = bits[0][1..];
+  if (!strlen(bits[0]))
+    ret = ({ });
+  else
+    ret = ({ STRING, bits[0] });
+  for (i=1;i<sizeof(bits);i++) {
+    bing = RIGHT;
+    rest = bits[i];
+    if (rest[0] == '|') {
+      bing = CENTER;
+      rest = rest[1..];
+    } else if (rest[0] == '-') {
+      bing = 0;
+      rest = rest[1..];
     }
+    if (sscanf(rest, "%d%s", width, rest) == 2) {
+      tmp = member_array(rest[0..0], abbrev);
+      if (tmp == -1) {
+        write("Unknown thingy '"+rest[0..0]+"'\n");
+        return 0;
+      }
+      ret += ({ tmp+bing, width });
+      rest = rest[1..];
+      if (strlen(rest))
+        ret += ({ STRING, rest });
+    } else {
+      ret += ({ STRING, bits[i] });
+    }
+  }
+  return ret;
+}
+private void list_matches() {
+  int i;
+  for (i=0;i<sizeof(de_names);i++) {
+    if (i == STRING) continue;
+    printf("%s: %s\n", abbrev[i], de_names[i]);
+  }
+}
+int set_var(string str) {
+  string name, type;
+  mixed *bing;
+  if (str == "help") {
+    write("The non helpful help.\nThis is the list of things that go after "+
+          "the %'s in the value.\n");
+    list_matches();
+    return 1;
+  }
+  if (!str || sscanf(str, "%s %s", name, type) != 2) {
+    notify_fail("Syntax: "+query_verb()+" <var_name> <value>\n"+
+                "        "+query_verb()+" help\n");
     return 0;
-}
-void reject_application( object rejecter, string player, string reason,
-    string mail ) {
-    string name;
-    name = rejecter->query_name();
-    if( !admin[name] ) {
-        return;
-    }
-    if( !applicants[player] ) {
-        return;
-    }
-    AUTO_MAILER->auto_mail(player, name, "Your newbie helpers "
-        "application", "", mail, 0, 0);
-    map_delete( applicants, player );
-    save_file();
-    log_message( name + " rejects " + player + "'s application, reason: " +
-        reason );
-    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
-        "Rejected as a newbiehelper (" + reason + ").", 0 ) ) {
-        log_message( player + "'s playerinfo updated" );
-    }
-    else {
-        log_message( player + "'s playerinfo NOT updated (an error "
-            "occurred)" );
-    }
-}
-string no_reject_reason( object rejecter, string player ) {
-    string name;
-    name = rejecter->query_name();
-    if( !admin[name] ) {
-        return "You are not a member of newbiehelpers admin.\n";
-    }
-    if( !applicants[player] ) {
-        return "$C$" + player + " isn't applying to be a newbie helper, so "
-            "you can't reject them.\n";
-    }
+  }
+  if (member_array(name, var_names) == -1) {
+    notify_fail("You cannot set the var "+name+", it has to be one of "+
+                implode(var_names[0..<2], ", ")+" or " + var_names[<1] +
+                ".\n");
     return 0;
-}
-int query_helper( string name ) {
-    if( helpers[name] ) {
-        return 1;
-    }
-    else {
-        return 0;
-    }
-}
-int add_admin( string name ) {
-    if( !admin[TP->query_name()] ) {
-        return 0;
-    }
-    if( !admin[name] ) {
-        admin[name] = 1;
-        save_file();
-        log_message( name + " added as admin by " + TP->query_name() );
-        return 1;
-    }
-    else {
-        return 0;
-    }
-}
-int remove_admin( string name ) {
-    if( !admin[TP->query_name()] ) {
-        return 0;
-    }
-    if( !admin[name] ) {
-        return 0;
-    }
-    else {
-        map_delete(admin, name);
-        save_file();
-        log_message( name + " removed from admin by " + TP->query_name() );
-        return 1;
-    }
-}
-int query_admin( string name ) {
-    if( admin[name] ) {
-        return 1;
-    }
-    else {
-        return 0;
-    }
-}
-int query_can_chat( object who ) {
-    if( query_helper( who->query_name() ) ||
-        query_admin( who->query_name() ) ||
-        who->query_creator() ) {
-        return 1;
-    }
-    return 0;
-}
-string query_name() { return "Newbiehelpers Handler"; }
-protected void log_message( string message ) {
-    log_file("/log/NEWBIEHELPERS", ctime(time()) + ": " + message + "\n");
-}
-protected void save_file() {
-    unguarded( (: save_object, SAVE_FILE, 1 :) );
-}
-protected void load_file() {
-    if (file_size(SAVE_FILE + ".o") > 0)
-        unguarded( (: restore_object, SAVE_FILE, 1 :) );
+  }
+  bing = create_review(type);
+  if (!bing)
+    return 1;
+  this_player( 1 )->add_property( name +" list", bing );
+  write("Ok, set var "+name+" to "+type+".\n");
+  return 1;
 }
 
 ==================================================
-FILE: handlers/news_handler.c
+FILE: handlers/philosophies.c
 ==================================================
 
-#include <board.h>
-#include <login_handler.h>
-#define BOARD_NAME "announcements"
-#define DELAY_TIME 30
-int has_unread_announcements( string player ) {
-    mapping news_rc;
-    mixed subjects;
-    news_rc = BOARD_HAND->query_newsrc( player );
-    if ( !news_rc ) {
-        news_rc = ([ ]);
-    }
-    subjects = BOARD_HAND->get_subjects( BOARD_NAME );
-    if ( !sizeof( subjects ) ) {
-        return 0;
-    }
-    return subjects[ <1 ][ B_TIME ] > news_rc[ BOARD_NAME ];
+#define SAVE_FILE "/save/philosophies"
+#define SAVE_DIR "/save/philosophies/"
+#define PHILOSOPHY_TYPE 0
+#define PHILOSOPHY_BONUS 1
+#define PHILOSOPHY_NEEDED 2
+#define PHILOSOPHY_EFFECT 3
+#define PHILOSOPHY_ARGUMENTS 4
+nosave string current_person, current_philosophies;
+mapping philosophies;
+void create() {
+  seteuid( (string)"/secure/master"->
+           creator_file( file_name( this_object() ) ) );
+   philosophies = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) > 0 )
+      unguarded( (: restore_object, SAVE_FILE :) );
 }
-void show_message( mixed person ) {
-    object player;
-    if ( stringp( person ) ) {
-        player = find_player( person );
-    }
-    else {
-        player = person;
-    }
-    if ( !player ) {
-        return;
-    }
-    if ( has_unread_announcements( player->query_name() ) ) {
-        tell_object( player, "\nThere are %^YELLOW%^NEW%^RESET%^ "
-            "announcements!  You can read them with \"news\".\n\n" );
-    }
+void save_me() { unguarded( (: save_object, SAVE_FILE :) ); }
+mapping query_philosophies() { return philosophies; }
+string *query_philosophy_names() { return keys( philosophies ); }
+int query_philosophy( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return 1;
 }
-void login_event(mixed person, string type) {
-    if ( type == LOGIN || type == RECONNECT ) {
-        if ( objectp( person ) ) {
-            person = person->query_name();
-        }
-        call_out( (: show_message :), DELAY_TIME, person );
-    }
+void add_philosophy( string name, string type, int bonus, string needed,
+      string effect ) {
+   philosophies[ name ] = ({ type, bonus, needed, effect, ([ ]) });
+   save_me();
 }
-void broadcast_announcement() {
-    foreach( object user in users() ) {
-        if ( interactive( user ) ) {
-            show_message( user );
-        }
+void remove_philosophy( string name ) {
+   if ( !philosophies[ name ] ) {
+      return;
+   }
+   map_delete( philosophies, name );
+   save_me();
+}
+string query_philosophy_type( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return philosophies[ name ][ PHILOSOPHY_TYPE ];
+}
+int query_philosophy_bonus( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return philosophies[ name ][ PHILOSOPHY_BONUS ];
+}
+string query_philosophy_needed( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return philosophies[ name ][ PHILOSOPHY_NEEDED ];
+}
+string query_philosophy_effect( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return philosophies[ name ][ PHILOSOPHY_EFFECT ];
+}
+mapping query_philosophy_all_arguments( string name ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return copy( philosophies[ name ][ PHILOSOPHY_ARGUMENTS ] );
+}
+mixed query_philosophy_argument( string name, string argument ) {
+   if ( !philosophies[ name ] ) {
+      return 0;
+   }
+   return philosophies[ name ][ PHILOSOPHY_ARGUMENTS ][ argument ];
+}
+void add_philosophy_argument( string name, string argument, mixed args ) {
+   if ( !philosophies[ name ] ) {
+      return;
+   }
+   if ( !undefinedp( philosophies[ name ][ PHILOSOPHY_ARGUMENTS ][ argument ] ) ) {
+      return;
+   }
+   philosophies[ name ][ PHILOSOPHY_ARGUMENTS ][ argument ] = args;
+   save_me();
+}
+void remove_philosophy_argument( string name, string argument ) {
+   if ( !philosophies[ name ] ) {
+      return;
+   }
+   if ( undefinedp( philosophies[ name ][ PHILOSOPHY_ARGUMENTS ][ argument ] ) ) {
+      return;
+   }
+   map_delete( philosophies[ name ][ PHILOSOPHY_ARGUMENTS ], argument );
+   save_me();
+}
+string *query_all_known( string person ) {
+   string *oldstuff, *newstuff = ({}), key;
+  if ( person != current_person ) {
+     if(unguarded((: file_length, SAVE_DIR + person[0..0]+"/"+person :)) < 1) {
+       current_philosophies = "";
+     } else {
+       current_philosophies = unguarded((:read_file,
+         SAVE_DIR+person[0..0]+"/"+person:));
+     }
+  }
+  oldstuff = explode(current_philosophies, "\n");
+  foreach ( key in oldstuff ) {
+     if ( member_array( key, newstuff ) == -1 ) {
+          newstuff += ({ key });
+      }
+  }
+  current_person = person;
+  return newstuff;
+}
+int query_known( string person, string argument ) {
+  if(person != current_person) {
+    current_philosophies = "";
+    if( unguarded( (: file_length,
+		    SAVE_DIR + person[0..0]+"/"+person :) ) < 1 ) {
+      current_person = person;
+      return 0;
     }
+    current_person = person;
+    current_philosophies =
+      unguarded( (: read_file, SAVE_DIR +  person[0..0]+"/"+person :) );
+  }
+  return (member_array(argument,explode(current_philosophies ,"\n")) != -1);
+}
+void add_known( string person, string argument ) {
+   string *oldstuff, *newstuff = ({}), key;
+   if ( !query_known( person, argument ) ) {
+      if( !current_philosophies ) {
+         current_philosophies = "";
+      }
+      current_philosophies += argument +"\n";
+   }
+   current_person = person;
+   oldstuff = explode(current_philosophies, "\n");
+   foreach ( key in oldstuff ) {
+     if ( member_array( key, newstuff ) == -1 ) {
+       newstuff += ({ key });
+     }
+   }
+   unguarded( (: write_file, SAVE_DIR +  person[0..0]+"/"+person,
+      current_philosophies, 1 :));
+}
+int remove_known( string person, string argument ) {
+   string *oldstuff, *newstuff = ({}), key;
+   if ( !this_player()->query_lord() &&
+      this_player()->query_name() != "ringo" ) {
+      tell_object(this_player(), "Lords only...\n");
+      return 1;
+   }
+   oldstuff = query_all_known( person );
+   current_person = person;
+   current_philosophies = "";
+   foreach ( key in oldstuff ) {
+      if ( member_array( key, newstuff ) == -1 &&
+        key != argument ) {
+          newstuff += ({ key });
+          current_philosophies += sprintf( "%s\n", key );
+       }
+   }
+   unguarded( (: write_file, SAVE_DIR +  person[0..0]+"/"+person,
+      current_philosophies, 1 :));
+}
+int reset_known( string person ) {
+   if ( !this_player()->query_lord() &&
+      this_player()->query_name() != "ringo" ) {
+      tell_object(this_player(), "Lords only...\n");
+      return 1;
+   }
+   current_person = person;
+   current_philosophies = "";
+   unguarded( (: write_file, SAVE_DIR +  person[0..0]+"/"+person,
+      current_philosophies, 1 :));
 }
 
 ==================================================
-FILE: handlers/newspaper.c
+FILE: handlers/player_council.c
 ==================================================
 
-#include <room/newspaper.h>
-#include <nroff.h>
-#include <autodoc.h>
-#include <login_handler.h>
-#define SAVE_DIR "/save/newspaper/"
-class edition {
-   int date_published;
-   class article* articles;
-   class advert* adverts;
-   string headline;
-   int num_sold;
-   int num_web_hits;
-   int total_revenue;
-}
-class paper {
-   class edition* published_editions;
-   string dir_name;
-   string long;
-   string description;
-   string office;
-   int paper_cost;
-   string language;
-}
-private mapping _papers;
-private mapping _areas;
-private mapping _xp;
-private mapping _inform;
+inherit "/obj/handlers/inherit/player_council";
+#define NOMIC_SYSTEM_NO_CLASSES
+#include <nomic_system.h>
 void load_me();
 void save_me();
 void create() {
-   _papers = ([ ]);
-   _areas = ([ ]);
-   _xp = ([ ]);
-   _inform = ([ ]);
-   seteuid(getuid());
+   player_council::create();
    load_me();
-   if (!_inform) {
-      _inform = ([ ]);
-   }
-}
-int is_paper(string paper) {
-   return classp(_papers[paper]);
-}
-void add_paper(string name, string long, string desc, string office,
-    string language) {
-   if (is_paper(name)) {
-      return ;
-   }
-   _papers[name] = new(class paper);
-   _papers[name]->published_editions = ({ });
-   _papers[name]->dir_name = replace_string(lower_case(name), " ", "_");
-   _papers[name]->long = long;
-   _papers[name]->description = desc;
-   _papers[name]->office = office;
-   _papers[name]->paper_cost = 5 * 4;
-   _papers[name]->language = language;
-   save_me();
-}
-string* query_all_papers() {
-   return keys(_papers);
-}
-int query_current_edition_num(string paper) {
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   return sizeof(_papers[paper]->published_editions) + 1;
-}
-int query_last_edition_num(string paper) {
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   return sizeof(_papers[paper]->published_editions);
-}
-int is_valid_edition(string paper, int edition) {
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   if (edition > 0 && edition <= sizeof(_papers[paper]->published_editions)) {
-      return 1;
-   }
-   return 0;
-}
-int query_edition_date(string paper, int edition) {
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   if (!is_valid_edition(paper, edition)) {
-      return 0;
-   }
-   return _papers[paper]->published_editions[edition - 1]->date_published;
-}
-class article* query_edition_articles(string paper, int edition) {
-   if (!is_paper(paper)) {
-      return ({ });
-   }
-   if (!is_valid_edition(paper, edition)) {
-      return ({ });
-   }
-   return copy(_papers[paper]->published_editions[edition - 1]->articles);
-}
-class advert* query_edition_adverts(string paper, int edition) {
-   if (!is_paper(paper)) {
-      return ({ });
-   }
-   if (!is_valid_edition(paper, edition)) {
-      return ({ });
-   }
-   return copy(_papers[paper]->published_editions[edition - 1]->adverts);
-}
-string query_paper_office(string paper) {
-   if (!is_paper(paper)) {
-      return  0;
-   }
-   return _papers[paper]->office;
-}
-void set_paper_office(string paper, string office) {
-   if (!is_paper(paper)) {
-      return  0;
-   }
-    _papers[paper]->office = office;
-   save_me();
-}
-string query_paper_headline(string paper, int edition) {
-   if (!is_valid_edition(paper, edition)) {
-      return  "No news is good news.";
-   }
-   return _papers[paper]->published_editions[edition - 1]->headline;
-}
-void set_paper_headline(string paper, int edition, string headline) {
-   if (!is_valid_edition(paper, edition)) {
-      return  ;
-   }
-   _papers[paper]->published_editions[edition - 1]->headline = headline;
-   save_me();
-}
-int query_edition_revenue(string paper, int edition) {
-   if (!is_valid_edition(paper, edition)) {
-      return  0;
-   }
-   return _papers[paper]->published_editions[edition - 1]->total_revenue;
-}
-void add_edition_revenue(string paper, int edition, int revenue) {
-   if (!is_valid_edition(paper, edition)) {
-      return  ;
-   }
-   _papers[paper]->published_editions[edition - 1]->total_revenue += revenue;
-   save_me();
-}
-void add_edition_web_hit(string paper, int edition) {
-   if (!is_valid_edition(paper, edition)) {
-      return  ;
-   }
-   _papers[paper]->published_editions[edition - 1]->num_web_hits++;
-   _papers[paper]->published_editions[edition - 1]->total_revenue += NEWSPAPER_WEB_HIT_REVENUE;
-   save_me();
-}
-void add_edition_paper_sold(string paper, int edition, int cost) {
-   if (!is_valid_edition(paper, edition)) {
-tell_creator("pinkfish", "Not valid edition %O %O\n", paper, previous_object());
-      return  ;
-   }
-tell_creator("pinkfish", "Updating num sold %O %O\n", paper, edition);
-   _papers[paper]->published_editions[edition - 1]->num_sold++;
-   _papers[paper]->published_editions[edition - 1]->total_revenue += cost;
-   save_me();
-}
-int query_edition_num_sold(string paper, int edition) {
-   if (!is_valid_edition(paper, edition)) {
-      return  0;
-   }
-   return _papers[paper]->published_editions[edition - 1]->num_sold;
-}
-int query_edition_num_web_hits(string paper, int edition) {
-   if (!is_valid_edition(paper, edition)) {
-      return  0;
-   }
-   return _papers[paper]->published_editions[edition - 1]->num_web_hits;
-}
-int is_paper_area(string area) {
-   return pointerp(_areas[area]);
-}
-void add_paper_area(string area) {
-   if (is_paper_area(area)) {
-      return ;
-   }
-   _areas[area] = ({ });
-}
-void add_paper_to_area(string paper, string area) {
-   if (!is_paper(paper) || !is_paper_area(area)) {
-      return ;
-   }
-   _areas[area] += ({ paper });
-   save_me();
-}
-string* query_papers_in_area(string area) {
-   if (_areas[area]) {
-      return _areas[area];
-   }
-   return ({ });
-}
-void set_article_text(class article art, string text) {
-   unguarded( (:
-      write_file(SAVE_DIR + $(art->file_name), save_variable(({ $(art), $(text) })), 1) :) );
-}
-void add_newspaper_inform(string paper, string ob) {
-   if (!_inform[paper]) {
-      _inform[paper] = ({ });
-   }
-   if (!stringp(ob)) {
-      return ;
-   }
-   if (member_array(ob, _inform[paper]) != -1) {
-      return ;
-   }
-   _inform[paper] += ({ ob });
-   save_me();
-}
-void remove_newspaper_inform(string paper, string ob) {
-   if (!_inform[paper]) {
-      return ;
-   }
-   _inform[paper] -= ({ ob });
-   save_me();
-}
-string* query_newspaper_informs(string paper) {
-   if (!_inform[paper]) {
-      return ({ });
-   }
-   return _inform[paper];
-}
-string query_article_text(class article art) {
-   string str;
-   string* bits;
-   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
-   if (str) {
-      bits = restore_variable(str);
-      return bits[1];
-   }
-   return "Error reading the article text.";
-}
-string query_article_text_html(class article art) {
-   string str;
-   string* bits;
-   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
-   if (str) {
-      bits = restore_variable(str);
-      switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
-      case NEWSPAPER_ARTICLE_TYPE_PLAIN :
-         bits[1] = replace_string(bits[1], "\n\n", "<p>");
-         bits[1] = replace_string(bits[1], "\n", "<br>");
-         return bits[1];
-      case NEWSPAPER_ARTICLE_TYPE_HTML :
-         bits[1] = replace_string(bits[1], "<pre>", "</font><pre>");
-         bits[1] = replace_string(bits[1], "</pre>",
-                                  "</pre>\n<font face=\"helvetica,arial\">");
-         return bits[1];
-      }
-      return bits[1];
-   }
-   return "Error reading the article text.";
-}
-string convert_html(string input) {
-   return AUTODOC_NROFF->convert_html(input);
-}
-string query_article_text_plain(class article art) {
-   string str;
-   string fluff;
-   string* bits;
-   switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
-   case NEWSPAPER_ARTICLE_TYPE_SECTION :
-      return "";
-   case NEWSPAPER_ARTICLE_TYPE_PLAIN :
-      str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
-      if (str) {
-         bits = restore_variable(str);
-         return bits[1];
-      }
-      break;
-   case NEWSPAPER_ARTICLE_TYPE_HTML :
-      fluff = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff", 1) :) );
-      if (!fluff) {
-         str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
-         if (str) {
-            bits = restore_variable(str);
-            bits[1] = convert_html(bits[1]);
-            unguarded( (: write_file(SAVE_DIR + $(art->file_name) + ".proc",
-                                     $(bits[1]), 1) :) );
-            unguarded( (: NROFF_HAND->create_nroff(SAVE_DIR + $(art->file_name) + ".proc",
-                                SAVE_DIR + $(art->file_name) + ".nroff") :) );
-            str = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff") :) );
-            return str;
-         }
-      } else {
-         return fluff;
-      }
-   }
-   return "Error reading the article text.";
-}
-string query_paper_long(string paper) {
-   if (!is_paper(paper)) {
-      return "This is a very transperant and unhappy newspaper.\n";
-   }
-   return _papers[paper]->long;
-}
-void set_paper_description(string paper, string description) {
-   if (!is_paper(paper)) {
-      return ;
-   }
-   _papers[paper]->description = description;
-   save_me();
-}
-string query_paper_description(string paper) {
-   if (!is_paper(paper)) {
-      return "This is a very transperant and unhappy newspaper.\n";
-   }
-   return _papers[paper]->description;
-}
-void set_paper_long(string paper, string long) {
-   if (!is_paper(paper)) {
-      return ;
-   }
-   _papers[paper]->long = long;
-   save_me();
-}
-void set_paper_cost(string paper, int cost) {
-   if (!is_paper(paper)) {
-      return ;
-   }
-   _papers[paper]->paper_cost = cost;
-   save_me();
-}
-int query_paper_cost(string paper) {
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   return _papers[paper]->paper_cost;
-}
-int publish_paper(string paper,
-                  string headline,
-                  class article* articles,
-                  string* text,
-                  class advert* adds,
-                  string* editors) {
-   string paper_dir;
-   string tmp;
-   class paper fluff;
-   class article article;
-   class edition womble;
-   int i;
-   int edition;
-   int total_xp;
-   int type;
-   if (!is_paper(paper)) {
-      return 0;
-   }
-   fluff = _papers[paper];
-   edition = sizeof(fluff->published_editions) + 1;
-   paper_dir = SAVE_DIR + fluff->dir_name;
-   unguarded( (: mkdir($(paper_dir)) :));
-   paper_dir += "/" + edition;
-   unguarded( (: mkdir($(paper_dir)) :));
-   foreach (article in articles) {
-      article->file_name = fluff->dir_name + "/" + edition + "/" +
-                           article->file_name;
-      type = article->type & NEWSPAPER_ARTICLE_TYPE_MASK;
-      if ((type == NEWSPAPER_ARTICLE_TYPE_PLAIN ||
-           type == NEWSPAPER_ARTICLE_TYPE_HTML) &&
-           !(article->type & NEWSPAPER_ARTICLE_NO_XP_FLAG)) {
-         _xp[lower_case(article->author)] += NEWSPAPER_XP_PER_ARTICLE;
-         total_xp += NEWSPAPER_XP_PER_ARTICLE;
-      }
-   }
-   total_xp = total_xp * 10 / 100;
-   total_xp += NEWSPAPER_XP_EDITOR;
-   if (sizeof(editors)) {
-      foreach (tmp in editors) {
-         _xp[tmp] += total_xp / sizeof(editors);
-      }
-   }
-   for (i = 0; i < sizeof(articles); i++) {
-      set_article_text(articles[i], text[i]);
-   }
-   womble = new(class edition);
-   womble->articles = articles;
-   womble->adverts = adds;
-   womble->date_published = time();
-   womble->headline = headline;
-   fluff->published_editions += ({ womble });
-   save_me();
-   foreach (tmp in query_newspaper_informs(paper)) {
-      call_out((: $1->event_publish_paper($2) :), 2, tmp, paper);
-   }
-   return 1;
-}
-void load_me() {
-   string paper;
-   class paper fluff;
-   class paper rabbit;
-   unguarded( (: restore_object(SAVE_DIR + "main", 1) :) );
-   foreach (paper, fluff in _papers) {
-      if (sizeof(fluff) == 6) {
-         rabbit = new(class paper);
-         rabbit->published_editions = fluff->published_editions;
-         rabbit->dir_name = fluff->dir_name;
-         rabbit->long = fluff->long;
-         rabbit->description = fluff->description;
-         rabbit->office = fluff->office;
-         rabbit->paper_cost = 5 * 4;
-         rabbit->language = "general";
-         _papers[paper] = rabbit;
-         fluff = rabbit;
-      } else if( sizeof( fluff ) == 7 ) {
-         rabbit = new(class paper);
-         rabbit->published_editions = fluff->published_editions;
-         rabbit->dir_name = fluff->dir_name;
-         rabbit->long = fluff->long;
-         rabbit->description = fluff->description;
-         rabbit->office = fluff->office;
-         rabbit->paper_cost = 5 * 4;
-         rabbit->language = fluff->language;
-         _papers[paper] = rabbit;
-         fluff = rabbit;
-      }
-   }
 }
 void save_me() {
-   unguarded( (: save_object(SAVE_DIR + "main") :) );
+   unguarded( (: save_object(NOMIC_SYSTEM_SAVE_FILE) :) );
 }
-mixed* stats() {
-   string paper;
-   string person;
-   class paper data;
-   mixed* ret;
-   int last;
-   int xp;
-   ret = ({ });
-   foreach (paper, data in _papers) {
-      last = query_last_edition_num(paper);
-      ret += ({ ({ paper + ": office", data->office }),
-                ({ paper + ": dir name", data->dir_name }),
-                ({ paper + ": last issue", last }),
-                ({ paper + ": current issue", query_current_edition_num(paper) }),
-                ({ paper + ": num sold", query_edition_num_sold(paper, last) }),
-                ({ paper + ": num web hits", query_edition_num_web_hits(paper, last) }),
-                ({ paper + ": revenue", query_edition_revenue(paper, last) }),
-              });
-   }
-   foreach (person, xp in _xp) {
-      ret += ({ ({ person + ": xp", xp }) });
-   }
-   return ret;
-}
-void player_login_check(string player, string bing) {
-   object play;
-   int xp;
-   if (bing != LOGIN) {
-      return ;
-   }
-   xp = _xp[player];
-   if (xp) {
-      play = find_player(player);
-      play->adjust_xp(xp);
-      map_delete(_xp, player);
-      save_me();
-      tell_object(play, "%^YELLOW%^You feel like the experience of writing "
-                        "an article has made you a better person.\n%^RESET%^");
-   }
-}
-void set_language_for( string paper, string language ) {
-    if( is_paper( paper ) )
-        _papers[ paper ]->language = language;
-}
-string query_language_for( string paper ) {
-    if( is_paper( paper ) ) {
-        if( !undefinedp( _papers[ paper ]->language ) )
-            return _papers[ paper ]->language;
-        return "general";
-    }
-    return 0;
-}
-
-==================================================
-FILE: handlers/nmoney_handler.c
-==================================================
-
-#include <money.h>
-#define DEF_VALUE 1
-#define SAVE_FILE "/save/money_handler"
-#undef USE_VAULT
-mapping values;
-mapping symbols;
-mapping details;
-mapping aliases;
-mapping adjectives;
-mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2);
-varargs object *filter_legal_money_array(mixed *m_array, string where);
-void create() {
-   seteuid( (string)"/secure/master"->
-      creator_file( file_name( this_object() ) ) );
-   values = ([ "default": ({ "brass", 1, "copper", 10, "silver", 100,
-                                          "gold", 2000, "platinum", 6000 }) ]);
-   symbols = ([ ]);
-   details = ([
-      "brass": ({ "heads", "tails", "a head", "a tail", "brass", 0 }),
-      "copper": ({ "heads", "tails", "a head", "a tail", "copper", 0 }),
-      "silver": ({ "heads", "tails", "a head", "a tail", "silver", 0 }),
-      "gold": ({ "heads", "tails", "a head", "a tail", "gold", 0 }),
-      "platinum": ({ "heads", "tails", "a head", "a tail", "platinum", 0 }) ]);
-   aliases = ([ ]);
-   adjectives = ([ ]);
-   if ( file_size( SAVE_FILE +".o" ) > 0 ) {
-      unguarded((: restore_object, SAVE_FILE :));
-   }
-   if ( !symbols ) {
-      symbols = ([ ]);
-   }
-   if ( !aliases ) {
-      aliases = ([ ]);
-   }
-   if ( !adjectives ) {
-      adjectives = ([ ]);
-   }
-}
-void save_me() { unguarded( (: save_object, SAVE_FILE :) ); }
-mapping query_all_values() { return copy( values ); }
-string *query_all_places() {
-   return keys(values);
-}
-mixed *query_values() { return copy( values[ "default" ] ); }
-mixed *query_values_in( string where ) {
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   return copy( values[ where ] );
-}
-int query_smallest_value_in(string where) {
-   mixed* values;
-   int value;
-   int i;
-   if (! where) {
-      where = "default";
-   }
-   values = query_values_in(where);
-   value = values[1];
-   for (i = 2; i < sizeof(values); i += 2) {
-      if (values[i + 1] < value) {
-         value = values[i + 1];
-      }
-   }
-   return value;
-}
-void add_type( string where, string type, int value ) {
-   int i;
-   if ( !values[ where ] ) {
-      values[ where ] = ({ type, value });
-      save_me();
-      return;
-   }
-   if ( member_array( type, values[ where ] ) != -1 ) {
-      return;
-   }
-   for ( i = 0; i < sizeof( values[ where ] ); i += 2 ) {
-      if ( value < values[ where ][ i + 1 ] ) {
-         values[ where ] = values[ where ][ 0 .. i - 1 ] + ({ type, value })
-                           + values[ where ][ i .. sizeof( values ) ];
-         save_me();
-         return;
-      }
-   }
-   values[ where ] += ({ type, value });
-   save_me();
-}
-void remove_type( string where, string type ) {
-   int i;
-   if ( !values[ where ] ) {
-      return;
-   }
-   i = member_array( type, values[ where ] );
-   if ( i == -1 ) {
-      return;
-   }
-   values[ where ] = delete( values[ where ], i, 2 );
-   if ( !sizeof( values[ where ] ) ) {
-      map_delete( values, where );
-   }
-   save_me();
-}
-mapping query_details() { return copy( details ); }
-mixed *query_details_for( string word ) {
-   if ( !details[ word ] ) {
-      return ({ "heads", "tails", "a head", "a tail", "unknown", 0 });
-   }
-   return copy( details[ word ] );
-}
-void add_details( string word, string hd_sht, string tl_sht, string hd_lng,
-                  string tl_lng, mixed composition, string plural ) {
-   if ( details[ word ] ) {
-      return;
-   }
-   details[ word ] = ({ hd_sht, tl_sht, hd_lng, tl_lng, composition, plural });
-   save_me();
-}
-void remove_details( string word ) {
-   if ( !details[ word ] ) {
-      return;
-   }
-   map_delete( details, word );
-   save_me();
-}
-mapping query_symbols() { return copy( symbols ); }
-string query_symbol_for( string word ) {
-   if ( !symbols[ word ] ) {
-      return 0;
-   }
-   return copy( symbols[ word ] );
-}
-void add_symbol( string word, string symboliser ) {
-   if ( symbols[ word ] ) {
-      return;
-   }
-   symbols[ word ] = symboliser;
-   save_me();
-}
-void remove_symbol( string word ) {
-   if ( !symbols[ word ] ) {
-      return;
-   }
-   map_delete( symbols, word );
-   save_me();
-}
-string query_alias_for( string type ) {
-   log_file("OBSOLETE_CALLS",
-      sprintf("%O %s: %O called query_alias_for\n",
-         this_object(),
-         ctime(time()),
-         previous_object()
-         ));
-   if ( !details[ type ] ) return "coin";
-   if ( !details[ type ][ 5 ] ) return "coin";
-   return explode( type, " " )[ sizeof( explode( type, " " ) ) - 1 ];
-}
-void set_aliases_for(string type, string *words) {
-   if (!words || !sizeof(words)) {
-      if (aliases[type]) {
-         map_delete(aliases, type);
-      }
-   } else {
-      aliases[type] = words;
-   }
-   save_me();
-   return;
-}
-string *query_aliases_for( string type ) {
-   string *ret;
-   if ( !details[ type ] || !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      ret = ({ "coin" });
-   } else {
-      ret = ({ explode(type, " ")[<1] });
-   }
-   if ( aliases[ type ] ) {
-      ret += aliases[ type ];
-   }
-   return ret;
-}
-void set_adjectives_for(string type, string *words) {
-   if (!words || !sizeof(words)) {
-      if (adjectives[type]) {
-         map_delete(adjectives, type);
-      }
-   } else {
-      adjectives[type] = words;
-   }
-   save_me();
-   return;
-}
-string *query_adjectives_for( string type ) {
-   string *ret;
-   if ( adjectives[ type ] ) {
-      ret = adjectives[ type ];
-   }
-   else {
-      ret = ({ });
-   }
-   return ret;
-}
-string query_short_for( string type ) {
-   if ( !details[ type ] ) {
-      return type +" coin";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return type +" coin";
-   }
-   return type;
-}
-string query_plural_for( string type ) {
-   if ( !details[ type ] ) {
-      return "coins";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return "coins";
-   }
-   return details[ type ][ MONEY_DETAILS_PLURAL ];
-}
-void set_plural_for( string type, string plural ) {
-   if ( !details[ type ] ) {
-      return;
-   }
-   details[ type ][ MONEY_DETAILS_PLURAL ] = plural;
-   save_me();
-}
-string query_main_plural_for( string type ) {
-   string *type_exp;
-   if ( !details[ type ] ) {
-      return type +" coins";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return type +" coins";
-   }
-   type_exp = explode(type, " ");
-   return implode(type_exp[0 .. <2] +
-      ({ details[ type ][ MONEY_DETAILS_PLURAL ] }), " " );
-}
-varargs int query_value( string type, string where ) {
-   int i, j, count, total;
-   string *places;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( where == "mean" ) {
-      places = m_indices( values );
-      for ( i = 0; i < sizeof( places ); i++ ) {
-         if ( ( j = member_array( type, values[ places[ i ] ] ) ) != -1 ) {
-            count++;
-            total += values[ places[ i ] ][ j + 1 ];
-         }
-      }
-      if ( !count ) {
-         return 0;
-      }
-      if ( !( total / count ) ) {
-         return 0;
-      }
-      return total / count;
-   }
-   if ( !values[ where ] ) {
-      return 0;
-   }
-   i = member_array( type, values[ where ] );
-   if ( i == -1 ) {
-      return 0;
-   }
-   return values[ where ][ i + 1 ];
-}
-varargs int query_total_value( mixed mon_array, string where ) {
-   int i, amt;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
-      amt += mon_array[ i + 1 ] * query_value( mon_array[ i ], where );
-   }
-   return amt;
-}
-string money_string( mixed mon_array ) {
-   int i;
-   string ret;
-   if ( !sizeof( mon_array ) ) {
-      return "nothing";
-   }
-   ret = "";
-   while( i < sizeof( mon_array ) ) {
-      if ( !mon_array[ i + 1 ] ) {
-         mon_array = delete( mon_array, i, 2 );
-      } else {
-         i += 2;
-      }
-   }
-   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
-      ret += mon_array[ i + 1 ] +" ";
-      if ( mon_array[ i + 1 ] == 1 ) {
-         ret += query_short_for( mon_array[ i ] );
-      } else {
-         ret += query_main_plural_for( mon_array[ i ] );
-      }
-      if ( i == sizeof( mon_array ) - 4 ) {
-         ret += " and ";
-      } else if ( i != sizeof( mon_array ) - 2 ) {
-         ret += ", ";
-      }
-   }
-   return ret;
-}
-varargs mixed *create_money_array( int value, string where ) {
-   int i, amt;
-   mixed *mon_array;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( !value ) {
-      return ({ });
-   }
-   mon_array = ({ });
-   for ( i = sizeof( values[ where ] ) - 2; i >= 0; i -= 2 ) {
-      if ( value >= values[ where ][ i + 1 ] ) {
-         mon_array += ({ values[ where ][ i ], amt = value /
-                         values[ where ][ i + 1 ] });
-         value -= amt * values[ where ][ i + 1];
-      }
-   }
-   return mon_array;
-}
-varargs string money_value_string( int value, string where ) {
-   string symboliser;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( !symbols[ where ] ) {
-      if (value < 0) {
-         return "negative " + money_string( create_money_array( -value,
-                                                                where ) );
-      } else {
-         return money_string( create_money_array( value, where ) );
-      }
-   }
-   symboliser = symbols[ where ];
-   return (string)symboliser->symbolise_value( value );
-}
-mixed* money_array_from_string(string str, string where) {
-   int value;
-   int number;
-   int i;
-   int pos;
-   int frog;
-   int match;
-   int max_match;
-   string plural;
-   string *bits;
-   string type;
-   string match_name;
-   mixed *stuff;
-   mixed* ret_arr;
-   if (!where) {
-      where = "default";
-   }
-   if (symbols[ where ]) {
-      value = symbols[ where ]->unsymbolise_string( str );
-      if (value) {
-         return create_money_array(value, where);
-      }
-   }
-   ret_arr = ({ });
-   stuff = values[ where ];
-   if (!value && stuff) {
-      bits = explode(str, " ") - ({ "and", ",", "" });
-      for (i = 0; i < sizeof(bits); i++) {
-         if (sscanf(bits[i], "%d", number) == 1 &&
-             i + 1 < sizeof(bits)) {
-            i++;
-            type = bits[i];
-            max_match = 0;
-            do {
-               match = 0;
-               if (type[<1] == ',') {
-                  type = type[0..<2];
-               }
-               type = lower_case(type);
-               for (pos = 0; pos < sizeof(stuff); pos += 2) {
-                  plural = query_plural_for(stuff[pos]);
-                  frog = strsrch(stuff[pos], " ", -1);
-                  if (frog) {
-                     plural = stuff[pos][0..frog] + plural;
-                  }
-                  if (lower_case(stuff[pos]) == type ||
-                      strsrch(lower_case(stuff[pos]), type) != -1 ||
-                      lower_case(plural) == type ||
-                      strsrch(lower_case(plural), type) != -1) {
-                     match = stuff[pos + 1];
-                     match_name = stuff[pos];
-                  }
-               }
-               if (match) {
-                  i++;
-                  max_match = match;
-                  if (i < sizeof(bits)) {
-                     type += " " + bits[i];
-                  }
-               }
-            } while (match && i < sizeof(bits));
-            if (max_match) {
-               ret_arr += ({ match_name, number });
-            }
-            i--;
-         } else {
-            i++;
-         }
-      }
-   }
-   return ret_arr;
-}
-int value_from_string(string str, string where) {
-   return query_total_value(money_array_from_string(str, where), where);
-}
-mixed *calc_change( int value, mixed *mon_array ) {
-   int i, num;
-   mixed *ret;
-   ret = ({ });
-   for ( i = sizeof( mon_array ) - 2; i >= 0; i -= 2 ) {
-      if ( value >= mon_array[ i + 1 ] ) {
-         num = value / mon_array[ i + 1 ];
-         value = value % mon_array[ i + 1 ];
-         ret += ({ mon_array[ i ], num });
-         if ( !value ) {
-            return ret;
-         }
-      }
-   }
-   return ret;
-}
-mixed *make_money_array_payment( string type,
-                                 int value,
-                                 mixed *mon_array,
-                                 string where,
-                                 int use_default) {
-   int i;
-   int j;
-   int num;
-   int total;
-   int cur_match;
-   string mon_name;
-   mixed *poss_values;
-   mixed *ret;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if (type) {
-      i = member_array( type, mon_array );
-      if ( i != -1 ) {
-         if ( value <= mon_array[ i + 1 ] ) {
-            mon_array[ i + 1] -= value;
-            return ({ ({ type, value }), 0, mon_array });
-         }
-      }
-      value *= query_value( type, where );
-   }
-   if (!value) {
-      return 0;
-   }
-   total = query_total_value( mon_array, where );
-   if (use_default  &&  where != "default") {
-      total += query_total_value( mon_array, "default" );
-   }
-   if ( value > total ) {
-      return 0;
-   }
-   poss_values = ({ });
-   if ( where != "default" && use_default ) {
-      poss_values += values[ "default" ];
-   }
-   poss_values += values[ where ];
-   ret = ({ });
-   for ( i = ( sizeof( poss_values ) - 2 ); i >= 0; i -= 2 ) {
-      j = member_array( poss_values[ i ], mon_array );
-      if ( j != - 1 ) {
-         if ( poss_values[ i + 1 ] <= value ) {
-            num = value / poss_values[ i + 1 ];
-            if ( num > mon_array[ j + 1 ] ) {
-               num = mon_array[ j + 1 ];
-            }
-            mon_array[ j + 1] -= num;
-            value -= num * poss_values[ i + 1 ];
-            ret += ({ poss_values[ i ], num });
-            if ( !value ) {
-               return ({ ret, value, mon_array });
-            }
-         }
-      }
-   }
-   cur_match = value + 10000000;
-   for (i = 0; i < sizeof(poss_values); i +=2 ) {
-      j = member_array( poss_values[ i ], mon_array);
-      if (j != -1 &&
-          mon_array[j + 1] > 0 &&
-          poss_values[i + 1] >= value &&
-          poss_values[i + 1] - value <= cur_match - value) {
-         cur_match = poss_values[i + 1];
-         mon_name = poss_values[i];
-      }
-   }
-   if (mon_name) {
-      j = member_array(mon_name, mon_array);
-      i = member_array(mon_name, poss_values);
-      mon_array[j + 1] -= 1;
-      value = poss_values[i + 1] - value;
-      ret += ({ poss_values[ i ], 1 });
-   } else {
-      return 0;
-   }
-   return ({ ret, value, mon_array });
-}
-varargs mixed *make_payment( string type, int value, object thing,
-                             string where ) {
-   mixed *mon_array;
-   mixed *stuff;
-   if (!type) {
-     return 0;
-   }
-   mon_array = copy(thing->query_money_array());
-   stuff = make_money_array_payment( type, value, mon_array, where, 1);
-   if (!stuff) {
-      return stuff;
-   }
-   if (stuff[MONEY_PAY_CHANGE]) {
-      return ({ stuff[MONEY_PAY_RETURN], calc_change(stuff[MONEY_PAY_CHANGE],
-                                                     values[where]) });
-   }
-   return ({ stuff[MONEY_PAY_RETURN], stuff[MONEY_PAY_CHANGE] });
-}
-varargs object pay_amount_from(int value, object money, string where) {
-   int i;
-   object change;
-   mixed *m_array, *p_array;
-   mixed *change_array;
-   mixed *pay_array;
-   if (!where || where == "") {
-      where = "default";
-   }
-   change_array = ({ });
-   pay_array = ({ });
-   m_array = create_money_array(value, where);
-   for (i = 0; i < sizeof(m_array); i += 2) {
-      p_array = make_payment(m_array[i], m_array[i + 1], money, where);
-      if (!pointerp(p_array)) {
-         continue;
-      }
-      if (sizeof(p_array[0]) > 0)
-         pay_array = merge_money_arrays(pay_array, p_array[0]);
-      if (sizeof(p_array[1]) > 0) {
-         change_array = merge_money_arrays(change_array, p_array[1]);
-      }
-   }
-   if (sizeof(pay_array) > 0)  {
-      for (i = 0; i < sizeof(pay_array); i += 2) {
-         pay_array[i + 1] = -pay_array[i + 1];
-      }
-      money->adjust_money(pay_array);
-   }
-   if (sizeof(change_array) == 0) {
-      return 0;
-   }
-#ifdef USE_VAULT
-   change = MONEY_VAULT->get_money_ob();
-   change->set_money_array(change_array);
-#else
-   change = clone_object(MONEY_OBJECT);
-#endif
-   return change;
-}
-varargs object make_new_amount( int value, string where ) {
-   object money;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-#ifdef USE_VAULT
-   money = MONEY_VAULT->get_money_ob();
-#else
-   money = clone_object( MONEY_OBJECT );
-#endif
-   money->set_money_array( create_money_array( value, where ) );
-   if ( !(int)money->query_value_in( where ) ) {
-      money->dest_me();
-      return 0;
-   }
-   return money;
-}
-varargs object *filter_legal_tender(object money, string where) {
-   mixed *m_array;
-   m_array = (mixed *)money->query_money_array();
-   money->dest_me();
-   return filter_legal_money_array(m_array, where);
-}
-varargs object *filter_legal_money_array(mixed *m_array, string where) {
-   int i;
-   object good, no_good;
-   mixed *poss_values;
-   mixed *good_array = ({ });
-   mixed *no_good_array = ({ });
-   if (sizeof(m_array) == 0) {
-      return ({ 0, 0 });
-   }
-   if (!(poss_values = values[where])) {
-      poss_values = ({ });
-   }
-   if (!where || where == "") {
-     where = "default";
-   }
-   for (i = 0; i < sizeof(m_array); i += 2) {
-      if (member_array(m_array[i], poss_values) != -1) {
-         good_array += ({ m_array[i], m_array[i + 1] });
-      } else {
-         no_good_array += ({ m_array[i], m_array[i + 1] });
-      }
-   }
-   if (sizeof(good_array) == 0) {
-      good = 0;
-   }
-   else  {
-#ifdef USE_VAULT
-      good = MONEY_VAULT->get_money_ob();
-#else
-      good = clone_object(MONEY_OBJECT);
-#endif
-      good->set_money_array(good_array);
-   }
-   if (sizeof(no_good_array) == 0) {
-      no_good = 0;
-   }
-   else  {
-#ifdef USE_VAULT
-     no_good = MONEY_VAULT->get_money_ob();
-#else
-     no_good = clone_object(MONEY_OBJECT);
-#endif
-     no_good->set_money_array(no_good_array);
-   }
-   return ({ good, no_good });
-}
-mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2)  {
-   int i;
-   int idx;
-   mixed *new_m_array;
-   if (!m_array1)
-      m_array1 = ({ });
-   if (!m_array2)
-      m_array2 = ({ });
-   if (sizeof(m_array1) < sizeof(m_array2))  {
-      new_m_array = copy(m_array2);
-      for (i = 0; i < sizeof(m_array1); i += 2)  {
-         idx = member_array(m_array1[i], new_m_array);
-         if (idx > -1)  {
-            new_m_array[idx + 1] += m_array1[i + 1];
-            if (new_m_array[idx + 1] <= 0)
-               new_m_array = delete(new_m_array, idx, 2);
-         }
-         else
-            new_m_array += ({ m_array1[i], m_array1[i + 1] });
-      }
-   }
-   else  {
-      new_m_array = copy(m_array1);
-      for (i = 0; i < sizeof(m_array2); i += 2)  {
-         idx = member_array(m_array2[i], new_m_array);
-         if (idx > -1)  {
-            new_m_array[idx + 1] += m_array2[i + 1];
-            if (new_m_array[idx + 1] <= 0)
-               new_m_array = delete(new_m_array, idx, 2);
-         }
-         else
-            new_m_array += ({ m_array2[i], m_array2[i + 1] });
-      }
-   }
-   return new_m_array;
-}
-varargs mixed parse_money(string words, object player, string place) {
-   object  thing;
-   object *monies;
-   object *things;
-   mixed  *m_array;
-   mixed  *m_array2;
-   int     i;
-   things = match_objects_for_existence(words, ({ player }));
-   if (sizeof(things) == 0) {
-      m_array = money_array_from_string(words, place);
-       if (sizeof(m_array) == 0) {
-         return NO_MATCH;
-      }
-      thing = present(MONEY_ALIAS, player);
-      if (!thing) {
-         return NO_MATCH;
-      }
-      for (i = 0; i < sizeof(m_array); i += 2) {
-         if (thing->query_money(m_array[0]) < m_array[1]) {
-            return NO_MATCH;
-         }
-      }
-   }
-   else {
-      things = filter(things, (: $1->query_property("money") :));
-      if (sizeof(things) == 0)
-         return NO_MONEY;
-      m_array = ({ });
-      foreach (thing in things)  {
-         m_array = merge_money_arrays(m_array, thing->query_money_array());
-#ifdef USE_VAULT
-         MONEY_VAULT->add_to_list(thing);
-#endif
-      }
-   }
-   monies = filter_legal_money_array(m_array, place);
-   if (monies[1])  {
-      tell_object(player, monies[1]->the_short() +
-            (monies[1]->query_number_coins() == 1 ? " is" : " are") +
-            " not legal tender here.\n");
-      m_array = monies[1]->query_money_array();
-#ifdef USE_VAULT
-      MONEY_VAULT->add_to_list(monies[1]);
-#endif
-   }
-   else
-      m_array = ({ });
-   if (monies[0])  {
-      m_array2 = copy(monies[0]->query_money_array());
-      for (i = 0; i < sizeof(m_array2); i += 2)
-         m_array2[i + 1] = -m_array2[i + 1];
-      merge_money_arrays(m_array, m_array2);
-      this_player()->adjust_money(m_array);
-      return monies[0];
-   }
-   else return NO_LEGAL;
-}
-mixed *query_person_payments(int value, string place,
-                             object payer, object payee) {
-   mixed *stuff;
-   mixed *mon_array;
-   mixed *rabbit;
-   mon_array = copy(payer->query_money_array());
-   stuff = make_money_array_payment( 0, value, mon_array, place, 0);
-   if (!stuff) {
-      return 0;
-   }
-   if (stuff[MONEY_PAY_CHANGE]) {
-      mon_array = copy(payee->query_money_array());
-      rabbit = make_money_array_payment( 0, stuff[MONEY_PAY_CHANGE],
-                                         mon_array, place, 0);
-      if (!rabbit || rabbit[MONEY_PAY_CHANGE]) {
-         return 0;
-      }
-      return ({ stuff[MONEY_PAY_RETURN], rabbit[MONEY_PAY_RETURN] });
-   }
-   return ({ stuff[MONEY_PAY_RETURN], ({ }) });
-}
-string * query_valid_types(){
-  mixed *tmp;
-  string *elem, *valid_types = ({ });
-  int i;
-  tmp = values(query_all_values());
-  foreach( elem in tmp ){
-    for( i = 0; i < sizeof( elem ); i += 2 ){
-      if ( stringp( elem[i] ) )
-        valid_types += ({ elem[i] });
-    }
-  } return valid_types;
-}
-string query_origin_of( string type ){
-  string elem, *places;
-  if( member_array( type, query_valid_types() ) == -1 )
-    return 0;
-  places = query_all_places();
-  foreach( elem in places ){
-    if( member_array( type,query_values_in( elem ) ) != -1 )
-      return elem;
-  }
-}
-string * query_aliases_of( string word ){
-  string *types, elem, *aliases = ({ });
-  types = query_valid_types();
-  foreach( elem in types ){
-    if( member_array( word,query_aliases_for( elem ) ) != -1 )
-      aliases += ({ elem });
-  } return aliases;
-}
-int query_value_of( string type ){
-  if( member_array( type, query_valid_types() ) == -1 )
-    return 0;
-   return query_value( type, query_origin_of( type ) );
-}
-string smallest_in( string place ) {
-   int i, smallest, r;
-   mixed *values;
-   values = query_values_in( place );
-   for ( i = 1; i < sizeof( values ); i += 2 ) {
-      if ( !smallest || ( values[i] < smallest ) ) {
-         smallest = values[i];
-         r = i;
-      }
-   }
-   return values[r-1];
-}
-int smallest_value_in( string place ) {
-   int i, smallest, r;
-   mixed *values;
-   values = query_values_in( place );
-   for ( i = 1; i < sizeof( values ); i += 2 ) {
-      if ( !smallest || ( values[i] < smallest ) ) {
-         smallest = values[i];
-         r = i;
-      }
-   }
-   return values[r];
-}
-mapping query_mapped_values_in( string where ) {
-   mapping values = ([]);
-  mixed * array;
-  int i;
-   if ( !where || ( where == "" ) )
-      where = "default";
-  array = query_values_in(where);
-   for ( i = 1; i < sizeof(array); i += 2 )
-  {
-      values += ([array[i-1]:array[i]]);
-   }
-   return values;
-}
-
-==================================================
-FILE: handlers/non_refuelling_lantern.c
-==================================================
-
-#include <fuel_handler.h>
-inherit "/std/object";
-#define BRIGHTNESS      60
-#define FUEL_PER_TICK  FUEL_TIME
-#define MAX_FUEL 3600
-int  fuel_left;
-int  is_lit;
-void create(){
-  ::create();
-}
-string short( int i ) {
-  if ( is_lit )
-    return ::short( 0 ) + " (lit)";
-  return ::short( 0 );
-}
-int do_extinguish() {
-   if ( !is_lit ) {
-      this_player()->add_failed_mess(this_object(), "$D is not lit.\n", ({ }));
-      return 0;
-   }
-   FUEL_HANDLER->remove_burner( this_object() );
-   is_lit = 0;
-   set_light( 0 );
-   return 1;
-}
-int do_dowse() {
-   return do_extinguish();
-}
-int do_light() {
-   if ( is_lit ) {
-      this_player()->add_failed_mess( this_object(), "$D is already lit.\n",
-                                     ({ }) );
-      return 0;
-   }
-   if ( fuel_left <= 0 ) {
-      this_player()->add_failed_mess( this_object(), "$D is out of fuel.\n",
-                                     ({ }) );
-      return 0;
-   }
-   FUEL_HANDLER->add_burner( this_object() );
-   is_lit = 1;
-   set_light( BRIGHTNESS );
-   return 1;
-}
-void init() {
-   this_player()->add_command("light", this_object());
-   this_player()->add_command("extinguish", this_object());
-   this_player()->add_command("dowse", this_object());
-}
-void out_of_fuel() {
-   object env;
-   is_lit    = 0;
-   fuel_left = 0;
-   env = environment( this_object() );
-   FUEL_HANDLER->remove_burner( this_object() );
-   set_light( 0 );
-   if ( interactive( env ) ) {
-      write( poss_short() +" burns out.\n" );
-      tell_room( environment(env), poss_short() +" burns out.\n", env );
-   } else
-      say( poss_short() +" burns out.\n" );
-}
-void consume_fuel() {
-   fuel_left -= FUEL_PER_TICK;
-   switch ( fuel_left ) {
-    case -10000 .. 0:
-      out_of_fuel();
-      break;
-    default:
-   }
-}
-string pretty_plural( object thing) {
-  if ( is_lit )
-    return ::pretty_plural(thing) + " (lit)";
-  return ::pretty_plural(thing);
+void load_me() {
+   unguarded( (: restore_object(NOMIC_SYSTEM_SAVE_FILE, 1) :) );
 }
 void dest_me() {
-   set_light( 0 );
-   FUEL_HANDLER->remove_burner( this_object() );
-   ::dest_me();
+   destruct(this_object());
+}
+
+==================================================
+FILE: handlers/player_handler.c
+==================================================
+
+inherit "/global/family";
+inherit "/std/living/nationality";
+#include <alias.h>
+#include <player.h>
+#include <login_handler.h>
+#include <access.h>
+#define MAX_CACHE_SIZE MAX_PLAYERS
+#define CACHE_TIMEOUT 900
+#define INACTIVE_LIMIT 1209600
+#define ILLEGAL ({ "black", "blood", "cyber", "dark", "penis", "cock", "pussy",\
+  "fuck", "shit", "death", "deth", "dragon", "fish", "hell", "mage", "pink", "lord",\
+  "shadow", "evil", "killer", "slayer" })
+private int gender;
+private int creator;
+private int time_on;
+private int last_log_on;
+private string last_on_from;
+private int activity_counter;
+private int start_time;
+private string password;
+private string deity;
+private string guild_ob;
+private string cap_name;
+private mapping aliases;
+private mapping map_prop;
+private mapping new_skills;
+private mapping player_info;
+private mixed *guild_data;
+private int _flags;
+private string home_dir;
+string player_ob;
+class player_record {
+  int cached;
+  int touched;
+  int deleting;
+  int appealing;
+  int gender;
+  int creator;
+  int active;
+  int level;
+  string cap_name;
+  mapping map_prop;
+  mapping player_info;
+  string deity;
+  string guild;
+  mixed *guild_data;
+  int age;
+  int last;
+  int flags;
+  string last_on_from;
+  int start_time;
+  string family_name;
+  string player_title;
+  string password;
+  mixed *project;
+  mixed *plan;
+  mixed *reference;
+  mixed *signature;
+  string home_dir;
+  string nationality;
+  string nationality_region;
+  mixed nationality_data;
+}
+nosave mapping player_cache;
+nosave string prev, prev_find, prev_name;
+nosave int prev_count, prev_finds, delay;
+int requests,
+  cache_hits;
+void create() {
+  seteuid("Root");
+  player_ob = "/global/player";
+  player_cache = ([ ]);
+}
+object my_find_player(string player) {
+  string *funs, stack = "";
+  object *obs;
+  int i;
+  if(prev_name == player)
+    return find_player(player);
+  prev_name = player;
+  if (base_name(previous_object()) == prev_find && delay > time() - 60 &&
+      prev_name == player) {
+    prev_finds++;
+  } else {
+    prev_finds = 1;
+    delay = time();
+    prev_find = base_name(previous_object());
+  }
+  if(!(prev_finds % 25)) {
+    obs = call_stack(1);
+    funs = call_stack(2);
+    for(i=0; i<sizeof(obs); i++) {
+      if(clonep(obs[i]))
+        stack += base_name(obs[i]) + "#" + obs[i]->query_name();
+      else
+        stack += base_name(obs[i]);
+      stack += "->" + funs[i] + "()\n";
+    }
+    log_file("GARBAGE", "%s %s checked %d players in %d seconds.\n%s",
+             ctime(time())[4..18], prev_find, prev_finds, time() - delay,
+             stack);
+  }
+  return find_player(player);
+}
+void clean_cache() {
+  string name;
+  foreach(name in keys(player_cache)) {
+    if (player_cache[name]->cached < time() - CACHE_TIMEOUT) {
+      map_delete(player_cache, name);
+    }
+  }
+}
+void remove_cache_entry(string name) {
+  map_delete(player_cache, name);
+}
+private int validate_name(string name) {
+  if (!stringp(name) || !name || name == "logon" || name[0] == '.' ||
+      (sscanf(name, "%*s %*s") == 2) || strlen(name) < 2) {
+    return 0;
+  }
+  if (sizeof(explode(name, "..")) > 1) {
+    return 0;
+  }
+  return 1;
+}
+string query_player_file_name(string name) {
+#ifdef USE_RAMDISK
+  if(PLAYER_RAM_DIR) {
+    if(file_size(PLAYER_RAM_DIR + name[0..0] + "/" + name + ".o.gz") == -1) {
+      if(file_size(PLAYER_SAVE_DIR + name[0..0] + "/" + name + ".o.gz") > -1) {
+        unguarded((: cp,
+                   PLAYER_SAVE_DIR + name[0..0] + "/" + name + ".o.gz",
+                   PLAYER_RAM_DIR + name[0..0] + "/" + name + ".o.gz" :));
+      } else if((file_size(PLAYER_SAVE_DIR+name[0..0]+"/"+name+".o") >-1)) {
+        unguarded((: cp,
+                   PLAYER_SAVE_DIR + name[0..0] + "/" + name + ".o",
+                   PLAYER_RAM_DIR + name[0..0] + "/" + name + ".o" :));
+        unguarded((: compress_file,
+                   PLAYER_RAM_DIR + name[0..0] + "/" + name + ".o" :));
+      }
+    }
+    return PLAYER_RAM_DIR + name[0..0] + "/" + name;
+  }
+#endif
+  return PLAYER_SAVE_DIR + name[0..0] + "/" + name;
+}
+string query_player_ram_file_name(string name) {
+  return PLAYER_RAM_DIR + name[0..0] + "/" + name;
+}
+string query_player_disk_file_name(string name) {
+  return PLAYER_SAVE_DIR + name[0..0] + "/" + name;
+}
+string query_delete_player_file_name(string name) {
+   return PLAYER_SAVE_DIR + DELETE_DIR + "/" + name;
+}
+string query_appeal_player_file_name(string name) {
+   return PLAYER_SAVE_DIR + APPEAL_DIR + "/" + name;
+}
+int load_player(string name) {
+  class player_record tmp;
+  mixed *file;
+  int diff, deleting, appealing;
+  string tstr, fname;
+  object loaded_guild_ob;
+  if (!validate_name(name)) {
+    return 0;
+  }
+  requests++;
+  if (player_cache[name]) {
+    if (10 * (time() - player_cache[name]->cached) <
+        (time() - player_cache[name]->touched)) {
+      cache_hits++;
+      return 1;
+    }
+  }
+  if(file = unguarded((: get_dir, query_player_ram_file_name(name) + ".o.gz",
+                       -1 :)))
+    fname = query_player_ram_file_name(name);
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_player_disk_file_name(name) +
+                      ".o.gz", -1 :));
+    fname = query_player_disk_file_name(name);
+  }
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_player_disk_file_name(name) +
+                      ".o", -1 :));
+    fname = query_player_disk_file_name(name);
+  }
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_delete_player_file_name(name) + ".o.gz",
+                      -1 :));
+    fname = query_delete_player_file_name(name);
+  }
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_delete_player_file_name(name) + ".o",
+                      -1 :));
+    fname = query_delete_player_file_name(name);
+  }
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_appeal_player_file_name(name) + ".o.gz",
+                      -1 :));
+    fname = query_appeal_player_file_name(name);
+  }
+  if (!file || !sizeof(file) || file[0][1] < 0) {
+    file = unguarded((: get_dir, query_appeal_player_file_name(name) + ".o",
+                      -1 :));
+    fname = query_appeal_player_file_name(name);
+  }
+  if(!file || !sizeof(file) || file[0][1] < 0)
+    return 0;
+  if(player_cache[name] && player_cache[name]->touched == file[0][2]) {
+    player_cache[name]->cached = time();
+    cache_hits++;
+    return 1;
+  }
+  gender = 0;
+  creator = 0;
+  time_on = 0;
+  last_log_on = 0;
+  last_on_from = 0;
+  activity_counter = 0;
+  start_time = 0;
+  password = 0;
+  deity = 0;
+  guild_ob = 0;
+  cap_name = 0;
+  player_info = ([ ]);
+  aliases = ([ ]);
+  new_skills = ([ ]);
+  map_prop = ([ ]);
+  guild_data = 0;
+  if (base_name(previous_object()) == prev && delay > time() - 60) {
+    prev_count++;
+  } else {
+    prev_count = 1;
+    delay = time();
+    prev = base_name(previous_object());
+  }
+  if (!(prev_count % 25)) {
+    tstr = prev;
+    if (tstr == "/secure/login" && sizeof(previous_object(-1)) > 1) {
+      tstr = base_name(previous_object(-1)[1]);
+    }
+    log_file("GARBAGE", "%s %s loaded %d player files in %d seconds.\n",
+             ctime(time())[4..18], tstr, prev_count, time() - delay);
+  }
+#ifdef DEBUG
+  string ob;
+  if (base_name(previous_object()) != "/secure/login") {
+    ob = base_name(previous_object());
+  } else {
+    ob = base_name(previous_object(-1)[1]);
+  }
+  log_file("CDEBUG", "%s: %O:%O\n", ob, call_stack(1), call_stack(2));
+#endif
+  if(!unguarded((: restore_object, fname, 1 :)))
+    return 0;
+  if(fname == query_appeal_player_file_name(name)) {
+    appealing = file[0][2];
+  } else if(fname == query_delete_player_file_name(name)) {
+    deleting = file[0][2];
+  }
+  tmp = new (class player_record,
+             cached: time(),
+             touched: file[0][2],
+             deleting: deleting,
+             appealing: appealing,
+             gender: gender,
+             creator: creator,
+             active: 0,
+             level: 0,
+             cap_name: cap_name,
+             player_info: player_info,
+             map_prop: map_prop,
+             deity: deity,
+             guild: guild_ob,
+             guild_data: guild_data,
+             flags: _flags,
+             age: time_on,
+             last: last_log_on,
+             last_on_from: last_on_from,
+             start_time: start_time,
+             family_name: query_family_name(),
+             player_title: query_player_title(),
+             nationality: query_nationality(),
+             nationality_region: query_nationality_region(),
+             nationality_data: query_nationality_data(),
+             password: password);
+  if(aliases) {
+    if (aliases[".project"])
+      tmp->project = aliases[".project"][0..1023];
+    if (aliases[".plan"])
+      tmp->plan = aliases[".plan"][0..1023];
+    if (aliases[".reference"])
+      tmp->reference = aliases[".reference"][0..1023];
+    if (aliases[".signature"])
+      tmp->signature = aliases[".signature"][0..240];
+  }
+  diff = (time() - last_log_on) / (3600 * 24 * 7);
+  diff *= 10;
+  tmp->active = (activity_counter - diff) > -50 ? 1 : 0;
+  if (guild_ob) {
+    loaded_guild_ob = load_object( guild_ob );
+    if ( loaded_guild_ob ) {
+        tmp->level = (int) guild_ob->query_level(this_object());
+    }
+    else {
+        tmp->level = 0;
+    }
+  }
+  player_cache[name] = tmp;
+  if ((sizeof(player_cache) > MAX_CACHE_SIZE) &&
+      (find_call_out("clean_cache") == -1))
+    call_out("clean_cache", 60);
+  return 1;
+}
+string make_string(mixed *al, int max) {
+  string str;
+  int i;
+  int lines;
+  str = ALIAS_CMD->alias_string(al);
+  sscanf(str, "%s $*$", str);
+  str = replace(str, sprintf("%c", 7), "^G");
+  str = replace(str, ({ "@@", "@ @ ", "\\;", "$escaped$", ";", "\n",
+                          "$escaped$", ";" }));
+  for (i = lines = 0; i < sizeof(str) && i < max*80 && lines < max; i++) {
+    if (str[i] == '\n' || str[i] == ';') {
+      lines++;
+    }
+  }
+  return str[0..i - 1];
+}
+int test_user(string str) {
+  if (player_cache[str])
+    return 1;
+  if (!validate_name(str))
+    return 0;
+  return file_size(query_player_disk_file_name(str) + ".o.gz") > 0 ||
+    file_size(query_player_disk_file_name(str) + ".o") > 0 ||
+    file_size(PLAYER_RAM_DIR + str[0..0] + "/" + str + ".o.gz") > 0 ||
+    file_size(PLAYER_RAM_DIR + str[0..0] + "/" + str + ".o") > 0 ||
+    file_size(query_delete_player_file_name(str) + ".o.gz") > 0 ||
+    file_size(query_delete_player_file_name(str) + ".o") > 0 ||
+    file_size(query_appeal_player_file_name(str) + ".o.gz") > 0 ||
+    file_size(query_appeal_player_file_name(str) + ".o") > 0;
+}
+int test_deleting(string str) {
+  if (player_cache[str])
+    return player_cache[str]->deleting;
+  if (!validate_name(str))
+    return 0;
+  if (file_size(query_delete_player_file_name(str) + ".o") > 0)
+    return stat(query_delete_player_file_name(str) + ".o")[1];
+  if(file_size(query_delete_player_file_name(str) + ".o.gz") > 0)
+    return stat(query_delete_player_file_name(str) + ".o.gz")[1];
+  return 0;
+}
+int test_appealing(string str) {
+  if (player_cache[str])
+    return player_cache[str]->appealing;
+  if (!validate_name(str))
+    return 0;
+  if (file_size(query_appeal_player_file_name(str) + ".o") > 0)
+    return stat(query_appeal_player_file_name(str) + ".o")[1];
+  if(file_size(query_appeal_player_file_name(str) + ".o.gz") > 0)
+    return stat(query_appeal_player_file_name(str) + ".o.gz")[1];
+  return 0;
+}
+int test_gender(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_gender();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->gender;
+}
+varargs int test_active(string player, int noload) {
+  mixed *file;
+  if (find_player(player)) {
+    map_delete(player_cache, player);
+    return 1;
+  }
+  if (noload) {
+    if (player_cache[player])
+      return player_cache[player]->active;
+    file =
+      unguarded((: stat,
+                 query_player_disk_file_name(player) + ".o" :));
+    if (!file || !sizeof(file)) {
+      file =
+        unguarded((: stat,
+                   query_player_disk_file_name(player) + ".o.gz" :));
+    }
+    return (sizeof(file) && file[1] > time() - INACTIVE_LIMIT);
+  }
+  if (!load_player(player))
+    return 0;
+  return player_cache[player]->active;
+}
+string query_cap_name(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_cap_name();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->cap_name;
+}
+int test_level(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_level();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->level;
+}
+mixed query_guild_data() {
+    return guild_data;
+}
+int query_skill(string skill) {
+  if (mapp(new_skills)) {
+    return new_skills[skill];
+  }
+  return 0;
+}
+int test_banished(string name) {
+  return file_size(BANISH_DIR + name[0..0] + "/" + name + ".o") != -1;
+}
+varargs int test_valid(string name) {
+  string *bits, bit, tname;
+  name = lower_case(name);
+  tname = replace(name, ({ "'", "", "_", " " }));
+  bits = explode(tname, " ");
+  name = replace(name, ({ "'", " ", "_", " " }));
+  bits += explode(name, " ");
+  foreach(bit in bits) {
+    if (bit == "the" || bit == "von" || bit == "sto" || bit == "here" ||
+    bit == "there" || bit == "time") {
+      continue;
+    }
+    if (test_banished(bit))
+      return 0;
+  }
+  name = replace(name, ({ " ", "" }));
+  if (test_banished(name))
+    return 0;
+  foreach(bit in ILLEGAL) {
+    if (strsrch(name, bit) != -1)
+      return 0;
+  }
+  return 1;
+}
+string test_real_name(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_real_name();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["real_name"];
+}
+string test_email(string str) {
+  if(file_name(previous_object())[0..13] != "/secure/finger" &&
+     file_name(previous_object())[0..12] != "/secure/login" &&
+     file_name(previous_object())[0..13] != "/secure/nlogin")
+    return "";
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_email();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["email"];
+}
+string test_birthday(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_birthday();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["birthday"];
+}
+string test_location(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_where();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["location"];
+}
+string test_homepage(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_homepage();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["homepage"];
+}
+string test_desc(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_desc();
+  }
+  if (!load_player(str))
+    return "";
+  return player_cache[str]->player_info["desc"];
+}
+mixed test_player_killer(string word, string str) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_player_killer();
+  }
+  if (!load_player(word)) {
+    return 0;
+  }
+  return player_cache[word]->flags & PLAYER_KILLER_FLAG;
+}
+mixed test_property(string word, string str) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_property(str);
+  }
+  if (!load_player(word))
+    return 0;
+  return player_cache[word]->map_prop[str];
+}
+void special_add_property(string pname, string prop, mixed val) {
+  if(player_cache[pname])
+    player_cache[pname]->map_prop[prop] = val;
+}
+string test_deity(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_deity();
+  }
+  if (!load_player(word))
+    return 0;
+  return player_cache[word]->deity;
+}
+string test_guild(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_guild_ob();
+  }
+  if (!load_player(word))
+    return "";
+  return player_cache[word]->guild;
+}
+mixed *test_guild_data(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_guild_data();
+  }
+  if (!load_player(word))
+    return ({ });
+  return player_cache[word]->guild_data;
+}
+int test_age(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_time_on();
+  }
+  if (!load_player(word))
+    return 0;
+  return player_cache[word]->age;
+}
+int test_last(string word, int noload) {
+  mixed *file;
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_last_log_on();
+  }
+  if (noload) {
+    if (player_cache[word]) {
+      return player_cache[word]->last;
+    }
+    word = replace(word, ({ "/", "", "\\", "" }) );
+    file =
+      unguarded((: stat, query_player_ram_file_name(word) + ".o" :));
+    if (!file || !sizeof(file)) {
+      file = unguarded((: stat,
+                        query_player_disk_file_name(word)+".o.gz" :));
+    }
+    if(!file || !sizeof(file)) {
+      file = unguarded((: stat,
+                        query_delete_player_file_name(word)+
+                        ".o" :));
+    }
+    if (!file || !sizeof(file)) {
+      file = unguarded((: stat,
+                        query_delete_player_file_name(word)+
+                        ".o.gz" :));
+    }
+    if(!file || !sizeof(file)) {
+      file = unguarded((: stat,
+                        query_appeal_player_file_name(word)+
+                        ".o" :));
+    }
+    if (!file || !sizeof(file)) {
+      file = unguarded((: stat,
+                        query_appeal_player_file_name(word)+
+                        ".o.gz" :));
+    }
+    if (!sizeof(file))
+      return 0;
+    return file[1];
+  }
+  if (!load_player(word)) {
+    return 0;
+  }
+  return player_cache[word]->last;
+}
+string test_last_on_from(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return query_ip_name(find_player(word)) + " (" +
+      query_ip_number(find_player(word)) + ") ";
+  }
+  if (!load_player(word)) {
+    return 0;
+  }
+  return player_cache[word]->last_on_from;
+}
+int test_start_time(string word) {
+  if (find_player(word)) {
+    map_delete(player_cache, word);
+    return find_player(word)->query_start_time();
+  }
+  if (!load_player(word))
+    return 0;
+  return player_cache[word]->start_time;
+}
+int test_creator(string str) {
+  str = lower_case (str);
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_creator();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->creator;
+}
+string test_home_dir(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_home_dir();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->home_dir;
+}
+string test_family(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_family_name();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->family_name;
+}
+string test_player_title(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_player_title();
+  }
+  if (!load_player(str))
+    return 0;
+  return player_cache[str]->player_title;
+}
+int test_password(string name, string pass) {
+  if (!load_player(name)) {
+    return 0;
+  }
+  if (find_player(name) && player_cache[name]->password == "") {
+    if(file_size(query_player_ram_file_name(name) + ".o.gz") > 0)
+      unguarded((: restore_object, query_player_ram_file_name(name), 1 :));
+    else
+      unguarded((: restore_object, query_player_disk_file_name(name), 1 :));
+    player_cache[name]->password = password;
+  }
+  return crypt(pass, player_cache[name]->password) ==
+    player_cache[name]->password;
+}
+string get_password(string name) {
+  if(file_name(previous_object()) != "/secure/ftp_auth")
+    return "x";
+  if(!load_player(name))
+    return "x";
+  if(find_player(name) && player_cache[name]->password == "") {
+    unguarded((: restore_object,
+               query_player_disk_file_name(name), 1 :));
+  }
+  return player_cache[name]->password;
+}
+string query_signature(string name) {
+  string sig;
+  if (find_player(name)) {
+    map_delete(player_cache, name);
+    sig =
+      make_string(find_player(name)->query_player_alias(".signature"),
+                  3);
+  } else {
+    if (!load_player(name))
+      return "";
+    sig = make_string(player_cache[name]->signature, 3);
+  }
+  if (sig && sig != "")
+    sig = "\n--\n" + strip_colours(sig);
+  return sig;
+}
+string query_project(string name, int unused) {
+  if (find_player(name)) {
+    map_delete(player_cache, name);
+    if (find_player(name)->query_player_alias(".project"))
+      return make_string(find_player(name)->query_player_alias(".project"), 5);
+    else
+      return "";
+  }
+  if (!load_player(name))
+    return "";
+  return make_string(player_cache[name]->project, 5);
+}
+string query_plan(string name, int unused) {
+  if (find_player(name)) {
+    map_delete(player_cache, name);
+    if (find_player(name)->query_player_alias(".plan"))
+      return make_string(find_player(name)->query_player_alias(".plan"),
+                         5);
+    else
+      return "";
+  }
+  if (!load_player(name))
+    return "";
+  return make_string(player_cache[name]->plan, 5);
+}
+string query_reference(string name) {
+  if (find_player(name)) {
+    map_delete(player_cache, name);
+    if (find_player(name)->query_player_alias(".reference"))
+      return make_string(find_player(name)->
+                         query_player_alias(".reference"), 20);
+    else
+      return "";
+  }
+  if (!load_player(name))
+    return "";
+  return make_string(player_cache[name]->reference, 20);
+}
+string test_nationality(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_nationality();
+  }
+  if (!load_player(str)) {
+    return 0;
+  }
+  return ((class player_record)player_cache[str])->nationality;
+}
+string test_nationality_region(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_nationality_region();
+  }
+  if (!load_player(str)) {
+    return 0;
+  }
+  return player_cache[str]->nationality_region;
+}
+string test_nationality_data(string str) {
+  if (find_player(str)) {
+    map_delete(player_cache, str);
+    return find_player(str)->query_nationality_data();
+  }
+  if (!load_player(str)) {
+    return 0;
+  }
+  return player_cache[str]->nationality_data;
+}
+int test_ip_allowed(string name, string ip) {
+  string *ips;
+  if(ip == "127.0.0.1")
+    return 1;
+  if(find_player(name)) {
+    map_delete(player_cache, name);
+    ips = find_player(name)->query_rhosts();
+  } else if (load_player(name))
+    ips = player_cache[name]->player_info["allowed_ips"];
+  if(!ips || !sizeof(ips))
+    return 1;
+  while(strlen(ip)) {
+    if(member_array(ip, ips) != -1)
+      return 1;
+    ip = implode((string *)explode(ip, ".")[0..<2], ".");
+  }
+  return 0;
 }
 mixed *stats() {
-  return ::stats() + ({
-    ({ "fuel" , fuel_left, }),
-    ({ "is lit", is_lit, }),
-   });
+  int percentage;
+  if (requests)
+    percentage = (cache_hits * 100) / requests;
+  return ({ ({ "cache size", sizeof(player_cache) }),
+              ({ "requests", requests }),
+              ({ "cache hits", cache_hits }),
+              ({ "cache misses", requests - cache_hits }),
+              ({ "percentage hits", percentage }), });
 }
-mapping query_dynamic_auto_load() {
-   return ([ "::" : ::query_dynamic_auto_load(),
-             "fuel left" : fuel_left,
-             "is lit" : is_lit,
-          ]);
-}
-void init_dynamic_arg( mapping arg ) {
-   fuel_left = arg["fuel left"];
-   if ( arg[ "is lit" ] ) {
-      FUEL_HANDLER->add_burner( this_object() );
-      is_lit = 1;
-      set_light(BRIGHTNESS);
-   }
-   ::init_dynamic_arg( arg["::"] );
-}
-int query_fuel_left() {
-    return fuel_left;
-}
-void set_fuel_left( int i ) {
-    if ( i > MAX_FUEL ) {
-        i = MAX_FUEL;
+nomask int query_prevent_shadow(object ob) { return 1; }
+
+==================================================
+FILE: handlers/player_shop.c
+==================================================
+
+#include <player_shop.h>
+#include <mail.h>
+#define REFRESH_HANDLER "/obj/handlers/refresh"
+#define save_me() unguarded((:write_file, "/save/player_shops", \
+                  save_variable(_shops), 1:));
+private nosave mapping _shops = 0;
+void create()
+{
+    seteuid("Root");
+    if (file_size("/save/player_shops") > 0)
+    {
+        _shops = restore_variable(unguarded((:read_file,
+              "/save/player_shops":)));
     }
-    fuel_left = i;
 }
-int query_max_fuel() {
-    return MAX_FUEL;
+int add_shop(string short_name, string office_path)
+{
+    string savedir;
+    object ob;
+    if (!(ob = find_object(office_path)))
+    {
+        tell_object(this_player(), "No such object "+ office_path+ ".\n");
+        return 0;
+    }
+    if (_shops)
+    {
+        if (_shops[short_name])
+        {
+            tell_object(this_player(), "Shop already exists.\n");
+            return 0;
+        }
+        _shops += ([short_name:""]);
+    }
+    else
+    {
+        _shops = ([short_name:""]);
+    }
+    _shops[short_name] = office_path;
+    REFRESH_HANDLER->register_refresh(office_path);
+    REFRESH_HANDLER->register_delete(office_path);
+    savedir = sprintf("/save/player_housing/%s/",
+      lower_case(geteuid(ob)));
+    if (!sizeof(get_dir(savedir)))
+        unguarded((: mkdir, savedir :));
+    savedir += sprintf("/player_shops");
+    if (!sizeof(get_dir(savedir)))
+        unguarded((: mkdir, savedir :));
+    savedir += sprintf("/%s", short_name);
+    if (!sizeof(get_dir(savedir)))
+        unguarded((: mkdir, savedir :));
+    save_me();
+    return 1;
 }
-
-==================================================
-FILE: handlers/nquest_handler.c
-==================================================
-
-#include <player_handler.h>
-#define LIBRARY "/obj/handlers/nlibrary"
-#define QUEST_LOG "QUESTS"
-#define SAVE_FILE "/save/quests"
-#define BACKUP_FILE "/save/quests/quests"
-inherit "/std/object";
-private int *quest_level;
-private int *num_times_done;
-private int *quest_status;
-private string *quest_name;
-private string *quest_title;
-private string *quest_story;
-private string *last_done_by;
-private nosave int total_qp;
-void load_quests() { unguarded( (: restore_object, SAVE_FILE :) ); }
-void save_quests() { unguarded( (: save_object, SAVE_FILE :) ); }
-void create() {
-   int i;
-   ::create();
-   load_quests();
-   if ( !quest_name ) {
-      quest_name = ({ });
-   }
-   if ( !quest_level ) {
-      quest_level = ({ });
-   }
-   if ( !quest_title ) {
-      quest_title = ({ });
-   }
-   if ( !quest_story ) {
-      quest_story = ({ });
-   }
-   if ( !last_done_by ) {
-      last_done_by = ({ });
-   }
-   if ( !num_times_done ) {
-      num_times_done = ({ });
-   }
-   if ( !quest_status ) {
-     if(sizeof(quest_name)) {
-       quest_status = allocate(sizeof(quest_name));
-       for(i=0; i<sizeof(quest_name); i++) {
-         quest_status[i] = 1;
-       }
-     } else {
-       quest_status = ({ });
-     }
-   }
-   for(i = 0; i<sizeof(quest_level); i++) {
-     if(quest_status[i]) {
-       total_qp += quest_level[i];
-     }
-   }
+int remove_shop(string short_name)
+{
+    if (!_shops || !_shops[short_name])
+    {
+        tell_object(this_player(), "Shop doesn't exist.\n");
+        return 0;
+    }
+    if (!this_player()->query_lord() &&
+      this_player()->query_name() != CREATOR)
+    {
+        tell_object(this_player(), "Permission denied.\n");
+        return 0;
+    }
+    map_delete(_shops, short_name);
+    save_me();
+    return 1;
 }
-int query_total_qp() { return total_qp; }
-int add_quest( string name, int level, string title, string story ) {
-   string log_name;
-   if ( member_array( name, quest_name ) != -1 )
-      return 0;
-   quest_name += ({ name });
-   quest_level += ({ level });
-   quest_title += ({ title });
-   quest_story += ({ story });
-   last_done_by += ({ "nobody" });
-   num_times_done += ({ 0 });
-   quest_status += ({ 1 });
-   if ( this_player() ) {
-      log_name = this_player()->query_name();
-   }
-   else {
-      log_name = file_name( previous_object() );
-   }
-   log_file( QUEST_LOG, log_name +
-         " added: "+ name +", "+ level +", "+ title +", "+ story +"\n" );
-   save_quests();
-   unguarded( (: cp, SAVE_FILE +".o", BACKUP_FILE +"."+ time() :) );
-   total_qp += level;
-   return 1;
+int update_shop(string short_name, string office_path)
+{
+    if (!_shops || !_shops[short_name])
+    {
+        tell_object(this_player(), "Shop doesn't exist.\n");
+        return 0;
+    }
+    if (!this_player()->query_lord() &&
+      this_player()->query_name() != CREATOR)
+    {
+        tell_object(this_player(), "Permission denied.\n");
+        return 0;
+    }
+    if (!find_object(office_path))
+    {
+        tell_object(this_player(), "No such object "+ office_path+ ".\n");
+        return 0;
+    }
+    REFRESH_HANDLER->register_refresh(office_path);
+    REFRESH_HANDLER->register_delete(office_path);
+    _shops[short_name] = office_path;
+    save_me();
+    return 1;
 }
-int change_quest_status(string name) {
-  int temp;
-  temp = member_array(name, quest_name);
-  if(temp == -1) {
-    return -1;
-  }
-  quest_status[temp] = !quest_status[temp];
-  return quest_status[temp];
+string query_shop(string short_name)
+{
+    if (!_shops || !_shops[short_name])
+        return "";
+    if (!find_object(_shops[short_name]))
+        return "No such file "+ _shops[short_name]+ ".";
+    return _shops[short_name];
 }
-int query_quest_status(string name) {
-  int temp;
-  temp = member_array(name, quest_name);
-  if(temp == -1) {
-    return -1;
-  }
-  return quest_status[temp];
-}
-int query_quest_level(string name) {
-  int temp;
-  temp = member_array(name, quest_name);
-  if(temp == -1) {
-    return -1;
-  }
-  return quest_level[temp];
-}
-int set_quest_level(string name, int level) {
-   int temp;
-   string log_name;
-   temp = member_array(name, quest_name);
-   if(temp == -1) {
-      return 0;
-   }
-   if ( this_player() ) {
-      log_name = this_player()->query_name();
-   }
-   else {
-      log_name = file_name( previous_object() );
-   }
-   log_file(QUEST_LOG, "%s : level set for %s to %d\n\n",
-            log_name, name, level);
-   quest_level[ temp ] = level;
-   save_quests();
-   return 1;
-}
-string query_quest_story(string name) {
-  int temp;
-  temp = member_array(name, quest_name);
-  if(temp == -1) {
-    return "did nothing";
-  }
-  return quest_story[temp];
-}
-int set_quest_story(string name, string story) {
-   int temp;
-   string log_name;
-   temp = member_array(name, quest_name);
-   if(temp == -1) {
-      return 0;
-   }
-   if ( this_player() ) {
-      log_name = this_player()->query_name();
-   }
-   else {
-      log_name = file_name( previous_object() );
-   }
-   log_file(QUEST_LOG, "%s : story set for %s to %s\n\n",
-            log_name, name, story);
-   quest_story[ temp ] = story;
-   save_quests();
-   return 1;
-}
-string query_quest_title(string name) {
-  int temp;
-  temp = member_array(name, quest_name);
-  if(temp == -1 || quest_title[temp] == "") {
-    return "Unknown Quester";
-  }
-  return quest_title[temp];
-}
-int set_quest_title(string name, string title) {
-   int temp;
-   string log_name;
-   temp = member_array(name, quest_name);
-   if(temp == -1) {
-      return 0;
-   }
-   if ( this_player() ) {
-      log_name = this_player()->query_name();
-   }
-   else {
-      log_name = file_name( previous_object() );
-   }
-   log_file(QUEST_LOG, "%s : title set for %s to %s\n\n",
-            log_name, name, title);
-   quest_title[ temp ] = title;
-   save_quests();
-   return 1;
-}
-int query_quest_times( string name ) {
-   int i;
-   i = member_array( name, quest_name );
-   if ( i == -1 )
-      return -1;
-   return num_times_done[ i ];
-}
-mixed query_quest_done( string name ) {
-   int i;
-   i = member_array( name, quest_name );
-   if ( i == -1 )
-      return -1;
-   return last_done_by[ i ];
-}
-int delete_quest(string name) {
-   int temp;
-   string log_name;
-   if ( this_player() ) {
-      log_name = this_player()->query_name();
-   }
-   else {
-      log_name = file_name( previous_object() );
-   }
-   log_file(QUEST_LOG, log_name + " removed : " +
-            name + "\n\n");
-   temp = member_array(name, quest_name);
-   if(temp == -1) {
-      return 0;
-   }
-   total_qp -= quest_level[temp];
-   quest_name = delete(quest_name, temp, 1);
-   quest_level = delete(quest_level, temp, 1);
-   quest_title = delete(quest_title, temp, 1);
-   quest_story = delete(quest_story, temp, 1);
-   last_done_by = delete( last_done_by, temp, 1 );
-   num_times_done = delete( num_times_done, temp, 1 );
-   save_quests();
-   return 1;
-}
-string *query_quest_names() {
-  return quest_name + ({ });
-}
-int *query_quest_levels() {
-  return quest_level + ({ });
-}
-string *query_quest_titles() {
-  return quest_title + ({ });
-}
-string *query_quest_stories() {
-  return quest_story + ({ });
-}
-void quest_completed( string name, string quest, object prev_ob ) {
-   int i;
-   string word;
-   log_file( QUEST_LOG, ctime( time() ) +" "+ name +" completed "+
-         quest +"\n" );
-   user_event( "inform", name +" completes "+ quest, "quest" );
-   if ( file_name( previous_object() ) != LIBRARY ) {
-      prev_ob = previous_object();
-   }
-   word = (string)prev_ob->query_name();
-   if ( !word ) {
-      word = file_name( prev_ob );
-   } else {
-      word += " ("+ file_name( prev_ob ) +")";
-   }
-   log_file( QUEST_LOG, "given by "+ word +"\n" );
-   i = member_array( quest, quest_name );
-   if ( i == -1 ) {
-      log_file( QUEST_LOG, "non existent quest\n" );
-      return;
-   }
-   last_done_by[ i ] = name;
-   num_times_done[ i ]++;
-   save_quests();
-}
-int query_player_fame(string name){
-   int playerqp, rank;
-   if (!name){
-      return 0;
-   }
-   if (this_player()){
-      name = (string)this_player()->expand_nickname(name);
-   }
-   if (!PLAYER_HANDLER->test_user(name)){
-      return 0;
-   }
-   playerqp = (int)LIBRARY->query_quest_points(name);
-   rank = ( playerqp * 125 ) / query_total_qp();
-   return rank;
-}
-string query_fame_str( string name ) {
-   switch ( query_player_fame( name ) ) {
-      case 0 .. 4 :
-         return "completely unknown";
-      case 5 .. 14 :
-         return "unknown";
-      case 15 .. 24 :
-         return "unknown";
-      case 25 .. 34 :
-         return "moderately well known";
-      case 35 .. 44 :
-         return "well known";
-      case 45 .. 54 :
-         return "very well known";
-      case 55 .. 64 :
-         return "known throughout the region";
-      case 65 .. 74 :
-         return "famous";
-      case 75 .. 84 :
-         return "renowned";
-      case 85 .. 94 :
-         return "Disc renowned";
-      default :
-         return "so renowned that no introduction is needed";
-   }
-}
-string *query_player_story(string name){
-   string *quests;
-   string *story;
-   int i;
-   story = ({ });
-   if (!name){
-      return ({ });
-   }
-   if (this_player()){
-      name = (string)this_player()->expand_nickname(name);
-   }
-   if (!PLAYER_HANDLER->test_user(name)){
-      return 0;
-   }
-   quests = query_quest_names();
-   if (sizeof(quests) == 1){
-      story = ({"Is an under achiever."});
-   }
-   else{
-      for(i=0;i<sizeof(quests);i++){
-         if (LIBRARY->query_quest_done(name, quests[i])){
-            story = ({ query_quest_story( quests[ i ] ) }) + story;
-         }
-      }
-   }
-   return story;
-}
-void print_some_stats()  {
-   int i;
-   for (i = 0; i < sizeof(quest_name); i++)
-      printf("%s: %6d, %3d\n", quest_name[i], num_times_done[i], quest_level[i]);
+mapping query_shops() { return copy(_shops); }
+void auto_mail(string to, string from, string sub, string cc, string body)
+{
+    if (_shops)
+    {
+        foreach (string shop in keys(_shops))
+        {
+            if (_shops[shop] == file_name(previous_object()))
+            {
+                return MAILER->do_mail_message(to, from, sub, cc, body, 0, 0, 1);
+            }
+        }
+    }
+    unguarded((: write_file, "/log/CHEAT",
+        "Illegal access to AUTO_MAILER.\n" "Backtrace: " +
+        back_trace() :));
 }

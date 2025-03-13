@@ -1,2182 +1,2252 @@
-# Total Tokens: 23558
-# Total Files Merged: 1
-# Total Characters: 78530
+# Total Tokens: 23236
+# Total Files Merged: 36
+# Total Characters: 77564
 
-at.c
+dland.c
 ==================================================
 
-inherit "/std/living/corpse";
-inherit "/std/weapon_logic";
-#include <attack_messages.h>
-#include <tasks.h>
-#include <player.h>
-#include <living.h>
-#include <weapon.h>
-#ifdef COMBAT_SPEED
-#undef COMBAT_SPEED
-#endif
-#include <combat.h>
-#ifdef ABS
-#undef ABS
-#endif
-#define ABS(n) (n) < 0 ? -(n) : (n)
-#define DEBUG 1
-#undef USE_SURRENDER
-class tactics _tactics;
-#ifdef USE_SURRENDER
-class surrender_information _surrender;
-#endif
-nosave class combat_information _combat;
-nosave string tmpzone;
-nosave int _callout;
-object *query_attacker_list();
-void stop_all_fight();
-int query_distance(object);
-int set_distance(object, int);
-void adjust_action_defecit(int amount);
-private void init_tactics();
-#ifdef USE_SURRENDER
-object *query_surrenderers();
-#endif
+#define CREATOR "Ceres"
+#include <weather.h>
+#include <terrain_map.h>
+inherit TERRAIN_MAP_OUTSIDE_BASE;
 void create() {
+  do_setup++;
   ::create();
-  init_tactics();
-  _combat = new(class combat_information,
-                in_combat : 0,
-                protectors : ({ }),
-                defenders : ({ }),
-                attacker_list : ([ ]),
-                hunting_list : ([ ]),
-                specials : ({ })
-                );
-#ifdef USE_SURRENDER
-  _surrender = new(class surrender_information,
-                   to : ({ }),
-                   from : ({ }),
-                   refusers : ({ }));
-#endif
-}
-private void init_tactics() {
-  if(!classp(_tactics) || sizeof(_tactics) != 8) {
-    _tactics = new(class tactics,
-                   attitude : "neutral",
-                   response : "neutral",
-                   parry : "both",
-                   attack : "both",
-                   parry_unarmed : 0,
-                   mercy : "ask",
-                   focus_zone : 0,
-                   ideal_distance : 0);
-  }
-}
-#ifdef DEBUG
-class combat_information query_combat() { return _combat; }
-#ifdef USE_SURRENDER
-class surrender_information query_surrender() { return _surrender; }
-#endif
-#endif
-void combat_debug(string fmt, mixed args ...) {
-  if(userp(this_object()))
-    this_object()->event_inform(this_object(),
-                                sprintf("%s " + fmt,
-                                        this_object()->query_name(), args ...),
-                                      "combat-debug", this_object());
-  event(environment(this_object()), "inform",
-        sprintf("%s " + fmt, this_object()->query_name(), args ...),
-        "combat-debug", this_object());
-}
-int query_can_attack() {
-  if(this_object()->query_property(PASSED_OUT) ||
-     this_object()->query_property("dead") ||
-     this_object()->query_auto_loading() ||
-     this_object()->query_hp() < 0 ||
-     this_object()->query_casting_spell() ||
-     (userp(this_object()) && !interactive(this_object())) ||
-     this_object()->query_property("cannot attack"))
-    return 0;
-  return 1;
-}
-int query_can_defend() {
-  if(this_object()->query_property(PASSED_OUT) ||
-     this_object()->query_property("dead") ||
-     this_object()->query_auto_loading() ||
-     this_object()->query_hp() < 0 ||
-     this_object()->query_casting_spell() ||
-     (userp(this_object()) && !interactive(this_object())) ||
-     this_object()->query_property("cannot defend"))
-    return 0;
-  return 1;
-}
-protected class attack choose_opponent(class attack att) {
-  mixed *opponents, opponent;
-  int i;
-#ifdef USE_DISTANCE
-  mixed tmp;
-#endif
-  opponents = map(keys(_combat->attacker_list),
-                  (: $1 && objectp($1) ? $1 : find_player($1) :));
-  opponents = filter(opponents, (: $1 && environment($1) == environment($2) &&
-                                 $1->query_attackable() :), att->attacker);
-#ifdef USE_SURRENDER
-  foreach(opponent in query_surrenderers()) {
-    if(userp(opponent))
-      opponent = opponent->query_name();
-    opponents -= ({ opponent });
-  }
-#endif
-  if(!sizeof(opponents))
-    return att;
-  if(interactive(this_object()) &&
-     objectp(att->attacker_concentrating) &&
-     member_array(att->attacker_concentrating, opponents) != -1)
-    opponent = att->attacker_concentrating;
-  else {
-#ifdef USE_DISTANCE
-    opponent = opponents[0];
-    foreach(tmp in opponents)
-      if(_combat->attacker_list[tmp] < _combat->attacker_list[opponent])
-        opponent = tmp;
-#endif
-    switch(random(3)) {
-    case 2:
-      opponent = opponents[0];
-      for(i=0; i<sizeof(opponents); i++)
-        if((opponent->query_hp() / 10 + random(100)) >
-           (opponents[i]->query_hp() / 10 + random(100)))
-          opponent = opponents[i];
-      break;
-    case 1:
-      opponent = opponents[0];
-      for(i=0; i<sizeof(opponents); i++)
-        if((opponent->query_hp() / 10 + random(100)) <
-           (opponents[i]->query_hp() / 10 + random(100)))
-          opponent = opponents[i];
-      break;
-    default:
-      opponent = opponents[random(sizeof(opponents))];
-    }
-  }
-#ifdef USE_DISTANCE
-  att->distance = _combat->attacker_list[opponent];
-#endif
-  if(stringp(opponent))
-    att->opponent = find_player(opponent);
-  else
-    att->opponent = opponent;
-  if(environment(att->opponent) != environment(this_object()))
-    return att;
-  if(sizeof(opponents) == 1)
-    _combat->concentrating = att->opponent;
-  return att;
-}
-void clear_protection(object attacker, object protector) {
-  if(attacker->remove_protector(protector))
-    protector->event_combat(protector,
-                            "You stop protecting "+ attacker->the_short() +
-                            " as "+ attacker->query_pronoun() +
-                            " moves to attack "+
-                            "you!\n", ({ }), 0);
-  if(attacker->remove_defender(protector))
-    protector->event_combat(protector, "You stop defending "+
-                            attacker->the_short() + " as "+
-                            attacker->query_pronoun() +" moves to attack "+
-                            "you!\n", ({ }), 0);
-}
-class attack choose_defender(class attack att) {
-  object *protectors, *defenders;
-  if(!att->person_hit) {
-    protectors = filter((att->opponent)->query_protectors(),
-                        (: $1 && environment($1) == environment($2) &&
-                         $1->query_protect() && !pk_check($1, $2) :),
-                        att->attacker);
-    if(sizeof(protectors)) {
-      protectors->attack_by(att->attacker);
-      att->person_hit = protectors[random(sizeof(protectors))];
-#if DEBUG == 1
-      combat_debug("picked %s to protect", (att->person_hit)->query_name());
-#endif
-    }
-  }
-  if(!att->defender) {
-    defenders = filter((att->opponent)->query_defenders(),
-                       (: $1 && environment($1) == environment($2) &&
-                        !pk_check($1, $2) :), att->attacker);
-    if(sizeof(defenders)) {
-      defenders->attack_by(att->attacker);
-      defenders = filter(defenders, (: $1->query_defend() :));
-    }
-    if(sizeof(defenders)) {
-      att->defender = defenders[random(sizeof(defenders))];
-#if DEBUG == 1
-      combat_debug("picked %s to defend", (att->defender)->query_name());
-#endif
-    }
-  }
-  if(!att->person_hit)
-    att->person_hit = att->opponent;
-  if(!att->defender)
-    att->defender = att->opponent;
-  return att;
-}
-int query_attackable() {
-  if(this_object()->query_property(PASSED_OUT) ||
-     this_object()->dont_attack_me() ||
-     this_object()->attack_inhibit() ||
-     this_object()->query_property("dead") ||
-     this_object()->query_auto_loading() ||
-     this_object()->query_hp() < 0 ||
-     (userp(this_object()) && !interactive(this_object())))
-    return 0;
-  return 1;
-}
-int query_defend() {
-  if(!query_attackable() || this_object()->query_casting_spell() ||
-     this_object()->query_specific_gp("fighting") < 1)
-    return 0;
-  return ((_tactics->response == "parry" || _tactics->response == "both") &&
-          _combat->action_defecit < (COMBAT_ACTION_TIME * 4));
-}
-int query_protect() {
-  if(!query_attackable() || this_object()->query_casting_spell() ||
-     this_object()->query_specific_gp("fighting") < 1)
-    return 0;
-  return (_combat->action_defecit < (COMBAT_ACTION_TIME * 4));
-}
-protected class attack choose_attack(class attack att) {
-  object weapon, *weapons;
-  string hand, *tmp;
-  int perc, which_attack, i;
-  class tactics tactics;
-  mixed *attacks;
-  string zone;
-  float sz;
-  tactics = att->attacker_tactics;
-  if(!this_object()->query_can_attack())
-    return att;
-  if(!OFFENSIVE_DEFECITS[tactics->attitude])
-    tactics->attitude = "neutral";
-  if(att->attacker_defecit > OFFENSIVE_DEFECITS[tactics->attitude])
-    return att;
-  weapons = (att->attacker)->query_holding();
-  tmp = (att->attacker)->query_limbs();
-  hand = (att->attacker_tactics)->attack;
-  if(hand && hand != "both") {
-    for(i=0; i<sizeof(tmp); i++)
-      if(tmp[i] == hand + " hand")
-        break;
-    if(!weapons[i])
-      weapons = ({ });
-    else if(weapons[i]->query_weapon())
-      weapons = ({ weapons[i] });
-  }
-  if(sizeof(weapons) > 1)
-    weapons = uniq_array(filter(weapons, (: $1 && $1->query_weapon() :)));
-  switch(sizeof(weapons)) {
-  case 0:
-    weapon = att->attacker;
+  do_setup--;
+  set_light(80);
+  add_zone("woodland");
+  switch((string)WEATHER->query_season()) {
+  case "spring":
+    add_item("flower", ({"long", "Some pretty flowers.",
+                         "get", ({this_object(), "do_get_flower"}),
+                         "pick", ({this_object(), "do_get_flower"}),
+                         "smell", "The flowers smell wonderful.\n"
+                         }));
+    add_item("tree", "There are trees everywhere here, you have "+
+             "to pick your way between them.  They are budding with "+
+             "new leaves at this time of year.");
+    add_item(({"floor", "ground", "earth"}), "The ground is covered "+
+             "by a beautiful carpet of flowers interspersed with small "+
+             "shrubs.");
+    add_item("shrub", "Dotted here and there among the carpet of flowers "+
+             "are small shrubs, some thorny, all green.");
+    room_chat(({120, 240, ({"Birds sing loudly announcing their presence.",
+                            "Bees buzz busily from flower to flower.",
+                            "A squirrel rushes up a nearby tree trunk.",
+                            "A butterfly alights on a nearby flower.",
+                            "A bird takes off from a tree with a furious "+
+                              "beating of wings."})}));
+    add_property("flower type", "bluebell");
     break;
-  case 1:
-    weapon = weapons[0];
+  case "summer":
+    add_item(({"floor", "ground", "earth"}), "You can barely see the "+
+             "ground because of the waist-high ferns.  Dotted among the "+
+             "ferns are small shrubs.");
+    add_item("shrub", "Dotted here and there among the ferns "+
+             "are small shrubs, some thorny, all green.");
+    add_item("fern", "Everywhere you look there are ferns growing "+
+                         "almost waist high between the trees.");
+    add_item("tree", "The trees are in their full foliage right now.");
+    room_chat(({120, 240, ({"The wind stirs the leaves of the trees making "+
+                              "a sound like falling rain.",
+                            "A squirrel rushes up a nearby tree trunk.",
+                            "A butterfly alights on a nearby flower.",
+                            "A bird takes off from a tree with a furious "+
+                              "beating of wings."})}));
+    break;
+  case "autumn":
+    add_item(({"floor", "ground", "earth"}), "The ground is littered "+
+             "with dead leaves and the stems of dying ferns.");
+    add_item("tree", "You are surrounded by trees, they are resplendent "+
+             "with their autumn colours of red, gold and brown.");
+    add_item("shrub", "Dotted here and there among the ferns "+
+             "are small shrubs many with brightly coloured berries.");
+    add_item(({"berry", "berries"}),
+               ({"long", "There are a variety of berries hanging from the "+
+                   "shrubs here.",
+                 "get", ({this_object(), "do_get_berry"}),
+                 "pick", ({this_object(), "do_get_berry"})}));
+    add_item(({"leaf", "leaves"}),
+             ({"long", "The ground is littered with dead leaves.",
+               "get", ({this_object(), "do_get_leaf"})}));
+    add_item("fern", "Here and there are the stems of ferns which have "+
+             "died back and will survive the coming winter underground.");
+    room_chat(({120, 240, ({"The wind stirs the leaves of the trees causing "+
+                              "some to fall gently to earth.",
+                            "A squirrel rushes up a nearby tree trunk.",
+                            "A bird takes off from a tree with a furious "+
+                              "beating of wings."})}));
+    add_extra_look(this_object());
+    break;
+  case "winter":
+    add_item(({"floor", "ground", "earth"}), "The ground is bare earth "+
+             "apart from the occasional hardy shrub.");
+    add_item("shrub", "Dotted here and there among the trees are small "+
+             "shrubs trying to survive the winter.");
+    add_item("tree", "There are bare trees everywhere here waiting for the "+
+             "coming of spring.");
+    room_chat(({120, 240, ({"The wind stirs the dry branches of the trees "+
+                              "causing them to rustle eerily.",
+                            "Somewhere a small animal forages in the "+
+                              "undergrowth for winter food."})}));
+    break;
+  }
+  add_item("rock", ({ "long", "A nice rock looking thingy.",
+                      "get",  ({ this_object(), "do_get_rock" }) }) );
+  add_property("track type", "woodland");
+  if(!do_setup) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+}
+string query_terrain_map_colour() { return "%^GREEN%^"; }
+string extra_look() {
+  string extra;
+  extra = ::extra_look();
+  switch((string)WEATHER->query_season()) {
+  case "spring":
+    return extra + "Spring flowers are everywhere you look.\n";
+  case "autumn":
+    return extra + "The ground is littered with fallen leaves.\n";
     break;
   default:
-#ifdef USE_DISTANCE
-    weapon = weapons[0];
-    foreach(wtmp in weapons)
-      if(ABS(REACH + weapon->query_length() - att->distance) >
-         ABS(REACH + wtmp->query_length() - att->distance))
-        weapon = wtmp;
-#else
-    weapon = weapons[random(sizeof(weapons))];
-#endif
-  }
-  att->attack_weapon = weapon;
-  perc = 75 + (att->attacker)->query_str() + (att->attacker)->query_dex();
-  if(weapon != att->attacker)
-    perc -= weapon->query_weight() / 2;
-  if(perc < 25)
-    perc = 25;
-  attacks = weapon->weapon_attacks(perc, att->defender);
-  if(!sizeof(attacks)) {
-#if DEBUG == 2
-    combat_debug("No attacks with %O, terminating [%d, %O].", weapon,
-                 perc, att->defender);
-#endif
-    return att;
-  }
-  which_attack = random(sizeof(attacks) / AT_ARRAY_SIZE);
-  attacks = attacks[(which_attack * AT_ARRAY_SIZE)..];
-  if(attacks[AT_NAME] == "hands" && !(att->attacker)->query_free_limbs())
-    return att;
-  att->attack_data = attacks;
-  att->attack_skill = ATTACK_SKILL + attacks[AT_SKILL];
-  if((att->attacker_tactics)->focus_zone == "upper body") {
-    tmp = ((att->opponent)->query_race_ob())->query_target_zones();
-    zone = tmp[random(sizeof(tmp) / 2)];
-  } else  if((att->attacker_tactics)->focus_zone == "lower body") {
-    zone = tmp[random(sizeof(tmp) / 2) + sizeof(tmp)/2];
-  } else if((att->attacker_tactics)->focus_zone &&
-     (att->attacker_tactics)->focus_zone != "none") {
-    zone = (att->attacker_tactics)->focus_zone;
-    zone = ((att->opponent)->query_race_ob())->map_target_zone(zone);
-    att->target_zone = zone;
-  } else {
-    if(att->attack_data[AT_SKILL] == "unarmed") {
-      if(att->attack_data[AT_NAME] == "hands")
-        sz = ((att->attacker)->query_height() * 2) /
-          (att->opponent)->query_height();
-      else if(att->attack_data[AT_NAME] == "feet")
-        sz = ((att->attacker)->query_height() / 2) /
-          (att->opponent)->query_height();
-    } else
-      sz = to_float((att->attacker)->query_height()) /
-        to_float((att->opponent)->query_height());
-    tmp = ((att->opponent)->query_race_ob())->query_target_zones();
-    if(sizeof(tmp)) {
-      if(sz > 1.5)
-        zone = tmp[random(random(sizeof(tmp)))];
-      if(sz < 0.75) {
-        i = random(sizeof(tmp) + 10);
-        if(i > sizeof(tmp)-1)
-          i = sizeof(tmp) - 1;
-        zone = tmp[i];
-      } else {
-        zone = tmp[random(sizeof(tmp))];
-      }
-    }
-  }
-  att->target_zone = zone;
-  return att;
-}
-class attack choose_defense(class attack att) {
-  object defender;
-  string response, *hands, hand;
-  object *weapons;
-  class tactics tactics;
-  int i, which;
-#ifdef USE_DISTANCE
-  int move_cost;
-#endif
-  defender = att->defender;
-  att->defense_action = "none";
-  att->defense_skill = DODGE;
-  att->defense_weapon = 0;
-  tactics = att->defender_tactics;
-  if(defender == att->opponent) {
-    if(!defender->query_can_defend())
-      return att;
-    if(!DEFENSIVE_DEFECITS[tactics->attitude])
-      tactics->attitude = "neutral";
-    if(att->defender_defecit > DEFENSIVE_DEFECITS[tactics->attitude])
-      return att;
-  }
-#ifdef USE_DISTANCE
-  else if(att->distance != defender->query_distance(att->attacker) &&
-            ABS(defender->query_distance(att->attacker)) >
-            MOVE_DISTANCE[tactics->attitude]) {
-    defender->set_distance(att->attacker, att->distance);
-    move_cost = MOVE_COST;
-    move_cost -= defender->query_skill_bonus(MOVE_SKILL) / 50;
-    if(move_cost < 0)
-      move_cost = 0;
-    (att->opponent)->event_combat(att->opponent, defender->one_short() +
-                                  " moves to " +
-                                  (att->person_hit == defender ?
-                                   "protect" : "defend" ) + " you.\n",
-                                  ({ }), 0);
-    defender->event_combat(defender, "You move to " +
-                           (att->person_hit == defender ?
-                            "protect" : "defend") + " " +
-                           (att->opponent)->one_short() + ".\n",
-                           ({ }), 0);
-    event(environment(att->opponent), "combat", defender->one_short() +
-          " moves to " + (att->person_hit == defender ? "protect" : "defend") +
-          " " + (att->opponent)->one_short() + ".\n",
-          ({ att->opponent, defender, att->person_hit }), 1);
-  }
-#endif
-  response = tactics->response;
-  if(defender != att->opponent) {
-    if(response == "dodge")
-      return att;
-    response = "parry";
-  } else if(!response || response == "neutral")
-    response = ({"parry", "dodge"})[random(2)];
-  if(response == "parry") {
-    weapons = (object *)defender->query_holding();
-    hand = (att->defender_tactics)->parry;
-    which = -1;
-    hands = (att->defender)->query_limbs();
-    for(i=0; i<sizeof(hands); i++)
-      if(hands[i][0..sizeof(hand)-1] == hand)
-        which = i;
-    if(which != -1) {
-      if(weapons[which]) {
-        att->defense_action = "parry";
-        att->defense_skill = WEAPON_PARRY;
-        att->defense_weapon = weapons[which];
-      } else if((att->defender_tactics)->parry_unarmed) {
-        att->defense_action = "parry";
-        att->defense_skill = UNARMED_PARRY;
-        att->defense_weapon = att->defender;
-        att->defense_limb = (att->defender)->query_limbs()[which];
-      }
-    } else {
-      weapons -= ({ 0 });
-      if(!sizeof(weapons)) {
-        if((att->defender_tactics)->parry_unarmed) {
-          att->defense_action = "parry";
-          att->defense_skill = UNARMED_PARRY;
-          att->defense_weapon = att->defender;
-        }
-      } else {
-        att->defense_action = "parry";
-        att->defense_skill = WEAPON_PARRY;
-        att->defense_weapon = weapons[random(sizeof(weapons))];
-      }
-    }
-  } else {
-    att->defense_action = "dodge";
-    att->defense_skill = DODGE;
-    att->defense_weapon = 0;
-  }
-  return att;
-}
-protected class attack calc_attack_modifier(class attack att) {
-  object attacker, attack_weapon, *holding;
-  int mod, wep, hld, lght, mntd, hlth, brdn, dist, tact, targ, oth;
-  int tmp, tmp2, limbs, dex, num, actions;
-  string zone, *attackers;
-  attacker = att->attacker;
-  dex = attacker->query_dex();
-  attack_weapon = att->attack_weapon;
-  mod = wep = hld = lght = mntd = hlth = brdn = dist = tact = 0;
-  if(attack_weapon != attacker) {
-    holding = attacker->query_holding();
-    limbs = tmp2 = 0;
-    for(num = 0; num < sizeof(holding); num++) {
-      if(holding[num] == attack_weapon)
-        limbs++;
-      else if(holding[num]) {
-        if((holding[num])->id("shield"))
-          tmp2 += (holding[num])->query_weight() / 5;
-        else
-          tmp2 += (holding[num])->query_weight();
-      }
-    }
-    switch((att->attacker_tactics)->response) {
-    case "both":
-      tmp2 = (tmp2 * 3) / 2;
-      break;
-    case "dodge":
-      if(tmp2 < dex)
-        tmp2 /= 2;
-    }
-    wep = attack_weapon->query_weight() + (tmp2 / 2);
-    wep /= (limbs + 1);
-    wep -= (att->attacker)->query_str();
-    if(wep > 0 ) {
-      wep = - to_int(pow(wep, 1.4));
-    } else
-      wep = 0;
-    if(dex < 14 && sizeof(holding) && holding[0] != attack_weapon)
-      hld = dex - 14;
-  } else {
-    wep =  (dex * 2) - attacker->query_burden();
-  }
-  switch(attacker->check_dark(environment(attacker)->query_light())) {
-  case -2:
-  case 2:
-    lght = -50;
-    break;
-  case -1:
-  case 1:
-    lght = -25;
-    break;
-  }
-  mntd = 0;
-  hlth -= (50 - (attacker->query_hp() * 50) / attacker->query_max_hp());
-  tmp = attacker->query_specific_gp("fighting");
-  if(tmp < -50)
-    hlth += -25;
-  else if(tmp < 0)
-    hlth += (tmp / 2);
-  brdn -= (attacker->query_burden() / 3);
-#ifdef USE_DISTANCE
-  if(att->attack_weapon == att->attacker)
-    dist = -3 * ABS(REACH - att->distance);
-  else
-    dist = -3 * ABS(REACH + (att->attack_weapon)->query_length() -
-                    att->distance);
-#endif
-  switch((att->attacker_tactics)->attitude) {
-  case "insane":
-    tact = 25;
-    break;
-  case "offensive":
-    tact = 15;
-    break;
-  case "defensive":
-    tact = -25;
-    break;
-  case "wimp":
-    tact = -50;
-    break;
-  }
-  switch(att->attacker_tactics->focus_zone) {
-  case 0:
-  case "none":
-    targ = 0;
-    break;
-  case "upper body":
-  case "lower body":
-    targ -= 25;
-    break;
-  default:
-    tmp = 0;
-    foreach(zone in ((att->opponent)->query_race_ob())->query_target_zones())
-      if(zone == att->target_zone)
-        tmp++;
-    num = sizeof(((att->opponent)->query_race_ob())->query_target_zones());
-    targ -= ((num - tmp) * 25 / num);
-  }
-  if(targ < -25) {
-    debug_printf("Targ too small (%s) %d. num: %d, tmp: %d\n",
-                 (att->attacker_tactics)->focus_zone, targ, num,tmp);
-    targ = -25;
-  }
-  attackers = filter((att->opponent)->query_attacker_list(),
-                     (: $1 && environment($1) == environment(this_object()):));
-  num = member_array(this_object(), attackers);
-  if(num > 1)
-    num += -25 * num;
-  if((att->attacker_tactics)->attack == "both")
-    oth += 5;
-  mod = wep + hld + lght + mntd + hlth + brdn + dist + tact + targ + oth + num;
-  att->attack_modifier += mod;
-  actions += ATTACK_COST;
-  if(attack_weapon != att->attacker)
-    actions += (sqrt(attack_weapon->query_weight()) * 3) / (limbs + 1);
-  if(sizeof((att->attacker)->query_weapons()) > 1)
-    actions -= ATTACK_COST / 4;
-  actions -= ((att->attacker)->query_skill_bonus(att->attack_skill) +
-              (att->attacker)->query_skill_bonus(TACTICAL_SKILL)) / 50;
-  if(actions < ATTACK_COST / 5)
-    actions = ATTACK_COST / 5;
-  else if(actions > ATTACK_COST * 2)
-    actions = ATTACK_COST * 2;
-  att->attack_cost = actions;
-#if DEBUG == 1
-  combat_debug("Attack %s (%s): wep: %d hld: %d lght: %d mntd: %d "
-               "hlth: %d brdn: %d dist: %d tact: %d targ: %d oth: %d "
-               "num: %d = %d [%d] (actions: %d %d)",
-               att->attack_data[AT_NAME],
-               (att->attack_weapon)->query_name(),
-               wep, hld, lght, mntd, hlth, brdn, dist, tact, targ, oth, num,
-               mod, att->attack_modifier, actions, att->attacker_defecit);
-#endif
-  return att;
-}
-class attack calc_defense_modifier(class attack att) {
-  object defender, attacker, attack_weapon, defense_weapon, *holding;
-  int mod, wep, wght, dist, brdn, hnd, lght, hlth, tact, prot, oth;
-  int tmp, num, dex, limbs, actions;
-  mod = wep = wght = dist = brdn = hnd = lght = hlth = tact = prot = oth = 0;
-  defender = att->defender;
-  defense_weapon = att->defense_weapon;
-  dex = defender->query_dex();
-  attacker = att->attacker;
-  attack_weapon = att->attack_weapon;
-  switch(att->defense_action) {
-  case "parry":
-    if(defense_weapon != defender && defense_weapon) {
-      holding = defender->query_holding();
-      if(defense_weapon->id("shield"))
-        wep = defense_weapon->query_weight() / 5;
-      else
-        wep = defense_weapon->query_weight() * 2;
-      limbs = 0;
-      for(num = 0; num < sizeof(holding); num++)
-        if(holding[num] && holding[num] == defense_weapon)
-          limbs++;
-      wep /= (limbs + 2);
-      if(wep > defender->query_str())
-        wep = - to_int(pow(wep - defender->query_str(), 1.3));
-      if(attack_weapon != attacker)
-        wght = 2 * (defense_weapon->query_weight() -
-                    attack_weapon->query_weight());
-      else
-        wght = defense_weapon->query_weight() / 2;
-      if(wght > 5)
-        wght = 5;
-#ifdef USE_DISTANCE
-      dist = - ABS(REACH + defense_weapon->query_length() - att->distance);
-#endif
-    } else {
-#ifdef USE_DISTANCE
-      dist = - ABS(REACH - att->distance);
-#endif
-    }
-    brdn = -(defender->query_burden() / 3);
-    if(sizeof(holding)) {
-      if(dex < 14 && holding[0] != defense_weapon)
-        hnd = dex - 14;
-      holding = uniq_array(filter(holding, (: $1 :)));
-      if(dex  < 16 && sizeof(holding) == 1)
-        hnd += dex - 16;
-    }
-    break;
-  case "dodge":
-    brdn = -(defender->query_burden() / 3);
-    if(dex < (defender->query_burden() / 2))
-      brdn -= dex - (defender->query_burden() / 2);
-    if(att->attack_weapon != att->attacker)
-      wght = ((att->attack_weapon)->query_weight() / 10);
-    break;
-  }
-  if(!(att->attacker)->query_visible(defender))
-    lght = -100;
-  else {
-    switch(defender->check_dark(environment(defender)->query_light())) {
-    case -2:
-    case 2:
-      lght = -50;
-      break;
-    case -1:
-    case 1:
-      lght = -25;
-      break;
-    }
-  }
-  hlth = - (25 - (defender->query_hp() * 25) / defender->query_max_hp());
-  tmp = defender->query_specific_gp("fighting");
-  if(tmp < -50)
-    hlth += -25;
-  else if(tmp < 0)
-    hlth += (tmp / 2);
-  switch((att->defender_tactics)->attitude) {
-  case "insane":
-    tact = -50;
-    break;
-  case "offensive":
-    tact = -25;
-    break;
-  case "defensive":
-    tact = 15;
-    break;
-  case "wimp":
-    tact = 25;
-    break;
-  }
-  prot = 0;
-  if(defender != att->opponent) {
-    if(defender != att->person_hit) {
-      if(defense_weapon->id("shield"))
-        prot -= 15;
-      prot -= 15;
-    }
-    prot -= 15;
-  }
-  if((att->defender_tactics)->response == "both")
-    oth += 5;
-  if(defender->query_casting_spell())
-    oth -= 25;
-  mod = wep + wght + dist + brdn + hnd + lght + hlth + tact + prot + oth;
-  att->defense_modifier += mod;
-  if(att->defense_action != "none") {
-    actions = DEFENSE_COST;
-    actions -= ((att->defender)->query_skill_bonus(att->defense_skill) +
-      (att->attacker)->query_skill_bonus(TACTICAL_SKILL)) / 50;
-    if(att->defense_weapon && att->defense_weapon != att->defender) {
-      if((att->defense_weapon)->id("shield"))
-        actions += sqrt(att->defense_weapon->query_weight() / 4);
-      else {
-        actions += sqrt((att->defense_weapon->query_weight() * 2) /
-                        (limbs + 1));
-        if(sizeof((att->defender)->query_weapons()) > 1)
-          actions -= DEFENSE_COST / 4;
-      }
-    } else if(att->defense_action == "dodge")
-      actions += sqrt(defender->query_burden());
-    if(actions < DEFENSE_COST / 5)
-      actions = DEFENSE_COST / 5;
-    else if(actions > DEFENSE_COST * 2)
-      actions = DEFENSE_COST * 2;
-    att->defense_cost = actions;
-  }
-#if DEBUG == 1
-  combat_debug("Defense %s (%s): wep: %d wght: %d dist: %d "
-               "brdn: %d hnd: %d lght: %d hlth: %d tact: %d prot: %d "
-               "oth: %d = %d [%d] (actions: %d %d)",
-               att->defense_action,
-               att->defense_weapon ? (att->defense_weapon)->query_name() : "",
-               wep, wght, dist, brdn, hnd, lght, hlth, tact, prot, oth,
-               mod, att->defense_modifier, actions, att->defender_defecit);
-#endif
-  return att;
-}
-protected class attack calc_damage(class attack att) {
-  int damage, weapon_damage;
-  object attacker;
-  attacker = att->attacker;
-  damage = att->attack_data[AT_DAMAGE];
-  weapon_damage = damage;
-  if(att->attack_weapon != attacker)
-    damage = sqrt(damage * attacker->query_skill_bonus(att->attack_skill));
-  if(damage > 3 * weapon_damage)
-    damage = 3 * weapon_damage;
-  damage *= COMBAT_SPEED;
-  att->damage = damage;
-  switch(att->result) {
-  case OFFAWARD:
-  case OFFWIN:
-    switch(att->degree) {
-    case TASKER_CRITICAL:
-      att->damage *= 2;
-      break;
-    case TASKER_EXCEPTIONAL:
-      att->damage = (att->damage * 3) / 2;
-    case TASKER_MARGINAL:
-      att->damage /= 2;
-      break;
-    }
-    break;
-  case DEFAWARD:
-  case DEFWIN:
-    switch(att->degree) {
-    case TASKER_CRITICAL:
-      att->defense_cost = 0;
-      break;
-    case TASKER_EXCEPTIONAL:
-      att->defense_cost /= 2;
-      break;
-    case TASKER_MARGINAL:
-      att->defense_cost *= 2;
-      break;
-    }
-    att->damage = 0;
-  }
-  combat_debug("Damage: %d %d",
-               att->damage,
-               attacker->query_skill_bonus(att->attack_skill));
-  return att;
-}
-class attack calc_armour_protection(class attack att) {
-  object person_hit;
-  string armour_zone, damage_type;
-  if(!att->damage || (att->result != OFFWIN && att->result != OFFAWARD))
-    return att;
-  person_hit = att->person_hit;
-  armour_zone = (person_hit->query_race_ob())->
-    map_armour_zone(att->target_zone);
-  damage_type = att->attack_data[AT_TYPE];
-  if(damage_type == "unarmed")
-    damage_type = "blunt";
-  att->armour_stopped = (int)person_hit->query_ac(damage_type, att->damage,
-                                                  armour_zone);
-  if(att->armour_stopped < 0) {
-    debug_printf("armour stopped %d for %s %d %s",
-                 att->armour_stopped, damage_type, att->damage, armour_zone);
-    att->armour_stopped = 0;
-  }
-  return att;
-}
-protected class attack damage_weapon(class attack att) {
-  int off_damage, def_damage;
-  switch(att->result) {
-  case OFFAWARD:
-  case OFFWIN:
-    if(att->armour_stopped && att->degree)
-      off_damage = att->armour_stopped / att->degree;
-    break;
-  case DEFWIN:
-  case DEFAWARD:
-    if(att->defense_action == "parry" && att->damage && att->degree) {
-      off_damage = att->damage * (att->degree - 1);
-      def_damage = att->damage / att->degree;
-    }
-    break;
-  }
-  if(off_damage) {
-    if(att->attack_weapon == att->attacker)
-      if((att->attack_weapon)->query_hp() > (off_damage / 10))
-        (att->attack_weapon)->adjust_hp(- (off_damage / 10), att->defender,
-                                        att->defense_weapon,
-                                        "hitting someone.");
-    else if(function_exists("hit_weapon", att->attack_weapon))
-      (att->attack_weapon)->hit_weapon(off_damage, att->attack_data[AT_SKILL]);
-    else
-      (att->attack_weapon)->do_damage(att->attack_data[AT_SKILL], off_damage);
-  }
-  if(def_damage) {
-    if(att->defense_weapon == att->defender)
-      (att->defense_weapon)->adjust_hp(- def_damage, att->attacker,
-                                       att->attack_weapon,
-                                       "parrying an attack with a limb.");
-    else if(function_exists("hit_weapon", att->defense_weapon))
-      (att->defense_weapon)->hit_weapon(def_damage,
-                                        att->attack_data[AT_SKILL]);
-    else
-      (att->defense_weapon)->do_damage(att->attack_data[AT_SKILL], def_damage);
-  }
-  return att;
-}
-protected class attack prepare_messages(class attack att) {
-  object attacker, opponent, defender, person_hit;
-  string *verb, def_short, margin;
-  string *def_mess, *att_mess;
-  int damage, armour_stopped;
-  attacker = att->attacker;
-  opponent = att->opponent;
-  defender = att->defender;
-  person_hit = att->person_hit;
-  damage = att->damage;
-  armour_stopped = att->armour_stopped;
-  switch(att->result) {
-  case OFFAWARD:
-    tell_object(att->attacker,
-                "%^YELLOW%^"+ replace(({ "You feel "
-                "that your skill with $weapon$ has increased.", "You "
-                "feel more able to use $weapon$.", "You seem to be a "
-                "step closer to mastering $weapon$." })[random(3)],
-                "$weapon$", (att->attack_weapon == att->attacker ?
-                "unarmed combat" : (string)(att->attack_weapon)->a_short())) +
-                "%^RESET%^\n" );
-  case OFFWIN:
-    if(person_hit == opponent) {
-      att_mess = ATTACK_MESSAGE->query_message(damage - armour_stopped,
-                                               att->attack_data[AT_SKILL],
-                                               opponent, attacker,
-                                               att->attack_data[AT_NAME],
-                                               att->attack_weapon,
-                                               att->target_zone);
-      if(sizeof(att_mess) != 3) {
-        att_mess = ({"You hit "+opponent->the_short()+"",
-                       attacker->the_short()+" hits you",
-                       attacker->the_short()+" hits "+opponent->the_short()});
-      }
-      att_mess += ({ att_mess[M_SPECTATORS], att_mess[M_SPECTATORS] });
-    } else {
-      att_mess = ATTACK_MESSAGE->query_message(damage - armour_stopped,
-                                               att->attack_data[AT_SKILL],
-                                               opponent, attacker,
-                                               att->attack_data[AT_NAME],
-                                               att->attack_weapon,
-                                               att->target_zone);
-      if(sizeof(att_mess) != 3) {
-        att_mess = ({"You almost hit "+opponent->the_short()+"",
-                       attacker->the_short()+" almost hits you",
-                       attacker->the_short()+" almost hits "+
-                       opponent->the_short()});
-      }
-      att_mess += ({ att_mess[M_SPECTATORS], att_mess[M_SPECTATORS] });
-      att_mess[M_ATTACKER] += " but at the last second " +
-        person_hit->the_short() + " leaps in and protects " +
-        opponent->query_objective();
-      att_mess[M_OPPONENT] += " but at the last second " +
-        person_hit->the_short() + " leaps in and protects you";
-      att_mess[M_SPECTATORS] += " but at the last second " +
-        person_hit->the_short() + " leaps in and protects " +
-        opponent->query_objective();
-      if(defender == person_hit)
-        att_mess[M_DEFENDER] += " but at the last second " +
-          person_hit->the_short() + " leap in and protect " +
-          opponent->query_objective();
-      else
-        att_mess[M_DEFENDER] += " but at the last second " +
-          person_hit->the_short() + " leaps in and protects " +
-          opponent->query_objective();
-      att_mess[M_PERSON_HIT] += " but at the last second you leap in and "
-        "protect " + opponent->query_objective();
-    }
-    break;
-  case DEFAWARD:
-  case DEFWIN:
-    att_mess = ATTACK_MESSAGE->query_message(0,
-                                             att->attack_data[AT_SKILL],
-                                             opponent, attacker,
-                                             att->attack_data[AT_NAME],
-                                             att->attack_weapon,
-                                             att->target_zone);
-    if(sizeof(att_mess) != 3) {
-      att_mess = ({"You try to hit "+opponent->the_short()+"",
-                     attacker->the_short()+" tries to hit you",
-                     attacker->the_short()+" tries to hit "+
-                     opponent->the_short()});
-    }
-    att_mess += ({ att_mess[M_SPECTATORS], att_mess[M_SPECTATORS] });
-    break;
-  }
-  def_mess = allocate(5);
-  def_mess[M_ATTACKER] = def_mess[M_OPPONENT] = def_mess[M_SPECTATORS] =
-    def_mess[M_DEFENDER] = def_mess[M_PERSON_HIT] = "";
-  switch(att->result) {
-  case OFFAWARD:
-  case OFFWIN:
-    if(armour_stopped && armour_stopped > damage / 3) {
-      if(objectp(att->stopped_by)) {
-        def_mess[M_ATTACKER] = " but " + (att->stopped_by)->poss_short();
-        def_mess[M_OPPONENT] = def_mess[M_ATTACKER];
-        def_mess[M_SPECTATORS] = def_mess[M_ATTACKER];
-        def_mess[M_DEFENDER] = def_mess[M_ATTACKER];
-        def_mess[M_PERSON_HIT] = def_mess[M_ATTACKER];
-      } else if(att->stopped_by) {
-        def_mess[M_ATTACKER] = " but " + person_hit->query_possessive() +
-          " " + att->stopped_by;
-        if(person_hit == opponent)
-          def_mess[M_OPPONENT] = " but your " + att->stopped_by;
-        else
-          def_mess[M_OPPONENT] = def_mess[M_ATTACKER];
-        def_mess[M_SPECTATORS] = def_mess[M_ATTACKER];
-        if(person_hit == defender)
-          def_mess[M_DEFENDER] = " but your " + att->stopped_by;
-        else
-          def_mess[M_DEFENDER] = def_mess[M_ATTACKER];
-        def_mess[M_PERSON_HIT] = " but your " + att->stopped_by;
-      }
-      if(!damage || armour_stopped >= damage) {
-        def_mess[M_ATTACKER] += " absorbs all of";
-        def_mess[M_OPPONENT] += " absorbs all of";
-        def_mess[M_SPECTATORS] += " absorbs all of";
-        def_mess[M_DEFENDER] += " absorbs all of";
-        def_mess[M_PERSON_HIT] += " absorbs all of";
-      } else if(armour_stopped > (damage * 2 / 3)) {
-        def_mess[M_ATTACKER] += " absorbs most of";
-        def_mess[M_OPPONENT] += " absorbs most of";
-        def_mess[M_SPECTATORS] += " absorbs most of";
-        def_mess[M_DEFENDER] += " absorbs most of";
-        def_mess[M_PERSON_HIT] += " absorbs most of";
-      } else {
-        def_mess[M_ATTACKER] += " absorbs some of";
-        def_mess[M_OPPONENT] += " absorbs some of";
-        def_mess[M_SPECTATORS] += " absorbs some of";
-        def_mess[M_DEFENDER] += " absorbs some of";
-        def_mess[M_PERSON_HIT] += " absorbs some of";
-      }
-      def_mess[M_ATTACKER] += " the blow";
-      def_mess[M_OPPONENT] += " the blow";
-      def_mess[M_SPECTATORS] += " the blow";
-      def_mess[M_DEFENDER] += " the blow";
-      def_mess[M_PERSON_HIT] += " the blow";
-    }
-    break;
-  case DEFAWARD:
-    if(att->defense_action == "parry") {
-      if(att->defense_weapon && (att->defense_weapon)->query_weapon())
-        verb = ({ "parry", "parries", "parrying" });
-      else
-        verb = ({ "block", "blocks", "blocking" });
-      tell_object(att->defender,
-                  "%^YELLOW%^"+ replace( ({ "You move more surely "
-               "than you thought you could in $verbing$ $attacker$'s attack",
-               "You just manage to $verb$ $attacker$'s attack, but you'll "
-               "know better next time", "You feel better at $verbing$ as "
-               "you $verb$ $attacker$'s attack" })[ random( 3 ) ],
-               ({ "$verb$", verb[ 0 ], "$verbing$", verb[ 2 ], "$attacker$",
-               (string)(att->attacker)->the_short() }) ) +".%^RESET%^\n" );
-    } else if(att->defense_action == "dodge") {
-      tell_object(att->defender,
-                   "%^YELLOW%^"+ replace( ({ "You move more nimbly "
-               "than you thought you could in dodging $attacker$", "You "
-               "managed to predict $attacker$'s attack, letting you dodge it "
-               "more easily", "You feel better at dodging as you avoid "
-               "$attacker$'s attack" })[ random( 3 ) ], "$attacker$",
-               (string)(att->attacker)->the_short() ) +".%^RESET%^\n" );
-    }
-  case DEFWIN:
-    def_mess = allocate(5);
-    def_mess[M_ATTACKER] = "";
-    def_mess[M_OPPONENT] = "";
-    def_mess[M_SPECTATORS] = "";
-    def_mess[M_DEFENDER] = "";
-    def_mess[M_PERSON_HIT] = "";
-    switch(att->degree) {
-    case TASKER_MARGINAL:
-      margin = "just ";
-      break;
-    case TASKER_EXCEPTIONAL:
-      margin = "deftly ";
-      break;
-    case TASKER_MARGINAL:
-      margin = "easily ";
-      break;
-    default:
-      margin = "";
-      break;
-    }
-    if(att->defense_action == "parry" && att->defense_weapon) {
-      if(defender == opponent)
-        def_mess[M_ATTACKER] = " but " + defender->query_pronoun() + " " +
-          margin;
-      else
-        def_mess[M_ATTACKER] = " but " + defender->the_short() + " " + margin;
-      if(defender == opponent)
-        def_mess[M_OPPONENT] = " but you " + margin;
-      else
-        def_mess[M_OPPONENT] = def_mess[M_ATTACKER];
-      def_mess[M_SPECTATORS] = def_mess[M_ATTACKER];
-      def_mess[M_DEFENDER] = " but you " + margin;
-      def_mess[M_PERSON_HIT] = def_mess[M_ATTACKER];
-      if(att->defense_weapon != defender &&
-         !(att->defense_weapon)->id("shield")) {
-        def_mess[M_ATTACKER] += "parries";
-        if(defender == opponent)
-          def_mess[M_OPPONENT] += "parry";
-        else
-          def_mess[M_OPPONENT] += "parries";
-        def_mess[M_SPECTATORS] += "parries";
-        def_mess[M_DEFENDER] += "parry";
-        if(att->person_hit == att->defender)
-          def_mess[M_PERSON_HIT] += "parry";
-        else
-          def_mess[M_PERSON_HIT] += "parries";
-      } else {
-        def_mess[M_ATTACKER] += "blocks";
-        if(defender == opponent)
-          def_mess[M_OPPONENT] += "block";
-        else
-          def_mess[M_OPPONENT] += "blocks";
-        def_mess[M_SPECTATORS] += "blocks";
-        def_mess[M_DEFENDER] += "block";
-        if(att->person_hit == att->defender)
-          def_mess[M_PERSON_HIT] += "block";
-        else
-          def_mess[M_PERSON_HIT] += "blocks";
-      }
-      if(att->defense_weapon != defender) {
-        def_short = (att->defense_weapon)->short();
-      } else if(att->defense_limb) {
-        def_short = att->defense_limb;
-      } else
-        def_short = (defender->query_race_ob())->map_target_zone("hands");
-      def_mess[M_ATTACKER] += " the blow with " +
-        defender->query_possessive() + " " + def_short;
-      if(defender == opponent)
-        def_mess[M_OPPONENT] += " the blow with your " + def_short;
-      else
-        def_mess[M_OPPONENT] += " the blow with " +
-          defender->query_possessive() + " " + def_short;
-      def_mess[M_SPECTATORS] += " the blow with " +
-        defender->query_possessive() + " " + def_short;
-      def_mess[M_DEFENDER] += " the blow with your " + def_short;
-      if(defender == person_hit)
-        def_mess[M_PERSON_HIT] += " the blow with your " + def_short;
-            else
-        def_mess[M_PERSON_HIT] += " the blow with " +
-          defender->query_possessive() + " " + def_short;
-    } else if(att->defense_action == "dodge") {
-      def_mess[M_ATTACKER] = " but " + defender->query_pronoun() + " " +
-        margin + "dodges out of the way";
-      def_mess[M_OPPONENT] = " but you " + margin + "dodge out of the way";
-      def_mess[M_SPECTATORS] = " but " + defender->query_pronoun() + " " +
-        margin + "dodges out of the way";
-    } else {
-      def_mess[M_ATTACKER] = " but, although unable to defend, " +
-        defender->query_pronoun() + " somehow avoids the attack";
-      def_mess[M_OPPONENT] = " but, although unable to defend, you somehow "
-        "avoid the attack";
-      def_mess[M_SPECTATORS] = " but, although unable to defend, " +
-        defender->query_pronoun() + " somehow avoids the attack";
-    }
-  }
-  att->attack_messages = att_mess;
-  att->defense_messages = def_mess;
-  if(att->result == DEFAWARD || att->result == DEFWIN || !damage ||
-     armour_stopped >= damage)
-    att->verbose = 1;
-  return att;
-}
-protected class attack write_messages(class attack att) {
-  int verbose;
-  verbose = att->verbose;
-  (att->attacker)->event_combat(att->attacker,
-                                att->attack_messages[M_ATTACKER] +
-                                att->defense_messages[M_ATTACKER] + ".\n",
-                                ({ }), verbose);
-  (att->opponent)->event_combat(att->opponent,
-                                att->attack_messages[M_OPPONENT] +
-                                att->defense_messages[M_OPPONENT] + ".\n",
-                                ({ }), verbose);
-  if(att->defender != att->opponent &&
-     sizeof(att->attack_messages) > M_DEFENDER)
-    (att->defender)->event_combat(att->defender,
-                                  att->attack_messages[M_DEFENDER] +
-                                  att->defense_messages[M_DEFENDER] + ".\n",
-                                  ({ }), verbose);
-  if(att->person_hit != att->opponent && att->person_hit != att->defender &&
-     sizeof(att->attack_messages) > M_PERSON_HIT)
-    (att->person_hit)->event_combat(att->person_hit,
-                                    att->attack_messages[M_PERSON_HIT] +
-                                    att->defense_messages[M_PERSON_HIT] +
-                                    ".\n", ({ }), verbose);
-  event(environment(att->attacker), "combat",
-        att->attack_messages[M_SPECTATORS] +
-        att->defense_messages[M_SPECTATORS] + ".\n",
-        ({ att->attacker, att->opponent, att->defender, att->person_hit }),
-        verbose);
-  return att;
-}
-protected void adjust_actions(class attack att) {
-  int tmp;
-  if((att->attacker)->query_time_left() > 0)
-    (att->attacker)->adjust_time_left(-DEFAULT_TIME);
-  (att->attacker)->adjust_action_defecit(att->attack_cost);
-  (att->opponent)->adjust_action_defecit(att->defense_cost);
-  if(att->defender != att->opponent)
-    (att->defender)->adjust_action_defecit(DEFENSE_COST);
-  if(att->person_hit != att->opponent)
-    (att->person_hit)->adjust_action_defecit(DEFENSE_COST);
-  tmp = ATTACK_GP[(att->attacker_tactics)->attitude];
-  (att->attacker)->adjust_gp(-tmp);
-  if(att->defender != att->opponent) {
-    tmp = DEFENDER_GP[(att->defender_tactics)->attitude];
-    (att->defender)->adjust_gp(-tmp);
-  } else if(att->defense_action != "none") {
-    tmp = DEFENSE_GP[(att->defender_tactics)->attitude];
-    (att->opponent)->adjust_gp(-tmp);
-  }
-  if(att->person_hit != att->opponent) {
-    tmp = DEFENDER_GP[(att->person_hit)->query_combat_attitude()];
-    (att->person_hit)->adjust_gp(-tmp);
+    return extra;
   }
 }
-protected class attack perform_movement(class attack att) {
-  int ideal, move_cost, closer;
-  ideal = DISTANCES[(att->attacker_tactics)->ideal_distance];
-  if(ABS(ideal - att->distance) >
-     MOVE_DISTANCE[(att->attacker_tactics)->attitude]) {
-    if(att->distance > ideal)
-      closer = 1;
-    move_cost = MOVE_COST;
-    move_cost -= (att->attacker)->query_skill_bonus(MOVE_SKILL) / 30;
-    if(move_cost > 0)
-      att->attack_cost += MOVE_COST;
-    switch(TASKER->compare_skills(att->attacker, MOVE_SKILL,
-                                  att->defender, MOVE_SKILL,
-                                  att->attack_modifier -
-                                  att->defense_modifier,
-                                  TM_CONTINUOUS, TM_CONTINUOUS, 0)) {
-    case OFFAWARD:
-      tell_object(att->attacker,
-                  "%^YELLOW%^You feel that your tactical skill has increased."
-                  "%^RESET%^\n");
-    case OFFWIN:
-      if(closer) {
-        (att->attacker)->event_combat(att->attacker, "You move in closer to " +
-                                      (att->opponent)->one_short() + ".\n",
-                                      ({ }), 0);
-        (att->opponent)->event_combat(att->opponent,
-                                      (att->attacker)->one_short() +
-                                      " moves in closer to you.\n", ({ }), 0);
-        event(environment(att->attacker), "combat",
-              (att->attacker)->one_short() +
-              " moves in closer to " + (att->opponent)->one_short() + ".\n",
-              ({ att->attacker, att->opponent }), 1);
-        set_distance(att->opponent, query_distance(att->opponent) -
-                     DISTANCE_STEP);
-        (att->opponent)->set_distance(att->attacker,
-                                      query_distance(att->opponent));
-      } else {
-        (att->attacker)->event_combat(att->attacker,
-                                      "You move further away from " +
-                                      (att->opponent)->one_short() + ".\n",
-                                      ({ }), 0);
-        (att->opponent)->event_combat(att->opponent,
-                                     (att->attacker)->one_short() +
-                                     " moves further away from you.\n",
-                                     ({ }), 0);
-        event(environment(att->attacker), "combat",
-              (att->attacker)->one_short() + " moves further away from " +
-              (att->opponent)->one_short() + ".\n",
-              ({ att->attacker, att->opponent }), 1);
-        set_distance(att->opponent, query_distance(att->opponent) +
-                     DISTANCE_STEP);
-        (att->opponent)->set_distance(att->attacker,
-                                      query_distance(att->opponent));
-      }
-      break;
-    case DEFAWARD:
-      tell_object(att->opponent,
-                  "%^YELOW%^You feel that your tactical skill has increased."
-                  "%^RESET%^\n");
-    case DEFWIN:
-      if(closer) {
-        (att->attacker)->event_combat(att->attacker,
-                                      "You try to move in closer to " +
-                                      (att->opponent)->one_short() +
-                                      " but cannot find "
-                                      "an opportunity.\n", ({ }), 1);
-        (att->opponent)->event_combat(att->opponent,
-                                      (att->attacker)->one_short() +
-                                      " tries to move in closer to you "
-                                      "but you don't give " +
-                                      (att->attacker)->query_objective() +
-                                      " an opporunity.\n", ({ }), 1);
-        event(environment(att->attacker), (att->attacker)->one_short() +
-              " tries to move in closer to " +
-              (att->opponent)->one_short() + " but " +
-              (att->opponent)->query_pronoun() + " doesn't give " +
-              (att->attacker)->query_objective() + " an opportunity.\n",
-              ({ att->attacker, att->opponent }), 1);
-      } else {
-        (att->attacker)->event_combat(att->attacker,
-                                      "You try to move further away from  " +
-                                      (att->opponent)->one_short() +
-                                      " but cannot find an opportunity.\n",
-                                      ({ }), 1);
-        (att->opponent)->event_combat(att->opponent,
-                                      (att->attacker)->one_short() +
-                                      " tries to move further away from you "
-                                      "but you don't give " +
-                                      (att->attacker)->query_objective() +
-                                      " an opporunity.\n", ({ }) , 1);
-        event(environment(att->attacker), "combat",
-              (att->attacker)->one_short() +
-              " tries to move further away from " +
-              (att->opponent)->one_short() + " but " +
-              (att->opponent)->query_pronoun() + " doesn't give " +
-              (att->attacker)->query_objective() + " an opportunity.\n",
-              ({ att->attacker, att->opponent }), 1);
-      }
-    }
-  }
-  return att;
-}
-protected class attack after_attack(class attack att) {
-  string *locations;
-  int total, count, lperc, hperc;
-#ifdef USE_DISTANCE
-  if((att->result == OFFWIN || att->result == OFFAWARD) &&
-     (att->attacker_tactics)->ideal_distance &&
-     environment(att->attacker) == environment(att->opponent))
-    att = perform_movement(att);
-#endif
-  adjust_actions(att);
-  if((att->damage - att->armour_stopped) <= 0)
-    return att;
-  if((environment(att->person_hit) == environment(att->attacker)) &&
-     (att->result == OFFWIN || att->result == OFFAWARD)) {
-    (att->attack_weapon)->attack_function(att->attack_data[AT_NAME],
-                                          att->damage - att->armour_stopped,
-                                          att->person_hit, att->attacker);
-  }
-  locations = (att->defender->query_race_ob())->query_target_zones();
-  total = sizeof(locations);
-  tmpzone = att->target_zone;
-  locations = filter(locations, (: $1 == tmpzone :));
-  count = sizeof(locations);
-  lperc = (count * 100) / total;
-  if(att->degree == TASKER_CRITICAL) {
-    hperc = ((att->damage - att->armour_stopped) * 100) /
-      (att->opponent)->query_max_hp();
-    if(lperc < hperc) {
-      switch(att->target_zone) {
-      case "head":
-        break;
-      case "chest":
-      case "stomach":
-        break;
-      case "arm":
-        break;
-      case "leg":
-        break;
-      }
-    }
-  }
-  return att;
-}
-protected mixed *call_special(int stage, class attack att) {
-  class combat_special *tmp;
-  mixed *result;
-  int i;
-  if(!this_object()->query_no_specials()) {
-    tmp = att->attacker_specials;
-    for(i=0; i<sizeof(tmp); i++) {
-      if((tmp[i]->type & T_OFFENSIVE) && (tmp[i]->events & stage)) {
-        if(functionp(tmp[i]->callback))
-          result = evaluate(tmp[i]->callback, stage, att, tmp[i]->data);
-        else if(arrayp(tmp[i]->callback)) {
-          if(!tmp[i]->callback[0] || !tmp[i]->callback[1]) {
-            (att->attacker)->remove_special(tmp[i]->id);
-          } else
-            result = call_other(tmp[i]->callback[0], tmp[i]->callback[1],
-                                stage, att, tmp[i]->data);
-        }
-        if(sizeof(result)) {
-          if(!classp(result[1])) {
-            debug_printf("Error, call_special received invalid return "
-                         "data. %O when calling %O stage %d\n", result,
-                         tmp[i]->callback, stage);
-            result[0] = R_REMOVE_ME | R_ABORT;
-          }
-          if(result[0] & R_REMOVE_ME) {
-            (att->attacker)->remove_special(tmp[i]->id);
-          } else {
-            tmp[i]->data = result[2];
-            (att->attacker)->set_special_data(tmp[i]->id, result[2]);
-          }
-          if(result[0] & R_ABORT)
-            return result;
-          if((result[0] & R_DONE) || (result[0] & R_CONTINUE))
-            break;
-        }
-      }
-    }
-  }
-  if(att->defender && !(att->defender)->query_no_specials()) {
-    tmp = att->defender_specials;
-    for(i=0; i<sizeof(tmp); i++) {
-      if((tmp[i]->type & T_DEFENSIVE) && (tmp[i]->events & stage)) {
-        if(functionp(tmp[i]->callback))
-          result = evaluate(tmp[i]->callback, stage, att, tmp[i]->data);
-        else if(arrayp(tmp[i]->callback)) {
-          if(!tmp[i]->callback[0] || !tmp[i]->callback[1]) {
-            (att->defender)->remove_special(tmp[i]->id);
-          } else
-            result = call_other(tmp[i]->callback[0], tmp[i]->callback[1],
-                                stage, att, tmp[i]->data);
-        }
-        if(sizeof(result)) {
-          if(!classp(result[1])) {
-            debug_printf("Error, call_special received invalid return "
-                         "data. %O when calling %O stage %d", result,
-                         tmp[i]->callback, stage);
-            result[0] = R_REMOVE_ME | R_ABORT;
-          }
-          if(result[0] & R_REMOVE_ME) {
-            (att->defender)->remove_special(tmp[i]->id);
-          } else {
-            (att->defender)->set_special_data(tmp[i]->id, result[2]);
-          }
-          if(result[0] & R_ABORT)
-            return result;
-          if((result[0] & R_DONE) || (result[0] & R_CONTINUE))
-            break;
-        }
-      }
-    }
-  }
-  return result;
-}
-void do_attack() {
-  class tasker_result result;
-  class attack att;
-  mixed *sp_result;
-  int modifier, tmp;
-  init_tactics();
-  if(_callout)
-    _callout = remove_call_out("announce_intent");
-  att = new(class attack,
-            attacker : this_object(),
-            attacker_tactics : this_object()->query_tactics(),
-            attacker_specials : this_object()->query_specials(),
-            attacker_concentrating : this_object()->query_concentrating(),
-            attacker_defecit : this_object()->query_action_defecit(),
-            attacker_last_opponent : this_object()->query_last_opponent(),
-            attacker_last_weapon : this_object()->query_last_weapon(),
-            attacker_last_action : this_object()->query_last_action(),
-            attacker_last_result : this_object()->query_last_result(),
-            repeat : 0
-            );
-  sp_result = call_special(E_OPPONENT_SELECTION, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = this_object()->choose_opponent(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-  if(!(att->opponent) || !(att->opponent)->attack_by(att->attacker)) {
-    combat_debug("No opponent chosen, aborting attack");
-    return;
-  }
-  event(environment(att->attacker), "fight_in_progress", att->opponent);
-  clear_protection(att->attacker, att->opponent);
-  _combat->last_opponent = att->opponent;
-  do {
-    sp_result = call_special(E_DEFENDER_SELECTION, att);
-    if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-      att = (att->opponent)->choose_defender(att);
-    else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-      att = (class attack)sp_result[1];
-    else
-      return;
-    att->defender_tactics = (att->defender)->query_tactics();
-    att->defender_concentrating = (att->defender)->query_concentrating();
-    att->defender_last_opponent = (att->defender)->query_last_opponent();
-    att->defender_last_action = (att->defender)->query_last_action();
-    att->defender_last_result = (att->defender)->query_last_result();
-    att->defender_defecit = (att->defender)->query_action_defecit();
-    att->defender_specials = (att->defender)->query_specials();
-    clear_protection(att->attacker, att->defender);
-    sp_result = call_special(E_ATTACK_SELECTION, att);
-    if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-      att = this_object()->choose_attack(att);
-    else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-      att = (class attack)sp_result[1];
-    else
-      return;
-    if(!att->attack_weapon || !sizeof(att->attack_data) || !att->attack_skill){
-      combat_debug("Missing attack weapon, attack data or attack skill, "
-                   "aborting attack.");
-      return;
-    }
-    _combat->last_action = att->attack_data[AT_NAME];
-    _combat->last_weapon = att->attack_weapon;
-    sp_result = call_special(E_DEFENSE_SELECTION, att);
-    if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-      att = (att->defender)->choose_defense(att);
-    else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-      att = (class attack)sp_result[1];
-    else
-      return;
-    (att->opponent)->set_last_opponent(att->attacker);
-    if(att->opponent != att->defender)
-      (att->defender)->set_last_opponent(att->attacker);
-    (att->defender)->set_last_action(att->defense_action);
-    (att->defender)->set_last_weapon(att->defense_weapon);
-    if(att->person_hit != att->opponent && att->person_hit != att->defender)
-      (att->person_hit)->set_last_opponent(att->attacker);
-    sp_result = call_special(E_ATTACK_MODIFIER, att);
-    if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU) {
-      att = this_object()->calc_attack_modifier(att);
-    } else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1])) {
-      att = (class attack)sp_result[1];
-    } else
-      return;
-    if(!att->defense_action || att->defense_action == "none")
-      att->defense_modifier += -1000;
-    else {
-      sp_result = call_special(E_DEFENSE_MODIFIER, att);
-      if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-        att = (att->defender)->calc_defense_modifier(att);
-      else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-        att = (class attack)sp_result[1];
-      else
-        return;
-    }
-    tmp = att->attack_modifier - att->defense_modifier + BALANCE_MOD;
-    modifier = tmp;
-    if(modifier > 25)
-      modifier = sqrt(modifier * 25);
-    else if(modifier < -25)
-      modifier = -sqrt(-modifier * 25);
-    result = TASKER->compare_skills(att->attacker, att->attack_skill,
-                                    att->defender, att->defense_skill,
-                                    modifier,
-                                    TM_CONTINUOUS, TM_CONTINUOUS, 1);
-    att->result = result->result;
-    att->degree = result->degree;
-    _combat->last_result = att->result;
-    (att->defender)->set_last_result(att->result);
-    if((att->result == OFFWIN || att->result == OFFAWARD) &&
-       att->defender != att->opponent && !att->repeat) {
-      (att->defender)->adjust_action_defecit(att->defense_cost);
-      (att->defender)->adjust_gp(-(DEFENSE_GP[att->defender_tactics->attitude]));
-      att->defender = att->opponent;
-      att->repeat = 1;
-    } else
-      att->repeat = 0;
-  } while(att->repeat);
-  sp_result = call_special(E_DAMAGE_CALCULATION, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = this_object()->calc_damage(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-  sp_result = call_special(E_ARMOUR_CALCULATION, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = (att->opponent)->calc_armour_protection(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-#if DEBUG == 1
-  combat_debug("Outcome: mod: %d, res: %d, deg: %d dam: %d arm: %d",
-               att->attack_modifier - att->defense_modifier + BALANCE_MOD,
-               att->result, att->degree, att->damage, att->armour_stopped);
-#endif
-  if(att->result == OFFWIN || att->result == OFFAWARD) {
-    att->stopped_by = (att->person_hit)->query_stopped();
-#if DEBUG == 2
-    combat_debug("hit: %s, weapon: %s damage: %d, armour: %d, reducing hp by "
-                 "%d to %d",
-                 (att->person_hit)->query_name(),
-                 (att->attack_weapon)->query_name(),
-                 att->damage,
-                 att->armour_stopped,
-                 (att->damage - att->armour_stopped),
-                 (att->person_hit)->query_hp());
-#endif
-  }
-  att = this_object()->prepare_messages(att);
-  if(sizeof(att->attack_messages) != 5 || sizeof(att->defense_messages) != 5) {
-    debug_printf("No attack or defense messages.\n");
-    return;
-  }
-  sp_result = call_special(E_WRITE_MESSAGES, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = this_object()->write_messages(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-  if(att->damage - att->armour_stopped > 0)
-    (att->person_hit)->adjust_hp(-(att->damage - att->armour_stopped),
-                                 att->attacker, att->attack_weapon,
-                                 _combat->last_action);
-  sp_result = call_special(E_WEAPON_DAMAGE, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = this_object()->damage_weapon(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-  sp_result = call_special(E_AFTER_ATTACK, att);
-  if(!sp_result || sp_result[0] & R_CONTINUE || sp_result[0] & R_PASSTHRU)
-    att = this_object()->after_attack(att);
-  else if(!(sp_result[0] & R_ABORT) && classp(sp_result[1]))
-    att = (class attack)sp_result[1];
-  else
-    return;
-}
-void recalc_hunting_list() {
-  mixed ob;
-  object tmp;
-  tmp = 0;
-  foreach(ob in keys(_combat->attacker_list)) {
-    if(stringp(ob) && find_player(ob))
-      tmp = find_player(ob);
-    else if(ob && objectp(ob))
-      tmp = ob;
-    if(!tmp) {
-      _combat->attacker_list = filter_mapping(_combat->attacker_list,(: $1 :));
-    } else if(tmp->query_property("dead") ||
-              !environment(tmp) ||
-               base_name(environment(tmp)) == "/room/rubbish") {
-      map_delete(_combat->attacker_list, ob);
-    } else if(environment(tmp) != environment() ||
-              !tmp->query_visible(this_object())) {
-      _combat->hunting_list[ob] = time();
-      map_delete(_combat->attacker_list, ob);
-    }
-  }
-  tmp = 0;
-  foreach(ob in keys(_combat->hunting_list)) {
-    if(stringp(ob) && find_player(ob))
-      tmp = find_player(ob);
-    else if(ob && objectp(ob))
-      tmp = ob;
-    if(!tmp) {
-      _combat->hunting_list = filter_mapping(_combat->hunting_list, (: $1 :));
-      map_delete(_combat->hunting_list, ob);
-    } else if(tmp->query_property("dead") ||
-              base_name(environment(tmp)) == "/room/rubbish") {
-      map_delete(_combat->hunting_list, ob);
-    } else if(environment(tmp) == environment() &&
-              tmp->query_visible(this_object())) {
-      _combat->attacker_list[ob] = INITIAL_DISTANCE;
-      map_delete(_combat->hunting_list, ob);
-    } else if(_combat->hunting_list[ob] < time() - HUNTING_TIME) {
-      this_object()->event_combat(this_object(), "You stop hunting " +
-                                  tmp->one_short() + ".\n", ({ }), 1);
-      map_delete(_combat->hunting_list, ob);
-    }
-  }
-}
-void monitor_points() {
-   int hp;
-   int max;
-   string colour;
-#ifdef UNUSED
-   this_object()->clear_gp_info();
-   if ( (int)this_object()->adjust_gp( -1 ) < 0 )
-     return;
-#endif
-   hp = (int)this_object()->query_hp();
-   if(hp < 0)
-     hp = 0;
-   max = (int)this_object()->query_max_hp();
-   switch ( ( hp * 100 ) / max) {
-      case 50 .. 100 :
-         colour = "%^GREEN%^";
-         break;
-      case 20 .. 49 :
-         colour = "%^YELLOW%^";
-         break;
-      default :
-         colour = "%^RED%^";
-   }
-   tell_object( this_object(), colour +"Hp: "+ hp +" (" + max + ") Gp: "+
-         (int)this_object()->query_gp() +" (" + this_object()->query_max_gp() +
-         ") Xp: " + this_object()->query_xp() + "%^RESET%^\n" );
-}
-void announce_intent(object opponent) {
-  int difficulty = 50;
-  object *things, ob;
-  if(environment(opponent) != environment(this_object()))
-    return;
-  switch(this_object()->check_dark((int)environment(this_object())->query_light())) {
-   case -2:
-   case 2:
-     difficulty *= 4;
-     break;
-   case -1:
-   case 1:
-     difficulty *= 2;
-   }
-   things = ({ });
-   foreach(ob in filter(all_inventory(environment(this_object())),
-                        (: $1 &&living($1) :))) {
-     switch(TASKER->perform_task(ob, "other.perception", difficulty, TM_FREE)){
-     case AWARD:
-       tell_object(ob, "%^YELLOW%^You feel very perceptive."
-                   "%^RESET%^\n");
-     case SUCCEED:
-       if(interactive(ob) && !ob->query_verbose("combat"))
-         things += ({ ob });
-       break;
-     case FAIL:
-       things += ({ ob });
-     }
-   }
-   opponent->add_message((string)this_object()->one_short() +
-                      " $V$0=moves,move$V$ aggressively towards you!\n",
-                      ({ }));
-   event(environment(opponent), "see", (string)this_object()->one_short() +
-          " $V$0=moves,move$V$ aggressively towards "+
-          (string)opponent->one_short() +"!\n", this_object(),
-          ({ opponent, this_object() }) + things);
-}
-void start_combat(object opponent) { return; }
-void end_combat() { return; }
-void heart_beat() {
-  int i;
-  if(!_combat->in_combat)
-    return;
-  recalc_hunting_list();
-  if(!sizeof(keys(_combat->attacker_list)) &&
-     !sizeof(keys(_combat->hunting_list))) {
-    for(i=0; i<sizeof(_combat->specials); i++)
-      if(!((_combat->specials[i])->type & T_CONTINUOUS))
-        _combat->specials -= ({ (_combat->specials)[i] });
-    _combat->in_combat = 0;
-    adjust_action_defecit(-MAX_ACTION_DEFECIT);
-    end_combat();
-    return;
-  }
-  if(!query_attackable() || !sizeof(keys(_combat->attacker_list)))
-    return;
-  if((!userp(this_object()) ||
-     this_object()->query_time_left() == ROUND_TIME) &&
-     !this_object()->query_casting_spell()) {
-    adjust_action_defecit(-(ACTIONS_PER_HB / (COMBAT_SPEED + 1)));
-  }
-  if(_combat->hbc++ % COMBAT_SPEED)
-    return;
-  _combat->hbc = 0;
-  if(this_object()->query_monitor() &&
-     this_object()->query_monitor() <= ++(_combat->mbc)) {
-    monitor_points();
-    _combat->mbc = 0;
-  }
-  do_attack();
-  if(!this_object()->query_casting_spell()) {
-    adjust_action_defecit(-(ACTIONS_PER_HB / (COMBAT_SPEED + 1)));
-    if(_combat->action_defecit < (OFFENSIVE_DEFECITS[_tactics->attitude] / 2)) {
-#if DEBUG == 1
-      combat_debug("Adding bonus attack for %s", this_object()->query_name());
-      debug_printf("Bonus attack for %s [%d, %d]",
-                   this_object()->query_name(), _combat->action_defecit,
-                   OFFENSIVE_DEFECITS[_tactics->attitude]);
-#endif
-      call_out("do_attack", 1);
-    }
-  }
-}
-int register_special(int type, int events, mixed callback, mixed data) {
-  _combat->specials += ({ new(class combat_special,
-                              id : ++(_combat->special_id),
-                              type : type,
-                              events : events,
-                              callback : callback,
-                              data : data) });
-  return _combat->special_id;
-}
-int remove_special(int id) {
-  int i;
-  for(i=0; i<sizeof(_combat->specials); i++) {
-    if((_combat->specials[i])->id == id) {
-      _combat->specials -= ({ (_combat->specials)[i] });
-      return 1;
-    }
-  }
-  debug_printf("Failed to remove special %d", id);
+mixed do_get_rock( string verb, object *dest ) {
+  int rock_size;
+  string rock_type;
+  object rock;
+  if ( query_property( "rock object" ) )
+    return ( rock = clone_object( (string)query_property( "rock object" ) ) );
+  if ( undefinedp( rock_size = (int)query_property( "rock size" ) ) )
+    rock_size = 3;
+  if ( !rock_size ) return 0;
+  rock = clone_object( "/obj/mineral" );
+  if ( undefinedp( rock_type = (string)query_property( "rock type" ) ) )
+    rock_type = ({ "cinnabar", "coal", "rosy-quartz", "chalk", "flint",
+                   "slate" })[ random( 6 ) ];
+  rock->make_mineral( rock_type, 1 + random( rock_size ) );
+  if ( !( rock->move( this_player() ) ) ) return 1;
+  rock->dest_me();
   return 0;
 }
-class combat_special *query_specials() {
-  return copy(_combat->specials);
-}
-void set_specials(class combat_special *specials) {
-  _combat->specials = specials;
-}
-int set_special_data(int id, mixed data) {
-  int i;
-  for(i=0; i<sizeof(_combat->specials); i++) {
-    if((_combat->specials[i])->id == id) {
-      _combat->specials[i]->data = data;
-      return 1;
-    }
-  }
+mixed do_get_flower( string verb, object *dest ) {
+  string flower_type;
+  object flower;
+  if ( query_property( "flower object" ) )
+    return (flower = clone_object((string)query_property("flower object")));
+  if ((int)query_property("noflowers"))
+    return 0;
+  flower = clone_object("/std/plant");
+  if(undefinedp(flower_type = (string)query_property("flower type")))
+    flower_type = ({"forgetmenot", "violet"})[ random(2) ];
+  flower->set_plant(flower_type);
+  flower->set_plant_type(flower_type);
+  flower->set_plant_desc("A beautiful "+flower_type+" picked before its "+
+                         "time.\n");
+  flower->set_main_plural(flower_type + "s");
+  if (!(flower->move(this_player()))) return 1;
+  flower->dest_me();
   return 0;
 }
-void adjust_action_defecit(int amount) {
-  _combat->action_defecit += amount;
-  if(_combat->action_defecit > MAX_ACTION_DEFECIT)
-    _combat->action_defecit = MAX_ACTION_DEFECIT;
-  else if(_combat->action_defecit < MIN_ACTION_DEFECIT)
-    _combat->action_defecit = MIN_ACTION_DEFECIT;
-}
-int query_action_defecit() { return _combat->action_defecit; }
-class tactics query_tactics() {
-  init_tactics();
-  return copy(_tactics);
-}
-void set_tactics(class tactics new_tactics) { _tactics = new_tactics; }
-string query_combat_attitude() { return _tactics->attitude; }
-void set_combat_attitude(string attitude) { _tactics->attitude = attitude; }
-string query_combat_response() { return _tactics->response; }
-void set_combat_response(string response) { _tactics->response = response; }
-string query_combat_attack() { return _tactics->attack; }
-void set_combat_attack(string attack) { _tactics->attack = attack; }
-string query_combat_parry() { return _tactics->parry; }
-void set_combat_parry(string parry) { _tactics->parry = parry; }
-int query_unarmed_parry() { return _tactics->parry_unarmed; }
-void set_unarmed_parry(int parry) {  _tactics->parry_unarmed = parry; }
-string query_combat_mercy() { return _tactics->mercy; }
-void set_combat_mercy(string mercy) { _tactics->mercy = mercy; }
-string query_combat_focus() { return _tactics->focus_zone; }
-void set_combat_focus(string focus) { _tactics->focus_zone = focus; }
-string query_combat_distance() { return _tactics->ideal_distance; }
-void set_combat_distance(string distance) { _tactics->ideal_distance = distance; }
-object *query_protectors() {
-  _combat->protectors -= ({ 0 });
-   return copy(_combat->protectors + ({ }));
-}
-int add_protector( object thing ) {
-  if(thing == this_object() ||
-     thing->query_property("dead") ||
-     member_array(this_object(), thing->query_protectors() +
-                  thing->query_defenders()) != -1 ||
-     member_array(thing, query_attacker_list())  != -1)
+mixed do_get_berry( string verb, object *dest ) {
+  object berry;
+  string berry_type;
+  if ((int)query_property("noflowers"))
     return 0;
-  if(member_array(thing, _combat->protectors) == -1)
-    _combat->protectors += ({ thing });
-  return 1;
+  berry_type = ({"blackberry", "raspberry", "blueberry", "strawberry",
+                 "blackcurrant"})[random(5)];
+   berry = clone_object( "/obj/food" );
+  berry->set_name(berry_type);
+  berry->set_short(berry_type);
+  berry->set_long("This is a lovely, plump "+berry_type+" it looks good "+
+                  "enough to eat.\n");
+  berry->add_alias("berry");
+  if (!(berry->move(this_player()))) return 1;
+  berry->dest_me();
+  return 0;
 }
-int remove_protector(object protector) {
-  if(member_array(protector, _combat->protectors) == -1)
+mixed do_get_leaf( string verb, object *dest ) {
+  object leaf;
+  string leaf_type;
+  if ((int)query_property("noflowers"))
     return 0;
-  _combat->protectors -= ({ protector });
-  return 1;
+  leaf_type = ({"maple", "oak", "sycamore", "ash", "silver birch"})[random(5)];
+  leaf = clone_object("/std/object");
+  leaf->set_name("leaf");
+  leaf->set_short(leaf_type+" leaf");
+  leaf->set_long("This is a dead "+leaf_type+" leaf.  Its natural green "+
+                 "has turned to shades of gold, red and brown.\n");
+  leaf->add_adjective(leaf_type);
+  if (!(leaf->move(this_player()))) return 1;
+  leaf->dest_me();
+  return 0;
 }
-void reset_protectors() {
-  _combat->protectors = ({ });
+
+==================================================
+FILE: creator/workroom.c
+==================================================
+
+#include <config.h>
+inherit "/std/room/basic_room";
+object button, bookcase, board;
+void setup() {
+  set_short("workroom of "+ CREATOR);
+  add_property( "determinate", "the ");
+  set_light(100);
+  set_long("This is the workroom of "+CREATOR+".  You can see a small "
+     "wooden desk sulking in the corner of the room, it has a "
+     "beautifully carved wooden rolly chair in front of it.  It "
+     "looks like this was just newly created, there is a smell "
+     "of paint and leather in the air.\n");
+  add_item("chair",
+        ({ "long", "The teak rolly chair has amazing carvings of dragons "
+                   "and ... other things on it.  They almost seem alive, "
+                   "you especially don't note the way the dragon "
+                   "blinks at you.",
+                   "position",
+                   "the teak rolly chair" }) );
+  add_item("desk", "The desk is made of mahogany with a touch of "
+     "mountain ash.  The top has two little basket things "
+     "on it labelled \"in\" and \"out\".  The in basket "
+     "is rather small." );
+  add_item( "dragon", "I told you, you don't notice it winking at you." );
+  add_item("in basket", "The in basket is full of small yellow forms "
+     "with large red letters on them saying "
+     "\"Important read me first\" and then not "
+     "appearing to actually have any thing else on "
+     "them." );
+  add_item( "out basket", "The out basket is completely empty." );
+  add_item("basket", "There are two baskets sitting on top of the desk.  "
+     "They have the words \"in\" and \"out\" written "
+     "on them." );
+  add_item("paint", "You look around to see the source of the paint "
+     "smell and you can't find it.  The walls? of the room "
+     "ummm seem to be well shall we just twisting in a "
+     "confused mish mash of shapes, you are sure they are "
+     "not threatening." );
+  add_item("wall", "The walls are made up of a cloudy substance, white "
+     "in nature that is roiling around the place where "
+     "you are standing.  Great magic must be holding it "
+     "back, every now and then you see a demonic head "
+     "push its way out of the cloud roll its eyes and fade "
+     "back into the cloud." );
+  add_item("cloud", "The cloud is white coloured with a few flashes "
+     "of light bursting in it." );
+  add_item("demon", "The demonic heads that pop out are pretty nasty "
+     "looking, they disapear with a snarl of strain." );
+  add_exit("common", "/w/common", "door");
+  add_exit("drum", CONFIG_START_LOCATION, "path");
+  add_exit("learning", "/d/learning/main", "path");
+  modify_exit( ({ "common", "drum", "learning" }),
+      ({ "function", "check_player" }) );
+  add_alias("north", "drum");
+  add_alias("south", "common");
+  "/w/common"->add_exit(CREATOR, "/w/"+CREATOR+"/workroom", "door");
 }
-object *query_defenders() {
-  _combat->defenders -= ({ 0 });
-   return copy(_combat->defenders + ({ }));
+void reset() {
+  if (!button) {
+    button = clone_object("/obj/misc/button");
+    button->move(this_object());
+  }
+  if (!board) {
+    board = clone_object("/obj/misc/board_mas");
+    board->move(this_object() );
+  }
+  if (!bookcase) {
+    bookcase = clone_object("/obj/cont_save");
+    bookcase->set_name( "bookcase" );
+    bookcase->set_short( "oaken bookcase" );
+    bookcase->add_adjective( "wooden" );
+    bookcase->add_adjective( "oak" );
+    bookcase->add_adjective( "oaken" );
+    bookcase->add_property( "there", "standing against the wall" );
+    bookcase->set_long( "This bookcase is made from oak and "
+      "varnished to bring out the glow.  It has 2 "
+      "shelves, upon which you can see some books, and "
+      "other objects.\n" );
+    bookcase->set_weight( 2000 );
+    bookcase->set_max_weight( 4000 );
+    bookcase->reset_get();
+    bookcase->check_euid();
+    bookcase->set_save_file( "/w/"+CREATOR+"/creator_kit" );
+    bookcase->move( this_object() );
+  }
 }
-int add_defender( object thing ) {
-  if(thing == this_object() ||
-     thing->query_property("dead") ||
-     member_array(this_object(), thing->query_defenders() +
-                  thing->query_protectors()) != -1 ||
-     member_array(thing, query_attacker_list())  != -1)
+object *query_non_destable()  {
+  return ({ bookcase, board });
+}
+int check_player( string verb, object player, string special ) {
+    if ( interactive( player ) ) {
+        return 1;
+    }
+    notify_fail( "" );
     return 0;
-  if(member_array(thing, _combat->defenders) == -1)
-    _combat->defenders += ({ thing });
-  return 1;
 }
-int remove_defender(object defender) {
-  if(member_array(defender, _combat->defenders) == -1)
-    return 0;
-  _combat->defenders -= ({ defender });
-  return 1;
+
+==================================================
+FILE: races/amphibian.c
+==================================================
+
+inherit "/std/races/base";
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   set_desc( "your standard amphibian" );
+   set_height( 40 );
+   set_weight( 600 );
+   bits = ({
+      "head", "head", ({ 0, 40, 0,
+         "skull", "left eye", "right eye" }),
+      "skull", "skull", ({ "head", 15, 0, "brain" }),
+      "left eye", "eye", ({ "head", 1, 0 }),
+      "right eye", "eye", ({ "head", 1, 0 }),
+      "brain", "brain", ({ "skull", 5, 0 }),
+      "torso", "guts", ({ 0, 400, 0,
+         "heart", "liver", "left kidney", "right kidney", "spleen" }),
+      "heart", "heart", ({ "guts", 10, 0 }),
+      "liver", "liver", ({ "guts", 5, 0 }),
+      "left kidney", "kidney", ({ "guts", 5, 0 }),
+      "right kidney", "kidney", ({ "guts", 5, 0 }),
+      "spleen", "spleen", ({ "guts", 5, 0 }),
+      "genitals", "genitals", ({ 0, 5, 0 }),
+      "right front leg", "leg", ({ 0, 200, 0 }),
+      "left front leg", "leg", ({ 0, 200, 0 }),
+      "right back leg", "leg", ({ 0, 200, 0 }),
+      "left back leg", "leg", ({ 0, 200, 0 }),
+      "skin", "skin", ({ 0, 175, 0 })
+   });
+   inedible = ({ "skull" });
+   unrottable = ({ "skull" });
+   set_skin( "skin" );
+   set_stats( ({ -4, 10, -4, -4, -6 }) );
+   if( !do_setup )
+      this_object()->setup();
 }
-void reset_defenders() {
-  _combat->defenders = ({ });
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/ape.c
+==================================================
+
+inherit "/std/races/humanoid";
+void setup() {
+   set_name( "ape" );
+   set_long( "The apes are any members of the family Pongidae of large "
+      "semi-erect primates, including the chimpanzee, gorilla, orangutan "
+      "and gibbon.\n" );
+   set_weight( 2500 );
+   set_height( 175 );
+   set_stats( ({ 4, 4, 0, 4, 0 }) );
 }
-#ifdef USE_DISTANCE
-int set_distance(object opponent, int distance) {
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      return 0;
-    _combat->attacker_list[opponent->query_name()] = distance;
-  } else {
-    if(!_combat->attacker_list[opponent])
-      return 0;
-    _combat->attacker_list[opponent] = distance;
-  }
-  return 1;
+int query_eat( string type ) { return 1; }
+string query_desc( object thing ) {
+   if( (int)thing->query_gender() == 1 )
+      return "He is your average hairy young male ape.\n";
+   return "She is your average hairy young female ape.\n";
 }
-int query_distance(object opponent) {
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      return 0;
-    return _combat->attacker_list[opponent->query_name()];
-  } else {
-    if(!_combat->attacker_list[opponent])
-      return 0;
-    return _combat->attacker_list[opponent];
-  }
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   thing->add_ac( "blunt", "blunt", 15 + level / 10 );
+   thing->add_ac( "sharp", "sharp", 10 + level / 15 );
+   thing->add_ac( "pierce", "pierce", 12 + level / 12 );
+   thing->reset_all();
 }
-#endif
-object *query_attacker_list() {
-  return uniq_array(map(keys(_combat->attacker_list) +
-                        keys(_combat->hunting_list),
-                        (: $1 && objectp($1) ? $1 : find_player($1) :)) -
-                    ({ 0 }));
-}
-void remove_attacker_list(object ob) {
-  if(userp(ob)) {
-    map_delete(_combat->attacker_list, ob->query_name());
-    map_delete(_combat->hunting_list, ob->query_name());
-  } else {
-    map_delete(_combat->attacker_list, ob);
-    map_delete(_combat->hunting_list, ob);
-  }
-}
-int attack_by(object opponent) {
-  int starting;
-  if(!objectp(opponent) ||
-     opponent == this_object() ||
-     !this_object()->query_attackable() ||
-     pk_check(this_object(), opponent))
-    return 0;
-  if(member_array(opponent, _combat->protectors) != -1)
-    _combat->protectors -= ({ opponent });
-  if(member_array(opponent, _combat->defenders) != -1)
-    _combat->defenders -= ({ opponent });
-  if(!sizeof(query_attacker_list()))
-    starting = 1;
-#ifdef USE_DISTANCE
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      _combat->attacker_list[opponent->query_name()] =
-        opponent->query_distance(this_object());
-  } else if(!_combat->attacker_list[opponent])
-    _combat->attacker_list[opponent] = opponent->query_distance(this_object());
-#else
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      _combat->attacker_list[opponent->query_name()] = 1;
-  } else if(!_combat->attacker_list[opponent])
-    _combat->attacker_list[opponent] = 1;
-#endif
-  if(starting) {
-    _combat->action_defecit = (MAX_ACTION_DEFECIT - MIN_ACTION_DEFECIT) / 3;
-    start_combat(opponent);
-  }
-  _combat->in_combat = 1;
-  return 1;
-}
-int attack_ob(object opponent) {
-  int starting, new_opponent;
-  if(!objectp(opponent) ||
-     opponent == this_object() ||
-     !opponent->query_attackable() ||
-     !this_object()->query_attackable() ||
-     pk_check(this_object(), opponent))
-    return 0;
-  if(member_array(opponent, _combat->protectors) != -1)
-    _combat->protectors -= ({ opponent });
-  if(member_array(opponent, _combat->defenders) != -1)
-    _combat->defenders -= ({ opponent });
-  if(!sizeof(query_attacker_list()))
-    starting = 1;
-  else if(member_array(opponent, query_attacker_list()) == -1)
-    new_opponent = 1;
-#ifdef USE_DISTANCE
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      _combat->attacker_list[opponent->query_name()] = INITIAL_DISTANCE;
-  } else {
-    if(!_combat->attacker_list[opponent])
-      _combat->attacker_list[opponent] = INITIAL_DISTANCE;
-  }
-#else
-  if(userp(opponent)) {
-    if(!_combat->attacker_list[opponent->query_name()])
-      _combat->attacker_list[opponent->query_name()] = 1;
-  } else {
-    if(!_combat->attacker_list[opponent])
-      _combat->attacker_list[opponent] = 1;
-  }
-#endif
-  if((new_opponent || starting) &&
-     opponent->query_visible(this_object()))
-    _callout = call_out("announce_intent", 0, opponent);
-  this_object()->remove_hide_invis("hiding");
-  if(starting) {
-    _combat->action_defecit = (MAX_ACTION_DEFECIT - MIN_ACTION_DEFECIT) / 3;
-    start_combat(opponent);
-  }
-  _combat->in_combat = 1;
-  return 1;
-}
-void stop_fight(object opponent) {
-  class combat_special tmp;
-#if DEBUG == 2
-  combat_debug("stop_fight called against %s", opponent->query_name());
-#endif
-  if(!objectp(opponent))
-    return;
-  if(userp(opponent)) {
-    map_delete(_combat->attacker_list, opponent->query_name());
-    map_delete(_combat->hunting_list, opponent->query_name());
-  } else {
-    map_delete(_combat->attacker_list, opponent);
-    map_delete(_combat->hunting_list, opponent);
-  }
-#ifdef USE_SURRENDER
-  _surrender->from -= ({ 0, opponent });
-  _surrender->refusers -= ({ 0, opponent });
-  _surrender->to -= ({ 0, opponent });
-#endif
-  if(!sizeof(query_attacker_list())) {
-    foreach(tmp in _combat->specials)
-      if(!(tmp->type & T_CONTINUOUS))
-        remove_special(tmp->id);
-    end_combat();
-  }
-}
-void stop_all_fight() {
-  class combat_special tmp;
-#if DEBUG == 2
-  combat_debug("stop_all_fight called");
-#endif
-  _combat->attacker_list = ([ ]);
-  _combat->hunting_list = ([ ]);
-  _combat->in_combat = 0;
-#ifdef USE_SURRENDER  _surrender->from = ({ });
-  _surrender->refusers = ({ });
-  _surrender->to = ({ });
-#endif
-  foreach(tmp in _combat->specials)
-    if(!(tmp->type & T_CONTINUOUS))
-      remove_special(tmp->id);
-  end_combat();
-}
-void stop_hunting(object opponent) {
-  if(userp(opponent))
-    map_delete(_combat->hunting_list, opponent->query_name());
-  else
-    map_delete(_combat->hunting_list, opponent);
-  if(!sizeof(query_attacker_list()))
-    end_combat();
-}
-#ifdef USE_SURRENDER
-object do_surrender(object thing) {
-   mixed *attackers;
-   mixed att;
-   if(this_object()->query_property("dead"))
-      return 0;
-   death_helper(thing, 0);
-   catch(DEATH->someone_surrendered(this_object()));
-   attackers = query_attacker_list();
-   foreach(att in attackers) {
-     att->stop_fight(this_object());
-   }
-   stop_all_fight();
+int query_dark( int light ) {
+   if( light < 10 ) return 1;
+   if( light > 200 ) return 2;
    return 0;
 }
-int dont_attack_me() {
-  if(sizeof(_surrender->to))
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 10 + ( 3 * sqrt( number ) ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->add_attack( "hands", 75, ({ 2 * number, 8, number }),
+      "blunt", "unarmed", "unarmed_hands" );
+   thing->add_attack( "feet", 25, ({ 3 * number, 10, number }),
+      "blunt", "unarmed", 0 );
+}
+
+==================================================
+FILE: races/arachnid.c
+==================================================
+
+inherit "/std/races/base";
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   set_desc( "A creature like scorpion, spider, daddy longlegs, mite, "
+      "tick, and certain other invertebrate animals.  This file should "
+      "be inherited by a more specialised race object." );
+   bits = ({
+      "cephalothorax", "head", ({ 0, 200, 0,
+         "middle right upper eye", "middle right lower eye",
+         "middle left upper eye", "middle left lower eye",
+         "right upper eye", "right lower eye",
+         "left upper eye", "left lower eye", "brain", "ganglion",
+         "left fang", "right fang", "stomach", "mandible" }),
+      "middle right upper eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "middle right lower eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "middle left upper eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "middle left lower eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "right upper eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "right lower eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "left upper eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "left lower eye", "eye", ({ "cephalothorax", 25, 0 }),
+      "brain", "brain", ({ "cephalothorax", 25, 0 }),
+      "ganglion", "ganglion", ({ "cephalothorax", 50, 0 }),
+      "left fang", "fang", ({ "cephalothorax", 25, 0 }),
+      "right fang", "fang", ({ "cephalothorax", 25, 0 }),
+      "stomach", "stomach", ({ "cephalothorax", 50, 0 }),
+      "mandible", "mandible", ({ "cephalothorax", 25, 0 }),
+      "abdomen", "abdomen", ({ 0, 500, 0, "lung", "stomach",
+         "heart", "right front leg", "right middle front leg",
+         "left front leg", "left middle front leg", "right back leg",
+         "right middle back leg", "left back leg", "left middle back leg" }),
+      "left middle back leg", "leg", ({ "abdomen", 25, 0 }),
+      "left back leg", "leg", ({ "abdomen", 25, 0 }),
+      "right middle back leg", "leg", ({ "addomen", 25, 0 }),
+      "right back leg", "leg", ({ "abdomen", 25, 0 }),
+      "right middle front leg", "leg", ({ "abdomen", 25, 0 }),
+      "right front leg", "leg", ({ "abdomen", 25, 0 }),
+      "left middle front leg", "leg", ({ "abdomen", 25, 0 }),
+      "left front leg", "leg", ({ "abdomen", 25, 0 }),
+      "lung", "lung", ({ "abdomen", 100, 0 }),
+      "stomach", "stomach", ({ "abdomen", 100, 0 }),
+      "heart", "heart", ({ "abdomen", 100, 0 }),
+      "pedicel", "pedicel", ({ 0, 100, 0 })
+   });
+   inedible = ({ "left fang", "right fang", "mandible" });
+   unrottable = ({ "left fang", "right fang", "mandible" });
+   set_stats( ({ -6, 4, -6, -6, -6 }) );
+   if( !do_setup )
+      this_object()->setup();
+}
+
+==================================================
+FILE: races/badger.c
+==================================================
+
+inherit "/std/races/mustelidae_base";
+void setup() {
+   set_name( "badger" );
+   set_long( "A big black white and grey burowing animal.\n" );
+   set_height( 30 );
+   set_weight( 500 );
+   set_desc( "small brown meateater" );
+   set_stats( ({ 2, -2, -2, 2, -4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   level = 3 + ( 2 * level + random( level ) ) / 8;
+   thing->add_ac( "blunt", "blunt", 20 + level / 3 );
+   thing->add_ac( "sharp", "sharp", 50 + level );
+   thing->add_ac( "pierce", "pierce", 60 + 2 * level );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "chew" );
+   thing->add_attack( "claws", 50, ({ ( 4 * number ) / 2, 8, 2 * number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 100, ({ 2 * number, 10, ( 3 * number )/2 }),
+      "chew", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/base.c
+==================================================
+
+#define QUEST_AVE 140
+#define QUEST_MAX 570
+#define BASE 50
+#define SCALE 10
+#define NORM 15
+#define EXPERT 20
+#define A_TYPES ([ \
+      "claws" : "sharp", \
+      "chew" : "sharp", \
+      "beak" : "pierce", \
+      "bite" : "pierce", \
+      "horn" : "pierce", \
+      "hands" : "blunt", \
+      "feet" : "blunt", \
+      "tail" : "blunt", \
+      "hoof" : "blunt", \
+      "wrestle" : "blunt", \
+   ])
+inherit "/std/object";
+private int height;
+private int *sight;
+private int *stats;
+private string desc;
+private string skin;
+string *inedible;
+string *unrottable;
+string *pluckable;
+private string *limbs;
+private mixed *acs;
+private mixed *attacks;
+private mapping _fixed_bits;
+mixed *bits;
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   sight = ({ 5, 20, 200, 300 });
+   stats = allocate( 5 );
+   desc = "a small non-descript thing";
+   inedible = ({  });
+   unrottable = ({  });
+   pluckable = ({  });
+   acs = ({ });
+   attacks = ({ });
+   bits = ({ });
+   if ( !do_setup )
+      this_object()->setup();
+}
+int query_height() { return height; }
+void set_height( int number ) { height = number; }
+int *query_sight() { return copy(sight); }
+void set_sight( int *numbers ) { sight = numbers; }
+int query_dark( int light ) {
+   if ( light < sight[ 0 ] ) {
+      return -2;
+   }
+   if ( light < sight[ 1 ] ) {
+      return -1;
+   }
+   if ( light > sight[ 3 ] ) {
+      return 2;
+   }
+   if ( light > sight[ 2 ] ) {
+      return 1;
+   }
+   return 0;
+}
+int *query_stats() { return copy(stats); }
+void set_stats( int *numbers ) { stats = numbers; }
+string query_skin() { return skin; }
+void set_skin( string word ) { skin = word; }
+string query_desc( object thing ) {
+   return capitalize( (string)thing->query_pronoun() ) +" is "+ desc +".\n";
+}
+void set_desc( string words ) { desc = words; }
+string *query_limbs() {
+   if ( !limbs ) {
+      this_object()->find_limbs();
+   }
+   return copy(limbs);
+}
+void find_limbs() {
+   int i;
+   string limb;
+   limbs = ({ });
+   for ( i = 0; i < sizeof( bits ); i += 3 ) {
+     if ( sscanf( bits[ i ], "%s hand", limb ) == 1 ) {
+       limbs += ({ bits[ i ] });
+     }
+   }
+}
+mixed *query_acs() { return copy(acs); }
+void add_ac( string ac_name, string ac_type, mixed ac_amount ) {
+   acs += ({ ac_name, ac_type, ac_amount });
+}
+mixed *query_attacks() { return copy(attacks); }
+void add_attack( string attack_name, int attack_chance, int *attack_data ) {
+   attacks += ({ attack_name, attack_chance, attack_data });
+}
+mixed *query_bits() { return bits; }
+mixed *query_bit( string word ) {
+   int i;
+   i = member_array( word, bits );
+   if ( ( i == -1 ) || ( i % 3 ) ) {
+      return ({ });
+   }
+   return bits[ i .. i + 2 ];
+}
+private void fixup_bits() {
+   string* str_bits;
+   string pl;
+   int i;
+   if (_fixed_bits) {
+      return ;
+   }
+   _fixed_bits = ([ ]);
+   for ( i = sizeof( bits ) - 3; i > -1; i -= 3 ) {
+      str_bits = explode(bits[i], " ");
+      pl = pluralize(str_bits[<1]);
+      if (!_fixed_bits[str_bits[<1]]) {
+         _fixed_bits[str_bits[<1]] = ({ });
+      }
+      _fixed_bits[str_bits[<1]] += ({ ({ str_bits[0..<2], i, 0 }) });
+      if (!_fixed_bits[pl]) {
+         _fixed_bits[pl] = ({ });
+      }
+      _fixed_bits[pl] += ({ ({ str_bits[0..<2], i, 1 }) });
+   }
+}
+private string *query_old_possible_bits( string word ) {
+   int i;
+  int j;
+  string *possibles;
+  possibles = ({ });
+  for ( i = sizeof( bits ) - 3; i > -1; i -= 3 ) {
+    if ( ( bits[ i ] == word ) ||
+          ( bits[ i + 1 ] == word ) ||
+          !word) {
+       if (arrayp( bits[i+2][2] )) {
+         for ( j = 0; j < bits[i + 2][2][1]; j++) {
+           possibles += ({ bits[ i ] });
+         }
+       } else {
+         possibles += ({ bits[ i ] });
+       }
+     }
+   }
+   return possibles;
+}
+string *query_possible_bits( string word ) {
+  string* str_bits;
+  string* adj;
+  string *possibles;
+  mixed* bing;
+  if(!word) {
+    return query_old_possible_bits( word );
+  }
+  fixup_bits();
+  str_bits = explode(word, " ");
+  possibles = ({ });
+  if (_fixed_bits[str_bits[<1]]) {
+     adj = str_bits[0..<2];
+     foreach (bing in _fixed_bits[str_bits[<1]]) {
+        if (!bing[2] &&
+            sizeof(adj) == sizeof(adj & bing[0])) {
+           possibles += ({ bits[bing[1]] });
+        }
+     }
+  }
+  return possibles;
+}
+string *query_possible_plural_bits( string word ) {
+  string* str_bits;
+  string* adj;
+  string *possibles;
+  mixed* bing;
+  fixup_bits();
+  str_bits = explode(word, " ");
+  possibles = ({ });
+  if (_fixed_bits[str_bits[<1]]) {
+     adj = str_bits[0..<2];
+     foreach (bing in _fixed_bits[str_bits[<1]]) {
+        if (bing[2] &&
+            sizeof(adj) == sizeof(adj & bing[0])) {
+           possibles += ({ bits[bing[1]] });
+        }
+     }
+  }
+  return possibles;
+}
+void add_bit( string bit_short, string bit_name, mixed *bit_array ) {
+   int i;
+   i = member_array( bit_short, bits );
+   if ( !( i % 3 ) ) {
+      bits[ i ] = bit_short;
+      bits[ i + 1 ] = bit_name;
+      bits[ i + 2 ] = bit_array;
+      return;
+   }
+   bits += ({ bit_short, bit_name, bit_array });
+}
+void remove_bit( string word ) {
+   int i;
+   i = member_array( word, bits );
+   if ( ( i == -1 ) || ( i % 3 ) ) {
+      return;
+   }
+   bits = delete( bits, i, 3 );
+}
+int modifier( int number ) {
+   return ( number * ( roll_MdN( 20, 21 ) - 220 ) ) / 2000;
+}
+void start_player( object thing ) {
+   if ( !thing->query_base_weight() ) {
+      thing->set_base_weight( 1 + weight + modifier( weight ) );
+   }
+   if ( !thing->query_height() ) {
+      thing->set_height( 1 + height + modifier( height ) );
+   }
+   thing->adjust_bonus_con( stats[ 0 ] );
+   thing->adjust_bonus_dex( stats[ 1 ] );
+   thing->adjust_bonus_int( stats[ 2 ] );
+   thing->adjust_bonus_str( stats[ 3 ] );
+   thing->adjust_bonus_wis( stats[ 4 ] );
+   thing->reset_all();
+   if ( skin ) {
+      thing->set_skin( skin );
+   }
+}
+int query_number_worn( string type ) {
+   switch ( type ) {
+      case "armband" :
+         return 2;
+      case "badge" :
+         return 15;
+      case "bracelet" :
+         return 4;
+      case "earring" :
+        return 2;
+      case "garter" :
+         return 2;
+      case "shoulder" :
+         return 2;
+      case "necklace" :
+         return 5;
+      case "ring" :
+         return 8;
+      case "sash" :
+         return 2;
+      case "shirt" :
+         return 2;
+      case "belt scabbard" :
+         return 2;
+      case "small scabbard" :
+         return 2;
+      case "bandaid" :
+         return 5;
+      default :
+         return 1;
+   }
+}
+int query_number_wielded( string type ) { return 1; }
+int query_skill_bonus( int number, string word ) { return 0; }
+int player_start( object thing ) { return 1; }
+int player_quit( object thing ) { return 1; }
+void set_level( object thing, int level ) {
+   int i;
+   if ( !thing ) {
+      return;
+   }
+   for ( i = sizeof( acs ) - 3; i > -1; i -= 3 ) {
+      thing->add_ac( acs[ i ], acs[ i + 1 ], acs[ i + 2 ] );
+   }
+}
+int *calc_attack( int *data, int number ) {
+   int base;
+   int num;
+   int rand;
+   int rating;
+   int scale;
+   base =  data[ 0 ] * ( BASE + SCALE * number );
+   num = data[ 1 ];
+   rand = data[ 2 ] * ( BASE + SCALE * number );
+   rating = QUEST_AVE * ( base + num * rand ) +
+         QUEST_MAX * ( base + ( num * ( 1 + rand ) ) / 2 );
+   scale = BASE + SCALE * NORM;
+   rating /= scale;
+   rating = ( ( BASE + SCALE * EXPERT ) * rating + QUEST_AVE * QUEST_MAX ) /
+         ( 2 * QUEST_AVE * QUEST_MAX );
+   if ( rating > scale ) {
+      scale = ( rating + scale ) / 2;
+   }
+   return ({ base / scale, num, rand / scale });
+}
+void set_unarmed_attacks( object thing ) {
+   int i, number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   for ( i = sizeof( attacks ) - 3; i > -1; i -= 3 ) {
+      thing->remove_attack( attacks[ i ] );
+      thing->add_attack( attacks[ i ], attacks[ i + 1 ],
+            calc_attack( attacks[ i + 2 ], number ), A_TYPES[ attacks[ i ] ],
+            "unarmed", "unarmed_"+ attacks[ i ] );
+   }
+}
+int query_eat( string bit ) {
+  if (member_array( bit, inedible) == -1) {
     return 1;
-  else
-    return 0;
-}
-void event_surrender(object victim, object *attackers) {
-  object *offer;
-  offer = ({ });
-  if (this_object() == victim) {
-    _surrender->refusers -= ({ 0 });
-    _surrender->to -= ({ 0 });
-    offer = filter(attackers, (: member_array($1, _surrender->refusers +
-                                              _surrender->to) == -1 :));
-    if(sizeof(offer)) {
-      event(environment(), "combat",
-            sprintf("%s kneels down and surrenders to %s.\n",
-                    this_object()->one_short(), query_multiple_short(offer)),
-            ({ this_object() }) + _surrender->to + _surrender->refusers, 0);
-      this_object()->event_combat(this_object(),
-                                sprintf("%s kneel down and surrender to %s.\n",
-                                        this_object()->one_short(),
-                                        query_multiple_short(offer)), ({ }), 0);
-      offer->offered_surrender(victim);
-      _surrender->to += offer;
-    }
   }
-}
-object *query_surrenderers() {
-  _surrender->from -= ({ 0 });
-  return copy(_surrender->from);
-}
-void remove_surrenderer(object victim) {
-  _surrender->from -= ({ 0, victim });
-  return;
-}
-void offered_surrender(object victim) {
-  string mercy = this_object()->query_combat_mercy();
-  switch(mercy) {
-  case "ask":
-    if (interactive(this_object())) {
-      _surrender->from -= ({ 0, victim });
-      _surrender->from += ({ victim });
-      this_object()->event_combat(this_object(),
-                                  victim->one_short() + " has surrendered to "
-                                  "you.  Either \"accept " +
-                                  victim->query_name() + "\" or \"reject " +
-                                  victim->query_name() + ".\n", ({ }), 0);
-    } else {
-      if (this_object()->query_accept_surrender(victim))
-        victim->accepted_surrender(this_object());
-      else
-        victim->refused_surrender(this_object());
-    }
-    break;
-  case "always":
-    this_object()->event_combat(this_object(),
-                                "You accept the surrender of " +
-                                victim->one_short() + ".\n", ({ }), 0);
-    victim->accepted_surrender(this_object());
-    break;
-  default:
-    this_object()->event_combat(this_object(),
-                                sprintf("You refuse the surrender of %s.\n",
-                                        victim->one_short()), ({ }), 0);
-    victim->refused_surrender(this_object());
-  }
-}
-void refused_surrender(object attacker) {
-  _surrender->to -= ({ 0 });
-  if (member_array(attacker, _surrender->to) == -1)
-    return;
-  _surrender->to -= ({ attacker });
-  _surrender->refusers -= ({ 0 });
-  _surrender->refusers += ({ attacker });
-  this_object()->event_combat(this_object(), attacker->one_short() +
-                              " refused your surrender\n", ({ }), 0);
-}
-void accepted_surrender(object attacker) {
-  _surrender->to -= ({ 0 });
-  if(member_array(attacker, _surrender->to) == -1) {
-    return;
-  }
-  _surrender->to -= ({ attacker });
-  this_object()->event_combat(this_object(), attacker->one_short() +
-                              " accepts your surrender.\n", ({ }));
-  this_object()->do_surrender(attacker);
-}
-#endif
-void stopped_fighting(object thing) {
-  event( environment(), "stopped_fighting", thing );
-}
-void fight_in_progress(object thing) {
-  event(environment(), "fight_in_progress", thing );
-}
-int set_concentrating(object thing) {
-  if(userp(thing)) {
-    if(!_combat->attacker_list[thing->query_name()])
-      return 0;
-#ifdef USE_DISTANCE
-    _combat->attacker_list[thing->query_name()] =
-      thing->query_distance(this_object());
-#else
-    _combat->attacker_list[thing->query_name()] = 1;
-#endif
-  } else {
-    if(!_combat->attacker_list[thing])
-      return 0;
-#ifdef USE_DISTANCE
-    _combat->attacker_list[thing] = thing->query_distance(this_object());
-#else
-    _combat->attacker_list[thing] = 1;
-#endif
-  }
-  _combat->concentrating = thing;
-  return 1;
-}
-object query_concentrating() {
-  object thing;
-  thing = _combat->concentrating;
-  if(!thing || !objectp(thing))
-    return 0;
-  if(userp(thing) && !_combat->attacker_list[thing->query_name()])
-    return 0;
-  else if(!_combat->attacker_list[thing])
-    return 0;
-  return thing;
-}
-object query_attacker() {
-  return _combat->last_opponent;
-}
-object query_last_opponent() {
-  return _combat->last_opponent;
-}
-void set_last_opponent(object last) { _combat->last_opponent = last; }
-object query_last_weapon() {
-  return _combat->last_weapon;
-}
-void set_last_weapon(object last) { _combat->last_weapon = last; }
-string query_last_action() { return _combat->last_action; }
-void set_last_action(string last) { _combat->last_action = last; }
-int query_last_result() { return _combat->last_result; }
-void set_last_result(int last) { _combat->last_result = last; }
-varargs int is_fighting(object ob, int actively) {
-  if(!objectp(ob))
-    return 0;
-  if(actively)
-    return userp(ob) ? _combat->attacker_list[ob->query_name()] :
-      _combat->attacker_list[ob];
-  return userp(ob) ? _combat->attacker_list[ob->query_name()] ||
-    _combat->hunting_list[ob->query_name()] :
-    _combat->attacker_list[ob] || _combat->hunting_list[ob];
-}
-int query_fighting() {
-  if(!environment() || base_name(environment()) == "/room/rubbish")
-    return 0;
-  if(sizeof(filter(query_attacker_list(),
-                   (: environment($1) == environment(this_object()) :))))
-    return 1;
-  if(sizeof(filter(all_inventory(environment(this_object())),
-                   (: $1 && living($1) && $1->is_fighting(this_object(), 1) :))))
-    return 1;
   return 0;
 }
-mixed stats() {
-  int i;
-  int j;
-  object *weapons;
-  mixed ret;
-  init_tactics();
-  ret = ({
-    ({ "attitude", _tactics->attitude }),
-      ({ "response", _tactics->response }),
-      ({ "mercy", _tactics->mercy }),
-      ({ "parry", _tactics->parry }),
-      ({ "attack", _tactics->attack }),
-      ({ "unarmed parry", ({ "no", "yes" })[ _tactics->parry_unarmed ] }),
-      ({ "attack zone", _tactics->focus_zone ? _tactics->focus_zone :
-        "none" }),
-      ({ "distance", _tactics->ideal_distance ? _tactics->ideal_distance :
-        "none" }),
-      });
-  weapons = (object *)this_object()->query_weapons();
-  if(!sizeof(weapons))
-    return ret + weapon_logic::stats();
-  for ( i = 0; i < sizeof( weapons ); i++ )
-    ret += ({ ({ "weapon #"+ i, weapons[ i ]->short() }) }) +
-      (mixed)weapons[ j ]->weapon_stats();
-  return ret + weapon_logic::stats();
+int query_unrottable( string bit ) {
+  if (member_array( bit, unrottable) == -1) {
+    return 0;
+  }
+  return 1;
+}
+int query_pluckable( string bit ) {
+  if (member_array( bit, pluckable) == -1) {
+    return 0;
+  }
+  return 1;
+}
+string *query_all_inedible() {
+   return inedible;
+}
+string *query_all_unrottable() {
+   return unrottable;
+}
+string *query_all_pluckable() {
+   return pluckable;
+}
+string *query_target_zones() {
+  return ({ "head", "head", "neck",
+              "chest", "back", "back", "back", "lower back",
+              "left front leg", "left front leg",
+              "stomach", "stomach",
+              "right front leg", "right front leg",
+              "left rear leg", "left rear leg",
+              "right rear leg", "right rear leg",});
+}
+string map_target_zone(string zone) {
+  switch(zone) {
+  case "abdomen":
+    return "stomach";
+  case "hands":
+  case "arms":
+    return (random(2) ? "left " : "right ") + "front leg";
+  case "feet":
+  case "legs":
+    return (random(2) ? "left " : "right ") + "rear leg";
+  default:
+    return zone;
+  }
+}
+string map_armour_zone(string zone) {
+  switch(zone) {
+  case "thorax":
+  case "body":
+  case "breast":
+  case "trunk":
+    return "chest";
+  case "tail":
+    return "back";
+  case "stomach":
+    return "abdomen";
+  case "left arm":
+  case "right arm":
+  case "left front leg":
+  case "right front leg":
+  case "left petral fin":
+  case "right petral fin":
+  case "left wing":
+  case "right wing":
+  case "branches":
+    return "arms";
+  case "left hand":
+  case "right hand":
+  case "left middle leg":
+  case "right middle leg":
+  case "left front paw":
+  case "right front paw":
+    return "hands";
+  case "left leg":
+  case "right leg":
+  case "left back leg":
+  case "right back leg":
+  case "left rear leg":
+  case "right rear leg":
+  case "dorsal fin":
+    return "legs";
+  case "left foot":
+  case "right foot":
+  case "left rear paw":
+  case "left rear paw":
+  case "left rear foot":
+  case "left rear foot":
+  case "left claw":
+  case "right claw":
+  case "root":
+    return "feet";
+  default:
+    return zone;
+  }
+}
+
+==================================================
+FILE: races/bat.c
+==================================================
+
+inherit "/std/races/rodent_base";
+void setup() {
+   set_name( "bat" );
+   set_long( "This is a small flying rodent." );
+   set_desc( "a small, flying rodent" );
+   set_height( 20 );
+   set_weight( 40 );
+   remove_bit( "torso" );
+   remove_bit( "left front leg" );
+   remove_bit( "right front leg" );
+   remove_bit( "left rear leg" );
+   remove_bit( "right rear leg" );
+   add_bit( "torso", "torso", ({ 0, 20, 0,
+      "heart", "liver", "left kidney", "right kidney", "spleen",
+      "right lung", "left lung", "right wing", "left wing" }) );
+   add_bit( "right wing", "wing", ({ "torso", 20, 0 }) );
+   add_bit( "left wing", "wing", ({ "torso", 20, 0 }) );
+   add_bit( "left leg", "leg", ({ 0, 5, 0 }) );
+   add_bit( "right leg", "leg", ({ 0, 5, 0 }) );
+   set_sight( ({ -20, 0, 80, 120 }) );
+   set_stats( ({ 0, 14, -4, -4, -6 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   thing->add_ac( "blunt", "blunt", level );
+   thing->add_ac( "sharp", "sharp", 2 + level );
+   thing->add_ac( "pierce", "pierce", 2 * level );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number ) / 4;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "bite" );
+   thing->remove_attack( "claws" );
+   thing->add_attack( "bite", 75, ({ 0, 3, number }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "claws", 50, ({ 0, 5, number / 2 }),
+      "sharp", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/bear.c
+==================================================
+
+inherit "/std/races/carnivore";
+void setup() {
+   set_name( "bear" );
+   set_desc( "a furry bear" );
+   set_height( 200 );
+   set_weight( 8000 );
+   set_stats( ({ 6, 4, -2, 8, -4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   level = 2 + ( 2 * level + random( level ) ) / 8;
+   thing->add_ac( "blunt", "blunt", 20 + level / 3 );
+   thing->add_ac( "sharp", "sharp", 50 + level );
+   thing->add_ac( "pierce", "pierce", 60 + 2 * level );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "claws", 100, ({ 2 * number, 10, number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 50, ({ 3 * number, 8, number }),
+      "pierce", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+   thing->tactics( "attitude offensive" );
+}
+
+==================================================
+FILE: races/beetle.c
+==================================================
+
+inherit "/std/races/insect_base";
+void setup() {
+   set_name( "beetle" );
+   set_desc( "a hard-carapaced insect that scuttles along the ground" );
+   set_height( 5 );
+   set_weight( 2 );
+   add_bit( "left wing cover", "cover", ({ "thorax", 1, 0 }) );
+   add_bit( "right wing cover", "cover", ({ "thorax", 1, 0 }) );
+   inedible += ({ "left wing cover", "right wing cover" });
+   set_stats( ({ -6, 4, -6, -6, -6 }) );
+}
+void start_player( object thing ) {
+   ::start_player( thing );
+   thing->tactics( "response dodge" );
+   thing->tactics( "attitude defensive" );
+}
+
+==================================================
+FILE: races/bird.c
+==================================================
+
+inherit "/std/races/bird_base";
+void setup() {
+   set_name( "bird" );
+   set_long( "A general, unspecified bird.\n" );
+   set_height( 15 );
+   set_weight( 60 );
+   set_stats( ({ 0, 14, -4, -4, -6 }) );
+}
+void new_set_level( mixed *args ) {
+   int weight;
+   object thing;
+   thing = args[ 1 ];
+   if ( !thing )
+     return;
+   weight = (thing->query_weight() / 20);
+   thing->add_ac( "blunt", "blunt", weight / 2 );
+   thing->add_ac( "pierce", "pierce", weight );
+   thing->add_ac( "sharp", "sharp", weight );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number / 4 ) + ( thing->query_weight() / 20 );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "beak" );
+   thing->remove_attack( "claws" );
+   thing->add_attack( "beak", 50, ({ number / 2, 2, number / 2 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "claws", 75, ({ number, 5, number / 2 }),
+      "sharp", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/bird_base.c
+==================================================
+
+inherit "/std/races/base";
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   set_desc( "a general, unspecified bird.  This should not be used since "
+      "it is a base race" );
+   bits = ({
+      "head", 0, ({ 0, 150, 0,
+         "left eye", "right eye", "beak", "skull" }),
+      "left eye", "eye", ({ "head", 1, 0 }),
+      "right eye", "eye", ({"head", 1, 0 }),
+      "beak", 0, ({ "head", 20, 0 }),
+      "skull", "cranium", ({ "head", 30, 0, "brain" }),
+      "brain", 0, ({ "skull", 10, 0 }),
+      "neck", 0, ({ 0, 25, 0, "gizzard" }),
+      "gizzard", "gullet", ({ "neck", 5, 0 }),
+      "torso", "body", ({ 0, 500, 0,
+         "heart", "liver", "left kidney", "right kidney", "left lung",
+         "right lung", "spleen", "intestine", "pancreas", "wishbone",
+         "body feather" }),
+      "heart", 0, ({ "torso", 50, 0 }),
+      "liver", 0, ({ "torso", 25, 0 }),
+      "left kidney", "kidney", ({ "torso", 15, 0 }),
+      "right kidney", "kidney", ({ "torso", 15, 0 }),
+      "left lung", "lung", ({ "torso", 25, 0 }),
+      "right lung", "lung", ({ "torso", 25, 0 }),
+      "spleen", 0, ({ "torso", 15, 0 }),
+      "intestine", "gut", ({ "torso", 50, 0 }),
+      "pancreas", 0, ({ "torso", 15, 0 }),
+      "wishbone", 0, ({ "torso", 5, 0 }),
+      "body feather", "feather", ({ "torso", 1, ({"/std/bit", 6}) }),
+      "tail", 0, ({ 0, 50, 0, "tail feather" }),
+      "tail feather", "feather", ({ "tail", 1, ({"/std/bit", 4}) }),
+      "left wing", "wing", ({ 0, 150, 0,
+         "left wing feather" }),
+      "left wing feather", "feather", ({ "left wing", 1,
+         ({"/std/bit", 5}) }),
+      "right wing", "wing", ({ 0, 150, 0,
+         "right wing feather" }),
+      "right wing feather", "feather", ({ "right wing", 1,
+         ({"/std/bit", 5}) }),
+      "left leg", "leg", ({ 0, 100, 0, "left claw" }),
+      "left claw", "claw", ({ "left leg", 25, 0 }),
+      "right leg", "leg", ({ 0, 100, 0, "right claw" }),
+      "right claw", "claw", ({ "right leg", 25, 0 })
+   });
+   inedible = ({ "beak", "skull", "body feather", "left wing feather",
+      "right wing feather", "tail feather", "left claw", "right claw",
+      "wishbone" });
+   unrottable = ({ "beak", "skull", "body feather", "left wing feather",
+      "right wing feather", "tail feather", "left claw", "right claw",
+      "wishbone" });
+   pluckable = ({ "body feather", "left wing feather", "right wing feather",
+      "tail feather" });
+   set_skin( "feathers" );
+   if( !do_setup )
+      this_object()->setup();
+}
+string *query_target_zones() {
+  return ({ "head", "head", "neck",
+              "breast", "breast", "breast", "breast", "back",
+              "left wing", "left wing", "left wing", "left wing",
+              "right wing", "right wing", "right wing", "right wing",
+              "stomach", "stomach", "stomach",
+              "left leg", "left leg", "left claw",
+              "right leg", "right leg", "right claw" });
+}
+string map_target_zone(string zone) {
+  switch(zone) {
+  case "chest":
+    return "breast";
+  case "abdomen":
+    return "stomach";
+  case "hands":
+  case "arms":
+    return (random(2) ? "left " : "right ") + "wing";
+  case "feet":
+    return (random(2) ? "left " : "right ") + "claw";
+  default:
+    return zone;
+  }
+}
+
+==================================================
+FILE: races/bufonid.c
+==================================================
+
+inherit "/std/races/humanoid";
+void setup() {
+   set_name( "bufonid" );
+   set_long( "The bufonids are rare species of humanoid toad-like beings.  "
+      "It is rumoured that they were created by wizards as part of a "
+      "heinous series of experiments of unknown intent and subsequently "
+      "escaped from their creators.  Little is known of them, except that "
+      "they keep themselves well hidden from humans.\n" );
+   set_height( 150 );
+   set_weight( 1800 );
+   set_desc( "a strange creature, with webbed feet and warty green skin, "
+      "that gives you the impression of being a humanoid toad" );
+   remove_bit( "left ear" );
+   remove_bit( "right ear" );
+   remove_bit( "nose" );
+   remove_bit( "scalp" );
+   remove_bit( "teeth" );
+   add_ac( "blunt", "blunt", 15 );
+   add_ac( "pierce", "pierce", 12 );
+   add_ac( "sharp", "sharp", 10 );
+   add_attack( "hands", 75, ({ 40, 5, 10 }) );
+   add_attack( "feet", 25, ({ 30, 5, 20 }) );
+   set_stats( ({ 2, 2, 0, 2, 0 }) );
+}
+
+==================================================
+FILE: races/cabbage.c
+==================================================
+
+inherit "/std/races/base";
+void setup() {
+   set_name( "cabbage" );
+   set_long("A green, leafy vegetable.  Probably full of vitamins and "+
+      "minerals, and plenty of roughage.\n" );
+   set_height( 20 );
+   set_weight( 40 );
+   set_desc( "a cute little green-fronded cabbage.  Awww" );
+   set_skin( "fronds" );
+   bits = ({
+      "frond", "frond", ({ 0, 100, ({"/std/bit", 10}) }),
+      "stalk", "stalk", ({ 0, 500, 0 })
+   });
+   inedible = ({ });
+   unrottable = ({ });
+   set_stats( ({ -4, -4, -6, -4, -6 }) );
+}
+void player_heart_beat( string word, object brassica ) {
+   object *caterpillars;
+   if( !environment( brassica ) ) {
+      return;
+   }
+   caterpillars = match_objects_for_existence( "caterpillar",
+      environment( brassica ) );
+   if( !sizeof( caterpillars ) ) {
+      return;
+   }
+   if( brassica->caterpillars_here( caterpillars ) ) {
+      return;
+   }
+   brassica->do_command( "gibber" );
+   brassica->run_away();
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "fronds" );
+   thing->add_attack( "fronds", 160, ({ 4 * number, 5, 3 * number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack_message( "fronds", "sharp", ({
+      50, "$N scratch$es $P $z with a frond.\n",
+      100, "$N jab$s a sharp frond into $P $z.\n",
+      140, "$N chew$s on $P $z.\n",
+      180, "$N slash$es $P $z with $p fronds.\n",
+      230, "$N climb$s onto %I and cuts $P $z with a sharp frond.\n",
+      0, "$N bite$s $P $z off!\n" }) );
+   thing->tactics( "response dodge" );
+   thing->tactics( "attitude offensive" );
+}
+
+==================================================
+FILE: races/camel.c
+==================================================
+
+inherit "/std/races/ruminant";
+void setup() {
+   set_name( "camel" );
+   set_long( "The camel is an animal living in desert regions.  It has two "
+      "humps, a mean temper and a good eye for numbers.  They are usually "
+      "named things like \"You Bastard\", \"Evil-smelling Bugger\" and so "
+      "on, something that might seem strange to anyone who hasn't "
+      "actually met one of the beasts.\n" );
+   set_height( 170 );
+   set_weight( 12000 );
+   set_desc( "a camel that looks less interested in you than in sand" );
+   add_bit( "tail", "tail", ({ 0, 18, 0 }) );
+   add_bit( "fore hump", "hump", ({ 0, 75, 0 }) );
+   add_bit( "aft hump", "hump", ({ 0, 50, 0 }) );
+   inedible += ({ "tail" });
+   add_ac( "blunt", "blunt", 50 );
+   add_ac( "pierce", "pierce", 20 );
+   add_ac( "sharp", "sharp", 20 );
+   add_attack( "bite", 50, ({ 40, 8, 10 }) );
+   add_attack( "feet", 50, ({ 60, 10, 40 }) );
+   set_stats( ({ 4, 2, 10, 6, 8 }) );
+}
+void start_player( object thing ) {
+   ::start_player( thing );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/carnivore.c
+==================================================
+
+inherit "/std/races/base";
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   set_weight( 700 );
+   set_height( 50 );
+   set_desc( "your standard carnivore.  This should not be used as it is a "
+      "base race" );
+   bits = ({
+      "head", "head", ({ 0, 40, 0,
+         "left eye", "right eye", "nose", "skull", "left ear", "right ear",
+         "tongue" }),
+      "left eye", "eye", ({ "head", 1, 0 }),
+      "right eye", "eye", ({ "head", 1, 0 }),
+      "skull", "cranium", ({ "head", 20, 0, "brain", "teeth" }),
+      "brain", "brain", ({ "skull", 20, 0 }),
+      "left ear", "ear", ({"head", 1, 0 }),
+      "right ear", "ear", ({"head", 1, 0 }),
+      "nose", "nose", ({ "head", 3, 0 }),
+      "teeth", "teeth", ({ "skull", 3, ({"/std/bit_set", 1}), "tooth" }),
+      "tooth", "tooth", ({ "teeth", 1, ({"/std/bit", 48}) }),
+      "tongue", "tongue", ({ "head", 2, 0 }),
+      "neck", "neck", ({ 0, 15, 0 }),
+      "torso", "body", ({ 0, 350, 0,
+         "heart", "liver", "left kidney", "right kidney", "left lung",
+         "right lung", "spleen", "intestine", "pancreas" }),
+      "heart", "heart", ({ "torso", 10, 0 }),
+      "liver", "liver", ({ "torso", 5, 0 }),
+      "left kidney", "kidney", ({ "torso", 5, 0 }),
+      "right kidney", "kidney", ({ "torso", 5, 0 }),
+      "left lung", "lung", ({ "torso", 10, 0 }),
+      "right lung", "lung", ({ "torso", 10, 0 }),
+      "spleen", "spleen", ({ "torso", 5, 0 }),
+      "intestine", "gut", ({ "torso", 15, 0 }),
+      "pancreas", "pancreas", ({ "torso", 5, 0 }),
+      "genitals", "genitals", ({ 0, 5, 0 }),
+      "left front leg", "leg", ({ 0, 130, 0, "left front paw" }),
+      "left front paw", "paw", ({ "left front leg", 30, 0, "claw" }),
+      "claw", "claw", ({ "left front paw", 1, ({"/std/bit", 4}) }),
+      "right front leg", "leg", ({ 0, 130, 0, "right front paw" }),
+      "right front paw", "paw", ({ "right front leg", 30, 0, "claw" }),
+      "claw", "claw", ({ "right front paw", 1, ({"/std/bit", 4}) }),
+      "left rear leg", "leg", ({ 0, 275, 0, "left rear paw" }),
+      "left rear paw", "paw", ({ "left rear leg", 30, 0, "claw" }),
+      "claw", "claw", ({ "left rear paw", 1, ({"/std/bit", 4}) }),
+      "right rear leg", "leg", ({ 0, 275, 0, "right rear paw" }),
+      "right rear paw", "paw", ({ "right rear leg", 30, 0, "claw" }),
+      "claw", "claw", ({ "right rear paw", 1, ({"/std/bit", 4}) }),
+      "tail", "tail", ({ 0, 18, 0 }),
+      "skin", "skin", ({ 0, 175, 0 })
+   });
+   inedible = ({ "skull", "claw", "tail", "teeth", "tooth", "skin" });
+   unrottable = ({ "skull", "claw", "teeth", "tooth" });
+   set_skin( "pelt" );
+   set_stats( ({ 6, 10, -2, 6, -4 }) );
+   if( !do_setup )
+      this_object()->setup();
+}
+string *query_target_zones() {
+  return ({ "head", "head", "neck",
+              "chest", "back", "back", "back", "lower back",
+              "left front leg", "left front leg", "left front paw",
+              "stomach", "stomach", "tail",
+              "right front leg", "right front leg", "right front paw",
+              "left rear leg", "left rear leg", "left rear paw",
+              "right rear leg", "right rear leg", "right rear paw"});
+}
+string map_target_zone(string zone) {
+  switch(zone) {
+  case "chest":
+    return random(4) ? "back" : "chest";
+  case "abdomen":
+    return random(4) ? "stomach" : "lower back";
+  case "arms":
+    return (random(2) ? "left " : "right ") + "front leg";
+  case "hands":
+    return (random(2) ? "left " : "right ") + "front paw";
+  case "legs":
+    return (random(2) ? "left " : "right ") + "rear leg";
+  case "feet":
+    return (random(2) ? "left " :"right ") + "rear paw";
+  default:
+    return zone;
+  }
+}
+
+==================================================
+FILE: races/cat.c
+==================================================
+
+inherit "/std/races/carnivore";
+void setup() {
+   set_name( "cat" );
+   set_long( "A carnivorous mammal (Felis catus) long domesticated and kept "+
+         "by man as a pet or for catching rats and mice.\n" );
+   set_height( 20 );
+   set_weight( 100 );
+   set_desc( "a furry cat, on the hunt for a mouse to play with" );
+   set_stats( ({ 0, 10, 2, -2, 2 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   level = 1 + ( 2 * level + random( level ) ) / 10;
+   thing->add_ac( "blunt", "blunt", level );
+   thing->add_ac( "sharp", "sharp", 2 + level );
+   thing->add_ac( "pierce", "pierce", 2 * level );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "bite" );
+   thing->remove_attack( "claws" );
+   thing->add_attack( "bite", 100, ({ number, 5, number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "claws", 150, ({ number / 2, 7, number }),
+      "sharp", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/caterpillar.c
+==================================================
+
+inherit "/std/races/insect_base";
+void setup() {
+   set_name( "caterpillar" );
+   set_long( "The elongated wormlike larva of a butterfly or moth.\n" );
+   set_height( 5 );
+   set_weight( 2 );
+   set_desc( "a caterpillar, crawling along the ground" );
+   set_stats( ({ -6, -6, -6, -6, -6 }) );
+}
+void player_heart_beat( string word, object eater ) {
+   int i, time;
+   object flowers, *things;
+   if( !environment( eater ) ) return;
+   if( eater->query_property( "eating" ) ) return;
+   things = all_inventory( environment( eater ) ) - ({ eater });
+   if( !sizeof( things ) ) return;
+   for( i = 0; i < sizeof( things ); i++ ) {
+      if( !(int)things[ i ]->id( "flowers" ) ) {
+         things -= ({ things[ i ] });
+         i--;
+      } else {
+         if( things[ i ]->query_property( "being eaten" ) ) {
+            things -= ({ things[ i ] });
+            i--;
+         }
+      }
+   }
+   if( !sizeof( things ) ) return;
+   flowers = things[ random( sizeof( things ) ) ];
+   tell_room( environment( eater ), "The " + (string)eater->query_short() +
+      " discovers the " + (string)flowers->query_short() + " and starts to "
+      + "munch.\n" );
+   eater->add_property( "eating", 1 );
+   flowers->add_property( "being eaten", 1 );
+   time = (int)flowers->query_weight();
+   time += random( time );
+   call_out( "done_eating", time, eater, flowers );
+}
+void done_eating( object eater, object flowers ) {
+   if( !eater ) return;
+   eater->remove_property( "eating" );
+   if( !environment( eater ) ) return;
+   if( !flowers ) return;
+   if( member_array( flowers, all_inventory( environment( eater ) ) ) == -1 )
+      return;
+   tell_room( environment( eater ), "The " + (string)eater->query_short() +
+      " finishes the " + (string)flowers->query_short() + " and burps " +
+      "contentedly.\n" );
+   flowers->dest_me();
+}
+
+==================================================
+FILE: races/chicken.c
+==================================================
+
+inherit "/std/races/bird_base";
+void setup() {
+   set_name( "chicken" );
+   set_long( "Chickens.  That's all there is to say.  Chickens, chickens, "
+      "chickens, chickens, chickens.  Thank you.\n" );
+   set_weight( 80 );
+   set_height( 30 );
+   set_desc( "an ordinary brain-dead chicken" );
+   add_ac( "feather_blow", "blunt", 10 );
+   add_ac( "feather_slash", "sharp", 2 );
+   add_ac( "feather_pierce", "pierce", 2 );
+   set_stats( ({ 0, 8, -6, -4, -6 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number / 4 ) + ( thing->query_weight() / 20 );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "beak" );
+   thing->remove_attack( "claws" );
+   thing->add_attack( "beak", 50, ({ number / 2, 2, number / 2 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "claws", 75, ({ number, 5, number / 2 }),
+      "sharp", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/cockroach.c
+==================================================
+
+inherit "/std/races/insect_base";
+void setup() {
+   set_desc( "a nasty cockroach, ugh" );
+   set_name( "cockroach" );
+   set_height( 5 );
+   set_weight( 2 );
+   add_ac( "blunt", "blunt", 40 );
+   add_ac( "sharp", "sharp", 20 );
+   add_ac( "pierce", "pierce", 10 );
+   set_stats( ({ -6, 4, -4, -6, -6 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "claws", 100, ({ ( 3 * number ) / 2, 5, number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 50, ({3 * number, 2, number }),
+      "pierce", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+   thing->tactics( "attitude defensive" );
+}
+
+==================================================
+FILE: races/cow.c
+==================================================
+
+inherit "/std/races/ruminant";
+void setup() {
+   mixed *new_head;
+   set_name( "cow" );
+   set_long( "A large hoofed mammal.  Surprise.\n" );
+   set_height( 175 );
+   set_weight( 16000 );
+   set_desc( "a large, hairy quadruped reminding you very much of a cow" );
+   new_head = query_bit( "head" );
+   new_head[ 2 ] += ({ "left horn", "right horn" });
+   remove_bit( "head" );
+   add_bit( "head", "head", new_head[ 2 ] );
+   add_bit( "left horn", "horn", ({ "head", 10, 0 }) );
+   add_bit( "right horn", "horn", ({ "head", 10, 0 }) );
+   add_bit( "udders", "udders", ({ 0, 60, 0 }) );
+   add_bit( "tail", "tail", ({ 0, 15, 0 }) );
+   inedible += ({ "left horn", "right horn", "tail" });
+   unrottable += ({ "left horn", "right horn" });
+   add_ac( "blunt", "blunt", 50 );
+   add_ac( "pierce", "pierce", 20 );
+   add_ac( "sharp", "sharp", 20 );
+   add_attack( "bite", 20, ({ 40, 8, 10 }) );
+   add_attack( "feet", 50, ({ 60, 10, 40 }) );
+   set_stats( ({ 4, -2, -4, 6, -6 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "horns" );
+   thing->remove_attack( "hoof" );
+   if( number < 10 )
+      number = 10;
+   thing->add_attack( "horns", 40, ({ 60, 10, 40 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "hoof", 60, ({ 40, 8, 10 }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/crab.c
+==================================================
+
+inherit "/std/races/base";
+void setup() {
+    set_name( "crab" );
+    set_long( "A scuttling crab.\n" );
+    set_height( 10 );
+    set_weight( 18 );
+    set_desc( "a scuttling crab" );
+    bits = ({
+        "head", "head", ({ 0, 200, 0,
+            "left antenna", "right antenna", "left antennule", "right "
+            "antennule", "brain", "left eye", "right eye", "left eyestalk",
+            "right eyestalk", "jaw", "skull" }),
+        "left antenna", "antenna", ({ "head", 2, 0 }),
+        "right antenna", "antenna", ({ "head", 2, 0 }),
+        "left antennule", "antennule", ({ "head", 1, 0 }),
+        "right antennule", "antennule", ({ "head", 1, 0 }),
+        "brain", "brain", ({ "head", 50, 0 }),
+        "skull", "skull", ({ "head", 50, 0 }),
+        "left eye", "eye", ({ "head", 5, 0 }),
+        "right eye", "eye", ({ "head", 5, 0 }),
+        "left eyestalk", "eyestalk", ({ "head", 2, 0 }),
+        "right eyestalk", "eyestalk", ({ "head", 2, 0 }),
+        "jaw", "mouth", ({ "head", 25, 0 }),
+        "carapace", "carapace", ({ 0, 25, 0 }),
+        "thorax", "thorax", ({ 0, 500, 0,
+            "left cheliped", "right cheliped", "left second leg",
+            "right second leg", "left third leg", "right third leg", "left "
+            "fourth leg", "right fourth leg", "left back leg", "right back "
+            "leg", "heart", "hepatopancreas", "intestine", "stomach" }),
+        "left cheliped", "cheliped", ({ "thorax", 75, 0 }),
+        "right cheliped", "cheliped", ({ "thorax", 75, 0 }),
+        "left second leg", "leg", ({ "thorax", 50, 0 }),
+        "right second leg", "leg", ({ "thorax", 50, 0 }),
+        "left third leg", "leg", ({ "thorax", 50, 0 }),
+        "right third leg", "leg", ({ "thorax", 50, 0 }),
+        "left fourth leg", "leg", ({ "thorax", 50, 0 }),
+        "right fourth leg", "leg", ({ "thorax", 50, 0 }),
+        "left back leg", "leg", ({ "thorax", 50, 0 }),
+        "right back leg", "leg", ({ "thorax", 50, 0 }),
+        "heart", "heart", ({ "thorax", 50, 0 }),
+        "hepatopancreas", "hepatopancreas", ({ "thorax", 10, 0 }),
+        "intestine", "intestine", ({ "thorax", 30, 0 }),
+        "stomach", "stomach", ({ "thorax", 30, 0 }),
+        "apron", "apron", ({ 0, 100, 0, "left pleopod", "right pleopod" }),
+        "left pleopod", "pleopod", ({ "apron", 20, 0 }),
+        "right pleopod", "pleopod", ({ "apron", 20, 0 })
+    });
+    inedible = ({ "jaw", "carapace", "skull" });
+    unrottable = ({ "jaw", "carapace", "skull" });
+    set_skin( "shell" );
+    set_stats( ({ -6, 4, -6, -4, -6 }) );
+}
+int query_eat( string type ) {
+   return ( member_array( type, inedible ) == -1 );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   thing->add_skill_level( "other.health", level * 2 );
+   thing->add_ac( "blunt", "blunt", level / 2 );
+   thing->add_ac( "pierce", "pierce", level / 4 );
+   thing->add_ac( "sharp", "sharp", level / 3 );
+}
+void set_unarmed_attacks( object thing ) {
+    int number;
+    number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+    number = 4 + sqrt( number );
+    thing->remove_attack( "hands" );
+    thing->remove_attack( "feet" );
+    thing->remove_attack( "pincers" );
+    thing->add_attack( "pincers", 100, ({ number, 10, number }),
+        "unarmed", "unarmed", 0 );
+    thing->add_attack_message( "pincers", "unarmed", ({
+       20, "$N bat$s $I with $p pincer",
+       60, "$N nip$s $P $z with $p pincer",
+       100, "$N scratch$es $I deeply with $p pincer",
+       140, "$N cut$s $P $z deeply with $p pincer",
+       180, "$N dig$s $p pincer into $P $z",
+       220, "$N gouge$s $I with $p pincer",
+       0, "$N slice$s $P $z up with $p pincer" }) );
+   thing->tactics( "response dodge" );
+}
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/crocodile.c
+==================================================
+
+inherit "/std/races/reptile_base";
+void setup() {
+   set_name( "crocodile" );
+   set_long( "Any of several large voracious thick-skinned long-bodied "
+      "aquatic reptiles (as of the genus Crocodylus) of tropical and "
+      "subtropical waters.\n" );
+   set_height( 30 );
+   set_weight( 5000 );
+   set_desc( "a crocodile, sharp of tooth and vicious of temper." );
+   add_ac( "blunt", "blunt", 80 );
+   add_ac( "pierce", "pierce", 80 );
+   add_ac( "sharp", "sharp", 80 );
+   set_stats( ({ 6, 4, -4, 8, -4 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "chew" );
+   thing->remove_attack( "tail" );
+   thing->add_attack( "chew", 75, ({ 3 * number, number, number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "tail", 75, ({ number, number, number }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+   thing->tactics( "attitude offensive" );
+}
+
+==================================================
+FILE: races/deer.c
+==================================================
+
+inherit "/std/races/base";
+void setup() {
+   set_name( "deer" );
+   set_long( "A medium-sized hoofed mammal.  Surprise.\n" );
+   set_height( 250 );
+   set_weight( 4000 );
+   bits= ({
+      "head", "head", ({ 0, 120, 0,
+         "left eye", "right eye", "skull", "brain", "left ear",
+         "right ear", "tongue" }),
+      "left antler", "antler", ({ "head", 30, 0 }),
+      "right antler", "antler", ({ "head", 30, 0 }),
+      "left eye", "eye", ({ "head", 2, 0 }),
+      "right eye", "eye", ({ "head", 2, 0 }),
+      "skull", "cranium", ({ "head", 45, 0, "teeth" }),
+      "brain", "brain", ({ "head", 20, 0 }),
+      "left ear", "ear", ({"head", 4, 0 }),
+      "right ear", "ear", ({"head", 4, 0 }),
+      "teeth", "teeth", ({ "skull", 5, ({"/std/bit_set", 1}) }),
+      "tooth", "tooth", ({ "teeth", 1, ({"/std/bit", 18}) }),
+      "tongue", "tongue", ({ "head", 9, 0 }),
+      "neck", "neck", ({ 0, 120, 0 }),
+      "torso", "body", ({ 0, 400, 0,
+         "heart", "liver", "left kidney", "right kidney", "left lung",
+         "right lung", "spleen", "intestine", "pancreas" }),
+      "heart", "heart", ({ "torso", 35, 0 }),
+      "liver", "liver", ({ "torso", 35, 0 }),
+      "left kidney", "kidney", ({ "torso", 20, 0 }),
+      "right kidney", "kidney", ({ "torso", 20, 0 }),
+      "left lung", "lung", ({ "torso", 35, 0 }),
+      "right lung", "lung", ({ "torso", 35, 0 }),
+      "spleen", "spleen", ({ "torso", 20, 0 }),
+      "intestine", "gut", ({ "torso", 75, 0 }),
+      "pancreas", "pancreas", ({ "torso", 20, 0 }),
+      "left front leg", "leg", ({ 0, 140, 0, "left front hoof" }),
+      "left front hoof", "hoof", ({ "left front leg", 20, 0 }),
+      "right front leg", "leg", ({ 0, 140, 0, "right front hoof" }),
+      "right front hoof", "hoof", ({ "right front leg", 20, 0 }),
+      "left rear leg", "leg", ({ 0, 160, 0, "left rear hoof" }),
+      "left rear hoof", "hoof", ({ "left rear leg", 20, 0 }),
+      "right rear leg", "leg", ({ 0, 160, 0, "right rear hoof" }),
+      "right rear hoof", "hoof", ({ "right rear leg", 20, 0 }),
+      "tail", "tail", ({ 0, 15, 0 }),
+      "skin", "skin", ({ 0, 175, 0 })
+   });
+   inedible = ({ "skull", "left front hoof", "right front hoof", "left antler", "right antler",
+      "left rear hoof", "right rear hoof", "tail", "teeth", "tooth" });
+   unrottable = ({ "skull", "left front hoof", "right front hoof", "left antler", "right antler",
+      "left rear hoof", "right rear hoof", "teeth", "tooth" });
+   set_desc( "a medium-sized, hairy quadruped.  It looks like a deer" );
+   add_ac( "blunt", "blunt", 50 );
+   add_ac( "sharp", "sharp", 20 );
+   add_ac( "pierce", "pierce", 20 );
+   set_skin( "skin" );
+   set_stats( ({ 4, 4, -2, 6, -2 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "antlers" );
+   thing->remove_attack( "hoof" );
+   thing->add_attack( "antlers", 40, ({ number, 2, number }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "hoof", 60, ({ number / 2, 5, number }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/demon.c
+==================================================
+
+inherit "/std/races/demonic";
+void setup() {
+   set_long( "This is one of the denizens of the Underworld.\n" );
+   set_name( "demon" );
+   set_height( 250 );
+   set_weight( 5000 );
+   set_desc( "a nasty-looking demon" );
+   add_ac( "fire", "fire", 100 );
+   set_stats( ({ 10, 0, -2, 10, 4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   thing->add_skill_level( "other.health", level * 2 );
+   thing->add_ac( "blunt", "blunt", level / 2 );
+   thing->add_ac( "pierce", "pierce", level / 4 );
+   thing->add_ac( "sharp", "sharp", level / 3 );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "claws", 75, ({ 2 * number, 8, number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 25, ({ 3 * number, 10, number }),
+      "pierce", "unarmed", 0 );
+}
+
+==================================================
+FILE: races/dog.c
+==================================================
+
+inherit "/std/races/carnivore";
+void setup() {
+   set_name( "dog" );
+   set_long( "A street dog. I wouldn't stay too near, it could bite.\n" );
+   set_desc( "a nasty dog" );
+   set_height( 50 );
+   set_weight( 700 );
+   set_stats( ({ 4, 10, -2, 6, -4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   thing->add_ac( "blunt", "blunt", 40 );
+   thing->add_ac( "sharp", "sharp", 20 );
+   thing->add_ac( "pierce", "pierce", 10 );
+   thing->add_skill_level( "other.perception", 200 );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "claws", 100, ({ ( 3 * number ) / 2, 5, number } ),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 50, ({ 3 * number, 2, number }),
+      "pierce", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/duck.c
+==================================================
+
+inherit "/std/races/bird_base";
+void setup() {
+   set_name( "duck" );
+   set_long( "Ducks.  That's all there is to say.  Ducks, ducks, ducks, "
+      "ducks, ducks.  Thank you.\n" );
+   set_weight( 80 );
+   set_height( 30 );
+   set_desc( "an ordinary brain-dead duck" );
+   add_ac( "feather_blow", "blunt", 10 );
+   add_ac( "feather_slash", "sharp", 2 );
+   add_ac( "feather_pierce", "pierce", 2 );
+   set_stats( ({ 0, 14, -6, -4, -6 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number / 4 ) + ( thing->query_weight() / 20 );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "beak" );
+   thing->add_attack( "beak", 50, ({ number / 2, 2, number / 2 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "feet", 75, ({ number, 5, number / 2 }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/duckling.c
+==================================================
+
+inherit "/std/races/bird_base";
+void setup() {
+   set_name( "duckling" );
+   set_long( "Awwwwwwww it's SUCH a cute little duckling!\n" );
+   set_weight( 10 );
+   set_height( 15 );
+   set_desc( "an cute ickle duckling" );
+   add_ac( "feather_blow", "blunt", 10 );
+   add_ac( "feather_slash", "sharp", 2 );
+   add_ac( "feather_pierce", "pierce", 2 );
+   set_stats( ({ 0, 14, -6, -4, -6 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number / 4 ) + ( thing->query_weight() / 20 );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "beak" );
+   thing->add_attack( "beak", 50, ({ number / 2, 2, number / 2 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "feet", 75, ({ number, 5, number / 2 }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/elephant.c
+==================================================
+
+inherit "/std/races/ruminant";
+void setup() {
+   set_name( "elephant" );
+   set_long( "This is an elephant.  A large creature with a thick grey "
+      "hide.  He seems to weigh a lot so don't let him step on your "
+      "toe.\n" );
+   set_height( 280 );
+   set_weight( 100000 );
+   set_desc( "an elephant that looks back at you with small nice eyes" );
+   remove_bit( "nose" );
+   remove_bit( "head" );
+   add_bit( "head", "head", ({ 0, 135, 0,
+      "left eye", "right eye", "skull", "tongue", "left ear", "right ear",
+      "right tusk" "left tusk", "trunk" }) );
+   add_bit( "right tusk", "tusk", ({ "head", 20, ({ "/std/bit", 2 }) }) );
+   add_bit( "left tusk", "tusk", ({ "head", 20, ({ "/std/bit", 2 }) }) );
+   add_bit( "trunk", "trunk", ({ "head", 30, 0 }) );
+   remove_bit( "left front leg" );
+   remove_bit( "right front leg" );
+   remove_bit( "left rear leg" );
+   remove_bit( "right rear leg" );
+   remove_bit( "left front hoof" );
+   remove_bit( "right front hoof" );
+   remove_bit( "left rear hoof" );
+   remove_bit( "right rear hoof" );
+   add_bit( "left front leg", "leg", ({ 0, 150, 0, "left front foot" }) );
+   add_bit( "right front leg", "leg", ({ 0, 150, 0, "right front foot" }) );
+   add_bit( "left rear leg", "leg", ({ 0, 150, 0, "left rear leg" }) );
+   add_bit( "right rear leg", "leg", ({ 0, 150, 0, "right rear leg" }) );
+   add_bit( "left front foot", "foot", ({ "left front leg", 30, 0 }) );
+   add_bit( "right front foot", "foot", ({ "right front leg", 30, 0 }) );
+   add_bit( "left rear foot", "foot", ({ "left rear leg", 30, 0 }) );
+   add_bit( "right rear foot", "foot", ({ "right rear leg", 30, 0 }) );
+   add_bit( "tail", "tail", ({ 0, 15, 0 }) );
+   inedible += ({ "tail", "right tusk", "left tusk" });
+   unrottable += ({ "left tusk", "right tusk" });
+   add_ac( "blunt", "blunt", ({ 40, 20}) );
+   add_ac( "pierce", "pierce", ({ 30, 20 }) );
+   add_ac( "sharp", "sharp", ({ 50, 20 }) );
+   add_ac( "acid", "acid", 20 );
+   add_ac( "fire", "fire", 20 );
+   set_stats( ({ 30, -6, -4, 16, -2 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "tusks" );
+   thing->remove_attack( "crush" );
+   thing->remove_attack( "ram" );
+   thing->add_attack( "tusks", 25, ({200, 10, 30}), "pierce", "unarmed", 0 );
+   thing->add_attack( "crush", 10, ({300, 10, 50}), "blunt", "unarmed", 0 );
+   thing->add_attack_message( "crush", "unarmed", ({
+     0, "$N stand$s on $p hind legs and attempt$s to crash down on $I",
+      200, "$N stand$s on $p hind legs and crash$es down, striking $I "
+       "a glancing blow",
+      400, "$N stand$s on $p hind legs and crash$es down on $I, crushing "
+            "$P $z",
+      5000, "$N stand$s on $p hind legs and crash$es down on $I, crushing "
+            "$P $z into a bloody mess" }) );
+   thing->add_attack( "ram", 25, ({200, 10, 20}), "blunt", "unarmed", 0 );
+   thing->add_attack_message( "ram", "unarmed", ({
+     0, "$N charge$s at $I",
+      200, "$N charge$s $I and strike$s $I",
+      400, "$N charge$s $I and strike$s $P $z hard, making $I stagger "
+            "around",
+      5000, "$N charge$s $I and strike$s $I to the ground.  $I "
+            "stumbles around a little groggily" }) );
+   thing->add_attack( "trunk", 50, ({100, 5, 20}), "blunt", "unarmed", 0 );
+   thing->add_attack_message( "trunk", "unarmed", ({
+     0, "$N swing$s $p trunk at $I",
+      200, "$N swing$s $p trunk at $I, hitting $P $z hard",
+      400, "$N swing$s $p trunk, which thumps forcefully into $P $z",
+      5000, "$N swing$s $p trunk at $I, nearly knocking $I down" }) );
+}
+string *query_target_zones() {
+  return ({ "head", "head", "neck",
+              "chest", "back", "back", "back", "lower back",
+              "left front leg", "left front leg", "left front foot",
+              "stomach", "stomach", "tail",
+              "right front leg", "right front leg", "right front foot",
+              "left rear leg", "left rear leg", "left rear foot",
+              "right rear leg", "right rear leg", "right rear foot"});
+}
+string map_target_zone(string zone) {
+  switch(zone) {
+  case "chest":
+    return random(4) ? "back" : "chest";
+  case "abdomen":
+    return random(4) ? "stomach" : "lower back";
+  case "arms":
+    return (random(2) ? "left " : "right ") + "front leg";
+  case "hands":
+    return (random(2) ? "left " : "right ") + "front foot";
+  case "legs":
+    return (random(2) ? "left " : "right ") + "rear leg";
+  case "feet":
+    return (random(2) ? "left " :"right ") + "rear foot";
+  default:
+    return zone;
+  }
+}
+
+==================================================
+FILE: races/ferret.c
+==================================================
+
+inherit "/std/races/mustelidae_base";
+void setup() {
+   set_name( "ferret" );
+   set_long( "A small black white and grey animal.\n" );
+   set_height( 15 );
+   set_weight( 30 );
+   set_desc( "small brown meateater" );
+   set_stats( ({ -2, 8, -2, -4, -4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   level = 1 + ( 2 * level + random( level ) ) / 8;
+   thing->add_ac( "blunt", "blunt", 20 + level / 3 );
+   thing->add_ac( "sharp", "sharp", 50 + level );
+   thing->add_ac( "pierce", "pierce", 60 + 2 * level );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "claws" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "claws", 50, ({ ( 4 * number ) / 2, 8, 2 * number }),
+      "sharp", "unarmed", 0 );
+   thing->add_attack( "bite", 100, ({ 2 * number, 10, ( 3 * number ) / 2 }),
+      "pierce", "unarmed", 0  );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/fish.c
+==================================================
+
+inherit "/std/races/fish_base";
+void setup() {
+   set_name( "fish" );
+   set_long( "Fish,  yes.  A fish.  Nice generic standard fish thing.\n" );
+   set_height( 15 );
+   set_weight( 40 );
+   set_desc( "a fish, the kind with fins" );
+   set_stats( ({ -2, 14, -4, -4, -6 }) );
+}
+void check_water( object player ) {
+   if( !environment( player )->query_water() )
+      call_out( "do_drown", 4, player );
+}
+void do_drown( object player ) {
+   int i;
+   if( environment( player )->query_water() )
+      return;
+   tell_room( environment( player ) , player->one_short() + " gasps for "
+      "air.\n" );
+   i = player->query_max_hp() / 5;
+   if( i < 20 ) i = 20;
+   player->adjust_hp( -i );
+   call_out( "do_drown", 4, player );
+}
+void start_player( object thing ) {
+   ::start_player( thing );
+   thing->add_property( "gills", 1 );
+   thing->add_property("lives in water", 1);
+   thing->add_enter_commands( (: check_water :) );
+   thing->set_default_position( ({ "lying" }) );
+   thing->return_to_default_position( 0 );
+}
+void set_unarmed_attacks( object thing ) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = 4 + sqrt( number ) / 2;
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "bite" );
+   thing->add_attack( "bite", 100, ({ 2 * number, 5, number }),
+      "pierce", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/fish_base.c
+==================================================
+
+inherit "/std/races/base";
+void create() {
+   do_setup++;
+   ::create();
+   do_setup--;
+   set_desc( "your standard fish.  This should not be used since it is a "
+      "base race" );
+   bits = ({
+      "head", "head", ({ 0, 200, 0,
+         "left eye", "right eye", "left gill", "right gill" }),
+      "left eye", "eye", ({ "head", 1, 0 }),
+      "right eye", "eye", ({ "head", 1, 0 }),
+      "left gill", "gill", ({ "head", 50, 0 }),
+      "right gill", "gill", ({ "head", 50, 0 }),
+      "torso", "guts", ({ 0, 800, 0,
+         "heart", "liver", "left kidney", "right kidney", "spleen" }),
+      "heart", "heart", ({ "guts", 50, 0 }),
+      "liver", "liver", ({ "guts", 50, 0 }),
+      "left kidney", "kidney", ({ "guts", 25, 0 }),
+      "right kidney", "kidney", ({ "guts", 25, 0 }),
+      "spleen", "spleen", ({ "guts", 25, 0 }),
+      "genitals", "genitals", ({ 0, 10, 0 }),
+      "left petral fin", "fin", ({ 0, 100, 0, }),
+      "right petral fin", "fin", ({ 0, 100, 0, }),
+      "dorsal petral fin", "fin", ({ 0, 100, 0 }),
+      "tail", "tail", ({ 0, 150, 0 })
+   });
+   inedible = ({ "left petral fin", "right petral fin", "dorsal petral fin",
+      "tail" });
+   unrottable = ({  });
+   set_skin( "scales" );
+   if( !do_setup )
+      this_object()->setup();
+}
+string *query_target_zones() {
+  return ({ "head", "head",
+              "body","body", "body", "body", "body", "body",
+              "left petral fin", "right petral fin",
+              "dorsal fin", "body",
+              "body", "body",
+              "body", "body",
+              "body", "body", "body", "body", "body"
+              "body", "body",
+              "tail", "tail" });
+}
+string map_target_zone(string zone) {
+  switch(zone) {
+  case "head":
+    return zone;
+  case "arms":
+    return (random(2) ? "left " : "right ") + "petral fin";
+  case "hands":
+    return "dorsal fin";
+  case "feet":
+    return "tail";
+  default:
+    return "body";
+  }
+}
+int lives_in_water() { return 1; }
+
+==================================================
+FILE: races/fox.c
+==================================================
+
+inherit "/std/races/carnivore";
+void setup() {
+   set_name( "fox" );
+   set_long( "A cat-like creature with red fur, hunts small, "
+             "animals like mice and rabbits.\n" );
+   set_height( 30 );
+   set_weight( 400 );
+   set_desc( "A small red fox" );
+   set_stats( ({ 0, 10, -2, 4, -4 }) );
+}
+void new_set_level( mixed *args ) {
+   int level;
+   object thing;
+   if( sizeof(args) < 2 || !args[1] )
+      return;
+   level = args[ 0 ];
+   thing = args[ 1 ];
+   level = 1 + ( 2 * level + random( level ) ) / 10;
+   thing->add_ac( "blunt", "blunt", level );
+   thing->add_ac( "sharp", "sharp", 2 + level );
+   thing->add_ac( "pierce", "pierce", 2 * level );
+}
+void set_unarmed_attacks(object thing) {
+   int number;
+   number = (int)thing->query_skill_bonus( "fighting.combat.melee.unarmed" );
+   number = sqrt( number );
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "bite" );
+   thing->remove_attack( "claws" );
+   thing->add_attack( "bite", 100, ({ number / 2, 2, number }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "claws", 150, ({ number / 2, 2, number }),
+      "sharp", "unarmed", 0 );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/frog.c
+==================================================
+
+inherit "/std/races/amphibian";
+void setup() {
+   set_name( "frog" );
+   set_long( "Frogs are amphibians" );
+   set_height(10);
+   set_weight(10);
+   set_desc( "an innocent little froggie" );
+   add_ac( "blunt", "blunt", 5 );
+   add_ac( "pierce", "pierce", 4 );
+   add_ac( "sharp", "sharp", 3 );
+   add_attack( "bite", 50, ({ 10, 2, 6 }) );
+   set_sight( ({ 5, 20, 200, 300 }) );
+   set_stats( ({ -4, 10, -4, -4, -6 }) );
+}
+void start_player( object thing ) {
+   ::start_player( thing );
+   thing->tactics( "response dodge" );
+}
+
+==================================================
+FILE: races/gnome.c
+==================================================
+
+inherit "/std/races/humanoid";
+void setup() {
+   set_name( "gnome" );
+   set_long( "This is the race for gnomes.\n" );
+   set_desc( "a short-looking gnome" );
+   set_weight( 25 );
+   set_height( 20 );
+   set_sight( ({ 0, 5, 150, 200 }) );
+   set_stats( ({ -2, 8, 0, 6, 0 }) );
+}
+
+==================================================
+FILE: races/goat.c
+==================================================
+
+inherit "/std/races/ruminant";
+void setup() {
+   set_name( "goat" );
+   set_long( "A cloven-hoofed, horned mammal closely related to the "
+      "sheep.\n" );
+   set_desc( "a cloven-hoofed, horned mammal" );
+   set_weight( 800 );
+   set_height( 80 );
+   remove_bit( "head" );
+   add_bit( "head", "head", ({ 0, 135, 0,
+      "left eye", "right eye", "nose", "skull", "tongue", "left ear",
+      "right ear", "left horn", "right horn" }) );
+   add_bit( "left horn", "horn", ({ "head", 5, 0 }) );
+   add_bit( "right horn", "horn", ({ "head", 5, 0 }) );
+   inedible += ({ "left horn", "right horn" });
+   set_stats( ({ 4, 8, 0, 2, -4 }) );
+}
+void set_unarmed_attacks( object thing ) {
+   thing->remove_attack( "hands" );
+   thing->remove_attack( "feet" );
+   thing->remove_attack( "standard" );
+   thing->remove_attack( "horns" );
+   thing->remove_attack( "hoof" );
+   thing->add_attack( "horns", 60, ({ 21, 8, 11 }),
+      "pierce", "unarmed", 0 );
+   thing->add_attack( "hoof", 60, ({ 32, 10, 11 }),
+      "blunt", "unarmed", 0 );
+   thing->tactics( "response dodge" );
 }

@@ -1,2282 +1,1868 @@
-# Total Tokens: 22478
-# Total Files Merged: 6
-# Total Characters: 74943
+# Total Tokens: 19176
+# Total Files Merged: 11
+# Total Characters: 63953
 
-herit/club_elected.c
+erit/error_handler.c
 ==================================================
 
-inherit "/obj/handlers/inherit/club_family";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-#include <mail.h>
-#include <board.h>
-#include <player_handler.h>
-private mapping _elections;
-private string *_boards;
-private nosave mapping _discussion_items;
-#define CLUB_PRESIDENT_INDEX          "president"
-#define CLUB_VICE_PRESIDENT_INDEX     "vice-president"
-#define CLUB_TREASURER_INDEX          "treasurer"
-#define CLUB_SECRETARY_INDEX          "secretary"
-#define CLUB_ORDINARY_COMMITTEE_INDEX "committee"
-#define CLUB_BOARD_PREFIX "club "
-#define CLUB_DISCUSS_MESSAGE_VERIFY            1
-#define CLUB_DISCUSS_MESSAGE_COMPLETE          2
-#define CLUB_DISCUSS_MESSAGE_SHORT_DESCRIPTION 3
-#define CLUB_DISCUSS_MESSAGE_LONG_DESCRIPTION  4
-#define CLUB_DISCUSS_MESSAGE_NOMINATION        5
-#define CLUB_MAX_ARCHIVE_SIZE 50
-int is_nomination_accepted(string club_name,
-                           string position,
-                           string person);
-int complete_election(string club_name);
-int start_election(string club_name);
-int holds_position_of(string name, string position, string person);
-string query_position_name(string club_name,
-                           string position);
-int set_position_holder(string club_name,
-                                  string position,
-                                  string person);
-protected int add_archive(string club_name,
-                          string subject,
-                          string thingy);
-string query_club_board_name(string club_name);
-class election_info {
-   string treasurer;
-   string president;
-   string vice_president;
-   string secretary;
-   mapping account_info;
-   mapping positions;
-   int last_election;
-   int election_period;
-   mapping options;
-   class discussion_idea *discussion;
-   class club_archive *archives;
-   string announcement;
-   int announce_time;
-}
-#define CLUB_NOMINATION        1
-#define CLUB_NOMINATION_SECOND 3
-#define CLUB_ELECTION          2
-class election_data {
-   int time_of_event;
-   int state;
-   mapping people;
-   mapping nominated;
-   mapping voted_for;
-   string election_status;
-}
-class account_info {
-   class club_transaction* transactions;
-   string* allowed_people;
-   string* allowed_positions;
-}
-private class election_info query_elected_info(string name);
+#include <db.h>
+#include <error_handler.h>
+#define SAVE_FILE "/save/handlers/error_handler"
+#define ERROR_SUMMARY_FIELDS "id, entrydate, filename, type, category, name, reporter, status, directory"
+#define ERROR_DETAILS_FIELDS ERROR_SUMMARY_FIELDS \
+                      ", report, runtime"
+#define ERROR_REPLY_TIMEOUT (60 * 60 * 24 * 7 * 4)
+void finish_update(int type, mixed data, function finished, string query);
+private string _db;
+private string _user;
+private string _password;
 void create() {
-   _elections = ([ ]);
-   _boards = ({ });
-   ::create();
-   if (!_boards) {
-      _boards = ({ });
-   }
+   unguarded( (: restore_object(SAVE_FILE) :) );
+   DB_HANDLER->make_sql_request(_db, _user, _password,
+                 "delete from error_replies where senddate < " +
+                 (time() - ERROR_REPLY_TIMEOUT), (: 1 :));
 }
-protected void create_extra_data(string name) {
-   class election_info e_info;
-   class club_info data;
-   class club_transaction bing;
-   class account_info frog;
-   if (query_club_type(name)== CLUB_ELECTED) {
-      data = (class club_info)query_club_info(name);
-      e_info = new(class election_info);
-      e_info->treasurer = CLUB_TREASURER_INDEX;
-      e_info->president = CLUB_PRESIDENT_INDEX;
-      e_info->vice_president = CLUB_VICE_PRESIDENT_INDEX;
-      e_info->secretary = CLUB_SECRETARY_INDEX;
-      e_info->discussion = ({ });
-      e_info->positions = ([
-                             CLUB_TREASURER_INDEX : CLUB_UNKNOWN_MEMBER,
-                             CLUB_PRESIDENT_INDEX : data->founder,
-                             CLUB_VICE_PRESIDENT_INDEX : CLUB_UNKNOWN_MEMBER,
-                             CLUB_SECRETARY_INDEX : CLUB_UNKNOWN_MEMBER,
-                           ]);
-      e_info->account_info = ([ ]);
-      e_info->last_election = time();
-      e_info->options = ([ ]);
-      e_info->election_period = CLUB_INVALID_TIME;
-      e_info->announcement = "";
-      e_info->archives = ({ });
-      e_info->announce_time = 0;
-      data->extra_data = e_info;
-      set_club_changed(name);
-      bing = new(class club_transaction);
-      bing->date = time();
-      bing->amount = query_balance(name, CLUB_DEFAULT_ACCOUNT_NAME);
-      bing->transaction_type = CLUB_TRANSACTION_START_BALANCE;
-      bing->who = CLUB_CONTROLLER_MEMBER;
-      frog = new(class account_info);
-      frog->transactions = ({ bing });
-      frog->allowed_people = ({ });
-      frog->allowed_positions = ({ CLUB_TREASURER_INDEX,
-                                   CLUB_PRESIDENT_INDEX });
-      e_info->account_info[CLUB_DEFAULT_ACCOUNT_NAME] = frog;
-      set_club_changed(name);
-   } else {
-      ::create_extra_data(name);
-   }
+protected void setup_error_handler(string user, string db, string password) {
+   _user = user;
+   _db = db;
+   _password = password;
+   save_object(SAVE_FILE);
 }
-int change_club_type(string name,
-                     int type) {
-   if (::change_club_type(name, type)) {
-      start_election(name);
-      return 1;
-   }
-   return 0;
-}
-int disband_club(string name) {
-   if (::disband_club(name)) {
-      map_delete(_elections, name);
-      _boards -= ({ query_club_board_name(name) });
-      save_main();
-      return 1;
-   }
-   return 0;
-}
-protected class election_info query_elected_info(string name) {
-   class club_info data;
-   class account_info fluff;
-   if (is_elected_club(name)) {
-      data = (class club_info)query_club_info(name);
-      if (pointerp(data->extra_data->account_info)) {
-         fluff = new(class account_info);
-         fluff->transactions = data->extra_data->account_info;
-         fluff->allowed_people = ({ });
-         fluff->allowed_positions = ({ data->extra_data->president,
-                                       data->extra_data->treasurer });
-         data->extra_data->account_info = ([ CLUB_DEFAULT_ACCOUNT_NAME : fluff ]);
-      }
-      return data->extra_data;
-   }
-   return 0;
-}
-protected class account_info query_account_info(string name, string account) {
-   class election_info bing;
-   bing = query_elected_info(name);
-   if (bing) {
-      if (!account) {
-         account = CLUB_DEFAULT_ACCOUNT_NAME;
-      }
-      return bing->account_info[account];
-   }
-   return 0;
-}
-int remove_member(string club, string member) {
-   class election_info bing;
-   class account_info fluff;
-   string account;
-   string person;
-   string position;
+protected string build_sql_query(string select_rows, class error_query query) {
+   string* restrict;
    string name;
-   mapping nominations;
-   string *people;
-   if (::remove_member(club, member)) {
-      bing = query_elected_info(club);
-      if (bing) {
-         foreach (account, fluff in bing->account_info) {
-            fluff->allowed_people -= ({ member });
-         }
-         foreach (position, person in bing->positions) {
-            if (person == member) {
-               set_position_holder(club, position, CLUB_UNKNOWN_MEMBER);
-            }
-         }
+   string tmp;
+   restrict = ({ });
+   if (query->id != 0) {
+      restrict += ({ "id = " + query->id });
+   }
+   if (query->dir) {
+      if (query->dir[<1] == '/') {
+         query->dir = query->dir[0..<2];
       }
-      name = normalise_name(club);
-      if (_elections[name]) {
-         foreach (position, nominations in _elections[name]->nominated) {
-            map_delete(nominations, member);
-            foreach (person, people in nominations) {
-               nominations[person] = people - ({ member });
-            }
-         }
-         foreach (position, nominations in _elections[name]->people) {
-            map_delete(nominations, member);
-         }
-      }
-      return 1;
-   }
-   return 0;
-}
-int query_last_election(string name) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return info->last_election;
-   }
-   return 0;
-}
-int query_next_election(string name) {
-   int bing;
-   bing = query_last_election(name);
-   if (bing) {
-      return bing + CLUB_ELECTION_PERIOD;
-   }
-   return 0;
-}
-int query_minimum_next_election(string name) {
-   int bing;
-   bing = query_last_election(name);
-   if (bing) {
-      return bing + CLUB_MINIMUM_ELECTION_PERIOD;
-   }
-   return 0;
-}
-int is_president_of(string name, string president) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->president, president);
-   }
-   return 0;
-}
-int is_vice_president_of(string name, string vice_president) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->vice_president, vice_president);
-   }
-   return 0;
-}
-int is_secretary_of(string name, string secretary) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->secretary, secretary);
-   }
-   return 0;
-}
-int is_treasurer_of(string name, string treasurer) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      return holds_position_of(name, info->treasurer, treasurer);
-   }
-   return 0;
-}
-int holds_any_position_of(string name, string person) {
-   class election_info info;
-   string pos_name;
-   string per_name;
-   info = query_elected_info(name);
-   if (info) {
-      foreach (pos_name, per_name in info->positions) {
-         if (per_name == person) {
-            return 1;
-         }
+      if (query->recursive) {
+         restrict += ({ "directory like '" + query->dir + "%'" });
+      } else {
+         restrict += ({ "directory = '" + query->dir + "'" });
       }
    }
-   return 0;
-}
-int holds_position_of(string name, string position, string person) {
-   class election_info info;
-   info = query_elected_info(name);
-   if (info) {
-      position = query_position_name(name, position);
-      return info->positions[position] == person;
+   if (query->assigned_to) {
+      restrict += ({ "AssignedTo = '" + query->assigned_to + "'" });
    }
-}
-int create_account(string name, string account) {
-   if (!account) {
-      account = CLUB_DEFAULT_ACCOUNT_NAME;
+   if (query->reporter) {
+      restrict += ({ "Reporter = '" + query->reporter + "'" });
    }
-   if (::create_account(name, account)) {
-      class election_info info;
-      class account_info frog;
-      info = query_elected_info(name);
-      if (info) {
-         frog = new(class account_info);
-         frog->transactions = ({ });
-         frog->allowed_people = ({ });
-         frog->allowed_positions = ({ info->president, info->treasurer });
-         info->account_info[account] = frog;
-         set_club_changed(name);
+   if (query->file_name) {
+      restrict += ({ "FileName = '" + query->file_name + "'" });
+   }
+   if (sizeof(query->type)) {
+      tmp = "Type in (";
+      foreach (name in query->type) {
+         tmp += "'" + name + "',";
       }
-      return 1;
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
    }
-   return 0;
-}
-int add_money(string name,
-              int amount,
-              int type,
-              string person,
-              string account,
-              string information) {
-   class account_info frog;
-   class club_transaction bing;
-   if (::add_money(name, amount, type, person, account)) {
-      frog = query_account_info(name, account);
-      if (frog) {
-         bing = new(class club_transaction);
-         bing->date = time();
-         bing->amount = amount;
-         bing->transaction_type = type;
-         bing->who = person;
-         bing->information = information;
-         frog->transactions += ({ bing });
-         set_club_changed(name);
+   if (sizeof(query->status)) {
+      tmp = "Status in (";
+      foreach (name in query->status) {
+         tmp += "'" + name + "',";
       }
-      return 1;
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
    }
-   return 0;
-}
-int remove_money(string name,
-                 int amount,
-                 int type,
-                 string person,
-                 string account,
-                 string information) {
-   class account_info frog;
-   class club_transaction bing;
-   if (::remove_money(name, amount, type, person, account)) {
-      frog = query_account_info(name, account);
-      if (frog) {
-         bing = new(class club_transaction);
-         bing->date = time();
-         bing->amount = -amount;
-         bing->transaction_type = type;
-         bing->who = person;
-         bing->information = information;
-         frog->transactions += ({ bing });
-         set_club_changed(name);
+   if (sizeof(query->category)) {
+      tmp = "Category in (";
+      foreach (name in query->category) {
+         tmp += "'" + name + "',";
       }
-      return 1;
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
    }
-   return 0;
-}
-class club_transaction* query_transactions(string name, string account) {
-   class account_info frog;
-   class club_transaction bing;
-   class club_transaction old;
-   int i;
-   if (is_elected_club(name)) {
-      frog = query_account_info(name, account);
-      if (sizeof(frog->transactions) &&
-          sizeof(frog->transactions[0]) == 4) {
-         for (i = 0; i < sizeof(frog->transactions); i++) {
-            old = frog->transactions[i];
-            bing = new(class club_transaction);
-            bing->who = old->who;
-            bing->transaction_type = old->transaction_type;
-            bing->amount = old->amount;
-            bing->date = old->date;
-            bing->information = 0;
-            frog->transactions[i] = bing;
-            set_club_changed(name);
-         }
-      }
-      return frog->transactions;
-   }
-   return ({ });
-}
-string query_transaction_type_name(int type) {
-   switch (type) {
-      case CLUB_TRANSACTION_UPKEEP :
-         return "upkeep";
-      case CLUB_TRANSACTION_DEPOSIT :
-         return "player deposit";
-      case CLUB_TRANSACTION_INSIGNIA :
-         return "insignia";
-      case CLUB_TRANSACTION_START_BALANCE :
-         return "start balance";
-      case CLUB_TRANSACTION_WITHDRAWL :
-         return "player withdrawl";
-      case CLUB_TRANSACTION_TRANSFER :
-         return "player transfer";
+   if (sizeof(restrict)) {
+      tmp = "select " + lower_case(select_rows) + " from errors where " +
+             implode(restrict, " and ");
+      switch (query->order_by) {
+      case ERROR_ORDER_BY_FILENAME :
+         tmp += " order by filename, entrydate";
+         break;
+      case ERROR_ORDER_BY_DATE :
+         tmp += " order by entrydate";
+         break;
+      case ERROR_ORDER_BY_REPORTER :
+         tmp += " order by reporter, entrydate";
+         break;
+      case ERROR_ORDER_BY_DIRECTORY :
       default :
-         return "unknown";
-   }
-}
-string* query_account_allowed_people(string club_name, string account) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      return frog->allowed_people;
-   }
-   return ({ });
-}
-int is_allowed_to_modify_account(string club_name,
-                               string account,
-                               string person) {
-   class account_info frog;
-   string pos;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      if (member_array(person, frog->allowed_people) != -1) {
-         return 1;
+         tmp += " order by directory, filename, entrydate";
+         break;
       }
-      foreach (pos in frog->allowed_positions) {
-         if (holds_position_of(club_name, pos, person)) {
-            return 1;
-         }
+      return tmp + " limit 150";
+   }
+   return 0;
+}
+string build_sql_update(int id, string field, mixed value) {
+   string ret;
+   ret = "update errors set " + field + " = ";
+   if (stringp(value)) {
+      ret += "'" + value + "'";
+   } else {
+      ret += "" + value;
+   }
+   ret += " where id = " + id;
+   return ret;
+}
+class error_forward create_error_forward(mapping map) {
+   class error_forward newy;
+   newy = new(class error_forward);
+   newy->date = map["forwarddate"];
+   newy->forwarder = map["forwarder"];
+   newy->old_directory = map["olddirectory"];
+   return newy;
+}
+class error_comment create_error_comment(mapping map) {
+   class error_comment newy;
+   newy = new(class error_comment);
+   newy->date = map["commentdate"];
+   newy->commenter = map["commenter"];
+   newy->comment = map["comment"];
+   return newy;
+}
+class error_summary create_error_summary(mapping map) {
+   class error_summary newy;
+   newy = new(class error_summary);
+   newy->id = map["id"];
+   newy->entry_date = map["entrydate"];
+   newy->filename = map["filename"];
+   newy->category = map["category"];
+   newy->assigned_to = map["assignedto"];
+   newy->reporter = map["reporter"];
+   newy->status = map["status"];
+   newy->type = map["type"];
+   newy->directory = map["directory"];
+   return newy;
+}
+class error_details create_error_details(mapping map) {
+   class error_details newy;
+   newy = new(class error_details);
+   newy->summary = create_error_summary(map);
+   newy->fix_date = map["fixdate"];
+   newy->fixer = map["fixer"];
+   newy->report = map["report"];
+   newy->runtime = map["runtime"];
+   return newy;
+}
+class error_complete create_error_complete(class error_details details) {
+   class error_complete newy;
+   newy = new(class error_complete);
+   newy->details = details;
+   newy->comments = ({ });
+   newy->forwards = ({ });
+   newy->replies = ({ });
+   return newy;
+}
+class error_replies create_error_replies(mapping map) {
+   class error_replies reply;
+   reply = new(class error_replies);
+   reply->id = map["id"];
+   reply->bug_id = map["bug_id"];
+   reply->sender = map["sender"];
+   reply->status = map["status"];
+   reply->recipient = map["recipient"];
+   reply->senddate = map["senddate"];
+   reply->subject = map["subject"];
+   reply->message = map["message"];
+   return reply;
+}
+void finish_summary(int type, mixed data, function finished, string query) {
+   class error_summary* errors;
+   mapping map;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data, query);
+   } else {
+      errors = ({ });
+      foreach (map in data) {
+         errors += ({ create_error_summary(map) });
       }
+      evaluate(finished, type, errors, query);
    }
-   return 0;
 }
-int add_account_allowed_person(string club_name, string account, string person) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(person, frog->allowed_people) == -1) {
-      frog->allowed_people += ({ person });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_account_allowed_person(string club_name, string account, string person) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(person, frog->allowed_people) != -1) {
-      frog->allowed_people -= ({ person });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-string* query_account_allowed_positions(string club_name, string account) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog) {
-      return frog->allowed_positions;
-   }
-   return ({ });
-}
-int add_account_allowed_position(string club_name, string account, string position) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(position, frog->allowed_positions) == -1) {
-      frog->allowed_positions += ({ position });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_account_allowed_position(string club_name, string account, string position) {
-   class account_info frog;
-   frog = query_account_info(club_name, account);
-   if (frog &&
-       member_array(position, frog->allowed_positions) != -1) {
-      frog->allowed_positions -= ({ position });
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int set_elected_option(string club_name,
-                       string option,
-                       mixed value) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      data->options[option] = value;
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-int remove_elected_option(string club_name,
-                          string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      map_delete(data->options, option);
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-mixed query_elected_option(string club_name,
-                           string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      return data->options[option];
-   }
-   return 0;
-}
-int is_elected_option(string club_name,
-                      string option) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      return !undefinedp(data->options[option]);
-   }
-   return 0;
-}
-int start_election(string club_name) {
-   string name;
-   string pos;
-   class election_info bing;
-   string *stuff;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      if (!_elections[name]) {
-         bing = query_elected_info(name);
-         _elections[name] = new(class election_data);
-         _elections[name]->people = ([ ]);
-         _elections[name]->nominated = ([ ]);
-         _elections[name]->voted_for = ([ ]);
-         _elections[name]->time_of_event = time() + CLUB_NOMINATION_TIME;
-         _elections[name]->state = CLUB_NOMINATION;
-         foreach (pos, stuff in bing->positions) {
-            _elections[name]->people[pos] = ([ ]);
-            _elections[name]->nominated[pos] = ([ ]);
-            _elections[name]->voted_for[pos] = ({ });
-         }
-         save_main();
-         send_broadcast_message(name,
-                         "An election has just started!  Nominate your "
-                         "favourite person now at the club control centre.");
-         return 1;
-      }
-   }
-   return 0;
-}
-int nominate_person(string club_name, string position, string person,
-                    string nominating) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      if (_elections[name] &&
-          (_elections[name]->state == CLUB_NOMINATION ||
-           _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->nominated[position]) {
-            if (!_elections[name]->nominated[position][person]) {
-                _elections[name]->nominated[position][person] = ({ });
-            }
-            if (member_array(nominating,
-                        _elections[name]->nominated[position][person]) == -1) {
-               _elections[name]->nominated[position][person] += ({ nominating });
-               save_main();
-               return 1;
+void finish_forwards(int type, mixed data, function finished,
+                     class error_complete* errors, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["id"]) {
+                 detail->forwards += ({ create_error_forward(map) });
             }
          }
       }
+      evaluate(finished, type, errors, query);
    }
-   return 0;
 }
-mixed finish_nomination(string club_name) {
-   string name;
-   string position_name;
-   mapping position_data;
-   string *data;
-   string person;
-   string *bad_positions;
-   class election_info frog;
-   name = normalise_name(club_name);
-   bad_positions = ({ });
-   if (is_elected_club(name)) {
-      frog = query_elected_info(name);
-      if (_elections[name] &&
-          (_elections[name]->state == CLUB_NOMINATION ||
-           _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-         foreach (position_name,
-                  position_data in _elections[name]->nominated) {
-            _elections[name]->people[position_name] = ([ ]);
-            foreach (person, data in position_data) {
-               if (is_nomination_accepted(club_name, position_name, person)) {
-                  _elections[name]->people[position_name][person] = 0;
-               }
-            }
-            if (sizeof(_elections[name]->people[position_name]) == 0) {
-               bad_positions += ({ position_name });
-            }
-         }
-         if (!sizeof(bad_positions) ||
-             _elections[name]->state == CLUB_NOMINATION_SECOND) {
-            foreach (position_name, position_data in _elections[name]->people) {
-               if (sizeof(position_data) == 1) {
-                  set_position_holder(club_name,
-                                      position_name,
-                                      keys(position_data)[0]);
-                  map_delete(_elections[name]->people, position_name);
-               }
-            }
-            foreach (position_name in bad_positions) {
-               set_position_holder(club_name,
-                                   position_name,
-                                   CLUB_UNKNOWN_MEMBER);
-               map_delete(_elections[name]->people, position_name);
-            }
-            bad_positions = ({ });
-            _elections[name]->state = CLUB_ELECTION;
-            if (!sizeof(_elections[name]->people)) {
-               save_main();
-               complete_election(name);
-            } else {
-               _elections[name]->election_status = 0;
-               _elections[name]->time_of_event = time() +
-                                                CLUB_ELECTION_TIME;
-               set_club_changed(name);
-               save_main();
-               send_broadcast_message(name,
-                            "The nomination period has finished.  Vote "
-                            "for your favourite person for each position now "
-                            "at the club control centre.");
-            }
-         } else {
-            _elections[name]->election_status = "No one has accepted "
-                           "nominations for " +
-                           query_multiple_short(bad_positions);
-            save_main();
-         }
-         return bad_positions;
-      }
-   }
-   return 0;
-}
-int vote_for_person(string club_name,
-                    string position,
-                    string person,
-                    string voter) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_club(name)) {
-      if (_elections[name] &&
-          _elections[name]->state == CLUB_ELECTION) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->voted_for[position] &&
-             member_array(voter,
-                          _elections[name]->voted_for[position]) == -1) {
-            if (!undefinedp(_elections[name]->people[position][person])) {
-               _elections[name]->people[position][person]++;
-               _elections[name]->voted_for[position] += ({ voter });
-               save_main();
-               return 1;
+void finish_details_error_replies(int type, mixed data, function finished,
+                     class error_complete* errors, string ids, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["bug_id"]) {
+               detail->replies += ({ create_error_replies(map) });
             }
          }
       }
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select id,forwarddate,forwarder,olddirectory from "
+                     "forwards where id in " + ids +
+                     " order by forwarddate",
+                     (: finish_forwards($1, $2, $(finished), $(errors), $(query)) :));
    }
 }
-int complete_election(string club_name) {
-   string name;
-   string position;
-   mapping people;
-   string person_name;
-   int count;
-   int max_count;
-   string *max_people;
-   mapping elected_positions;
-   int pos;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       _elections[name]->state = CLUB_ELECTION) {
-      elected_positions = ([ ]);
-      foreach (position, people in _elections[name]->people) {
-         max_count = 0;
-         max_people = ({ });
-         if (sizeof(people) > 1) {
-            foreach (person_name, count in people) {
-               if (count > max_count) {
-                  max_count = count;
-                  max_people = ({ person_name });
-               } else if (count == max_count) {
-                  max_people += ({ person_name });
-               }
+void finish_comments(int type, mixed data, function finished,
+                     class error_complete* errors, string ids, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["id"]) {
+                 detail->comments += ({ create_error_comment(map) });
             }
-         } else {
-            max_people = keys(people);
-         }
-         if (sizeof(max_people) == 0) {
-           _elections[name]->election_status = "No one has voted for "
-             "the position of " + position;
-           return 0;
-         }
-         pos = random(sizeof(max_people));
-         person_name = max_people[pos];
-         elected_positions[position] = person_name;
-      }
-      frog = query_elected_info(name);
-      foreach (position, person_name in elected_positions) {
-         set_position_holder(club_name, position, person_name);
-      }
-      frog->last_election = time();
-      set_club_changed(name);
-      touch_club(name);
-      map_delete(_elections, name);
-      save_main();
-      send_broadcast_message(name, "The election has finished!");
-      return 1;
-   }
-   return 0;
-}
-int is_election_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name]) {
-      return 1;
-   }
-}
-int is_nomination_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       (_elections[name]->state == CLUB_NOMINATION ||
-        _elections[name]->state == CLUB_NOMINATION_SECOND)) {
-      return 1;
-   }
-}
-int is_voting_in_progress(string club) {
-   string name;
-   name = normalise_name(club);
-   if (is_elected_club(name) &&
-       _elections[name] &&
-       _elections[name]->state == CLUB_ELECTION) {
-      return 1;
-   }
-}
-string *query_valid_positions(string club_name) {
-   string name;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      frog = query_elected_info(club_name);
-      return keys(frog->positions);
-   }
-   return ({ });
-}
-string *query_committee(string club_name) {
-   string name;
-   class election_info frog;
-   name = normalise_name(club_name);
-   if (is_elected_club(name)) {
-      frog = query_elected_info(club_name);
-      return values(frog->positions);
-   }
-   return ({ });
-}
-int is_valid_position(string club_name,
-                      string position) {
-   string *pos;
-   pos = map(query_valid_positions(club_name), (: lower_case :));
-   return (member_array(lower_case(position), pos) != -1);
-}
-int is_basic_position(string club_name,
-                      string position) {
-   class election_info frog;
-   if (is_club(club_name) &&
-       is_valid_position(club_name, position)) {
-      frog = query_elected_info(club_name);
-      position = query_position_name(club_name, position);
-      return (position == frog->president) ||
-             (position == frog->vice_president) ||
-             (position == frog->secretary) ||
-             (position == frog->treasurer);
-   }
-   return 0;
-}
-string query_position_name(string club_name,
-                           string position) {
-   string *pos;
-   string *real_pos;
-   int i;
-   real_pos = query_valid_positions(club_name);
-   pos = map(real_pos, (: lower_case :));
-   i = member_array(lower_case(position), pos);
-   if (i == -1) {
-      return 0;
-   }
-   return real_pos[i];
-}
-string query_position_members(string club_name, string position) {
-   class election_info frog;
-   if (is_elected_club(club_name) &&
-       is_valid_position(club_name, position)) {
-      position = query_position_name(club_name, position);
-      frog = query_elected_info(club_name);
-      if (frog->positions[position]) {
-         return frog->positions[position];
-      }
-   }
-   return "not found";
-}
-int create_position_in_club(string name,
-                            string position) {
-   class election_info frog;
-   if (is_elected_club(name) &&
-       !is_voting_in_progress(name) &&
-       !is_valid_position(name, position)) {
-      frog = query_elected_info(name);
-      frog->positions[position] = CLUB_UNKNOWN_MEMBER;
-      set_club_changed(name);
-      if (is_nomination_in_progress(name)) {
-         name = normalise_name(name);
-         _elections[name]->nominated[position] = ([ ]);
-         _elections[name]->voted_for[position] = ({ });
-         _elections[name]->people[position] = ([ ]);
-         save_main();
-      }
-      return 1;
-   }
-   return 0;
-}
-int remove_position_in_club(string name,
-                            string position) {
-   class election_info frog;
-   class account_info green;
-   string account;
-   if (is_elected_club(name) &&
-       is_valid_position(name, position) &&
-       !is_voting_in_progress(name) &&
-       !is_basic_position(name, position)) {
-      position = query_position_name(name, position);
-      frog = query_elected_info(name);
-      map_delete(frog->positions, position);
-      set_club_changed(name);
-      if (is_nomination_in_progress(name)) {
-         name = normalise_name(name);
-         map_delete(_elections[name]->nominated, position);
-         map_delete(_elections[name]->voted_for, position);
-         map_delete(_elections[name]->people, position);
-         save_main();
-      }
-      foreach (account, green in frog->account_info) {
-         green->allowed_positions -= ({ position });
-      }
-      send_observer_event("club_event_remove_position",
-                          name,
-                          position);
-      return 1;
-   }
-   return 0;
-}
-int change_position_name_in_club(string name,
-                                 string position,
-                                 string new_position) {
-   class election_info frog;
-   class account_info green;
-   string account;
-   int pos;
-   if (is_elected_club(name) &&
-       !is_valid_position(name, new_position) &&
-       !is_voting_in_progress(name) &&
-       is_valid_position(name, position)) {
-      position = query_position_name(name, position);
-      frog = query_elected_info(name);
-      frog->positions[new_position] = frog->positions[position];
-      map_delete(frog->positions, position);
-      if (frog->president == position) {
-         frog->president = new_position;
-      } else if (frog->vice_president == position) {
-         frog->vice_president = new_position;
-      } else if (frog->secretary == position) {
-         frog->secretary = new_position;
-      } else if (frog->treasurer == position) {
-         frog->treasurer = new_position;
-      }
-      set_club_changed(name);
-      name = normalise_name(name);
-      if (is_nomination_in_progress(name)) {
-         _elections[name]->nominated[new_position] =
-                                         _elections[name]->nominated[position];
-         map_delete(_elections[name]->nominated, position);
-         _elections[name]->voted_for[new_position] =
-                                         _elections[name]->voted_for[position];
-         map_delete(_elections[name]->voted_for, position);
-         _elections[name]->people[new_position] =
-                                         _elections[name]->people[position];
-         map_delete(_elections[name]->people, position);
-         save_main();
-      }
-      foreach (account, green in frog->account_info) {
-         pos = member_array(position, green->allowed_positions);
-         if (pos != -1) {
-            green->allowed_positions[pos] = new_position;
          }
       }
-      send_observer_event("club_event_change_position_name",
-                          name,
-                          position,
-                          new_position);
-      return 1;
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select * from "
+                     "error_replies where bug_id in " + ids +
+                     " order by senddate",
+                     (: finish_details_error_replies($1, $2, $(finished), $(errors), $(ids), $(query)) :));
    }
-   return 0;
 }
-int set_position_holder(string club_name,
-                                  string position,
-                                  string person) {
-   class election_info info;
-   info = query_elected_info(club_name);
-   if (info) {
-      if (is_valid_position(club_name, position)) {
-         if (is_member_of(club_name, person) ||
-             person == CLUB_UNKNOWN_MEMBER) {
-            position = query_position_name(club_name, position);
-            info->positions[position] = person;
-            set_club_changed(club_name);
-            send_observer_event("club_event_position_holder",
-                                club_name,
-                                position,
-                                person);
-            return 1;
-         }
+void finish_details(int type, mixed data, function finished, string query) {
+   class error_complete* errors;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data, query);
+   } else {
+      errors = ({ });
+      str = "(";
+      foreach (map in data) {
+         errors += ({ create_error_complete(create_error_details(map)) });
+         str += map["id"] + ",";
       }
+      str = str[0..<2] + ")";
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select commentdate,commenter,comment,id "
+                     "from comments where id in " + str +
+                     " order by commentdate desc",
+                     (: finish_comments($1, $2, $(finished), $(errors), $(str), $(query)) :));
    }
-   return 0;
 }
-int has_person_voted(string club_name,
-                    string position,
-                    string person) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (_elections[name]->voted_for[position]) {
-            return (member_array(person,
-                              _elections[name]->voted_for[position]) != -1);
-         } else {
-            return 1;
-         }
-      }
-   }
-   return 0;
-}
-int has_nominated_person(string club_name,
-                         string position,
-                         string nominated,
-                         string by) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      position = query_position_name(club_name, position);
-      if (_elections[name] &&
-          _elections[name]->nominated[position][nominated]) {
-         return (member_array(by,
-                      _elections[name]->nominated[position][nominated]) != -1);
+void finish_forward_query(int type, mixed data, function finished,
+                          string user, string newdir) {
+   class error_complete error;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
+   } else {
+      map = data[0];
+      error = create_error_complete(create_error_details(map));
+      if (error->details->summary->directory != newdir) {
+         str = "insert into forwards (id,forwarddate,forwarder,olddirectory) " +
+               "values (" + error->details->summary->id + ", " + time() + ", '" +
+               db_escape(user) + "', '" +
+               db_escape(error->details->summary->directory) +
+               "')";
+         DB_HANDLER->make_sql_request(_db, _user, _password,
+                     str, (: 1 :));
+         str = build_sql_update(error->details->summary->id, "directory", newdir);
+         DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                                 (: finish_update($1, $2, $(finished), $(str)) :));
+      } else {
+         evaluate(finished, type, data);
       }
    }
 }
-string *query_nominated_for(string club_name,
-                            string position) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (is_voting_in_progress(club_name)) {
-            if (_elections[name]->people[position]) {
-               return keys(_elections[name]->people[position]);
-            }
-            return ({ });
-         } else if (is_nomination_in_progress(club_name)) {
-            return keys(_elections[name]->nominated[position]);
-         }
+void finish_status_query(int type, mixed data, function finished,
+                         string status,
+                         int nomail, string user, string subject,
+                         string message) {
+   class error_complete error;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
+   } else {
+      map = data[0];
+      error = create_error_complete(create_error_details(map));
+      if (!nomail) {
+         str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
+               "values (" +
+               error->details->summary->id + ", 'NEW', '" + user + "', '" +
+               error->details->summary->reporter + "', " +
+               time() + ", '" +
+               "Change status from " + error->details->summary->status +
+               " to " + status +
+               "\n" + db_escape(message) + "', '" + db_escape(subject) + "')";
+         DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                 (: 1 :) );
       }
-   }
-   return ({ });
-}
-string *query_nominators_for(string club_name,
-                             string position,
-                             string nominated) {
-   string name;
-   name = normalise_name(club_name);
-   if (is_valid_position(club_name, position)) {
-      if (_elections[name]) {
-         position = query_position_name(club_name, position);
-         if (is_nomination_in_progress(club_name) &&
-            _elections[name]->nominated[position][nominated]) {
-            return _elections[name]->nominated[position][nominated];
-         }
-      }
-   }
-   return ({ });
-}
-int is_nominated_for(string club_name,
-                     string position,
-                     string person) {
-   if (is_valid_position(club_name, position)) {
-      return member_array(person,
-                          query_nominated_for(club_name, position)) != -1;
-   }
-}
-int is_nomination_accepted(string club_name,
-                           string position,
-                           string person) {
-   string *nom;
-   if (is_nominated_for(club_name, position, person)) {
-      nom = query_nominators_for(club_name, position, person);
-      if (sizeof(nom) > 1 &&
-          member_array(person, nom) != -1) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int query_next_event_time(string club_name) {
-   if (is_club(club_name)) {
-      club_name = normalise_name(club_name);
-      if (_elections[club_name]) {
-         return _elections[club_name]->time_of_event;
-      }
-   }
-}
-string query_election_status(string club_name) {
-   if (is_elected_club(club_name)) {
-      if (is_election_in_progress(club_name)) {
-         club_name = normalise_name(club_name);
-         return _elections[club_name]->election_status;
-      }
-   }
-}
-string query_announcement(string club_name) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      return bing->announcement;
-   }
-   return "";
-}
-int query_announcement_time(string club_name) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      return bing->announce_time;
-   }
-   return 0;
-}
-int set_announcement(string club_name,
-                     string announce) {
-   class election_info bing;
-   bing = query_elected_info(club_name);
-   if (bing) {
-      if (bing->announce_time &&
-          strlen(bing->announcement)) {
-         add_archive(club_name,
-                     "Announcement",
-                     "Announcement on " + ctime(time()) + ":\n\n" +
-                     bing->announcement);
-      }
-      bing->announce_time = time();
-      bing->announcement = announce;
-      set_club_changed(club_name);
-      send_broadcast_message(club_name, "A new announcement has been added.");
-      return 1;
-   }
-   return 0;
-}
-private class club_archive* convert_archives(mixed *archives) {
-   string archive;
-   class club_archive bing;
-   int i;
-   for (i = 0; i < sizeof(archives); i++) {
-      archive = archives[i];
-      if (stringp(archive)) {
-         bing = new(class club_archive);
-         bing->archive_date = time();
-         bing->subject = "unknown";
-         bing->matter = archive;
-         archives[i] = bing;
-      }
-   }
-   return archives;
-}
-protected int add_archive(string club_name,
-                          string subject,
-                          string thingy) {
-   class election_info data;
-   class club_archive fluff;
-   data = query_elected_info(club_name);
-   if (data) {
-      fluff = new(class club_archive);
-      fluff->subject = subject;
-      fluff->matter = thingy;
-      fluff->archive_date = time();
-      data->archives += ({ fluff });
-      if (sizeof(data->archives) > CLUB_MAX_ARCHIVE_SIZE) {
-         data->archives = data->archives[<CLUB_MAX_ARCHIVE_SIZE..];
-      }
-      if (stringp(data->archives[0])) {
-         data->archives = convert_archives(data->archives);
-      }
-      set_club_changed(club_name);
-      return 1;
-   }
-   return 0;
-}
-class club_archive *query_archives(string club_name) {
-   class election_info data;
-   data = query_elected_info(club_name);
-   if (data) {
-      if (sizeof(data->archives) &&
-          stringp(data->archives[0])) {
-         data->archives = convert_archives(data->archives);
-         set_club_changed(club_name);
-      }
-      return data->archives;
-   }
-   return ({ });
-}
-string *query_boards() {
-   return _boards;
-}
-int query_club_board(string club_name) {
-   string name;
-   name = query_club_board_name(club_name);
-   return member_array(name, _boards) != -1;
-}
-string query_club_board_name(string club_name) {
-   return CLUB_BOARD_PREFIX + normalise_name(club_name);
-}
-int create_club_board(string club_name) {
-   string name;
-   name = query_club_board_name(club_name);
-   if(is_elected_club(club_name) || this_player()->query_director()) {
-      if (BOARD_HAND->is_board(name)) {
+      str = build_sql_update(error->details->summary->id, "status", status);
+      if (!str) {
          return 0;
       }
-      BOARD_HAND->create_board(name,
-                               B_PRIV_ACCESS_RESTRICTED_METHOD |
-                               B_PRIV_NO_INFORM,
-                               "frog");
-      BOARD_HAND->set_method_access_call(name,
-                                         "check_board_post",
-                                         CLUB_HANDLER);
-      BOARD_HAND->set_timeout(10);
-      BOARD_HAND->set_maximum(60);
-      BOARD_HAND->set_minimum(10);
-      _boards += ({ name });
-      save_main();
-      return 1;
-   }
-   return 0;
-}
-int remove_club_board(string club_name) {
-   string name;
-   if (query_club_board(club_name)) {
-      name = query_club_board_name(club_name);
-      BOARD_HAND->delete_board(name);
-      _boards -= ({ name });
-      save_main();
-      return 1;
+      DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                            (: finish_update($1, $2, $(finished), $(str)) :));
    }
 }
-int check_board_post(int type,
-                     string board,
-                     string previous,
-                     string name,
-                     int num) {
-   string club;
-   club = board[strlen(CLUB_BOARD_PREFIX)..];
-   switch (type) {
-   case B_ACCESS_READ :
-      return is_member_of(club, name);
-   case B_ACCESS_WRITE :
-      return is_member_of(club, name);
-   case B_ACCESS_DELETE :
-      return holds_any_position_of(club, name);
-   case B_ACCESS_INFORM :
-      if (!num) {
-         send_broadcast_message(club,
-                                name + " posts a message to the board.");
-      } else {
-         send_broadcast_message(club,
-                                name + " posts a message to the board and " +
-                                num + " message" +
-                                (num > 1?"s":"") + " explode in sympathy.");
-      }
-      return 1;
-   }
+void finish_update(int type, mixed data, function finished, string query) {
+   evaluate(finished, type, data, query);
 }
-protected void do_mail_committee(string club_name,
-                            string subject,
-                            string body) {
-   string *committee;
-   body += "\n\nYours,\nFindlewoodlwinks\n(Club Handler)\n";
-   committee = query_committee(club_name) - ({ CLUB_UNKNOWN_MEMBER });
-   if (!sizeof(committee)) {
-      if (PLAYER_HANDLER->test_user(query_founder(club_name))) {
-         committee = ({ query_founder(club_name) });
-      } else {
-         return ;
-      }
-   }
-   MAILER->do_mail_message(implode(committee, ","),
-                           "Patricians office",
-                           subject,
-                           "",
-                           body);
-}
-protected void check_elected_information(string name,
-                                         string member,
-                                         int startup) {
-   class election_info data;
-   string position_name;
-   string person;
-   mapping gruff;
-   string *nom;
-   int cre_club;
-   int votes;
-   name = normalise_name(name);
-   data = query_elected_info(name);
-   if (data) {
-      if (!mapp(data->options)) {
-         data->options = ([ ]);
-         set_club_changed(name);
-      }
-      foreach (position_name, person in data->positions) {
-         if (person != CLUB_UNKNOWN_MEMBER &&
-             (!is_member_of(name, person) ||
-              !PLAYER_HANDLER->test_active(person) ||
-              member == person)) {
-            set_position_holder(name, position_name, CLUB_UNKNOWN_MEMBER);
-         }
-      }
-      if (query_next_election(name) < time() ||
-          _elections[name]) {
-         if (!_elections[name]) {
-            start_election(name);
-         } else {
-            switch (_elections[name]->state) {
-               case CLUB_NOMINATION_SECOND :
-               case CLUB_NOMINATION :
-                  if (_elections[name]->time_of_event < time()) {
-                     if (sizeof(finish_nomination(name))) {
-                        _elections[name]->time_of_event = time() +
-                                                          CLUB_ELECTION_TIME;
-                        _elections[name]->state = CLUB_NOMINATION_SECOND;
-                        save_main();
-                     }
-                  }
-                  break;
-               case CLUB_ELECTION :
-                  if (_elections[name]->time_of_event < time()) {
-                     complete_election(name);
-                  }
-                  break;
-            }
-         }
-      }
-      if (_elections[name] &&
-          startup) {
-         cre_club = is_creator_club(name);
-         foreach (position_name, gruff in _elections[name]->people) {
-            foreach (person, votes in gruff) {
-               if ((!cre_club &&
-                    PLAYER_HANDLER->test_creator(person)) ||
-                   !is_member_of(name, person) ||
-                   !PLAYER_HANDLER->test_user(person)) {
-                  map_delete(gruff, person);
-               }
-            }
-         }
-         foreach (position_name,
-                  gruff in _elections[name]->nominated) {
-            foreach (person, nom in gruff) {
-               if ((!cre_club &&
-                    PLAYER_HANDLER->test_creator(person)) ||
-                   !is_member_of(name, person) ||
-                   !PLAYER_HANDLER->test_user(person)) {
-                  map_delete(gruff, person);
-               }
-            }
-         }
-      }
-   }
-}
-
-==================================================
-FILE: handlers/inherit/club_family.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_personal";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-#include <player_handler.h>
-private nosave mapping _valid_relationships;
-private nosave mapping _gender_relationship;
-private void add_valid_relationship(string relation,
-                                    string relation2,
-                                    int flags);
-private void add_gender_relationship(string region,
-                                     string relationship,
-                                     string male,
-                                     string female);
-string* query_gender_relationships(string relationship);
-class family_info {
-   mapping relationships;
-   string *never_join;
-   string tmp;
-   int tmp2;
-}
-#define CLUB_INTERFAMILY_FLAG 1
-#define CLUB_JOIN_FAMILY_FLAG 2
-class relationship_type_data {
-   string opposite;
-   int flags;
-}
-void create() {
-   _valid_relationships = ([ ]);
-   _gender_relationship = ([ ]);
-   ::create();
-   add_valid_relationship("spouse",
-                          "spouse",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "spouse",
-                           "husband",
-                           "wife");
-   add_valid_relationship("lover",
-                          "lover",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "lover",
-                           "lover",
-                           "lover");
-   add_valid_relationship("sibling",
-                          "sibling",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "sibling",
-                           "brother",
-                           "sister");
-   add_valid_relationship("sibling-in-law",
-                          "sibling-in-law",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "sibling-in-law",
-                           "brother-in-law",
-                           "sister-in-law");
-   add_valid_relationship("parent-in-law",
-                          "child-in-law",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "parent-in-law",
-                           "father-in-law",
-                           "mother-in-law");
-   add_gender_relationship("Ankh-Morpork",
-                           "child-in-law",
-                           "son-in-law",
-                           "daughter-in-law");
-   add_valid_relationship("child",
-                          "parent",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "child",
-                          "son",
-                          "daughter");
-   add_gender_relationship("Ankh-Morpork",
-                           "parent",
-                           "father",
-                           "mother");
-   add_valid_relationship("grandparent",
-                          "grandchild",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "grandparent",
-                           "grandfather",
-                           "grandmother");
-   add_gender_relationship("Ankh-Morpork",
-                           "grandchild",
-                           "grandson",
-                           "granddaughter");
-   add_valid_relationship("godchild",
-                          "godparent",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "godchild",
-                           "godson",
-                           "goddaughter");
-   add_gender_relationship("Ankh-Morpork",
-                           "godparent",
-                           "godfather",
-                           "godmother");
-   add_valid_relationship("uncle",
-                          "niece",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "uncle",
-                           "uncle",
-                           "aunt");
-   add_gender_relationship("Ankh-Morpork",
-                           "niece",
-                           "nephew",
-                           "niece");
-   add_valid_relationship("cousin",
-                          "cousin",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "cousin",
-                           "cousin",
-                           "cousin");
-   add_valid_relationship("master",
-                          "maid",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "maid",
-                           "butler",
-                           "maid");
-   add_gender_relationship("Ankh-Morpork",
-                           "master",
-                           "master",
-                           "mistress");
-   add_valid_relationship("apprentice",
-                          "tutor",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "apprentice",
-                           "apprentice",
-                           "apprentice");
-   add_gender_relationship("Ankh-Morpork",
-                           "tutor",
-                           "tutor",
-                           "tutor");
-   add_valid_relationship("guardian",
-                          "ward",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "guardian",
-                           "guardian",
-                           "guardian");
-   add_gender_relationship("Ankh-Morpork",
-                           "ward",
-                           "ward",
-                           "ward");
-   add_valid_relationship("ex-spouse",
-                          "ex-spouse",
-                          CLUB_INTERFAMILY_FLAG | CLUB_JOIN_FAMILY_FLAG);
-   add_gender_relationship("Ankh-Morpork",
-                           "ex-spouse",
-                           "ex-husband",
-                           "ex-wife");
-}
-protected void create_extra_data(string name) {
-   class family_info f_info;
-   class club_info data;
-   data = (class club_info)query_club_info(name);
-   if (query_club_type(name) == CLUB_FAMILY) {
-      f_info = new(class family_info);
-      f_info->relationships = ([ ]);
-      f_info->never_join = ({ });
-      data->extra_data = f_info;
+void finish_error_replies(int type, mixed data, function finished, string query) {
+   class error_replies* replies;
+   mapping map;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
    } else {
-      ::create_extra_data(name);
-   }
-   set_club_changed(name);
-}
-int query_club_cost_per_period(string club_name) {
-   if (is_club(club_name)) {
-      if (is_family(club_name)) {
-         return FAMILY_COST_PER_YEAR +
-              sizeof(query_members(club_name)) * FAMILY_COST_PER_MEMBER_PER_YEAR;
-      } else {
-         return ::query_club_cost_per_period(club_name);
+      replies = ({ });
+      foreach (map in data) {
+         replies += ({ create_error_replies(map) });
       }
-   }
-   return 0;
-}
-private class family_info query_family_info(string name) {
-   class club_info data;
-   if (is_family(name)) {
-      data = (class club_info)query_club_info(name);
-      return data->extra_data;
+      evaluate(finished, type, replies);
    }
 }
-void add_valid_relationship(string relation1,
-                            string relation2,
-                            int flags) {
-   class relationship_type_data frog;
-   frog = new(class relationship_type_data);
-   frog->opposite = relation2;
-   frog->flags = flags;
-   _valid_relationships[relation1] = frog;
-   frog = new(class relationship_type_data);
-   frog->opposite = relation1;
-   frog->flags = flags;
-   _valid_relationships[relation2] = frog;
-}
-string query_opposite_relationship(string relation) {
-   if (_valid_relationships[relation]) {
-      return _valid_relationships[relation]->opposite;
-   }
-   return 0;
-}
-int is_valid_relationship(string str) {
-   return _valid_relationships[str] != 0;
-}
-int is_valid_interfamily_relationship(string str) {
-   class relationship_type_data frog;
-   frog = _valid_relationships[str];
-   if (frog) {
-      if (frog->flags & CLUB_INTERFAMILY_FLAG) {
-         return 1;
-      }
-   }
-   return 0;
-}
-int is_valid_join_family_relationship(string str) {
-   class relationship_type_data frog;
-   frog = _valid_relationships[str];
-   if (frog) {
-      if (frog->flags & CLUB_JOIN_FAMILY_FLAG) {
-         return 1;
-      }
-   }
-   return 0;
-}
-string *query_all_valid_relationships() {
-   return keys(_valid_relationships);
-}
-private void add_gender_relationship(string region,
-                                     string relationship,
-                                     string male,
-                                     string female) {
-   _gender_relationship[male] = relationship;
-   _gender_relationship[female] = relationship;
-   if (!mapp(_gender_relationship[relationship])) {
-      _gender_relationship[relationship] = ([ ]);
-   }
-   _gender_relationship[relationship][region] = ({ male,
-                                                   female });
-}
-string query_ungendered_relationship(string relationship) {
-   if (stringp(_gender_relationship[relationship])) {
-      return _gender_relationship[relationship];
-   }
-   if (mapp(_gender_relationship[relationship])) {
-      return relationship;
-   }
-   return 0;
-}
-string *query_all_relationships() {
-   return keys(_gender_relationship);
-}
-string query_relationship_gender(string relationship,
-                                 int female,
-                                 string region) {
-   string rel;
-   rel = query_ungendered_relationship(relationship);
-   if (!rel ||
-       female < 0 ||
-       female > 1) {
+int do_query_bug_summary(class error_query query, function finished) {
+   string str;
+   str = build_sql_query(ERROR_SUMMARY_FIELDS,
+                         query);
+   if (!str) {
       return 0;
    }
-   if (!region || !_gender_relationship[rel][region]) {
-      region = "Ankh-Morpork";
-   }
-   return _gender_relationship[rel][region][female];
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                                   (: finish_summary($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-private void real_add_relationship(string name,
-                                   string person,
-                                   string dest,
-                                   string relationship) {
-   class family_info womble;
-   class relationship_data plum;
-   womble = query_family_info(name);
-   if (!womble->relationships[person]) {
-      womble->relationships[person] = ({ });
+int do_query_bug_details(int bug_id, function finished) {
+   string str;
+   class error_query query;
+   query = new(class error_query);
+   query->id = bug_id;
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
    }
-   plum = new(class relationship_data);
-   plum->related_to = dest;
-   plum->relationship = relationship;
-   womble->relationships[person] += ({ plum });
-   set_club_changed(name);
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_details($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-private void real_remove_relationship(string name,
-                                      string person,
-                                      string dest,
-                                      string relationship) {
-   class family_info womble;
+int do_query_open_bugs_in_dir(string dir, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->dir = dir;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
+}
+int do_query_open_bugs_for_fname(string fname, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->file_name = fname;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
+}
+int do_query_open_bugs_by_reporter(string reporter, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->reporter = reporter;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
+}
+int do_change_type(int id, string type, function finished) {
+   string str;
+   str = build_sql_update(id, "type", type);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_change_category(int id, string category, function finished) {
+   string str;
+   str = build_sql_update(id, "category", category);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_assign_bug_to(int id, string assigned_to, function finished) {
+   string str;
+   str = build_sql_update(id, "assignedto", assigned_to);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_change_status(int id, string status, int nomail, string subject,
+                     string user, string message, function finished) {
+   string str;
+   class error_query query;
+   query = new(class error_query, id : id);
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+             (: finish_status_query($1, $2, $(finished), $(status),
+                                    $(nomail), $(user), $(subject),
+                                     $(message)) :));
+   return 1;
+}
+int do_forward(int id, string user, string dir, function finished) {
+   string str;
+   class error_query query;
+   if (!strlen(dir)) {
+      return 0;
+   }
+   if (dir[0] != '/') {
+      dir = "/" + dir;
+   }
+   if (dir[<1] == '/') {
+      dir = dir[0..<2];
+   }
+   if (file_size(dir) != -2 || dir == "/") {
+      return 0;
+   }
+   query = new(class error_query, id : id);
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+             (: finish_forward_query($1, $2, $(finished), $(user), $(dir)) :));
+   return 1;
+}
+int do_comment(int id, string user, string comment, function finished) {
+   string str;
+   str = "insert into comments (id,commentdate,commenter,comment) values (" +
+         id + ", " + time() + ", '" + user + "', '" + db_escape(comment) +
+         "')";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                             (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_error_replies(string recipient, int only_new, function finished) {
+   string str;
+   str = "select * from error_replies where recipient = '" + recipient +
+         "'";
+   if (only_new) {
+      str += " and status = 'NEW'";
+   } else {
+      str += " and status != 'DELETED'";
+   }
+   str += " order by senddate";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                      (: finish_error_replies($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_status_error_reply(int id, string status, function finished) {
+   string str;
+   str = "update error_replies set status = '" + status + "' where id = " +
+         id;
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                      (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_add_error_reply(int bug_id, string from, string to, string subject, string message) {
+   string str;
+   str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
+         "values (" + bug_id + ", 'NEW', '" + from + "', '" + to + "', " +
+         time() + ", '" +
+         db_escape(message) + "', '" + db_escape(subject) + "')";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+           (: 1 :) );
+   return 1;
+}
+
+==================================================
+FILE: handlers/inherit/nomic_rules.c
+==================================================
+
+#include <nomic_system.h>
+private mapping _rules;
+void save_me();
+int query_can_change_rule(string area, class nomic_rule rule);
+class nomic_rule find_nomic_rule(string area, string creator, string text);
+void create() {
+   _rules = ([ ]);
+}
+int add_nomic_rule(string area, int type, string creator, string text) {
+   int bing;
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   if (find_nomic_rule(area, creator, text)) {
+      return NOMIC_ERROR;
+   }
+   nomic_rule = new(class nomic_rule);
+   bing = _rules[area]->new_type_num[type];
+   nomic_rule->id = bing;
+   nomic_rule->creator = creator;
+   nomic_rule->type = type;
+   nomic_rule->text = text;
+   nomic_rule->date_created = time();
+   nomic_rule->amendments = ({ });
+   _rules[area]->rules += ({ nomic_rule });
+   _rules[area]->new_type_num[type] = bing + 1;
+   save_me();
+   return bing;
+}
+protected int add_nomic_rule_class(string area,
+                                   class nomic_rule new_rule,
+                                   int type) {
+   int bing;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   if (find_nomic_rule(area, new_rule->creator, new_rule->text)) {
+      return NOMIC_ERROR;
+   }
+   bing = _rules[area]->new_type_num[type];
+   new_rule->id = bing;
+   new_rule->type = type;
+   _rules[area]->rules += ({ new_rule });
+   _rules[area]->new_type_num[type] = bing + 1;
+   save_me();
+   return bing;
+}
+protected int move_nomic_rule(string area, class nomic_rule rule,
+                              int type) {
+   int bing;
    int i;
-   womble = query_family_info(name);
-   for (i = 0; i < sizeof(womble->relationships[person]); i++) {
-      if (womble->relationships[person][i]->related_to == dest &&
-          womble->relationships[person][i]->relationship == relationship) {
-         womble->relationships[person] = womble->relationships[person][0..i-1] +
-                                         womble->relationships[person][i+1..];
-         set_club_changed(name);
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   bing = _rules[area]->new_type_num[type];
+   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
+      if (_rules[area]->rules[i]->id == rule->id) {
+         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
+            return NOMIC_ERROR;
+         }
+         _rules[area]->rules[i]->id = bing;
+         ((class nomic_rule)_rules[area]->rules[i])->type = type;
+         _rules[area]->new_type_num[type] = bing + 1;
+         save_me();
+         return bing;
       }
    }
+   return NOMIC_ERROR;
 }
-int add_relationship(string name,
-                     string person,
-                     string dest_name,
-                     string dest,
-                     string relationship) {
-   if (is_family(name) &&
-       is_family(dest_name) &&
-       is_member_of(name, person) &&
-       is_member_of(dest_name, dest) &&
-       is_valid_relationship(relationship)) {
-      real_add_relationship(name,
-                            person,
-                            dest,
-                            relationship);
-      real_add_relationship(dest_name,
-                            dest,
-                            person,
-                            query_opposite_relationship(relationship));
-      save_club(name);
-      return 1;
+int change_nomic_rule(string area, class nomic_rule rule) {
+   int i;
+   if (!_rules[area]) {
+      return 0;
    }
-   return 0;
-}
-class relationship_data *query_relationships(string name,
-                                             string person) {
-   class family_info womble;
-   if (is_family(name)) {
-      womble = query_family_info(name);
-      if (womble->relationships[person]) {
-         return womble->relationships[person];
-      }
-   }
-   return ({ });
-}
-int move_family_member(string curr_family,
-                       string person,
-                       string dest_family) {
-  class relationship_data *stuff;
-  class family_info womble;
-  if (is_family(curr_family) &&
-      is_family(dest_family) &&
-      is_member_of(curr_family, person)) {
-    stuff = query_relationships(curr_family,
-                                person);
-    womble = query_family_info(curr_family);
-    map_delete(womble->relationships, person);
-    set_club_changed(curr_family);
-    remove_member(curr_family, person);
-    add_member(dest_family, person);
-    womble = query_family_info(dest_family);
-    womble->relationships[person] = stuff;
-    set_club_changed(dest_family);
-    return 1;
-  }
-  return 0;
-}
-string *query_relationships_to(string name,
-                               string person,
-                               string related) {
-   class relationship_data frog;
-   string *relationships;
-   relationships = ({ });
-   foreach (frog in query_relationships(name, person)) {
-      if (frog->related_to == related) {
-         relationships += ({ frog->relationship });
-      }
-   }
-   return relationships;
-}
-int is_relationship(string name,
-                    string person,
-                    string related,
-                    string relationship) {
-   class relationship_data frog;
-   foreach (frog in query_relationships(name, person)) {
-      if (frog->related_to == related &&
-          frog->relationship == relationship) {
+   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
+      if (_rules[area]->rules[i]->id == rule->id) {
+         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
+            return NOMIC_ERROR;
+         }
+         rule->type = ((class nomic_rule)_rules[area]->rules[i])->type;
+         rule->id = ((class nomic_rule)_rules[area]->rules[i])->id;
+         _rules[area]->rules[i] = rule;
+         save_me();
          return 1;
       }
    }
    return 0;
 }
-int remove_relationship(string name,
-            string person,
-                        string dest_name,
-      string dest,
-      string relationship) {
-   if (is_relationship(name, person, dest, relationship)) {
-      real_remove_relationship(name,
-                   person,
-             dest,
-             relationship);
-      if (dest_name) {
-         real_remove_relationship(dest_name,
-                      dest,
-                person,
-                      query_opposite_relationship(relationship));
+int remove_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         if (!query_can_change_rule(area, nomic_rule)) {
+            return NOMIC_ERROR;
+         }
+         _rules[area]->rules -= ({ nomic_rule });
+         save_me();
+         return 1;
       }
-      return 1;
    }
    return 0;
 }
-protected void check_family_information(string name,
-                                        string member,
-                                        int startup) {
-   class family_info fam_data;
-   string family;
-   fam_data = query_family_info(name);
-   if (fam_data) {
-      if (member &&
-         fam_data->relationships[member]) {
-         family = PLAYER_HANDLER->test_family(member);
-         if (!family ||
-              normalise_name(family) != name) {
-            if (find_player(member)) {
-               find_player(member)->set_family_name(family);
-            } else {
-               log_file("CLUB", ctime(time()) +
-                                ": removed " +
-                                member + " from " + family +
-                                " family deficent.\n");
-               remove_member(name, member);
-            }
+int int_remove_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         _rules[area]->rules -= ({ nomic_rule });
+         save_me();
+         return 1;
+      }
+   }
+   return 0;
+}
+class nomic_rule query_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return 0;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         return copy(nomic_rule);
+      }
+   }
+   return 0;
+}
+class nomic_rule* query_all_nomic_rules(string area) {
+   if (!_rules[area]) {
+      return ({ });
+   }
+   return copy(_rules[area]->rules);
+}
+class nomic_rule find_nomic_rule(string area, string creator, string text) {
+   class nomic_rule rule;
+   if (!_rules[area]) {
+      return 0;
+   }
+   foreach (rule in _rules[area]->rules) {
+      if (rule->creator == creator && rule->text == text) {
+         return rule;
+      }
+   }
+   return 0;
+}
+int create_area(string area) {
+   class nomic_area new_area;
+   if (_rules[area]) {
+       return 0;
+   }
+   new_area = new(class nomic_area);
+   new_area->new_type_num = NOMIC_DEFAULT_TYPE_NUMS;
+   new_area->rules = ({ });
+   _rules[area] = new_area;
+   return 1;
+}
+int query_type_number(string name) {
+   switch (lower_case(name)) {
+   case "immutable" :
+      return NOMIC_TYPE_IMMUTABLE;
+   case "general" :
+      return NOMIC_TYPE_GENERAL;
+   case "citizen" :
+      return NOMIC_TYPE_CITIZEN;
+   default :
+      return NOMIC_ERROR;
+   }
+}
+string query_type_name(int type_no) {
+   switch (type_no) {
+   case NOMIC_TYPE_IMMUTABLE :
+      return "immutable";
+   case NOMIC_TYPE_GENERAL :
+      return "general";
+   case NOMIC_TYPE_CITIZEN :
+      return "citizen";
+   default :
+      return "error";
+   }
+}
+int query_can_change_rule(string area, class nomic_rule rule) {
+   return rule->type != NOMIC_TYPE_IMMUTABLE;
+}
+string rule_as_string(int indent, class nomic_rule rule) {
+   string ret;
+   class nomic_amendment amend;
+   ret = "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+          (rule->id?rule->id+"":"(" +
+          NOMIC_HANDLER->query_type_name(rule->type) + ")") + " by " +
+          capitalize(rule->creator) + " (" +
+          ctime(rule->date_created) + "):\n" + rule->text +
+          "\n";
+   foreach (amend in rule->amendments) {
+      ret += "$I$" + (indent + 10) + "=" + sprintf("%*s", indent + 3, "") +
+             capitalize(amend->amender) + " (" +
+             ctime(amend->date_amended) + "):\n" +
+             amend->text + "\n";
+   }
+   return ret;
+}
+
+==================================================
+FILE: handlers/inherit/player_council.c
+==================================================
+
+inherit "/obj/handlers/inherit/nomic_rules";
+inherit "/obj/handlers/inherit/case_control";
+inherit "/obj/handlers/inherit/citizen_elections";
+#define NOMIC_SYSTEM_NO_CLASSES
+#include <nomic_system.h>
+#include <player.h>
+private mapping _motions;
+private mapping _new_citizens;
+private int _completion_id;
+void save_me();
+class nomic_motion find_motion(string area, int rule_no, int type);
+void update_immutables(string area);
+void send_council_inform(string area, int only_magistrates,
+                         string mess);
+string motion_as_string(int indent, string area, class nomic_motion motion, int brief);
+void create() {
+   _motions = ([ ]);
+   _new_citizens = ([ ]);
+   citizen_elections::create();
+   nomic_rules::create();
+   case_control::create();
+   _completion_id = call_out("check_for_completions",
+       (time() - time() % (24 * 60 * 60) + (24 * 60 * 60) + (2 * 60)) - time());
+}
+void create_area(string area) {
+   citizen_elections::create_area(area);
+   nomic_rules::create_area(area);
+   case_control::create_area(area);
+   _motions[area] = ({ });
+   _new_citizens[area] = ({ });
+   update_immutables(area);
+}
+void update_immutables(string area) {
+   string tmp;
+   string type;
+   string file;
+   int int_type;
+   class nomic_rule rule;
+   foreach (rule in query_all_nomic_rules(area)) {
+      if (rule->type == NOMIC_TYPE_IMMUTABLE) {
+         remove_nomic_rule(area, rule->id);
+      }
+   }
+   foreach (file in get_dir(NOMIC_RULE_DEFAULT_DIR)) {
+      if (file_size(NOMIC_RULE_DEFAULT_DIR + "/" + file) > 0) {
+         tmp = read_file(NOMIC_RULE_DEFAULT_DIR + "/" + file);
+         type = explode(tmp, "\n")[0];
+         tmp = implode(explode(tmp, "\n")[1..], "\n");
+         switch (type) {
+         case "immutable" :
+            int_type = NOMIC_TYPE_IMMUTABLE;
+            break;
+         case "citizen" :
+            int_type = NOMIC_TYPE_CITIZEN;
+            break;
+         case "general" :
+            int_type = NOMIC_TYPE_GENERAL;
+            break;
+         default :
+            int_type = -1;
+            printf("Ignoring file " + file + "\n");
+            break;
          }
-         if (!undefinedp(fam_data->relationships)) {
-            map_delete(fam_data->relationships, member);
-            set_club_changed(name);
+         if (int_type != -1) {
+            add_nomic_rule(area, int_type, area + " administrator", tmp);
          }
       }
    }
+   save_me();
 }
-
-==================================================
-FILE: handlers/inherit/club_inherit.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_discuss";
-#define __CLUBS_H_NO_CLASSES
-#define __MAIL_H_NO_CLASSES
-#include <mail.h>
-#include <clubs.h>
-#include <player_handler.h>
-#include <broadcaster.h>
-#include <player.h>
-#include <top_ten_tables.h>
-#include <library.h>
-#include <player_handler.h>
-private nosave int _callout_id;
-private nosave int _test_callout_id;
-private string _current_test_club;
-private int _last_test_time;
-protected void check_extra_information(string name, string person, int startup);
-void check_clubs(int startup);
-class top_ten_tables {
+private int query_next_motion_id(string area) {
    int num;
-   int qp;
-   int age;
-   int start_time;
-   int gender;
-   int single_gender;
-   int rels;
-   int no_pks;
-   mapping guild;
-}
-protected void setup_call_check_clubs(int time, int startup) {
-   remove_call_out(_callout_id);
-   _callout_id = call_out("check_clubs", time, startup);
-}
-private void send_low_balance_mail(string club) {
-   string *to;
-   string bit;
-   switch (query_club_type(club)) {
-      case CLUB_FAMILY :
-         to = query_members(club);
-         bit = "family";
-         break;
-      case CLUB_PERSONAL :
-         to = ({ query_founder(club) });
-         bit = "club";
-         to -= ({ "unknown" });
-         if (!sizeof(to)) {
-            to = query_members(club);
-         }
-         break;
-      case CLUB_ELECTED :
-         to = query_committee(club) - ({ CLUB_UNKNOWN_MEMBER });
-         if (!sizeof(to)) {
-            to = ({ query_members(club) });
-         }
-         bit = "club";
-         break;
+   class nomic_motion fluff;
+   num = 1;
+   foreach (fluff in _motions[area]) {
+      if (num <= fluff->identifier) {
+         num = fluff->identifier + 1;
+      }
    }
-   to = filter(to, (: PLAYER_HANDLER->test_user($1) :));
-   if (sizeof(to)) {
-      MAILER->do_mail_message(implode(to, ","),
-                           "Patricians office",
-                           "The " + bit + " has fees due.",
-                           "",
-                           sprintf("%-=80s\n", "Morning,\n\n"
-                           "This is a reminder from the Patrician's Office "
-                           "the " + bit + " '" + query_club_name(club) +
-                           "' is currently in remission and "
-                           "its balance will need to be updated before "
-                           "the next "
-                           "pay period or your " + bit + " will be "
-                           "disbanded.\n\nYours happily,\nThe Patrician."));
-   }
+   return num;
 }
-private void send_disband_mail(string club) {
-   string *to;
-   string bit;
-   switch (query_club_type(club)) {
-      case CLUB_FAMILY :
-         to = query_members(club);
-         bit = "family";
-         break;
-      case CLUB_PERSONAL :
-         to = ({ query_founder(club) });
-         bit = "club";
-         break;
-      case CLUB_ELECTED :
-         to = query_committee(club) - ({ CLUB_UNKNOWN_MEMBER });
-         if (!sizeof(to)) {
-            to = ({ query_members(club) });
-         }
-         bit = "club";
-         break;
+int add_create_rule_motion(string area, int type, string text,
+                          string creator) {
+   class nomic_motion fluff;
+   if (!is_magistrate_of(area, creator)) {
+      return 0;
    }
-   MAILER->do_mail_message(implode(to, ","),
-                           "Patricians office",
-                           "The " + bit + " has been disbanded.",
-                           "",
-                           sprintf("%-=80s\n", "Morning,\n\n"
-                           "This is a message from the patricians "
-                           "office to you that your " + bit +
-                           " '" + query_club_name(club) +
-                           "' has been disbanded for having its fees "
-                           "in remission."
-                           "\n\nYours happily,\nThe Patrician."));
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_ADD;
+   fluff->rule = new(class nomic_rule);
+   fluff->rule->creator = creator;
+   fluff->rule->text = text;
+   fluff->rule->type = type;
+   fluff->rule->amendments = ({ });
+   fluff->rule->date_created = time();
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a new rule motion");
+   post_magistrate_message(area, "New: Create rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
 }
-protected void check_extra_information(string name,
-                                       string member,
-                                       int startup) {
-   if (is_elected_club(name)) {
-      check_elected_information(name, member, startup);
-   } else if (is_family(name)) {
-      check_family_information(name, member, startup);
+int add_move_rule_type_motion(string area, int rule_no, int type,
+                              string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
    }
+   if (bing->type == type) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_MOVE);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_MOVE;
+   fluff->rule = bing;
+   fluff->new_rule_type = type;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a move rule motion");
+   post_magistrate_message(area, "New: Move rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
 }
-protected void check_club_members(string club_name,
-                                string* members,
-                                class top_ten_tables top_info) {
+int add_amend_rule_motion(string area, int rule_no, string amendment,
+                           string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   class nomic_amendment amend;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_AMEND);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_AMEND;
+   amend = new (class nomic_amendment);
+   amend->amender = creator;
+   amend->text = amendment;
+   amend->date_amended = time();
+   bing->amendments += ({ amend });
+   fluff->rule = bing;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added an add rule motion");
+   post_magistrate_message(area, "New: Ammend rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
+}
+int remove_rule_motion(string area, int rule_no, string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_REMOVE);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_REMOVE;
+   fluff->rule = bing;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a remove rule motion");
+   post_magistrate_message(area, "New: Remove rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
+}
+class nomic_motion query_motion(string area, int id) {
+   class nomic_motion fluff;
+   if (!_motions[area]) {
+      return 0;
+   }
+   foreach (fluff in _motions[area]) {
+      if (fluff->identifier == id) {
+         return fluff;
+      }
+   }
+   return 0;
+}
+class nomic_motion* query_all_motions(string area) {
+   if (!_motions[area]) {
+      return ({ });
+   }
+   return copy(_motions[area]);
+}
+class nomic_motion find_motion(string area, int rule_no, int type) {
+   class nomic_motion motion;
+   foreach (motion in _motions[area]) {
+      if (motion->rule->id == rule_no &&
+          motion->motion_type == type) {
+         return motion;
+      }
+   }
+   return 0;
+}
+int comment_on_motion(string area, int id, string comment_text,
+                            string commenter) {
+   class nomic_comment comment;
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW &&
+       bing->state != NOMIC_STATE_COUNCIL_VOTE) {
+      return 0;
+   }
+   comment = new(class nomic_comment);
+   comment->text = comment_text;
+   comment->commenter = commenter;
+   comment->date_commented = time();
+   bing->comments += ({ comment });
+   save_me();
+   return 1;
+}
+int amend_motion(string area, int id, string amend_text,
+                    string amender) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW) {
+      return 0;
+   }
+   switch (bing->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      bing->rule->text = amend_text;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      return 0;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      bing->rule->amendments[<1]->text = amend_text;
+   }
+   save_me();
+   return 1;
+}
+int vote_for_motion(string area, int id, int vote_type, string voter) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (member_array(voter, bing->voted) != -1) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_VOTE &&
+       bing->state != NOMIC_STATE_CITIZEN_VOTE) {
+      return 0;
+   }
+   switch (vote_type) {
+   case NOMIC_VOTE_YES :
+      bing->yes_votes++;
+      break;
+   case NOMIC_VOTE_NO :
+      bing->no_votes++;
+      break;
+   case NOMIC_VOTE_ABSTAIN :
+      bing->abstain_votes++;
+      break;
+   default :
+      return 0;
+   }
+   bing->voted += ({ voter });
+   save_me();
+   return 1;
+}
+int has_voted_for_motion(string area, int id, string voter) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   return member_array(voter, bing->voted) != -1;
+}
+int* query_votes_for_motion(string area, int id) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   return ({ bing->yes_votes, bing->no_votes, bing->abstain_votes });
+}
+private void remove_motion(string area, class nomic_motion motion) {
    int i;
-   int tmp;
-   string member;
-   string str;
-   string flip;
-   class relationship_data *rels;
-   class relationship_data frog;
-   for (i = 0; i < 1 && i < sizeof(members); i++) {
-      member = members[i];
-      if (!PLAYER_HANDLER->test_user(member)) {
-         log_file("CLUB", ctime(time()) + ": removed " + member +
-                          " from " + club_name + " for not existing.\n");
-         remove_member(club_name, member);
-      } else if (!PLAYER_HANDLER->test_creator(member) &&
-                 !PLAYER_HANDLER->test_property(member, "no score")) {
-         top_info->num++;
-         top_info->qp += LIBRARY->query_quest_points(member);
-         tmp = -PLAYER_HANDLER->test_age(member) / (60 * 60);
-         top_info->rels += sizeof(CLUB_HANDLER->query_relationships(club_name, member));
-         top_info->age += tmp;
-         top_info->start_time += PLAYER_HANDLER->test_start_time(member) / (60 * 60);
-         str = PLAYER_HANDLER->test_guild(member);
-         if (str &&
-             str != "") {
-            if (top_info->guild[str]) {
-               top_info->guild[str]++;
-            } else {
-               if (file_size(str + ".c") > 0) {
-                  flip = str->query_real_guild_object();
-                  if (flip) {
-                     str = flip;
-                  }
-                  top_info->guild[str]++;
+   for (i = 0; i < sizeof(_motions[area]); i++) {
+      if (_motions[area][i] == motion) {
+         _motions[area] = _motions[area][0..i-1] + _motions[area][i+1..];
+      }
+   }
+}
+void send_council_inform(string area, int only_magistrates,
+                         string mess) {
+   object *obs;
+   if (only_magistrates) {
+      obs = filter(users(), (: is_magistrate_of($2, $1->query_name()) :), area);
+   } else {
+      obs = filter(users(), (: is_citizen_of($2, $1->query_name()) :), area);
+   }
+   call_other(obs, "event_inform", this_object(), mess, "council");
+}
+int query_completion_time(string area, class nomic_motion motion) {
+   return (motion->date_event - motion->date_event % (24 * 60 * 60) +
+           7 * (24 * 60 * 60));
+}
+int complete_motion(string area, int id) {
+   class nomic_motion bing;
+   class nomic_motion motion;
+   int passed;
+   int new_num;
+   string mess;
+   int only_magistrates;
+   string voting_result;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   passed = bing->yes_votes > bing->no_votes;
+   voting_result = "Voting Results:\n"
+                   "    Yes: " + bing->yes_votes + "\n"
+                   "     No: " + bing->no_votes + "\n"
+                   "Abstain: " + bing->abstain_votes + "\n";
+   mess = "Motion added by " + bing->added_by + " to ";
+   switch (bing->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      mess += "add a new rule";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      mess += "remove rule " + bing->rule->id;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      mess += "move rule " + bing->rule->id;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      mess += "amend rule " + bing->rule->id;
+      break;
+   }
+   if (passed || bing->state == NOMIC_STATE_COUNCIL_REVIEW) {
+      switch (bing->state) {
+      case NOMIC_STATE_COUNCIL_REVIEW :
+         bing->yes_votes = 0;
+         bing->no_votes = 0;
+         bing->abstain_votes = 0;
+         bing->voted = ({ });
+         bing->state = NOMIC_STATE_COUNCIL_VOTE;
+         mess += " is open for magistrates to vote";
+         only_magistrates = 1;
+         post_magistrate_message(area, "Motion now in voting phase",
+              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
+         break;
+      case NOMIC_STATE_COUNCIL_VOTE :
+         bing->yes_votes = 0;
+         bing->no_votes = 0;
+         bing->abstain_votes = 0;
+         bing->voted = ({ });
+         bing->state = NOMIC_STATE_CITIZEN_VOTE;
+         bing->comments = ({ });
+         mess += " is open for citizens to vote";
+         post_magistrate_message(area, "Law passed onto citizens",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
+                              "\n\n" + voting_result);
+         post_citizen_message(area, "New motion for voting on",
+              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
+         break;
+      case NOMIC_STATE_CITIZEN_VOTE :
+         switch (bing->motion_type) {
+         case NOMIC_MOTION_TYPE_RULE_ADD :
+            add_nomic_rule_class(area, bing->rule, bing->motion_type);
+            break;
+         case NOMIC_MOTION_TYPE_RULE_AMEND :
+            change_nomic_rule(area, bing->rule);
+            break;
+         case NOMIC_MOTION_TYPE_RULE_MOVE :
+            new_num = move_nomic_rule(area, bing->rule, bing->new_rule_type);
+            foreach (motion in _motions[area]) {
+               if (motion->rule->id == bing->rule->id) {
+                  motion->rule->id = new_num;
                }
             }
+            break;
+         case NOMIC_MOTION_TYPE_RULE_REMOVE :
+            remove_nomic_rule(area, bing->rule->id);
+            break;
          }
-         if (PLAYER_HANDLER->test_player_killer(member)) {
-            top_info->no_pks++;
-         }
-         if (!top_info->gender) {
-            top_info->gender = PLAYER_HANDLER->test_gender(member);
-         }
-         if (top_info->single_gender != -1 &&
-             PLAYER_HANDLER->test_gender(member) != top_info->gender) {
-            top_info->single_gender = -1;
-         }
+         remove_motion(area, bing);
+         mess += " is now law";
+         post_citizen_message(area, "New Law!",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)));
+         post_magistrate_message(area, "New Law!",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
+                    "\n\n" + voting_result);
+         break;
       }
-      if (is_family(club_name)) {
-         check_family_information(club_name, member, 0);
-         rels = CLUB_HANDLER->query_relationships(club_name, member);
-         foreach (frog in rels) {
-            if (!PLAYER_HANDLER->test_family(frog->related_to)) {
-               log_file("CLUB", ctime(time()) + ": removed relationship " +
-                          member +
-                          " <-> " + frog->related_to + " (" +
-                          frog->relationship + ") for loosing their "
-                          "family.\n");
-            }
-         }
-      }
-   }
-   members = members[1..];
-   if (!sizeof(members)) {
-      if (!sizeof(query_members(club_name))) {
-         disband_club(club_name);
-      } else if (top_info->num > 3) {
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_LARGEST_FAMILY,
-                                         top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_OLDEST_FAMILY,
-                                         top_info->age / top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_QUEST_POINTS,
-                                         top_info->qp / top_info->num);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_GUILD,
-                                         top_info->guild);
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_MOST_PKS,
-                                         top_info->no_pks);
-         if (top_info->single_gender != -1) {
-            TOP_TEN_HANDLER->inform_of_club(club_name,
-                                            is_family(club_name),
-                                            TOP_TEN_SINGLE_GENDER,
-                                            top_info->num);
-         } else {
-            TOP_TEN_HANDLER->inform_of_club(club_name,
-                                            is_family(club_name),
-                                            TOP_TEN_SINGLE_GENDER,
-                                            0);
-         }
-         TOP_TEN_HANDLER->inform_of_club(club_name,
-                                         is_family(club_name),
-                                         TOP_TEN_OLDEST_LOGONS,
-                                         top_info->start_time / top_info->num);
-      }
-      top_info = new(class top_ten_tables);
-      top_info->guild = ([ ]);
-      i = member_array(_current_test_club, query_clubs());
-      if (i < sizeof(query_clubs())) {
-         _current_test_club = query_clubs()[i+1];
-         _test_callout_id = call_out("check_club_members", 60, _current_test_club, query_members(_current_test_club), top_info);
+      bing->date_event = time();
+   } else {
+      if (bing->state == NOMIC_STATE_COUNCIL_VOTE) {
+         mess += " not passed by the magistrates";
+         only_magistrates = 1;
+         post_magistrate_message(area, "Law not passed onto citizens",
+                              rule_as_string(0, bing->rule) + "\n\n" +
+                              voting_result);
       } else {
-         _current_test_club = 0;
-         _test_callout_id = 0;
+         mess += " not ratified by the citizens";
+         only_magistrates = 0;
+         post_citizen_message(area, "Law not passed",
+                              rule_as_string(0, bing->rule));
+         post_magistrate_message(area, "Law not passed",
+                              rule_as_string(0, bing->rule) + "\n\n" +
+                              voting_result);
       }
-      save_main();
-   } else {
-      _test_callout_id = call_out("check_club_members", 60, club_name, members, top_info);
+      remove_motion(area, bing);
    }
+   save_me();
+   send_council_inform(area, only_magistrates, mess);
+   return 1;
 }
-private nosave int _specific_callout_id = 0;
-private nosave string *_clubs_to_check = ({ });
-protected void check_specific_club(string club_name, int startup) {
-    class club_info bing;
-    bing = (class club_info)query_club_info(club_name);
-    if (bing->last_touched < time() - CLUB_TIMEOUT) {
-        disband_club(club_name);
-        return;
-    }
-    if (!pointerp(query_members(club_name))) {
-        disband_club(club_name);
-        return;
-    }
-    if (query_time_fees_due(club_name) < time()) {
-        if (query_balance(club_name, CLUB_DEFAULT_ACCOUNT_NAME) < 0) {
-            send_disband_mail(club_name);
-            disband_club(club_name);
-            return;
-        }
-        if (remove_money(club_name, query_club_cost_per_period(club_name),
-            CLUB_TRANSACTION_UPKEEP, "Club Dues",
-            CLUB_DEFAULT_ACCOUNT_NAME, 0)) {
-            int tmp;
-            bing = (class club_info)query_club_info(club_name);
-            tmp = bing->last_paid;
-            bing->last_paid = query_time_fees_due(club_name);
-            set_club_changed(club_name);
-            if (query_balance(club_name, CLUB_DEFAULT_ACCOUNT_NAME) < 0) {
-               reset_eval_cost();
-               send_low_balance_mail(club_name);
-            }
-        }
-    }
-    call_out( (: check_extra_information :),  1,  club_name, 0,  startup);
-}
-protected void check_specific_clubs( int startup, int pos ) {
-    string club_name;
-    if ( pos >= sizeof( _clubs_to_check ) ) {
-        _clubs_to_check = ({ });
-        _specific_callout_id = 0;
-        pos = 0;
-        return;
-    }
-    club_name = _clubs_to_check[ pos ];
-    tell_creator( "taffyd", "Checking club %s (%d)\n", club_name, pos );
-    check_specific_club(club_name, startup);
-    _specific_callout_id = call_out( (: check_specific_clubs :), 10, startup, ++pos );
-}
-void check_clubs(int startup) {
-   class top_ten_tables blue;
-   setup_call_check_clubs(24 * 60 * 60, 0);
-   if ( !_specific_callout_id ) {
-       _clubs_to_check = query_clubs();
-        _specific_callout_id = call_out( (: check_specific_clubs :), 0,
-            startup, 0 );
-   }
-   remove_call_out(_test_callout_id);
-   if (!_current_test_club &&
-       _last_test_time + 7 * 24 * 60 * 60 < time()) {
-      if (sizeof(query_clubs()) > 0) {
-         _current_test_club = query_clubs()[0];
+void check_for_completions() {
+   string area;
+   class nomic_motion* bits;
+   class nomic_motion motion;
+   foreach (area, bits in _motions) {
+      foreach (motion in bits) {
+         if (query_completion_time(area, motion) < time()) {
+            complete_motion(area, motion->identifier);
+         }
       }
-      _last_test_time = 0;
-      save_main();
    }
-   if (_current_test_club) {
-      blue = new(class top_ten_tables);
-      blue->guild = ([ ]);
-      _test_callout_id = call_out("check_club_members",
-                                 60,
-                                 _current_test_club,
-                                 query_members(_current_test_club),
-                                 blue);
+   remove_call_out(_completion_id);
+   _completion_id = call_out("check_for_completions",
+            (time() - time() % (24 * 60 * 60) + (24 * 60 * 60)) - time());
+   update_recently_closed_cases();
+}
+string motion_as_string(int indent, string area, class nomic_motion motion,
+                        int brief) {
+   string ret;
+   class nomic_comment comment;
+   ret = "";
+   switch (motion->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Add new rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Remove rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Transmogrify rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Amend rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
    }
-}
-#ifdef OLD_CHECK_CODE
-protected void check_specific_club(string club_name, int extra_space,
-                                   int startup) {
-}
-#endif
-
-==================================================
-FILE: handlers/inherit/club_personal.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_basic";
-#define __CLUBS_H_NO_CLASSES
-#include <clubs.h>
-class personal_info {
-}
-protected void create_extra_data(string name) {
-   class personal_info p_info;
-   class club_info data;
-   data = (class club_info)query_club_info(name);
-   if (query_club_type(name) == CLUB_PERSONAL) {
-         p_info = new(class personal_info);
-      data->extra_data = p_info;
-      set_club_changed(name);
+   ret += rule_as_string(5 + indent, motion->rule);
+   if (sizeof(motion->comments)) {
+      if (!brief) {
+         ret += "$I$" + (indent + 5) + "=     Comments:\n";
+         foreach (comment in motion->comments) {
+            ret += "$I$" + (indent + 11) + "=" + sprintf("%*s", indent + 3, "") +                capitalize(comment->commenter) + " (" +
+                   ctime(comment->date_commented) + "):\n" +
+                   comment->text + "\n";
+         }
+      } else {
+         ret += "$I$0=" + sprintf("%*s", indent, "") + "     " +
+                 sizeof(motion->comments) + " Comments.\n";
+      }
    } else {
-      ::create_extra_data(name);
+      ret += "$I$0=" + sprintf("%*s", indent, "") + "     No Comments.\n";
    }
+   switch (motion->state) {
+   case NOMIC_STATE_COUNCIL_REVIEW :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being reviewed by the magistrates.\n";
+      break;
+   case NOMIC_STATE_COUNCIL_VOTE :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being voted on by the magistrates.\n";
+      break;
+   case NOMIC_STATE_CITIZEN_VOTE :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being ratified by the citizens.\n";
+      break;
+   }
+   ret += "$I$0=" + sprintf("%*s", indent, "") +
+          "The item will go onto the next stage at " +
+          ctime(query_completion_time(area, motion)) +
+          ".\n";
+   return ret;
 }
-private class personal_info query_personal_info(string name) {
-   class club_info data;
-   if (is_personal_club(name)) {
-      data = (class club_info)query_club_info(name);
-      return data->extra_data;
+string rule_as_html(class nomic_rule rule) {
+   string ret;
+   class nomic_amendment amend;
+   ret = "<i><b>" + (rule->id?rule->id+"":"(" +
+          NOMIC_HANDLER->query_type_name(rule->type) + ")") + "</b> by " +
+          capitalize(rule->creator) + " (" +
+          ctime(rule->date_created) + "):</i>\n"
+          "<p style=\"margin-left: 30pt;margin-top: 5pt\">\n" +
+          replace_string(rule->text, "\n", "<br>") +
+          "<br>\n";
+   foreach (amend in rule->amendments) {
+      ret += "<i><b>Ammendment</b> by " + capitalize(amend->amender) + " (" +
+             ctime(amend->date_amended) + "):</i>\n"
+             "<p style=\"margin-left: 60pt;margin-top: 5pt\">\n" +
+             replace_string(amend->text, "\n", "<br>") +
+             "\n</p>\n";
    }
-   return 0;
+   ret += "</p>\n";
+   return ret;
+}
+string motion_as_html(string area, class nomic_motion motion) {
+   string ret;
+   class nomic_comment comment;
+   ret = "";
+   switch (motion->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      ret += "<b>" + motion->identifier + ") Add new rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      ret += "<b>" + motion->identifier + ") Remove rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      ret += "<b>" + motion->identifier + ") Transmogrify rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      ret += "<b>" + motion->identifier + ") Amend rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   }
+   ret += "<ul>" + rule_as_html(motion->rule) + "</ul>";
+   if (sizeof(motion->comments)) {
+      ret += "<b>Comments:</b><br>\n";
+      foreach (comment in motion->comments) {
+         ret += ctime(comment->date_commented) + "):<br>\n" +
+                comment->text + "<p>\n";
+      }
+   }
+   switch (motion->state) {
+   case NOMIC_STATE_COUNCIL_REVIEW :
+      ret += "The item is currently being reviewed by the magistrates.\n";
+      break;
+   case NOMIC_STATE_COUNCIL_VOTE :
+      ret += "The item is currently being voted on by the magistrates.\n";
+      break;
+   case NOMIC_STATE_CITIZEN_VOTE :
+      ret += "The item is currently being ratified by the citizens.\n";
+      break;
+   }
+   ret += "<br>The item will go onto the next stage at " +
+          ctime(query_completion_time(area, motion)) +
+          ".\n";
+   return ret;
 }
 
 ==================================================
-FILE: handlers/inherit/craft_skills.c
+FILE: handlers/terrain_things/dungeon_maker.c
 ==================================================
 
-#include <skills.h>
-private string *_craft_skill_tree;
-void add_craft_skill(string name);
-void create() {
-   _craft_skill_tree = ({ });
-   add_craft_skill("crafts.smithing.gold");
-   add_craft_skill("crafts.smithing.silver");
-   add_craft_skill("crafts.smithing.black.tool");
-   add_craft_skill("crafts.smithing.black.weapon");
-   add_craft_skill("crafts.smithing.black.armour");
-   add_craft_skill("crafts.smithing.gem.cutting");
-   add_craft_skill("crafts.smithing.gem.polishing");
-   add_craft_skill("crafts.smithing.gem.setting");
-   add_craft_skill("crafts.mining.gem");
-   add_craft_skill("crafts.mining.ore.panning");
-   add_craft_skill("crafts.mining.mineral");
-   add_craft_skill("crafts.hunting.tracking");
-   add_craft_skill("crafts.hunting.fishing");
-   add_craft_skill("crafts.hunting.trapping");
-   add_craft_skill("crafts.carpentry.furniture");
-   add_craft_skill("crafts.carpentry.coopering");
-   add_craft_skill("crafts.carpentry.turning");
-   add_craft_skill("crafts.carpentry.whittling");
-   add_craft_skill("crafts.pottery.forming.throwing");
-   add_craft_skill("crafts.pottery.forming.shaping");
-   add_craft_skill("crafts.pottery.glazing");
-   add_craft_skill("crafts.pottery.staining");
-   add_craft_skill("crafts.pottery.firing");
-   add_craft_skill("crafts.materials.leatherwork");
-   add_craft_skill("crafts.materials.weaving");
-   add_craft_skill("crafts.materials.spinning");
-   add_craft_skill("crafts.materials.needlework");
-   add_craft_skill("crafts.materials.dyeing");
-   add_craft_skill("crafts.husbandry.plant.edible");
-   add_craft_skill("crafts.husbandry.plant.herbal");
-   add_craft_skill("crafts.husbandry.plant.milling");
-   add_craft_skill("crafts.husbandry.plant.tree");
-   add_craft_skill("crafts.husbandry.animal.grooming");
-   add_craft_skill("crafts.husbandry.animal.breeding");
-   add_craft_skill("crafts.culinary.cooking");
-   add_craft_skill("crafts.culinary.baking");
-   add_craft_skill("crafts.culinary.butchering");
-   add_craft_skill("crafts.culinary.preserving");
-   add_craft_skill("crafts.culinary.brewing");
-   add_craft_skill("crafts.culinary.distilling");
-   add_craft_skill("crafts.arts.design");
-   add_craft_skill("crafts.arts.calligraphy");
-   add_craft_skill("crafts.arts.drawing");
-   add_craft_skill("crafts.arts.painting");
-   add_craft_skill("crafts.arts.printing");
-   add_craft_skill("crafts.arts.sculpture");
-   add_craft_skill("crafts.points");
+#include <dirs.h>
+#include <terrain.h>
+#define END 0
+#define TWO 1
+#define FOUR 2
+#define ROOM 3
+#define HALF 0
+#define FULL 1
+#define DIRS ({ "north", "northeast", "east", "southeast", \
+      "south", "southwest", "west", "northwest" })
+inherit "/std/object";
+int max, size, *clear, *c_probs, *p_probs, *r_probs, *start;
+string terrain_name, *passage_files, *room_files;
+object easel;
+mixed *passages, *room_entries;
+void setup() {
+   set_name( "box" );
+   set_short( "green box" );
+   add_adjective( "green" );
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\n" );
+   reset_get();
+   start = allocate( 3 );
+   passages = ({ });
+   room_entries = ({ });
 }
-private mixed *add_craft_skill_int(string *bits,
-                                   mixed *arr) {
-   int pos;
-   pos = member_array(bits[0], arr);
-   if (pos == -1) {
-      pos = sizeof(arr);
-      arr += ({ bits[0], 0, 0, ({ }) });
+void dest_me() {
+   if ( easel )
+      easel->dest_me();
+   ::dest_me();
+}
+int query_max_locations() { return max; }
+void set_max_locations( mixed arg ) { max = to_int( arg ); }
+int *query_junction_clearance() { return clear; }
+void set_junction_clearance( mixed *args ) {
+   int i;
+   clear = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      clear[ i ] = to_int( args[ i ] );
+}
+int *query_continue_probabilities() { return c_probs; }
+void set_continue_probabilities( mixed *args ) {
+   int i;
+   c_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      c_probs[ i ] = to_int( args[ i ] );
+}
+int *query_passage_probabilities() { return p_probs; }
+void set_passage_probabilities( mixed *args ) {
+   int i;
+   p_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      p_probs[ i ] = to_int( args[ i ] );
+}
+int *query_room_probabilities() { return r_probs; }
+void set_room_probabilities( mixed *args ) {
+   int i;
+   r_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      r_probs[ i ] = to_int( args[ i ] );
+}
+int *query_start_co_ord() { return start; }
+void set_start_co_ord( mixed *args ) {
+   int i;
+   if ( sizeof( args ) != 3 )
+      return;
+   for ( i = 0; i < sizeof( args ); i++ )
+      start[ i ] = to_int( args[ i ] );
+}
+string query_terrain_name() { return terrain_name; }
+void set_terrain_name( string word ) { terrain_name = word; }
+string *query_passage_files() { return passage_files; }
+void set_passage_files( string *words ) { passage_files = words; }
+string *query_room_files() { return room_files; }
+void set_room_files( string *words ) { room_files = words; }
+object query_easel() { return easel; }
+mixed *query_passages() { return passages; }
+mixed *query_room_entries() { return room_entries; }
+int do_generate(string);
+void init() {
+   add_command( "generate", "<word'terrainname'>", (:do_generate($4[0]):));
+}
+void mark_passage( int *co_ord ) {
+   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] ) / size,
+         ( start[ 0 ] - co_ord[ 0 ] ) / size }), ({ "#" }) );
+}
+void mark_room( int *co_ord, string room ) {
+   int width;
+   width = (int)room->query_room_size();
+   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] - width - size / 2 ) / size,
+         ( start[ 0 ] - co_ord[ 0 ] - width - size / 2 ) / size }),
+         (string *)easel->make_block( ( 2 * width ) / size + 2 ) );
+}
+int do_generate( string word ) {
+   int i;
+   string data, direc, *lines;
+   mixed *parameters;
+   if ( easel )
+      return notify_fail( "The generator is working on "+
+            terrain_name +".\n" );
+   if ( file_size( word ) < 0 )
+      return notify_fail( "File "+ word +" does not exist.\n" );
+   lines = explode( read_file( word ), "\n" );
+   for ( i = 0; i < sizeof( lines ); i++ ) {
+      if ( lines[ i ] == "" )
+         continue;
+       if ( lines[ i ][ 0 .. 0 ] == "#" )
+         continue;
+      parameters = explode( lines[ i ], " " );
+      if ( !stringp( parameters[ 0 ] ) ) {
+         printf( "%s line %d: %O is not a string.\n", word, i,
+               parameters[ 0 ] );
+         continue;
+      }
+      if ( sizeof( parameters ) == 2 )
+         call_other( this_object(), "set_"+ parameters[ 0 ],
+               parameters[ 1 ] );
+      else
+         call_other( this_object(), "set_"+ parameters[ 0 ],
+               parameters[ 1 .. sizeof( parameters ) - 1 ] );
+      printf( "Set %s to %O.\n", parameters[ 0 ], call_other( this_object(),
+            "query_"+ parameters[ 0 ] ) );
    }
-   if (sizeof(bits) > 1) {
-      arr[pos + SKILL_BIT] = add_craft_skill_int(bits[1..],
-                                                 arr[pos + SKILL_BIT]);
+   if ( file_size( RESTORE_PATH + terrain_name +".o" ) > 0 )
+      return notify_fail( "Terrain "+ terrain_name +" already exists.\n" );
+   easel = clone_object( "/obj/misc/easel" );
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\nIt seems "+
+         "to be humming quietly but in a very powerful way.\n" );
+   write( "Working on "+ terrain_name +".\n" );
+   direc = DIRS[ random( 8 ) ];
+   for ( i = 0; i < 4; i++ )
+      passages += ({ ({ DIRS[ ( member_array( direc, DIRS ) + 2 * i ) % 8 ],
+            passage_files[ random( sizeof( passage_files ) ) ],
+            start, 0, 0, 1 + clear[ 0 ] + random( clear[ 1 ] ) }) });
+   size = 2 * (int)passage_files[ 0 ]->query_room_size();
+   TERRAIN_MAP->add_floating_location( terrain_name, passage_files[ 0 ],
+         start, 0 );
+   call_out( "process_passages", 2 );
+   return 1;
+}
+void stop_working() {
+   tell_room( environment(), "The box stops humming as it extrudes an "+
+         "easel from a slot in one side.\n" );
+   easel->add_shape( ({ 0, 0 }), ({ "@" }) );
+   write_file( "/open/"+ terrain_name +".map",
+         implode( (string *)easel->query_lines(), "\n" ) );
+   easel->move( environment() );
+   easel = 0;
+   passages = ({ });
+   room_entries = ({ });
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\n" );
+}
+int *shift_in( int *co_ord, string direc, string from, string to ) {
+   int i, delta, *new_co_ord, *vector;
+   delta = (int)from->query_room_size() + (int)to->query_room_size();
+   new_co_ord = allocate( 3 );
+   vector = STD_ORDERS[ member_array( direc, STD_ORDERS ) + 1 ];
+   for ( i = 0; i < 3; i++ )
+      new_co_ord[ i ] = co_ord[ i ] - delta * vector[ i ];
+   return new_co_ord;
+}
+void process_passages() {
+   int i, j, k, prob, straight, *co_ord, *new_co_ord;
+   string direc, new_direc, type, new_type;
+   mixed *last;
+   if ( !sizeof( passages ) ) {
+      tell_room( environment(), "No passages to process.\n" );
+      return stop_working();
    }
-   return arr;
-}
-private void add_craft_skill(string name) {
-   string *bits;
-   bits = explode(name, ".");
-   _craft_skill_tree = add_craft_skill_int(bits, _craft_skill_tree);
-}
-mixed *query_crafts_skill_tree() {
-   return _craft_skill_tree;
-}
-
-==================================================
-FILE: handlers/inherit/distance_handler.c
-==================================================
-
-#define BAD_ROOM -1
-#define TRAVEL_NOT_ALLOWED -2
-#define BAD_DOMAIN -3
-int* query_co_ord(string room);
-private int difference(int bing, int womble){
-   if (womble > bing) {
-      return womble - bing;
+   if ( max < 1 ) {
+      tell_room( environment(), "Reached maximum.\n" );
+      return stop_working();
    }
-   return bing - womble;
-}
-private int filename_check(string one, string two){
-   string dom_one;
-   string dom_two;
-   string alpha;
-   log_file("/log/PORTAL", "Unable to get co-ords for %O %O, doing filename based check.\n", one, two);
-   dom_one = explode(one, "/")[1];
-   dom_two = explode(two, "/")[1];
-   alpha = dom_one<dom_two?dom_one+":"+dom_two:dom_two+":"+dom_one;
-   switch(alpha){
-      case "am:am":
-         return 3000;
-      case "am:cwc":
-         return TRAVEL_NOT_ALLOWED;
-      case "am:ram":
-         return 3000000;
-      case "am:klatch":
-         return 1000000;
-      case "am:sur":
-         return 500000;
-      case "am:forn":
-         return TRAVEL_NOT_ALLOWED;
-      case "am:guilds":
-         return 1000;
-      case "cwc:ram":
-      case "cwc:klatch":
-      case "cwc:forn":
-      case "cwc:guilds":
-      case "cwc:sur":
-         return TRAVEL_NOT_ALLOWED;
-      case "cwc:cwc":
-         return 500000;
-      case "forn:forn":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:ram":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:guilds":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:klatch":
-         return TRAVEL_NOT_ALLOWED;
-      case "forn:sur":
-         return TRAVEL_NOT_ALLOWED;
-      case "guilds:guilds":
-         return 1000;
-      case "guilds:klatch":
-         return 500000;
-      case "guilds:sur":
-         return 500000;
-      case "guilds:ram":
-         return 1500000;
-      case "klatch:klatch":
-         return 1000;
-      case "klatch:sur":
-         return 3300000;
-      case "klatch:ram":
-         return 4000000;
-      case "ram:ram":
-         return 500000;
-      case "ram:sur":
-         return 900000;
-      case "sur:sur":
-         return 500000;
+   max--;
+   direc = passages[ 0 ][ 0 ];
+   type = passages[ 0 ][ 1 ];
+   co_ord = passages[ 0 ][ 2 ];
+   last = passages[ 0 ][ 3 .. 4 ];
+   straight = passages[ 0 ][ 5 ];
+   passages = delete( passages, 0, 1 );
+   call_out( "process_passages", 2 );
+   for ( i = 0; i < 3; i++ ) {
+      new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 + i ) % 8 ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      if ( sizeof( (mixed *)TERRAIN_MAP->
+            member_floating_locations( new_co_ord ) ) ) {
+         tell_room( environment(), "Passage already at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
+               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         return;
+      }
+      for ( j = 0; j < sizeof( room_entries ); j++ ) {
+         for ( k = 0; k < 3; k++ )
+            if ( new_co_ord[ k ] != room_entries[ j ][ k ] )
+               break;
+         if ( k < 3 )
+            continue;
+         tell_room( environment(), "Room entry at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; "+
+               "joining passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         mark_passage( new_co_ord );
+         room_entries = delete( room_entries, j, 1 );
+         return;
+      }
+      if ( (int)easel->query_at( ({ ( new_co_ord[ 1 ] - start[ 1 ] ) / size,
+            ( start[ 0 ] - new_co_ord[ 0 ] ) / size }) ) != 32 ) {
+         tell_room( environment(), "Something at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
+               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         return;
+      }
    }
-   return BAD_DOMAIN;
-}
-int query_distance_from_coords(int* co_ord_one, int* co_ord_two){
-   float x;
-   float y;
-   float z;
-   float distanceplane;
-   float distance;
-   x = difference(co_ord_one[0], co_ord_two[0]);
-   y = difference(co_ord_one[1], co_ord_two[1]);
-   z = difference(co_ord_one[2], co_ord_two[2]);
-   distanceplane = sqrt(pow(x, 2) + pow(y, 2));
-   distance = sqrt(pow(distanceplane, 2) + pow(z, 2));
-   return to_int(distance);
-}
-int query_distance_from_rooms(mixed one, mixed two){
-   mixed co_ord_one;
-   mixed co_ord_two;
-   if (objectp(one)) {
-      one = file_name(one);
+   prob = random( 100 );
+   if ( prob < p_probs[ END ] ) {
+      tell_room( environment(), "Passage going "+ direc +" ends at "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      return;
    }
-   if (objectp(two)) {
-      two = file_name(two);
+   prob -= p_probs[ END ];
+   if ( ( prob < p_probs[ TWO ] ) && !straight ) {
+      if ( random( 100 ) >= c_probs[ HALF ] + c_probs[ FULL ] ) {
+         tell_room( environment(), "Passage branching "+ direc +" and " );
+         new_co_ord = shift_in( co_ord, direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type,
+               new_co_ord, 0 );
+         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+         if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+            direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
+                  6 * random( 2 ) ) % 8 ];
+         else
+            direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
+                  4 * random( 2 ) ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         new_co_ord = shift_in( co_ord, direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+         tell_room( environment(), direc +" from "+
+               co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+         return;
+      }
+      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 1 ) % 8 ];
+      else
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 2 ) % 8 ];
+      type = passage_files[ random( sizeof( passage_files ) ) ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+            clear[ 0 ] + random( clear[ 1 ] ) }) });
+      mark_passage( new_co_ord );
+      tell_room( environment(), "Passage branching "+ new_direc +" and " );
+      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 ) % 8 ];
+      else
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 ) % 8 ];
+      type = passage_files[ random( sizeof( passage_files ) ) ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+            clear[ 0 ] + random( clear[ 1 ] ) }) });
+      mark_passage( new_co_ord );
+      tell_room( environment(), new_direc +" from "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      return;
    }
-   if (one->query_co_ord()) {
-      co_ord_one = one->query_co_ord();
+   prob -= p_probs[ TWO ];
+   if ( ( prob < p_probs[ FOUR ] ) && !straight ) {
+      tell_room( environment(), "Crossroads from "+ direc +" at "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      for ( i = 0; i < 3; i++ ) {
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 + 2 * i ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         new_co_ord = shift_in( co_ord, new_direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+      }
+      return;
+   }
+   prob -= p_probs[ FOUR ];
+   if ( ( prob < p_probs[ ROOM ] ) && !straight ) {
+      prob = random( 100 );
+      new_type = room_files[ 0 ];
+      for ( i = 1; i < sizeof( room_files ); i++ )
+         if ( prob < r_probs[ FULL + i ] ) {
+            new_type = room_files[ i ];
+            break;
+         } else
+            prob -= r_probs[ FULL + i ];
+      new_co_ord = shift_in( co_ord, direc, type, new_type );
+      tell_room( environment(), "Room at "+ new_co_ord[ 0 ] +", "+
+            new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +".\n" );
+      TERRAIN_MAP->add_floating_location( terrain_name, new_type,
+            new_co_ord, 0 );
+      mark_room( new_co_ord, new_type );
+      mark_passage( co_ord );
+      for ( i = 1; i < 8; i++ ) {
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 4 + i ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         co_ord = shift_in( new_co_ord, new_direc, new_type, type );
+         if ( i % 2 ) {
+            if ( random( 100 ) < r_probs[ HALF ] ) {
+               tell_room( environment(), "Passage leaving room to "+
+                     new_direc +".\n" );
+               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
+                     0 );
+               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
+                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
+               mark_passage( co_ord );
+            } else
+               room_entries += ({ co_ord });
+         } else {
+            if ( random( 100 ) < r_probs[ FULL ] ) {
+               tell_room( environment(), "Passage leaving room to "+
+                     new_direc +".\n" );
+               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
+                     0 );
+               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
+                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
+               mark_passage( co_ord );
+            } else
+               room_entries += ({ co_ord });
+         }
+      }
+      return;
+   }
+   prob = random( 100 );
+   if ( ( prob < c_probs[ HALF ] ) && !straight ) {
+      direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
+             6 * random( 2 ) ) % 8 ];
+      straight = clear[ 0 ] + random( clear[ 1 ] );
    } else {
-      co_ord_one = query_co_ord(one);
+      prob -=  c_probs[ HALF ];
+      if ( ( prob < c_probs[ FULL ] ) && !straight ) {
+         direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
+               4 * random( 2 ) ) % 8 ];
+         straight = clear[ 0 ] + random( clear[ 1 ] );
+      }
    }
-   if (two->query_co_ord()) {
-      co_ord_two = two->query_co_ord();
-   } else {
-      co_ord_two = query_co_ord(two);
-   }
-   if(co_ord_one == 0 || co_ord_two == 0) {
-      return filename_check(one, two);
-   }
-   return query_distance_from_coords(co_ord_one, co_ord_two);
+   if ( straight > 0 )
+      straight--;
+   new_co_ord = shift_in( co_ord, direc, type, type );
+   tell_room( environment(), "Passage goes "+ direc +" from "+
+         co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+   TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+   passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+         straight }) });
+   mark_passage( new_co_ord );
 }
+
+==================================================
+FILE: handlers/terrain_things/logroom.c
+==================================================
+
+#include <terrain.h>
+#define SAVE_FILE RESTORE_PATH +"logroom"
+inherit "/std/room";
+mapping locations;
+void setup() {
+   set_short( "limbo" );
+   set_light( 50 );
+   set_long( "You are between worlds, surrounded by raw potentiality and "+
+         "not a lot else.\n" );
+   add_item( "potentiality", "Well, it's sort of potentially something and "+
+         "potentially nothing, and it can't quite decide at the moment.  "+
+         "With any luck, though, you won't be here long enough to find "+
+         "out...\n" );
+   add_exit( "drum", "/d/am/am/mendeddrum", "path" );
+   locations = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) )
+      unguarded((: restore_object, SAVE_FILE :));
+}
+void save_this() {
+  unguarded((: save_object, SAVE_FILE :));
+}
+void player_quitting( object player, object place ) {
+   if ( player->query_property( "guest" ) )
+      return;
+   locations[ (string)player->query_name() ] =
+         ({ (string)place->query_property( "terrain name" ),
+         (int *)place->query_co_ord() });
+   save_this();
+   call_out( "check_quitted", 5, (string)player->query_name() );
+}
+void check_quitted( string word ) {
+   if ( !find_player( word ) )
+      return;
+   if ( locations[ word ] )
+      locations = m_delete( locations, word );
+   save_this();
+}
+void event_enter( object player, string words, object thing ) {
+   object location;
+   mixed *data;
+   data = locations[ (string)player->query_name() ];
+   if ( !data ) {
+      player->move( (string)player->query_start_pos(),
+            "$N enter$s the game." );
+      return;
+   }
+   location = (object)TERRAIN_MAP->find_location( data[ 0 ],
+         data[ 1 ] );
+   player->move( location );
+   locations = m_delete( locations, (string)player->query_name() );
+   save_this();
+}
+
+==================================================
+FILE: handlers/terrain_things/sample_passage.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "dusty corridor" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
+         "been deserted for a long time.\n" );
+   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
+         "the bottom of the walls." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_passage_1.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "dusty corridor" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
+         "been deserted for a long time.\n" );
+   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
+         "the bottom of the walls." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_passage_2.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "rock-walled tunnel" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are tunnel with rough-hewn rock walls.  It looks as though "+
+         "it has been deserted for a long time.\n" );
+   add_item( ({ "rough-hewn rock wall", "rock" }), "The walls are rough, "+
+         "where the tunnel was hewn out of the rock." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_1.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "small room" );
+   set_light( 20 );
+   set_room_size( 15 );
+   set_long( "You are in a small room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_2.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "largish room" );
+   set_light( 20 );
+   set_room_size( 25 );
+   set_long( "You are in a largish room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_3.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "large room" );
+   set_light( 20 );
+   set_room_size( 35 );
+   set_long( "You are in a large room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }

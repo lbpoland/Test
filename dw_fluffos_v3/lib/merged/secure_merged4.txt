@@ -1,6 +1,6 @@
-# Total Tokens: 21917
-# Total Files Merged: 36
-# Total Characters: 73145
+# Total Tokens: 23447
+# Total Files Merged: 39
+# Total Characters: 78256
 
 odified_efuns.c
 ==================================================
@@ -2663,4 +2663,189 @@ void no_discard(string s, object *obs) {
 }
 mixed* query_patterns() {
    return ({ "<string>", (: cmd($4[0]) :) });
+}
+
+==================================================
+FILE: cmds/creator/diff.c
+==================================================
+
+inherit "/cmds/base";
+#include <creator.h>
+mapping globals = ([]), files = ([]), ret = ([]);
+#define TP globals[fd]
+#define FILE files[fd]
+#define RET ret[fd]
+mixed cmd(string arg) {
+  int fd, num = 0;
+  string last = "";
+  if(!arg)
+    arg = "";
+  else {
+    string bit, *bits = explode(arg, " ");
+    arg = "";
+    bits -= ({""});
+    foreach(bit in bits){
+      mixed *st;
+      if (bit[0] == '-'){
+        continue;
+      }
+      bit = this_player()->get_path(bit)[1..];
+      if (bit == "")
+        return notify_fail("Your wombles just expired.\n");
+      if (!master()->valid_read(bit, this_player(), 0))
+        return notify_fail("Permission denied: " + bit + " .\n");
+      if(sizeof(st = unguarded((:stat, bit:)))){
+        if(stringp(st[0]))
+          return notify_fail("Can't use diff on directories.\n");
+      }
+      arg += " " + last;
+      last = bit;
+      num ++;
+    }
+  }
+  if (num == 2)
+    arg += " " + last;
+  last = "/" + last;
+  if (num > 3)
+    return notify_fail("Can't compare more than two files");
+  if (num == 3 && file_size(last) > 0)
+    return notify_fail("File " + last + " exists.\n");
+  fd = external_start(7, arg, "read_call_back", "write_call_back",
+                      "close_call_back");
+  if (fd == -1)
+    return notify_fail("diff failed somehow.\n");
+  TP = this_player();
+  if (num == 3 && master()->valid_write(last, this_player(), 0))
+    FILE = last;
+  RET = "";
+  return 1;
+}
+void read_call_back(int fd, mixed mess) {
+  mess = replace(mess, "/usr/bin/", "");
+  RET += mess;
+}
+void write_call_back(int fd) {
+  tell_object(TP, "diff: Whoops! fatal error.\n");
+}
+void close_call_back(int fd) {
+  if (FILE)
+    write_file(FILE, RET);
+  else {
+    if(RET == "")
+      RET = "those files are the same";
+    TP->more_string(RET);
+  }
+  map_delete(ret, fd);
+  map_delete(files, fd);
+  map_delete(globals, fd);
+}
+
+==================================================
+FILE: cmds/creator/du.c
+==================================================
+
+#define MAX_FILES 1000
+inherit "/cmds/base";
+mapping _counts = ([ ]);
+protected int rec_du(string path) {
+  string *files;
+  int i, size, tot;
+  if (path[strlen(path)-1] != '/') {
+    path += "/";
+  }
+  files = get_dir(path+"*");
+  _counts[this_player()] += sizeof(files);
+  for (i=0;i<sizeof(files);i++) {
+    if (files[i] == "." || files[i] == "..") {
+      continue;
+    }
+    size = file_size(path+files[i]);
+    if (size > 0) {
+      tot += size;
+    } else if (size == -2 && (_counts[this_player()] < MAX_FILES)) {
+      printf("%-30s %5d\n", path+files[i], (size = rec_du(path+files[i])));
+      tot += size*1024;
+    }
+  }
+  return (tot+1023)/1024;
+}
+int cmd( string path ) {
+    if ( !path )
+        return 0;
+    _counts[this_player()] = 0;
+    if ( master()->valid_read( path, geteuid( this_player() ) ) ) {
+      printf( "%-30s %5d\n", "Total:", rec_du( path ) );
+      if(_counts[this_player()] >= MAX_FILES)
+        printf("Note: count truncated due to file limit\n");
+      return 1;
+    }
+    add_failed_mess( "You must have read access to a path to use "
+                     "du on it.\n" );
+    return 0;
+}
+mixed *query_patterns() {
+    return ({ "", (: cmd( this_player()->query_path() ) :),
+        "<string'path'>", (: cmd( $4[0] ) :) });
+}
+
+==================================================
+FILE: cmds/creator/dup_licate.c
+==================================================
+
+#include <creator.h>
+inherit "/cmds/base";
+protected int do_duplicate(object *ov) {
+   string pname, dummy;
+   int i;
+   object dup;
+   mixed static_arg, dynamic_arg;
+   for (i = 0; i < sizeof(ov); i++) {
+      if (!ov[i]) {
+         continue;
+      }
+      pname = file_name(ov[i]);
+      if (sscanf(pname, "%s#%d", pname, dummy) != 2) {
+        write("Can't duplicate " + ov[i]->short() + " (not a clone).\n");
+        continue;
+      } else {
+         static_arg = ov[i]->query_static_auto_load();
+         dynamic_arg = ov[i]->query_dynamic_auto_load();
+         dup = clone_object(pname);
+         if (dup && ov[i]) {
+            ov[i] = dup;
+            if (static_arg) {
+              ov[i]->init_static_arg(copy(static_arg));
+            }
+            if (dynamic_arg) {
+              ov[i]->init_dynamic_arg(copy(dynamic_arg));
+            }
+         }
+         ov[i]->add_property("cloned by", this_player()->query_name());
+      }
+     if (!ov[i]) {
+        printf("I seem to have lost your object.\n");
+        return 1;
+     }
+     if (!ov[i]->move(this_player())) {
+       write(ov[i]->short() + " duplicated and put in you.\n");
+     } else if (!ov[i]->move(environment(this_player()))) {
+       write(ov[i]->short() + " duplicated and put in here.\n");
+     } else if (!ov[i]->move("/room/broken")) {
+       write(ov[i]->short() + " duplicated and put in /room/broken.\n");
+     } else {
+       write("Couldn't find anyplace to put " + ov[i]->short() + "!\n");
+       ov[i]->move("/room/rubbish");
+     }
+   }
+   return 1;
+}
+mixed cmd(string str) {
+  object *val;
+  notify_fail("No such object.\n");
+  val = WIZ_PRESENT->wiz_present(str, this_player());
+  if(!sizeof(val)) {
+    notify_fail("No matching objects\n");
+    return 0;
+  }
+  return do_duplicate(val);
 }
