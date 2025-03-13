@@ -36,13 +36,15 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
     
     for root, dirs, files in os.walk(source_dir):
         for filename in sorted(files):
-            if filename.lower().endswith(extensions) and filename.strip():  # Ensure non-empty filename
+            if filename.lower().endswith(extensions) and filename.strip() and filename != '.c':  # Skip empty or '.c'
                 filepath = os.path.join(root, filename)
                 
                 try:
                     with open(filepath, 'r', encoding='utf-8') as infile:
                         content = infile.read()
-                        header = f"\n{separator}\nFILE: {os.path.relpath(filepath, source_dir)}\n{separator}\n\n"
+                        # Get path relative to /lib/ (strip everything before /lib/)
+                        full_rel_path = os.path.relpath(filepath, os.path.dirname(source_dir))
+                        header = f"\n{separator}\nFILE: /lib/{full_rel_path}\n{separator}\n\n"
                         full_entry = header + content + "\n"
                         tokens_in_file = estimate_tokens(full_entry)
                         lines_in_file = count_lines(full_entry)
@@ -53,7 +55,7 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                 
                 print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
                 
-                # Check limits before writing, close file if exceeded
+                # Check limits and close file if exceeded
                 if outfile and (current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit):
                     outfile.seek(0)
                     outfile.write(f"# Total Tokens: {current_token_count}\n"
@@ -81,6 +83,8 @@ def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit
                 current_char_count += chars_in_file
                 file_count += 1
                 files_in_current.append(filename)
+            else:
+                print(f"Skipped invalid filename: {filename}")
     
     # Finalize last file
     if outfile:
@@ -120,7 +124,8 @@ def main():
     print("- No strict line limit, but monitored")
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
-    print("HELP: If you see an unnamed file block, check for empty or invalid files in the source directory.")
+    print("HELP: Headers show paths relative to /lib/ (e.g., /lib/obj/armour.c) for 2003 Discworld MUD lib.")
+    print("      If you see an unnamed file block, check for empty or invalid files (e.g., 'find /lib/obj/ -type f -name \"*.c\" -empty').")
     print("====================================================")
     
     print("\nProcessing .c files:")
