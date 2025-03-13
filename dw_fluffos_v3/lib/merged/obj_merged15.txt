@@ -1,1160 +1,2229 @@
-# Total Tokens: 9852
-# Total Files Merged: 3
-# Total Characters: 32851
+# Total Tokens: 18553
+# Total Files Merged: 6
+# Total Characters: 61861
 
-ogin_handler.c
+wbiehelpers.c
 ==================================================
 
-#include <login.h>
-#ifdef LOGIN_DEBUG
-#undef MAX_COMPRESSED_PLAYERS
-#undef MAX_UNCOMPRESSED_PLAYERS
-#undef MAX_PLAYERS
-#define LOGIN_MAX_COMPRESSED_PLAYERS 2
-#define MAX_UNCOMPRESSED_PLAYERS 1
-#define MAX_PLAYERS (MAX_COMPRESSED_PLAYERS + MAX_UNCOMPRESSED_PLAYERS)
-#endif
-#ifdef LOGIN_DEBUG
-#define is_compressed_login(x) (strsrch((x)->query_name(), "test") > -1)
-#else
-#define is_compressed_login(x) (compressedp(x))
-#endif
-#define COMPRESSED_INTAKE_COUNT 5
-#ifdef USE_RAMDISK
-#define SAVE_TIME 300
-#else
-#define SAVE_TIME 900
-#endif
-#define NEW_SAVE_TIME 15
-#define SAVE_NAME "/save/login_handler"
-#define BUFFER_TIME 30
-#define LOCKDOWN_TIME 900
-#define MAX_FAILURES 3
-class login_information {
-    mixed ob;
-    string funct;
-}
-mapping _static_login_calls;
-nosave mapping _dynamic_login_calls;
-nosave string _best;
-nosave string _worst;
-nosave string *_players_on;
-nosave mapping _compressed_players_on;
-nosave mapping _telnet_players_on;
-nosave object *_compressed_login_queue;
-nosave object *_telnet_login_queue;
-nosave int _compressed_login_count;
-nosave string enter_log;
-nosave int last_entry;
-nosave mapping messages;
-nosave mapping lockdowns;
-nosave int _creators;
-nosave int _players;
-nosave int _login_q;
-nosave int _next_user_log;
-nosave int _title_call;
-nosave int _save_call;
-nosave int _out_q;
-nosave int _q_time;
-nosave int _last_queue_time;
-nosave int _last_queue_result;
-int is_discworld_full(int test_login_queue);
-void write_log(string event, string name, int guest, string other);
-void save_users();
-private void store_user_count();
-private void log_user_count();
-protected void check_all_titles( string player );
-private void do_all_calls(string player, string event);
-private void do_call(class login_information login_inf,
-  string player, int event);
-int is_uncompressed_full( int );
+#include <playerinfo.h>
+#include <player_handler.h>
+#include <mail.h>
+#define PI_TYPE "misc"
+#define SAVE_FILE "/save/newbiehelpers"
+#define TO this_object()
+#define TP this_player()
+private mapping admin;
+private mapping helpers;
+private mapping applicants;
+private int minimum_apply_age, minimum_vouch_age;
+protected void log_message( string message );
+protected void load_file();
+protected void save_file();
 void create() {
-    object pl;
-    string name;
-    _static_login_calls = ([ ]);
-    _dynamic_login_calls = ([ ]);
-    seteuid( "Root" );
-    unguarded((: restore_object, SAVE_NAME :));
-    foreach(name in keys(_static_login_calls)) {
-      if(!sizeof(_static_login_calls[name])) {
-        map_delete(_static_login_calls, name);
-      }
-      catch(unguarded((: save_object, SAVE_NAME :)));
-    }
-    _compressed_players_on = ([ ]);
-    _telnet_players_on = ([ ]);
-    _players_on = ({ });
-    foreach(pl in users()) {
-        if (is_compressed_login(pl)) {
-            _compressed_players_on[ pl->query_name() ] = 1;
-        }
-        else {
-            _telnet_players_on[ pl->query_name() ] = 1;
-        }
-        _players_on += ({ pl->query_name() });
-    }
-    _compressed_login_queue = ({ });
-    _telnet_login_queue = ({ });
-    _compressed_login_count = 1;
-    _save_call = call_out( "save_users", NEW_SAVE_TIME );
-    _next_user_log = time() + 3601 - (time() % 3600);
-    enter_log = "";
-    last_entry = time();
-    call_out("clean_lockdowns", 3600);
-    write_log("Periodic", "", 0, "");
+    admin = ([ ]);
+    helpers = ([ ]);
+    applicants = ([ ]);
+    minimum_apply_age = 0;
+    minimum_vouch_age = 0;
+    load_file();
 }
-mapping query_static_login_calls() {
-    return copy(_static_login_calls);
-}
-mapping query_dynamic_login_calls() {
-    return copy(_dynamic_login_calls);
-}
-string query_best() { return _best; }
-string query_worst() { return _worst; }
-string *query_players_on() {
-    return keys( _compressed_players_on ) + keys( _telnet_players_on );
-}
-object *query_login_queue() {
-    return _compressed_login_queue + _telnet_login_queue;
-}
-void add_to_login_queue(object login_ob) {
-    if ( is_compressed_login( login_ob ) ) {
-        _compressed_login_queue += ({ login_ob });
+string query_list( object lister ) {
+    string list_mess, person;
+    if( !sizeof( admin ) ) {
+        list_mess = "There are no newbie helpers admin at present.\n";
     }
     else {
-        _telnet_login_queue += ({ login_ob });
-    }
-}
-void remove_from_login_queue(object ob) {
-    _compressed_login_queue -= ({ ob });
-    _telnet_login_queue -= ({ ob });
-}
-int can_jump_queue( object ob ) {
-    return ob->query_creator() || ob->query_net_dead() ||
-        ob->query_property( "test character" );
-}
-object pop_from_login_queue() {
-    object ob;
-    object *login_queue;
-    login_queue = query_login_queue();
-    if ( !sizeof( login_queue ) ) {
-        return 0;
-    }
-    if(time() != _q_time){
-      _q_time = time();
-      _out_q = 0;
-    }
-    _out_q++;
-    foreach( ob in _compressed_login_queue ) {
-        if ( can_jump_queue( ob ) ) {
-            remove_from_login_queue( ob );
-            return ob;
+        list_mess = "Current newbie helpers admin:\n";
+        foreach( person in keys(admin) ) {
+            list_mess += "    $C$" + person + "\n";
         }
     }
-    reset_eval_cost();
-    if(sizeof(_telnet_login_queue) &&
-       !is_uncompressed_full(WITHOUT_LOGIN_QUEUE)) {
-      foreach( ob in _telnet_login_queue ) {
-        if ( can_jump_queue( ob ) ) {
-          remove_from_login_queue( ob );
-          return ob;
+    list_mess += "\n";
+    if( !sizeof( helpers ) ) {
+        list_mess += "There are no newbie helpers at present.\n";
+    }
+    else {
+        list_mess += "Current newbie helpers:\n";
+        foreach( person in keys(helpers) ) {
+            list_mess += "    $C$" + person + "\n";
         }
-      }
     }
-    if ( sizeof( _compressed_login_queue) &&
-         _compressed_login_count < COMPRESSED_INTAKE_COUNT ) {
-        _compressed_login_count++;
-        ob = _compressed_login_queue[ 0 ];
-        _compressed_login_queue = _compressed_login_queue[ 1.. ];
-    } else {
-        _compressed_login_count = 0;
-        ob = _telnet_login_queue[ 0 ];
-        _telnet_login_queue = _telnet_login_queue[ 1.. ];
-    }
-    return ob;
-}
-int add_static_login_call(string player, mixed funct, mixed obj) {
-  class login_information login_inf;
-  if (!stringp(funct) || !stringp(obj) || !stringp(player)) {
-    return 0;
-  }
-  if(obj[0..3] == "/w/")
-    return 0;
-  if(_static_login_calls[player]) {
-    foreach (login_inf in _static_login_calls[player]) {
-      if (login_inf->ob == obj &&
-    login_inf->funct == funct) {
-  return 1;
-      }
-    }
-  }
-  if (!_static_login_calls[player]) {
-    _static_login_calls[player] = ({ });
-  }
-  login_inf = new (class login_information, funct : funct, ob : obj);
-  _static_login_calls[player] += ({ login_inf });
-  catch(unguarded((: save_object, SAVE_NAME :)));
-  return 1;
-}
-int remove_static_login_call(string player, mixed funct, mixed obj) {
-  class login_information login_inf;
-  if (!stringp(funct) || !stringp(obj) || !stringp(player)) {
-    return 0;
-  }
-  if (_static_login_calls[player]) {
-    foreach (login_inf in _static_login_calls[player]) {
-      if (login_inf->ob == obj &&
-          login_inf->funct == funct) {
-        _static_login_calls[player] -= ({ login_inf });
-        if(!sizeof(_static_login_calls[player]))
-          map_delete(_static_login_calls, player);
-        catch(unguarded((: save_object, SAVE_NAME :)));
-        return 1;
-      }
-    }
-  }
-  return 0;
-}
-int add_dynamic_login_call(string player, mixed funct, mixed obj) {
-    class login_information login_inf;
-    if (stringp(obj) || objectp(obj)) {
-        if (!stringp(funct)) {
-            return 0;
+    if( admin[lister->query_name()] ) {
+        list_mess += "\n";
+        if( !sizeof( applicants ) ) {
+            list_mess += "There are no outstanding newbie helper "
+                "applications at present.\n";
         }
-    } else if (!functionp(funct)) {
-        return 0;
-    }
-    if (!_dynamic_login_calls[player]) {
-        _dynamic_login_calls[player] = ({ });
-    }
-    login_inf = new (class login_information, funct : funct, ob : obj);
-    _dynamic_login_calls[player] += ({ login_inf });
-    return 1;
-}
-int remove_dynamic_login_call(string player, mixed funct, mixed obj) {
-    class login_information login_inf;
-    if (stringp(obj) || objectp(obj)) {
-        if (!stringp(funct)) {
-            return 0;
-        }
-    } else if (!functionp(funct)) {
-        return 0;
-    }
-    if (_dynamic_login_calls[player]) {
-        foreach (login_inf in _dynamic_login_calls[player]) {
-            if (login_inf->ob == obj &&
-              login_inf->funct == funct) {
-                _dynamic_login_calls[player] -= ({ login_inf });
-                return 1;
+        else {
+            list_mess += "Current applications to newbie helpers:\n";
+            foreach( person in keys(applicants) ) {
+                list_mess += "    $C$" + person + "\n";
             }
         }
     }
-    return 0;
+    return list_mess;
 }
-void update_players_on( string player ) {
-    object ob = find_player( player );
-    if ( !ob ) {
-        return;
-    }
-    if ( is_compressed_login( ob ) ) {
-        if ( undefinedp( _compressed_players_on[ player ] ) ) {
-            _compressed_players_on[ player ] = 1;
+private string helper_info( string name, object tp ) {
+    string helper_mess, *vouches;
+    helper_mess = "Details for $C$" + name + ":\n";
+    helper_mess += "    Hired by $C$" + helpers[name]["employer"] +
+        ", " + ctime(helpers[name]["time"]) + ".\n";
+    if( helpers[name] ) {
+        vouches = helpers[name]["vouches"];
+        if( !vouches || !sizeof(vouches) ) {
+            helper_mess += "    No vouches.\n";
         }
+        else {
+            helper_mess += "    Vouches were: " +
+                query_multiple_short( map( vouches, (: "$C$" + $1 :) ) ) +
+                ".\n";
+        }
+        if( !helpers[name]["guild"] || helpers[name]["guild"] == "unknown" ) {
+            helper_mess += "    Guild: Unknown.\n";
+        }
+        else {
+            helper_mess += "    Guild: " + helpers[name]["guild"] +
+                ".\n";
+        }
+        if( !helpers[name]["nationality"] ||
+            helpers[name]["nationality"] == "unknown" ) {
+            helper_mess += "    Nationality: Unknown.\n";
+        }
+        else {
+            helper_mess += "    Nationality: " + helpers[name]["nationality"]
+                + ".\n";
+        }
+    }
+    if( admin[name] ) {
+        helper_mess += "    $C$" + name + " is a newbie helpers admin.\n";
+    }
+    return helper_mess;
+}
+private string applicant_info( string name, object tp ) {
+    string app_mess, voucher;
+    mapping vouches;
+    app_mess = "Details for $C$" + name + ":\n";
+    app_mess += "    Applied: " +
+        ctime(applicants[name]["time"]) + ".\n";
+    app_mess += "    Age: " + query_time_string(applicants[name]["age"],-1) +
+        ".\n";
+    app_mess += "    Guild: " + applicants[name]["guild"] + ".\n";
+    app_mess += "    Nationality: " + applicants[name]["nationality"] + ".\n";
+    vouches = applicants[name]["vouches"];
+    if( !vouches || !sizeof(vouches) ) {
+        app_mess += "    No vouches.\n";
     }
     else {
-        if ( undefinedp( _telnet_players_on[ player ] ) ) {
-            _telnet_players_on[ player ] = 1;
+        app_mess += "    Vouches:\n";
+        foreach( voucher in keys(vouches) ) {
+            app_mess += "        $C$" + voucher + " (" +
+                query_time_string(
+                    applicants[name]["vouches"][voucher]["age"], -1
+                ) + " old)\n";
         }
     }
-    if ( member_array( player, _players_on ) == -1 ) {
-        _players_on += ({ player });
+    app_mess += "\n";
+    app_mess += "    $C$" + name + "'s application:$I$8=\n\n";
+    app_mess += applicants[name]["statement"] + "$I$0=\n\n";
+    if( !vouches || !sizeof(vouches) ) {
+        app_mess += "    No vouches.\n";
     }
+    else {
+        foreach( voucher in keys(vouches) ) {
+            app_mess += "    Vouch by $C$" + voucher + " made " +
+                ctime(applicants[name]["vouches"][voucher]["time"]) +
+                ":$I$8=\n\n";
+            app_mess += applicants[name]["vouches"][voucher]["statement"] +
+                "$I$0=\n\n";
+        }
+    }
+    if( admin[name] ) {
+        app_mess += "    $C$" + name + " is a newbie helpers admin.\n";
+    }
+    return app_mess;
 }
-int tidy_players_on( string player ) {
-    int pos;
-    int ret;
-    ret = 0;
-    if ( _compressed_players_on[ player ] ) {
-        map_delete( _compressed_players_on, player );
-        ret = 1;
+string query_check_player( object checker, string player ) {
+    if( !helpers[player] && !admin[player] && !applicants[player] ) {
+        return "$C$" + player + " is not registered with the newbie "
+            "helpers handler.\n";
     }
-    if ( _telnet_players_on[ player ] ) {
-        map_delete( _telnet_players_on, player );
-        ret = 1;
+    if( !admin[checker->query_name()] ) {
+        return "You are not a member of newbiehelpers admin.\n";
     }
-    pos = member_array( player, _players_on );
-    if ( pos != -1 ) {
-        _players_on = _players_on[0..pos-1] + _players_on[pos+1..];
-        ret = 1;
+    TP->add_succeeded_mess(TO, "", ({ }) );
+    if( helpers[player] ) {
+        return helper_info( player, TP );
     }
-    return ret;
+    if( applicants[player] ) {
+        return applicant_info( player, TP );
+    }
+    return "$C$" + player + " is just an admin.\n";
 }
-int player_logon(string player, int guest, string ip) {
-    if(lower_case(player) != (string)previous_object()->query_name()) {
+int add_helper( object adder, string player ) {
+    string *player_vouches, player_guild, player_nationality, name;
+    name = adder->query_name();
+    if( !admin[name] ) {
+        tell_object( TP, "You are not a member of newbiehelpers admin.\n" );
         return 0;
     }
-    update_players_on( player );
-    do_all_calls(player, LOGIN);
-    if (find_call_out(_title_call) == -1) {
-        _title_call = call_out("check_all_titles", 5, player );
-    }
-    write_log("Enter", player, guest, ip);
-}
-private void do_all_calls(string player, string event_t) {
-  class login_information login_inf;
-  if (_static_login_calls[player]) {
-    foreach (login_inf in _static_login_calls[player]) {
-      call_out((: do_call :), 1, login_inf,
-               player, event_t );
-    }
-  }
-  if (_static_login_calls["all"]) {
-    foreach (login_inf in _static_login_calls["all"]) {
-      call_out((: do_call :), 1, login_inf,
-               player, event_t );
-    }
-  }
-  if (_dynamic_login_calls[player]) {
-    foreach (login_inf in _dynamic_login_calls[player]) {
-      call_out((: do_call :), 1, login_inf,
-               player, event_t );
-    }
-  }
-  if (_dynamic_login_calls["all"]) {
-    foreach (login_inf in _dynamic_login_calls["all"]) {
-      call_out((: do_call :), 1, login_inf,
-               player, event_t );
-    }
-  }
-}
-private void do_call(class login_information login_inf,
-                     string player, int event_t) {
-  object ob;
-  if (!find_player(player) || find_player(player)->query_invis() < 2) {
-    if (!functionp(login_inf->funct)) {
-      if(login_inf->ob && login_inf->funct)
-        catch(ob = load_object(login_inf->ob));
-      if ( ob ) {
-        catch(call_other(ob, login_inf->funct, player,
-                         event_t));
-      } else {
-        tell_creator("ceres", "failed to load %s", login_inf->ob);
-      }
-    } else {
-      catch(evaluate(login_inf->funct, player, event_t));
-    }
-  }
-}
-int player_logout(string player) {
-    object ob;
-    do_all_calls(player, LOGOUT);
-    if ( tidy_players_on( player ) ) {
-        if (find_call_out(_title_call) == -1) {
-            _title_call = call_out("check_all_titles", 5, player );
-        }
-    }
-    if(find_call_out(_save_call) == -1) {
-        _save_call = call_out("save_users", NEW_SAVE_TIME );
-    }
-    while (sizeof(query_login_queue()) &&
-        !is_discworld_full(WITHOUT_LOGIN_QUEUE) ) {
-        ob = pop_from_login_queue();
-        if (ob) {
-            ob->remove_from_login_queue();
-        }
-    }
-    write_log("Exit", player, 0, "");
-    return 1;
-}
-int player_net_dead(string player) {
-    object ob;
-    if ( tidy_players_on( player ) ) {
-        do_all_calls(player, NETDEATH);
-        if (find_call_out(_title_call) == -1) {
-            _title_call = call_out("check_all_titles", 5, player );
-        }
-    }
-    while ( sizeof(query_login_queue()) && !is_discworld_full(WITHOUT_ANY_LOGINS) ) {
-        ob = pop_from_login_queue();
-        if (ob) {
-            ob->remove_from_login_queue();
-        }
-    }
-    write_log("NDead", player, 0, "");
-    return 1;
-}
-int player_reconnected(string player) {
-    update_players_on(player);
-    do_all_calls(player, RECONNECT);
-    if (find_call_out(_title_call) == -1) {
-        _title_call = call_out("check_all_titles", 5, player);
-    }
-    write_log("Recon", player, 0, query_ip_name(find_player(player)));
-}
-protected void check_all_titles( string player ) {
-    int al, good, bad;
-    object good_thing, bad_thing, thing, *things;
-    good = -250;
-    bad = 250;
-    things = users();
-    foreach( thing in things ) {
-      if (!thing || thing->query_creator() ) {
-        continue;
-      }
-      al = (int)thing->query_al();
-      if ( al > bad ) {
-        bad = al;
-        bad_thing = thing;
-      }
-      if ( al < good ) {
-        good = al;
-        good_thing = thing;
-      }
-    }
-    if ( bad_thing ) {
-      if ( stringp( _worst ) && ( _worst != player ) ) {
-        thing = find_player( _worst );
-      } else {
-        thing = 0;
-      }
-      if ( bad_thing != thing ) {
-        if ( thing ) {
-          thing->remove_title( "align" );
-        }
-        switch ( (int)bad_thing->query_gender() ) {
-        case 1 :
-          bad_thing->set_title( "align", "Lord of Darkness" );
-          break;
-        case 2 :
-          bad_thing->set_title( "align", "Lady of Darkness" );
-          break;
-        default :
-          bad_thing->set_title( "align", "Monster of Darkness" );
-        }
-        _worst = (string)bad_thing->query_name();
-      }
-    }
-    if ( good_thing ) {
-      if ( stringp( _best ) && ( _best != player ) ) {
-        thing = find_player( _best );
-      } else {
-        thing = 0;
-      }
-      if ( good_thing != thing ) {
-        if ( thing ) {
-          thing->remove_title( "align" );
-        }
-        switch ( (int)good_thing->query_gender() ) {
-        case 1 :
-          good_thing->set_title( "align", "Lord of Light" );
-          break;
-        case 2 :
-          good_thing->set_title( "align", "Lady of Light" );
-          break;
-        default :
-          good_thing->set_title( "align", "Creature of Light" );
-        }
-        _best = (string)good_thing->query_name();
-      }
-    }
-}
-void save_users() {
-    int number;
-    int next_time;
-    string word;
-    object thing;
-    number = sizeof( _players_on );
-    if ( !number ) {
-        _players_on = query_players_on();
-        _save_call = call_out("save_users", NEW_SAVE_TIME );
-        return;
-    }
-    store_user_count();
-    if(_next_user_log < time()) {
-        log_user_count();
-    }
-    word = _players_on[ 0 ];
-    thing = find_player( word );
-    if ( objectp( thing ) && ( number > 1 ) ) {
-        if ( environment( thing ) ) {
-            thing->save_me();
-        }
-        _players_on = _players_on[1..] + ({ word });
-    } else {
-        _players_on = _players_on[1..] + ({ word });
-    }
-    next_time = SAVE_TIME / number;
-    if ( next_time > 10 ) {
-        next_time = 10;
-    }
-    _save_call = call_out( (: save_users :), next_time );
-}
-int int_is_discworld_full(int logins) {
-    object *players;
-    int compressed;
-    int uncompressed;
-    int ret;
-    int ext;
-    players = users();
-    switch (logins) {
-    case WITHOUT_LOGINS_NOT_IN_QUEUE :
-        players = filter(players, (: objectp($1) && !$1->query_login_ob() &&
-            !$1->query_creator() :)) + query_login_queue();
-        break;
-    case WITHOUT_LOGIN_QUEUE :
-        players -= query_login_queue();
-        players = filter(players, (: objectp($1) && !$1->query_creator() :));
-        break;
-    case WITHOUT_ANY_LOGINS :
-        players = filter(players, (: objectp($1) && !$1->query_login_ob() &&
-            !$1->query_creator() :));
-        ext = _out_q;
-        break;
-    default :
-        players = filter(players, (: objectp($1) && !$1->query_creator() :));
-        break;
-    }
-    if(time() != _q_time){
-      ext = 0;
-      _out_q = 0;
-      _q_time = time();
-    }
-    compressed = sizeof( filter( players, (: is_compressed_login($1) :) )  ) + ext;
-    uncompressed = sizeof( players ) - compressed;
-    ret = DISCWORLD_IS_EMPTY;
-    if ( compressed >= MAX_COMPRESSED_PLAYERS ) {
-        ret |= COMPRESSED_FULL;
-    }
-    if ( uncompressed >= MAX_UNCOMPRESSED_PLAYERS ) {
-        ret |= UNCOMPRESSED_FULL;
-    }
-    return ret;
-}
-int is_compressed_full( int logins ) {
-    return int_is_discworld_full( logins ) & COMPRESSED_FULL;
-}
-int is_uncompressed_full( int logins ) {
-    return int_is_discworld_full( logins ) & UNCOMPRESSED_FULL;
-}
-int is_discworld_full(int logins) {
-    int ret;
-    ret = int_is_discworld_full( logins );
-    ret = (ret & COMPRESSED_FULL) && (ret & UNCOMPRESSED_FULL);
-    return ret;
-}
-private void store_user_count() {
-    object pl;
-    int current_players, current_creators, current_login_q;
-    string *logins_n;
-    foreach(pl in users()) {
-      if (pl && !pl->query_login_ob()) {
-        if (pl->query_creator()) {
-          current_creators++;
-        } else {
-          current_players++;
-        }
-      }
-    }
-    logins_n = map(LOGIN_HANDLER->query_login_queue(),
-      (: $1->query_cap_name() :));
-    logins_n = sort_array(logins_n, 1);
-    current_login_q = sizeof(logins_n);
-    if(current_players + current_login_q > _players + _login_q) {
-        _players = current_players;
-        _creators = current_creators;
-        _login_q = current_login_q;
-    }
-}
-private void log_user_count() {
-    log_file("USERS", "%s %d %d %d\n" ,ctime(time()), _creators, _players,
-      _login_q);
-    _creators = 0;
-    _players = 0;
-    _login_q = 0;
-    _next_user_log = time() + 3601 - (time() % 3600);
-}
-void write_log(string event, string name, int guest, string other) {
-    switch(event) {
-    case "Enter":
-        enter_log += sprintf( "%s [Enter] %-15s %s%s\n",
-          ctime(time())[4..18], name,
-          guest?"(guest) ":"",
-          other);
-        break;
-    case "Su":
-        enter_log += sprintf( "%s [Su]    %15-s %15-s\n",
-          ctime(time())[4..18], name, other);
-        break;
-    case "Periodic":
-        call_out("write_log", BUFFER_TIME, "Periodic", "", 0, "");
-        if (sizeof(enter_log) && time() - last_entry > BUFFER_TIME) {
-            unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
-            enter_log = "";
-            last_entry = time();
-        }
-        return;
-    case "Recon":
-        enter_log += sprintf( "%s [Recon] %15-s %s\n",
-          ctime(time())[4..18], name, other);
-        break;
-    default:
-        enter_log += sprintf("%s %-7s %15-s\n", ctime(time())[4..18],
-          "["+event+"]", name);
-        break;
-    }
-    last_entry = time();
-    if(sizeof(enter_log) > 1024) {
-        unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
-        enter_log = "";
-    }
-}
-void dest_me() {
-    unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
-    enter_log = "";
-    destruct(this_object());
-}
-string get_message(string mess_name) {
-    if(!messages)
-        messages = ([ ]);
-    if(mess_name[0..4] != "/doc/")
+    if( !PLAYER_HANDLER->test_user(player) ) {
+        tell_object( TP, "There is no player $C$" + player + "!\n" );
         return 0;
-    if(!messages[mess_name])
-        messages[mess_name] = read_file(mess_name);
-    return messages[mess_name];
+    }
+    if( helpers[player] ) {
+        tell_object( TP, "$C$" + player + " is already a newbie "
+            "helper.\n" );
+        return 0;
+    }
+    if( applicants[player] ) {
+        player_vouches = keys( applicants[player]["vouches"] );
+        player_guild = applicants[player]["guild"];
+        player_nationality = applicants[player]["nationality"];
+        map_delete( applicants, player );
+            AUTO_MAILER->auto_mail(player, name, "Your newbie helpers "
+                "application", "", "Hello,\n\nI am pleased to inform you "
+                "that your newbie helpers application was successful, and "
+                "that you have now been hired as a newbie helper.  This was "
+                "an automatic mail.\n\n$C$" + name, 0, 0);
+    }
+    else {
+        player_vouches = ({ });
+        player_guild = "unknown";
+        player_nationality = "unknown";
+    }
+    helpers[player] = ([ ]);
+    helpers[player]["time"] = time();
+    helpers[player]["employer"] = name;
+    helpers[player]["vouches"] = player_vouches;
+    helpers[player]["guild"] = player_guild;
+    helpers[player]["nationality"] = player_nationality;
+    save_file();
+    log_message( player + " added as a helper by " + name );
+    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
+        "Added as a newbiehelper.", 0 ) ) {
+        log_message( player + "'s playerinfo updated" );
+    }
+    else {
+        log_message( player + "'s playerinfo NOT updated (an error "
+            "occurred)" );
+    }
+    return 1;
 }
-void clear_messages() {
-    messages = ([ ]);
+string remove_helper( object remover, string player, string reason ) {
+    string name;
+    name = remover->query_name();
+    if( !admin[name] ) {
+        tell_object( TP, "You are not a member of newbiehelpers admin.\n" );
+        return 0;
+    }
+    if( !helpers[player] ) {
+        return "$C$" + player + " is not a newbie helper.\n";
+    }
+    map_delete( helpers, player );
+    save_file();
+    log_message( player + " removed as a helper by " + name + ", reason: " +
+        reason );
+    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
+        "Removed as a newbiehelper (" + reason + ").", 0 ) ) {
+        log_message( player + "'s playerinfo updated" );
+    }
+    else {
+        log_message( player + "'s playerinfo NOT updated (an error "
+            "occurred)" );
+    }
+    return "You remove $C$" + player + "'s helper status.\n";
 }
-int site_lockeddown(string ip_addr) {
-    if(!lockdowns)
-        lockdowns = ([ ]);
-    if(lockdowns[ip_addr] &&
-      (sizeof(lockdowns[ip_addr]) >= MAX_FAILURES) &&
-      (lockdowns[ip_addr][0] > time() - LOCKDOWN_TIME))
-        return 1;
+void submit_vouch(string statement, mixed args) {
+    string name, player;
+    object voucher;
+    voucher = args[0];
+    player = args[1];
+    name = voucher->query_name();
+    applicants[player]["vouches"][name] = ([ ]);
+    applicants[player]["vouches"][name]["time"] = time();
+    applicants[player]["vouches"][name]["age"] = -voucher->query_time_on();
+    applicants[player]["vouches"][name]["statement"] = statement;
+    save_file();
+    log_message( name + " submits a vouch for " + player );
+}
+string no_vouch_reason( object voucher, string applicant ) {
+    string name;
+    name = voucher->query_name();
+    if( !applicants[applicant] ) {
+        return "$C$" + applicant + " isn't applying to be a newbie helper, "
+            "so you can't vouch for them.\n";
+    }
+    if( applicants[applicant]["vouches"][name] ) {
+        return "You already have already vouched for $C$" + applicant + " on "
+            "this application, you cannot vouch again.\n";
+    }
+    if( applicant == name ) {
+        return "You cannot vouch for yourself!\n";
+    }
+    if( -voucher->query_time_on() < minimum_vouch_age ) {
+        return "You cannot vouch for $C$ " + applicant + " as you are too "
+            "young to vouch.  You need to be " +
+            query_time_string( minimum_vouch_age, -1 ) + " old before you "
+            "can vouch on people's applications to be a newbie helper.\n";
+    }
     return 0;
 }
-void failed_login(string ip_addr) {
-  int i;
-  if(!lockdowns)
-    lockdowns = ([ ]);
-  if(!lockdowns[ip_addr])
-    lockdowns[ip_addr] = ({ time() });
-  else {
-    for(i=0; i<sizeof(lockdowns[ip_addr]); i++)
-      if(lockdowns[ip_addr][i] < time() - LOCKDOWN_TIME) {
-        lockdowns[ip_addr] -= ({ lockdowns[ip_addr][i] });
-        i--;
-      }
-    lockdowns[ip_addr] += ({ time() });
-    if(sizeof(lockdowns[ip_addr]) > MAX_FAILURES) {
-      lockdowns[ip_addr] =
-        lockdowns[ip_addr][sizeof(lockdowns[ip_addr])-MAX_FAILURES..];
+void submit_application(string statement, object player) {
+    string name;
+    name = player->query_name();
+    applicants[name] = ([ ]);
+    applicants[name]["time"] = time();
+    applicants[name]["age"] = -player->query_time_on();
+    applicants[name]["statement"] = statement;
+    applicants[name]["vouches"] = ([ ]);
+    applicants[name]["guild"] =
+        (load_object(player->query_guild_ob()))->query_short();
+    if( player->query_nationality() ) {
+        applicants[name]["nationality"] = "$C$" +
+            (load_object(player->query_nationality()))->query_name();
+        }
+    else {
+        applicants[name]["nationality"] = "unknown";
     }
-  }
+    save_file();
+    log_message( name + " submits an application to newbiehelpers" );
 }
-void clean_lockdowns() {
-  string ip;
-  call_out("clean_lockdowns", 1800);
-  foreach(ip in keys(lockdowns)) {
-    if(lockdowns[ip][sizeof(lockdowns[ip])-1] < time() - LOCKDOWN_TIME) {
-      map_delete(lockdowns, ip);
+string no_apply_reason( object player ) {
+    string name;
+    name = player->query_name();
+    if( helpers[name] ) {
+        return "You are already a newbie helper, why are you applying "
+            "again?\n";
     }
-  }
+    if( applicants[name] ) {
+        return "You already have a newbie helper application open, you "
+            "should wait to hear back about it.\n";
+    }
+    if( -player->query_time_on() < minimum_apply_age ) {
+        return "You cannot apply to be a newbie helper as you are too "
+            "young.  You need to be " +
+            query_time_string( minimum_apply_age, -1 ) + " before you can "
+            "apply to be a newbie helper.\n";
+    }
+    return 0;
 }
-void clear_lockdowns(string ip) {
-  if(!ip)
-    lockdowns = ([ ]);
-  else if(lockdowns[ip])
-    map_delete(lockdowns, ip);
+void reject_application( object rejecter, string player, string reason,
+    string mail ) {
+    string name;
+    name = rejecter->query_name();
+    if( !admin[name] ) {
+        return;
+    }
+    if( !applicants[player] ) {
+        return;
+    }
+    AUTO_MAILER->auto_mail(player, name, "Your newbie helpers "
+        "application", "", mail, 0, 0);
+    map_delete( applicants, player );
+    save_file();
+    log_message( name + " rejects " + player + "'s application, reason: " +
+        reason );
+    if ( PLAYERINFO_HANDLER->add_entry( this_object(), player, PI_TYPE,
+        "Rejected as a newbiehelper (" + reason + ").", 0 ) ) {
+        log_message( player + "'s playerinfo updated" );
+    }
+    else {
+        log_message( player + "'s playerinfo NOT updated (an error "
+            "occurred)" );
+    }
 }
-void query_lockdowns() {
-    printf("%O\n", lockdowns);
+string no_reject_reason( object rejecter, string player ) {
+    string name;
+    name = rejecter->query_name();
+    if( !admin[name] ) {
+        return "You are not a member of newbiehelpers admin.\n";
+    }
+    if( !applicants[player] ) {
+        return "$C$" + player + " isn't applying to be a newbie helper, so "
+            "you can't reject them.\n";
+    }
+    return 0;
 }
-void reset() {
-    if (find_call_out(_save_call) == -1) {
-        save_users();
+int query_helper( string name ) {
+    if( helpers[name] ) {
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+int add_admin( string name ) {
+    if( !admin[TP->query_name()] ) {
+        return 0;
+    }
+    if( !admin[name] ) {
+        admin[name] = 1;
+        save_file();
+        log_message( name + " added as admin by " + TP->query_name() );
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+int remove_admin( string name ) {
+    if( !admin[TP->query_name()] ) {
+        return 0;
+    }
+    if( !admin[name] ) {
+        return 0;
+    }
+    else {
+        map_delete(admin, name);
+        save_file();
+        log_message( name + " removed from admin by " + TP->query_name() );
+        return 1;
+    }
+}
+int query_admin( string name ) {
+    if( admin[name] ) {
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+int query_can_chat( object who ) {
+    if( query_helper( who->query_name() ) ||
+        query_admin( who->query_name() ) ||
+        who->query_creator() ) {
+        return 1;
+    }
+    return 0;
+}
+string query_name() { return "Newbiehelpers Handler"; }
+protected void log_message( string message ) {
+    log_file("/log/NEWBIEHELPERS", ctime(time()) + ": " + message + "\n");
+}
+protected void save_file() {
+    unguarded( (: save_object, SAVE_FILE, 1 :) );
+}
+protected void load_file() {
+    if (file_size(SAVE_FILE + ".o") > 0)
+        unguarded( (: restore_object, SAVE_FILE, 1 :) );
+}
+
+==================================================
+FILE: handlers/news_handler.c
+==================================================
+
+#include <board.h>
+#include <login_handler.h>
+#define BOARD_NAME "announcements"
+#define DELAY_TIME 30
+int has_unread_announcements( string player ) {
+    mapping news_rc;
+    mixed subjects;
+    news_rc = BOARD_HAND->query_newsrc( player );
+    if ( !news_rc ) {
+        news_rc = ([ ]);
+    }
+    subjects = BOARD_HAND->get_subjects( BOARD_NAME );
+    if ( !sizeof( subjects ) ) {
+        return 0;
+    }
+    return subjects[ <1 ][ B_TIME ] > news_rc[ BOARD_NAME ];
+}
+void show_message( mixed person ) {
+    object player;
+    if ( stringp( person ) ) {
+        player = find_player( person );
+    }
+    else {
+        player = person;
+    }
+    if ( !player ) {
+        return;
+    }
+    if ( has_unread_announcements( player->query_name() ) ) {
+        tell_object( player, "\nThere are %^YELLOW%^NEW%^RESET%^ "
+            "announcements!  You can read them with \"news\".\n\n" );
+    }
+}
+void login_event(mixed person, string type) {
+    if ( type == LOGIN || type == RECONNECT ) {
+        if ( objectp( person ) ) {
+            person = person->query_name();
+        }
+        call_out( (: show_message :), DELAY_TIME, person );
+    }
+}
+void broadcast_announcement() {
+    foreach( object user in users() ) {
+        if ( interactive( user ) ) {
+            show_message( user );
+        }
     }
 }
 
 ==================================================
-FILE: handlers/mag_eff_handler.c
+FILE: handlers/newspaper.c
 ==================================================
 
-#define BLACK_MASS 1000
-#define NUM_POSS 6
-#define NUM_USER 20
-private mixed *_octonite;
-private int _call_out_no;
-protected void update_octonite();
-protected void schedule_next();
-int block( object thing ) {
-   if ( !thing->query_closed() )
-      return 0;
-   return (int)thing->query_property( "enchantment block" );
+#include <room/newspaper.h>
+#include <nroff.h>
+#include <autodoc.h>
+#include <login_handler.h>
+#define SAVE_DIR "/save/newspaper/"
+class edition {
+   int date_published;
+   class article* articles;
+   class advert* adverts;
+   string headline;
+   int num_sold;
+   int num_web_hits;
+   int total_revenue;
 }
-int ambient_enchantment( object thing ) {
-   int i, total;
-   object *tops;
-   tops = ({ thing });
-   while ( environment( tops[ 0 ] ) ) {
-      tops = ({ environment( tops[ 0 ] ) }) + tops;
-   }
-   for ( i = 0; i < sizeof( tops ); i++ ) {
-      total += (int)tops[ i ]->query_enchant();
-      total = ( total * ( 100 - block( tops[ i ] ) ) + 50 ) / 100;
-   }
-   return total;
+class paper {
+   class edition* published_editions;
+   string dir_name;
+   string long;
+   string description;
+   string office;
+   int paper_cost;
+   string language;
 }
-int *choose_effect( int number ) {
-  return ({ number, random( NUM_POSS * number ) / BLACK_MASS });
-}
-void do_effect( int number, string name, object place ) {
-  int i;
-  string word;
-  object thing, *things;
-  switch( number ) {
-    case 0:
-      tell_room( place, "How curious.\n" );
-      break;
-    case 1:
-      tell_room( place, name +" spins slowly in mid-air, then "+
-        "vanishes with a small \"pop!\"\n" );
-      break;
-    case 2:
-      i = random( 4 );
-      tell_room( place, name +" sparkles and turns into a small "+
-        ({ "yellow", "green", "hairy", "spotted" })[ i ] +" caterpillar.\n" );
-      thing = clone_object( "/obj/monster" );
-      thing->set_name( "caterpillar" );
-      thing->set_short( ({ "yellow", "green", "hairy", "spotted" })[ i ]
-        +" caterpillar" );
-      thing->add_adjective( ({ "yellow", "green", "hairy", "spotted" })[ i ] );
-      thing->set_main_plural( ({ "yellow", "green", "hairy", "spotted" })[ i ]
-        +" caterpillars" );
-      thing->add_plural( "caterpillars" );
-      thing->set_long( "This is a small, common or garden caterpillar.\n" );
-      thing->set_race( "caterpillar" );
-      thing->set_level( 1 );
-      thing->move( place );
-      break;
-    case 3:
-      tell_room( place, name +" vanishes with a sharp \"spang!\"\n"+
-        "A moment later, you hear a small thunderclap.\n" );
-      break;
-    case 4:
-      tell_room( place, "Balefire blossoms, and "+ name +" turns into "+
-        "a bunch of flowers.\n" );
-      thing = clone_object( "/std/object" );
-      thing->set_name( "flowers" );
-      thing->set_short( "bunch of flowers" );
-      thing->set_main_plural( "bunches of flowers" );
-      thing->add_adjective( ({ "bunch", "bunches", "of" }) );
-      thing->add_plural( "bunches" );
-      thing->set_long( "A nice bunch of flowers.\n" );
-      thing->set_weight( 10 );
-      thing->set_value( 100 );
-      thing->move( place );
-      break;
-    case 5:
-      tell_room( place, "With a small gout of flame, "+ name +" begins "+
-        "to accelerate.\n" );
-      switch( (string)place->query_property( "location" ) ) {
-        case "outside":
-          tell_room( place, name +" vanishes into the distance.\n" );
-          break;
-        default:
-          tell_room( place, "There is a small puff of burning dust as "+
-            name +" passes through a wall.\n" );
-      }
-      things = users() - all_inventory( place );
-      if ( sizeof( things ) > ( i = random( NUM_USER ) ) ) {
-        if ( !( thing = environment( things[ i ] ) ) ) break;
-        tell_object( find_player( "deutha" ),
-            (string)things[ i ]->query_name() +"\n" );
-        tell_room( thing, "You hear a high-pitched whine.\n" );
-        tell_object( things[ i ], "Something small and very hot zooms past "+
-          "you at ear level.\n" );
-        if ( ( !( word = (string)things[ i ]->query_short() ) || ( word == "" )
-          ) || things[ i ]->query_invis() ) break;
-        tell_room( thing, word +" looks shaken.\n", things[ i ] );
-      }
-      break;
-    default:
-      tell_room( place, "Something really, really strange happens.\n" );
-  }
-}
-object *query_octonite_crystals() { return _octonite; }
-void add_octonite_crystal( object crystal ) {
-   int i, when;
-   when = time() + roll_MdN( 5, 60 );
-   if ( !sizeof( _octonite ) ) {
-      _octonite = ({ crystal, when });
-      schedule_next();
-   } else {
-      for ( i = 0; i < sizeof( _octonite ); i += 2 ) {
-         if ( when < _octonite[ i + 1 ] ) {
-            break;
-         }
-      }
-      if ( i == 0 ) {
-         _octonite = ({ crystal, when }) + _octonite;
-         schedule_next();
-         return;
-      }
-      if ( i >= sizeof( _octonite ) ) {
-         _octonite += ({ crystal, when });
-         return;
-      }
-      _octonite = _octonite[ 0 .. i - 1 ] + ({ crystal, when }) +
-            _octonite[ i ..  ];
-   }
-}
-protected void schedule_next() {
-   int next;
-   remove_call_out(_call_out_no);
-   next = _octonite[ 1 ] - time();
-   if ( next > 0 ) {
-      _call_out_no = call_out( (: update_octonite :), next );
-   } else {
-      _call_out_no = call_out( (: update_octonite :), 0 );
-   }
-}
-protected void update_octonite() {
-   int ambient, weight;
-   object crystal;
-   crystal = _octonite[ 0 ];
-   if ( objectp( crystal ) ) {
-      weight = 20 * (int)crystal->query_weight();
-      tell_object( find_player( "deutha" ), "Current: "+ weight +".\n" );
-      ambient = ambient_enchantment( crystal );
-      if ( ambient > weight ) {
-         weight += ( ambient - weight ) / 4;
-      }
-      weight -= ( weight * ( 100 - block( environment( crystal ) ) ) ) / 800;
-      if ( random( 20 ) < weight % 20 ) {
-         weight += 20;
-      }
-      weight /= 20;
-      if ( !weight )
-         crystal->dest_me();
-      else {
-         crystal->set_weight( weight );
-         crystal->set_enchant( ( 7 * (int)crystal->query_max_enchant() ) / 8 );
-         crystal->set_value_info( "magic", weight * 10000 );
-      }
-      _octonite = delete( _octonite, 0, 2 );
-      if ( sizeof( _octonite ) ) {
-         schedule_next();
-      }
-      if ( crystal ) {
-         add_octonite_crystal( crystal );
-      }
-   } else {
-      _octonite = delete( _octonite, 0, 2 );
-      if ( sizeof( _octonite ) ) {
-         schedule_next();
-      }
-   }
-}
-string extra_look( object thing ) {
-   if ( explode( file_name( thing ), "#" )[ 0 ] != "/obj/magic/octonite" ) {
-      return "";
-   }
-   switch ( (int)thing->query_weight() ) {
-      case 0 :
-         return "";
-      case 1 .. 2 :
-         return "It is about the size of a pea.\n";
-      case 3 .. 6 :
-         return "It is about the size of a hazelnut.\n";
-      case 7 .. 12 :
-         return "It is about the size of a walnut.\n";
-      case 13 .. 20 :
-         return "It is about the size of an orange.\n";
-      case 21 .. 30 :
-         return "It is about the size of a grapefruit.\n";
-      default :
-         return "It is about the size of a pumpkin.\n";
-   }
-}
-
-==================================================
-FILE: handlers/mail_track.c
-==================================================
-
-inherit "std/object";
-#include <mail.h>
-#include <mail_track.h>
-#include <player_handler.h>
-#define SECURITY if (!master()->query_leader(previous_object(-1))) return 0;
-int add_member(string list, string mem);
-private void load_me();
-private void save_me();
-int query_list(string list);
-int create_list(string list, string creator);
-nosave mixed *our_mailers;
-mapping mailing_lists;
-void setup() {
-   set_name("tracker");
-   set_short("mail tracker");
-   add_property("determinate", "the ");
-   add_property("there", "mounted on one wall");
-   add_adjective("mail");
-   set_long("This thing tracks mail.   Clever, innit?\n");
-   reset_get();
-   reset_drop();
-   our_mailers = ({ });
-   mailing_lists = ([ ]);
-   seteuid("Root");
+private mapping _papers;
+private mapping _areas;
+private mapping _xp;
+private mapping _inform;
+void load_me();
+void save_me();
+void create() {
+   _papers = ([ ]);
+   _areas = ([ ]);
+   _xp = ([ ]);
+   _inform = ([ ]);
+   seteuid(getuid());
    load_me();
-   if (!query_list("postmaster")) {
-      create_list("postmaster", "pinkfish");
+   if (!_inform) {
+      _inform = ([ ]);
    }
-   move(MAIL_ROOM);
 }
-int add_mailer(object ob, string str) {
-   int i;
-   if (!stringp(str) || !objectp(ob)) {
+int is_paper(string paper) {
+   return classp(_papers[paper]);
+}
+void add_paper(string name, string long, string desc, string office,
+    string language) {
+   if (is_paper(name)) {
+      return ;
+   }
+   _papers[name] = new(class paper);
+   _papers[name]->published_editions = ({ });
+   _papers[name]->dir_name = replace_string(lower_case(name), " ", "_");
+   _papers[name]->long = long;
+   _papers[name]->description = desc;
+   _papers[name]->office = office;
+   _papers[name]->paper_cost = 5 * 4;
+   _papers[name]->language = language;
+   save_me();
+}
+string* query_all_papers() {
+   return keys(_papers);
+}
+int query_current_edition_num(string paper) {
+   if (!is_paper(paper)) {
       return 0;
    }
-   i = member_array(str, our_mailers);
-   if (i == -1) {
-      our_mailers += ({ ob, str });
-   } else {
-      write(i);
-      if (our_mailers[i-1]) {
-         our_mailers[i-1]->dest_me();
-      }
-      our_mailers += ({ ob, str });
-   }
-   return 1;
+   return sizeof(_papers[paper]->published_editions) + 1;
 }
-object find_mailer(string str) {
-   int i;
-   if (!stringp(str)) {
+int query_last_edition_num(string paper) {
+   if (!is_paper(paper)) {
       return 0;
    }
-   i = member_array(str, our_mailers);
-   if (i == -1) {
+   return sizeof(_papers[paper]->published_editions);
+}
+int is_valid_edition(string paper, int edition) {
+   if (!is_paper(paper)) {
       return 0;
    }
-   return our_mailers[i-1];
+   if (edition > 0 && edition <= sizeof(_papers[paper]->published_editions)) {
+      return 1;
+   }
+   return 0;
 }
-int delete_mailer(object ob) {
-   int i;
-   if (!objectp(ob)) {
+int query_edition_date(string paper, int edition) {
+   if (!is_paper(paper)) {
       return 0;
    }
-   i = member_array(ob, our_mailers);
-   if (i == -1) {
+   if (!is_valid_edition(paper, edition)) {
       return 0;
    }
-   our_mailers = delete(our_mailers, i, 2);
+   return _papers[paper]->published_editions[edition - 1]->date_published;
 }
-void we_are_done(object me) {
-   if (objectp(me)) {
-      me->dest_me();
+class article* query_edition_articles(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return ({ });
    }
-}
-int mail(string str, string sub) {
-   object mailer;
-   mailer = clone_object(MAILER);
-   mailer->set_do_this_last(({ this_object(), "we_are_done", mailer }));
-   mailer->read_mail(str, sub);
-   return 2;
-}
-private void save_me() {
-   unguarded((: save_object, "/save/mail_track" :));
-}
-private void load_me() {
-   string *list_names, name;
-   mixed *list;
-   unguarded((: restore_object, "/save/mail_track" :));
-   list_names = keys(mailing_lists);
-   if (sizeof(list_names) && !classp(mailing_lists[list_names[0]])) {
-      foreach (name, list in mailing_lists) {
-         mailing_lists[name] = new(class mailing_list, members : list[0],
-                                                controllers : list[1], creator : list[2]);
-      }
-      save_me();
+   if (!is_valid_edition(paper, edition)) {
+      return ({ });
    }
+   return copy(_papers[paper]->published_editions[edition - 1]->articles);
 }
-string *query_mailing_lists() {
-   return keys(mailing_lists) +
-     "/secure/master"->query_domains() +
-      ({ "seniors", "lords", "hlords" });
+class advert* query_edition_adverts(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return ({ });
+   }
+   if (!is_valid_edition(paper, edition)) {
+      return ({ });
+   }
+   return copy(_papers[paper]->published_editions[edition - 1]->adverts);
 }
-int query_list(string list) {
-   return member_array(list, query_mailing_lists()) != -1;
+string query_paper_office(string paper) {
+   if (!is_paper(paper)) {
+      return  0;
+   }
+   return _papers[paper]->office;
 }
-string *query_members(string list) {
-  string *tmp;
-  switch (list) {
-  case "playtesters" :
-    tmp = (string *)"/obj/handlers/playtesters"->query_playtesters();
-    return ({ "/d/playtesters/master"->query_lord() }) + sort_array(tmp, 1);
-  case "seniors" :
-    tmp = (string *)master()->query_all_seniors();
-    return tmp;
-  case "lords" :
-    tmp = (string *)master()->query_all_leaders();
-    return tmp;
-  case "hlords" :
-    tmp = ((string *)master()->query_administrators() -
-           ({ "Admin", "Root", "offler" }));
-    return tmp;
-  default :
-  }
-  if (file_size("/d/"+ list) == -2) {
-    tmp = (string *)("/d/"+ list +"/master")->query_members() +
-      ({ (string)("/d/"+ list +"/master")->query_lord() });
-  }
-  else if (mailing_lists[list]) {
-    tmp = copy(mailing_lists[list]->members);
-  }
-  if(tmp)
-    return filter_array(tmp, (: PLAYER_HANDLER->test_active($1, 1) :));
-  return ({ });
+void set_paper_office(string paper, string office) {
+   if (!is_paper(paper)) {
+      return  0;
+   }
+    _papers[paper]->office = office;
+   save_me();
 }
-int query_member(string list_name, string name) {
-   class mailing_list list;
-   list = mailing_lists[list_name];
-   if (list) {
-      return member_array(name, list->members) != -1;
+string query_paper_headline(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  "No news is good news.";
    }
-   if (file_size("/d/" + list_name) == -2) {
-      return (int)("/d/" + list_name + "/master")->query_member(name);
-   }
-   if (list_name == "seniors") {
-      return (int)master()->query_senior(name);
-   }
-   if (list_name == "lords") {
-      return (int)master()->query_leader(name);
-   }
-   if (list_name == "hlords") {
-      return (int)master()->query_administrator(name);
-   }
+   return _papers[paper]->published_editions[edition - 1]->headline;
 }
-string *query_controllers(string list) {
-   if (file_size("/d/"+ list) == -2) {
-      return ({ (string)("/d/"+ list +"/master")->query_lord() });
+void set_paper_headline(string paper, int edition, string headline) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
    }
-   if (mailing_lists[list]) {
-      return copy(mailing_lists[list]->controllers);
+   _papers[paper]->published_editions[edition - 1]->headline = headline;
+   save_me();
+}
+int query_edition_revenue(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->total_revenue;
+}
+void add_edition_revenue(string paper, int edition, int revenue) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
+   }
+   _papers[paper]->published_editions[edition - 1]->total_revenue += revenue;
+   save_me();
+}
+void add_edition_web_hit(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
+   }
+   _papers[paper]->published_editions[edition - 1]->num_web_hits++;
+   _papers[paper]->published_editions[edition - 1]->total_revenue += NEWSPAPER_WEB_HIT_REVENUE;
+   save_me();
+}
+void add_edition_paper_sold(string paper, int edition, int cost) {
+   if (!is_valid_edition(paper, edition)) {
+tell_creator("pinkfish", "Not valid edition %O %O\n", paper, previous_object());
+      return  ;
+   }
+tell_creator("pinkfish", "Updating num sold %O %O\n", paper, edition);
+   _papers[paper]->published_editions[edition - 1]->num_sold++;
+   _papers[paper]->published_editions[edition - 1]->total_revenue += cost;
+   save_me();
+}
+int query_edition_num_sold(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->num_sold;
+}
+int query_edition_num_web_hits(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->num_web_hits;
+}
+int is_paper_area(string area) {
+   return pointerp(_areas[area]);
+}
+void add_paper_area(string area) {
+   if (is_paper_area(area)) {
+      return ;
+   }
+   _areas[area] = ({ });
+}
+void add_paper_to_area(string paper, string area) {
+   if (!is_paper(paper) || !is_paper_area(area)) {
+      return ;
+   }
+   _areas[area] += ({ paper });
+   save_me();
+}
+string* query_papers_in_area(string area) {
+   if (_areas[area]) {
+      return _areas[area];
    }
    return ({ });
 }
-int query_controller(string list_name, string name) {
-   class mailing_list list = mailing_lists[list_name];
-   if (!list) {
-      return 0;
-   }
-   return member_array(name, list->controllers) != -1;
+void set_article_text(class article art, string text) {
+   unguarded( (:
+      write_file(SAVE_DIR + $(art->file_name), save_variable(({ $(art), $(text) })), 1) :) );
 }
-string query_creator(string list_name) {
-   class mailing_list list = mailing_lists[list_name];
-   if (!classp(list)) {
-      return 0;
+void add_newspaper_inform(string paper, string ob) {
+   if (!_inform[paper]) {
+      _inform[paper] = ({ });
    }
-   return list->creator;
-}
-int create_list(string list, string creator) {
-   SECURITY
-   if (mailing_lists[list]) {
-      return 0;
+   if (!stringp(ob)) {
+      return ;
    }
-   if (file_size("/d/" + list) == -2) {
-      return 0;
+   if (member_array(ob, _inform[paper]) != -1) {
+      return ;
    }
-   if (PLAYER_HANDLER->test_user(list)) {
-      return 0;
-   }
-   mailing_lists[list] = new(class mailing_list, members : ({ creator }),
-                                          controllers : ({ creator }), creator : creator);
+   _inform[paper] += ({ ob });
    save_me();
-   return 1;
 }
-protected int delete_list(string list) {
-   if (!mailing_lists[list]) {
-      return 0;
+void remove_newspaper_inform(string paper, string ob) {
+   if (!_inform[paper]) {
+      return ;
    }
-   map_delete(mailing_lists, list);
+   _inform[paper] -= ({ ob });
    save_me();
-   return 1;
 }
-int add_controller(string list_name, string mem) {
-   class mailing_list list = mailing_lists[list_name];
-   SECURITY
-   if (!classp(list)) {
-      return 0;
+string* query_newspaper_informs(string paper) {
+   if (!_inform[paper]) {
+      return ({ });
    }
-   if (member_array(mem, list->controllers) != -1) {
-      return 0;
+   return _inform[paper];
+}
+string query_article_text(class article art) {
+   string str;
+   string* bits;
+   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+   if (str) {
+      bits = restore_variable(str);
+      return bits[1];
    }
-   list->controllers += ({ mem });
-   add_member(list_name, mem);
+   return "Error reading the article text.";
+}
+string query_article_text_html(class article art) {
+   string str;
+   string* bits;
+   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+   if (str) {
+      bits = restore_variable(str);
+      switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
+      case NEWSPAPER_ARTICLE_TYPE_PLAIN :
+         bits[1] = replace_string(bits[1], "\n\n", "<p>");
+         bits[1] = replace_string(bits[1], "\n", "<br>");
+         return bits[1];
+      case NEWSPAPER_ARTICLE_TYPE_HTML :
+         bits[1] = replace_string(bits[1], "<pre>", "</font><pre>");
+         bits[1] = replace_string(bits[1], "</pre>",
+                                  "</pre>\n<font face=\"helvetica,arial\">");
+         return bits[1];
+      }
+      return bits[1];
+   }
+   return "Error reading the article text.";
+}
+string convert_html(string input) {
+   return AUTODOC_NROFF->convert_html(input);
+}
+string query_article_text_plain(class article art) {
+   string str;
+   string fluff;
+   string* bits;
+   switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
+   case NEWSPAPER_ARTICLE_TYPE_SECTION :
+      return "";
+   case NEWSPAPER_ARTICLE_TYPE_PLAIN :
+      str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+      if (str) {
+         bits = restore_variable(str);
+         return bits[1];
+      }
+      break;
+   case NEWSPAPER_ARTICLE_TYPE_HTML :
+      fluff = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff", 1) :) );
+      if (!fluff) {
+         str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+         if (str) {
+            bits = restore_variable(str);
+            bits[1] = convert_html(bits[1]);
+            unguarded( (: write_file(SAVE_DIR + $(art->file_name) + ".proc",
+                                     $(bits[1]), 1) :) );
+            unguarded( (: NROFF_HAND->create_nroff(SAVE_DIR + $(art->file_name) + ".proc",
+                                SAVE_DIR + $(art->file_name) + ".nroff") :) );
+            str = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff") :) );
+            return str;
+         }
+      } else {
+         return fluff;
+      }
+   }
+   return "Error reading the article text.";
+}
+string query_paper_long(string paper) {
+   if (!is_paper(paper)) {
+      return "This is a very transperant and unhappy newspaper.\n";
+   }
+   return _papers[paper]->long;
+}
+void set_paper_description(string paper, string description) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->description = description;
    save_me();
-   return 1;
 }
-int remove_controller(string list_name, string name) {
+string query_paper_description(string paper) {
+   if (!is_paper(paper)) {
+      return "This is a very transperant and unhappy newspaper.\n";
+   }
+   return _papers[paper]->description;
+}
+void set_paper_long(string paper, string long) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->long = long;
+   save_me();
+}
+void set_paper_cost(string paper, int cost) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->paper_cost = cost;
+   save_me();
+}
+int query_paper_cost(string paper) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   return _papers[paper]->paper_cost;
+}
+int publish_paper(string paper,
+                  string headline,
+                  class article* articles,
+                  string* text,
+                  class advert* adds,
+                  string* editors) {
+   string paper_dir;
+   string tmp;
+   class paper fluff;
+   class article article;
+   class edition womble;
    int i;
-   class mailing_list list = mailing_lists[list_name];
-   SECURITY
-   if (!classp(list)) {
+   int edition;
+   int total_xp;
+   int type;
+   if (!is_paper(paper)) {
       return 0;
    }
-   if ((i = member_array(name, list->controllers)) == -1) {
-      return 0;
+   fluff = _papers[paper];
+   edition = sizeof(fluff->published_editions) + 1;
+   paper_dir = SAVE_DIR + fluff->dir_name;
+   unguarded( (: mkdir($(paper_dir)) :));
+   paper_dir += "/" + edition;
+   unguarded( (: mkdir($(paper_dir)) :));
+   foreach (article in articles) {
+      article->file_name = fluff->dir_name + "/" + edition + "/" +
+                           article->file_name;
+      type = article->type & NEWSPAPER_ARTICLE_TYPE_MASK;
+      if ((type == NEWSPAPER_ARTICLE_TYPE_PLAIN ||
+           type == NEWSPAPER_ARTICLE_TYPE_HTML) &&
+           !(article->type & NEWSPAPER_ARTICLE_NO_XP_FLAG)) {
+         _xp[lower_case(article->author)] += NEWSPAPER_XP_PER_ARTICLE;
+         total_xp += NEWSPAPER_XP_PER_ARTICLE;
+      }
    }
-   list->controllers = delete(list->controllers, i, 1);
+   total_xp = total_xp * 10 / 100;
+   total_xp += NEWSPAPER_XP_EDITOR;
+   if (sizeof(editors)) {
+      foreach (tmp in editors) {
+         _xp[tmp] += total_xp / sizeof(editors);
+      }
+   }
+   for (i = 0; i < sizeof(articles); i++) {
+      set_article_text(articles[i], text[i]);
+   }
+   womble = new(class edition);
+   womble->articles = articles;
+   womble->adverts = adds;
+   womble->date_published = time();
+   womble->headline = headline;
+   fluff->published_editions += ({ womble });
    save_me();
+   foreach (tmp in query_newspaper_informs(paper)) {
+      call_out((: $1->event_publish_paper($2) :), 2, tmp, paper);
+   }
    return 1;
 }
-int add_member(string list_name, string mem) {
-   class mailing_list list = mailing_lists[list_name];
-   if (file_name(previous_object()) != MAIL_ROOM) {
-      return 0;
+void load_me() {
+   string paper;
+   class paper fluff;
+   class paper rabbit;
+   unguarded( (: restore_object(SAVE_DIR + "main", 1) :) );
+   foreach (paper, fluff in _papers) {
+      if (sizeof(fluff) == 6) {
+         rabbit = new(class paper);
+         rabbit->published_editions = fluff->published_editions;
+         rabbit->dir_name = fluff->dir_name;
+         rabbit->long = fluff->long;
+         rabbit->description = fluff->description;
+         rabbit->office = fluff->office;
+         rabbit->paper_cost = 5 * 4;
+         rabbit->language = "general";
+         _papers[paper] = rabbit;
+         fluff = rabbit;
+      } else if( sizeof( fluff ) == 7 ) {
+         rabbit = new(class paper);
+         rabbit->published_editions = fluff->published_editions;
+         rabbit->dir_name = fluff->dir_name;
+         rabbit->long = fluff->long;
+         rabbit->description = fluff->description;
+         rabbit->office = fluff->office;
+         rabbit->paper_cost = 5 * 4;
+         rabbit->language = fluff->language;
+         _papers[paper] = rabbit;
+         fluff = rabbit;
+      }
    }
-   if (!classp(list)) {
-      return 0;
-   }
-   if (member_array(mem, list->members) != -1) {
-      return 0;
-   }
-   list->members += ({ mem });
-   save_me();
-   return 1;
 }
-int remove_member(string list_name, string mem) {
+void save_me() {
+   unguarded( (: save_object(SAVE_DIR + "main") :) );
+}
+mixed* stats() {
+   string paper;
+   string person;
+   class paper data;
+   mixed* ret;
+   int last;
+   int xp;
+   ret = ({ });
+   foreach (paper, data in _papers) {
+      last = query_last_edition_num(paper);
+      ret += ({ ({ paper + ": office", data->office }),
+                ({ paper + ": dir name", data->dir_name }),
+                ({ paper + ": last issue", last }),
+                ({ paper + ": current issue", query_current_edition_num(paper) }),
+                ({ paper + ": num sold", query_edition_num_sold(paper, last) }),
+                ({ paper + ": num web hits", query_edition_num_web_hits(paper, last) }),
+                ({ paper + ": revenue", query_edition_revenue(paper, last) }),
+              });
+   }
+   foreach (person, xp in _xp) {
+      ret += ({ ({ person + ": xp", xp }) });
+   }
+   return ret;
+}
+void player_login_check(string player, string bing) {
+   object play;
+   int xp;
+   if (bing != LOGIN) {
+      return ;
+   }
+   xp = _xp[player];
+   if (xp) {
+      play = find_player(player);
+      play->adjust_xp(xp);
+      map_delete(_xp, player);
+      save_me();
+      tell_object(play, "%^YELLOW%^You feel like the experience of writing "
+                        "an article has made you a better person.\n%^RESET%^");
+   }
+}
+void set_language_for( string paper, string language ) {
+    if( is_paper( paper ) )
+        _papers[ paper ]->language = language;
+}
+string query_language_for( string paper ) {
+    if( is_paper( paper ) ) {
+        if( !undefinedp( _papers[ paper ]->language ) )
+            return _papers[ paper ]->language;
+        return "general";
+    }
+    return 0;
+}
+
+==================================================
+FILE: handlers/nmoney_handler.c
+==================================================
+
+#include <money.h>
+#define DEF_VALUE 1
+#define SAVE_FILE "/save/money_handler"
+#undef USE_VAULT
+mapping values;
+mapping symbols;
+mapping details;
+mapping aliases;
+mapping adjectives;
+mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2);
+varargs object *filter_legal_money_array(mixed *m_array, string where);
+void create() {
+   seteuid( (string)"/secure/master"->
+      creator_file( file_name( this_object() ) ) );
+   values = ([ "default": ({ "brass", 1, "copper", 10, "silver", 100,
+                                          "gold", 2000, "platinum", 6000 }) ]);
+   symbols = ([ ]);
+   details = ([
+      "brass": ({ "heads", "tails", "a head", "a tail", "brass", 0 }),
+      "copper": ({ "heads", "tails", "a head", "a tail", "copper", 0 }),
+      "silver": ({ "heads", "tails", "a head", "a tail", "silver", 0 }),
+      "gold": ({ "heads", "tails", "a head", "a tail", "gold", 0 }),
+      "platinum": ({ "heads", "tails", "a head", "a tail", "platinum", 0 }) ]);
+   aliases = ([ ]);
+   adjectives = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) > 0 ) {
+      unguarded((: restore_object, SAVE_FILE :));
+   }
+   if ( !symbols ) {
+      symbols = ([ ]);
+   }
+   if ( !aliases ) {
+      aliases = ([ ]);
+   }
+   if ( !adjectives ) {
+      adjectives = ([ ]);
+   }
+}
+void save_me() { unguarded( (: save_object, SAVE_FILE :) ); }
+mapping query_all_values() { return copy( values ); }
+string *query_all_places() {
+   return keys(values);
+}
+mixed *query_values() { return copy( values[ "default" ] ); }
+mixed *query_values_in( string where ) {
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   return copy( values[ where ] );
+}
+int query_smallest_value_in(string where) {
+   mixed* values;
+   int value;
    int i;
-   class mailing_list list = mailing_lists[list_name];
-   if (file_name(previous_object()) != MAIL_ROOM) {
-      return 0;
+   if (! where) {
+      where = "default";
    }
-   if (!classp(list)) {
-      return 0;
+   values = query_values_in(where);
+   value = values[1];
+   for (i = 2; i < sizeof(values); i += 2) {
+      if (values[i + 1] < value) {
+         value = values[i + 1];
+      }
    }
-   if ((i = member_array(mem, list->members)) == -1) {
-      return 0;
+   return value;
+}
+void add_type( string where, string type, int value ) {
+   int i;
+   if ( !values[ where ] ) {
+      values[ where ] = ({ type, value });
+      save_me();
+      return;
    }
-   list->members = delete(list->members, i, 1);
-   if (!sizeof(list->members)) {
-      delete_list(list_name);
+   if ( member_array( type, values[ where ] ) != -1 ) {
+      return;
+   }
+   for ( i = 0; i < sizeof( values[ where ] ); i += 2 ) {
+      if ( value < values[ where ][ i + 1 ] ) {
+         values[ where ] = values[ where ][ 0 .. i - 1 ] + ({ type, value })
+                           + values[ where ][ i .. sizeof( values ) ];
+         save_me();
+         return;
+      }
+   }
+   values[ where ] += ({ type, value });
+   save_me();
+}
+void remove_type( string where, string type ) {
+   int i;
+   if ( !values[ where ] ) {
+      return;
+   }
+   i = member_array( type, values[ where ] );
+   if ( i == -1 ) {
+      return;
+   }
+   values[ where ] = delete( values[ where ], i, 2 );
+   if ( !sizeof( values[ where ] ) ) {
+      map_delete( values, where );
    }
    save_me();
+}
+mapping query_details() { return copy( details ); }
+mixed *query_details_for( string word ) {
+   if ( !details[ word ] ) {
+      return ({ "heads", "tails", "a head", "a tail", "unknown", 0 });
+   }
+   return copy( details[ word ] );
+}
+void add_details( string word, string hd_sht, string tl_sht, string hd_lng,
+                  string tl_lng, mixed composition, string plural ) {
+   if ( details[ word ] ) {
+      return;
+   }
+   details[ word ] = ({ hd_sht, tl_sht, hd_lng, tl_lng, composition, plural });
+   save_me();
+}
+void remove_details( string word ) {
+   if ( !details[ word ] ) {
+      return;
+   }
+   map_delete( details, word );
+   save_me();
+}
+mapping query_symbols() { return copy( symbols ); }
+string query_symbol_for( string word ) {
+   if ( !symbols[ word ] ) {
+      return 0;
+   }
+   return copy( symbols[ word ] );
+}
+void add_symbol( string word, string symboliser ) {
+   if ( symbols[ word ] ) {
+      return;
+   }
+   symbols[ word ] = symboliser;
+   save_me();
+}
+void remove_symbol( string word ) {
+   if ( !symbols[ word ] ) {
+      return;
+   }
+   map_delete( symbols, word );
+   save_me();
+}
+string query_alias_for( string type ) {
+   log_file("OBSOLETE_CALLS",
+      sprintf("%O %s: %O called query_alias_for\n",
+         this_object(),
+         ctime(time()),
+         previous_object()
+         ));
+   if ( !details[ type ] ) return "coin";
+   if ( !details[ type ][ 5 ] ) return "coin";
+   return explode( type, " " )[ sizeof( explode( type, " " ) ) - 1 ];
+}
+void set_aliases_for(string type, string *words) {
+   if (!words || !sizeof(words)) {
+      if (aliases[type]) {
+         map_delete(aliases, type);
+      }
+   } else {
+      aliases[type] = words;
+   }
+   save_me();
+   return;
+}
+string *query_aliases_for( string type ) {
+   string *ret;
+   if ( !details[ type ] || !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
+      ret = ({ "coin" });
+   } else {
+      ret = ({ explode(type, " ")[<1] });
+   }
+   if ( aliases[ type ] ) {
+      ret += aliases[ type ];
+   }
+   return ret;
+}
+void set_adjectives_for(string type, string *words) {
+   if (!words || !sizeof(words)) {
+      if (adjectives[type]) {
+         map_delete(adjectives, type);
+      }
+   } else {
+      adjectives[type] = words;
+   }
+   save_me();
+   return;
+}
+string *query_adjectives_for( string type ) {
+   string *ret;
+   if ( adjectives[ type ] ) {
+      ret = adjectives[ type ];
+   }
+   else {
+      ret = ({ });
+   }
+   return ret;
+}
+string query_short_for( string type ) {
+   if ( !details[ type ] ) {
+      return type +" coin";
+   }
+   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
+      return type +" coin";
+   }
+   return type;
+}
+string query_plural_for( string type ) {
+   if ( !details[ type ] ) {
+      return "coins";
+   }
+   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
+      return "coins";
+   }
+   return details[ type ][ MONEY_DETAILS_PLURAL ];
+}
+void set_plural_for( string type, string plural ) {
+   if ( !details[ type ] ) {
+      return;
+   }
+   details[ type ][ MONEY_DETAILS_PLURAL ] = plural;
+   save_me();
+}
+string query_main_plural_for( string type ) {
+   string *type_exp;
+   if ( !details[ type ] ) {
+      return type +" coins";
+   }
+   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
+      return type +" coins";
+   }
+   type_exp = explode(type, " ");
+   return implode(type_exp[0 .. <2] +
+      ({ details[ type ][ MONEY_DETAILS_PLURAL ] }), " " );
+}
+varargs int query_value( string type, string where ) {
+   int i, j, count, total;
+   string *places;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   if ( where == "mean" ) {
+      places = m_indices( values );
+      for ( i = 0; i < sizeof( places ); i++ ) {
+         if ( ( j = member_array( type, values[ places[ i ] ] ) ) != -1 ) {
+            count++;
+            total += values[ places[ i ] ][ j + 1 ];
+         }
+      }
+      if ( !count ) {
+         return 0;
+      }
+      if ( !( total / count ) ) {
+         return 0;
+      }
+      return total / count;
+   }
+   if ( !values[ where ] ) {
+      return 0;
+   }
+   i = member_array( type, values[ where ] );
+   if ( i == -1 ) {
+      return 0;
+   }
+   return values[ where ][ i + 1 ];
+}
+varargs int query_total_value( mixed mon_array, string where ) {
+   int i, amt;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
+      amt += mon_array[ i + 1 ] * query_value( mon_array[ i ], where );
+   }
+   return amt;
+}
+string money_string( mixed mon_array ) {
+   int i;
+   string ret;
+   if ( !sizeof( mon_array ) ) {
+      return "nothing";
+   }
+   ret = "";
+   while( i < sizeof( mon_array ) ) {
+      if ( !mon_array[ i + 1 ] ) {
+         mon_array = delete( mon_array, i, 2 );
+      } else {
+         i += 2;
+      }
+   }
+   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
+      ret += mon_array[ i + 1 ] +" ";
+      if ( mon_array[ i + 1 ] == 1 ) {
+         ret += query_short_for( mon_array[ i ] );
+      } else {
+         ret += query_main_plural_for( mon_array[ i ] );
+      }
+      if ( i == sizeof( mon_array ) - 4 ) {
+         ret += " and ";
+      } else if ( i != sizeof( mon_array ) - 2 ) {
+         ret += ", ";
+      }
+   }
+   return ret;
+}
+varargs mixed *create_money_array( int value, string where ) {
+   int i, amt;
+   mixed *mon_array;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   if ( !value ) {
+      return ({ });
+   }
+   mon_array = ({ });
+   for ( i = sizeof( values[ where ] ) - 2; i >= 0; i -= 2 ) {
+      if ( value >= values[ where ][ i + 1 ] ) {
+         mon_array += ({ values[ where ][ i ], amt = value /
+                         values[ where ][ i + 1 ] });
+         value -= amt * values[ where ][ i + 1];
+      }
+   }
+   return mon_array;
+}
+varargs string money_value_string( int value, string where ) {
+   string symboliser;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   if ( !symbols[ where ] ) {
+      if (value < 0) {
+         return "negative " + money_string( create_money_array( -value,
+                                                                where ) );
+      } else {
+         return money_string( create_money_array( value, where ) );
+      }
+   }
+   symboliser = symbols[ where ];
+   return (string)symboliser->symbolise_value( value );
+}
+mixed* money_array_from_string(string str, string where) {
+   int value;
+   int number;
+   int i;
+   int pos;
+   int frog;
+   int match;
+   int max_match;
+   string plural;
+   string *bits;
+   string type;
+   string match_name;
+   mixed *stuff;
+   mixed* ret_arr;
+   if (!where) {
+      where = "default";
+   }
+   if (symbols[ where ]) {
+      value = symbols[ where ]->unsymbolise_string( str );
+      if (value) {
+         return create_money_array(value, where);
+      }
+   }
+   ret_arr = ({ });
+   stuff = values[ where ];
+   if (!value && stuff) {
+      bits = explode(str, " ") - ({ "and", ",", "" });
+      for (i = 0; i < sizeof(bits); i++) {
+         if (sscanf(bits[i], "%d", number) == 1 &&
+             i + 1 < sizeof(bits)) {
+            i++;
+            type = bits[i];
+            max_match = 0;
+            do {
+               match = 0;
+               if (type[<1] == ',') {
+                  type = type[0..<2];
+               }
+               type = lower_case(type);
+               for (pos = 0; pos < sizeof(stuff); pos += 2) {
+                  plural = query_plural_for(stuff[pos]);
+                  frog = strsrch(stuff[pos], " ", -1);
+                  if (frog) {
+                     plural = stuff[pos][0..frog] + plural;
+                  }
+                  if (lower_case(stuff[pos]) == type ||
+                      strsrch(lower_case(stuff[pos]), type) != -1 ||
+                      lower_case(plural) == type ||
+                      strsrch(lower_case(plural), type) != -1) {
+                     match = stuff[pos + 1];
+                     match_name = stuff[pos];
+                  }
+               }
+               if (match) {
+                  i++;
+                  max_match = match;
+                  if (i < sizeof(bits)) {
+                     type += " " + bits[i];
+                  }
+               }
+            } while (match && i < sizeof(bits));
+            if (max_match) {
+               ret_arr += ({ match_name, number });
+            }
+            i--;
+         } else {
+            i++;
+         }
+      }
+   }
+   return ret_arr;
+}
+int value_from_string(string str, string where) {
+   return query_total_value(money_array_from_string(str, where), where);
+}
+mixed *calc_change( int value, mixed *mon_array ) {
+   int i, num;
+   mixed *ret;
+   ret = ({ });
+   for ( i = sizeof( mon_array ) - 2; i >= 0; i -= 2 ) {
+      if ( value >= mon_array[ i + 1 ] ) {
+         num = value / mon_array[ i + 1 ];
+         value = value % mon_array[ i + 1 ];
+         ret += ({ mon_array[ i ], num });
+         if ( !value ) {
+            return ret;
+         }
+      }
+   }
+   return ret;
+}
+mixed *make_money_array_payment( string type,
+                                 int value,
+                                 mixed *mon_array,
+                                 string where,
+                                 int use_default) {
+   int i;
+   int j;
+   int num;
+   int total;
+   int cur_match;
+   string mon_name;
+   mixed *poss_values;
+   mixed *ret;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+   if (type) {
+      i = member_array( type, mon_array );
+      if ( i != -1 ) {
+         if ( value <= mon_array[ i + 1 ] ) {
+            mon_array[ i + 1] -= value;
+            return ({ ({ type, value }), 0, mon_array });
+         }
+      }
+      value *= query_value( type, where );
+   }
+   if (!value) {
+      return 0;
+   }
+   total = query_total_value( mon_array, where );
+   if (use_default  &&  where != "default") {
+      total += query_total_value( mon_array, "default" );
+   }
+   if ( value > total ) {
+      return 0;
+   }
+   poss_values = ({ });
+   if ( where != "default" && use_default ) {
+      poss_values += values[ "default" ];
+   }
+   poss_values += values[ where ];
+   ret = ({ });
+   for ( i = ( sizeof( poss_values ) - 2 ); i >= 0; i -= 2 ) {
+      j = member_array( poss_values[ i ], mon_array );
+      if ( j != - 1 ) {
+         if ( poss_values[ i + 1 ] <= value ) {
+            num = value / poss_values[ i + 1 ];
+            if ( num > mon_array[ j + 1 ] ) {
+               num = mon_array[ j + 1 ];
+            }
+            mon_array[ j + 1] -= num;
+            value -= num * poss_values[ i + 1 ];
+            ret += ({ poss_values[ i ], num });
+            if ( !value ) {
+               return ({ ret, value, mon_array });
+            }
+         }
+      }
+   }
+   cur_match = value + 10000000;
+   for (i = 0; i < sizeof(poss_values); i +=2 ) {
+      j = member_array( poss_values[ i ], mon_array);
+      if (j != -1 &&
+          mon_array[j + 1] > 0 &&
+          poss_values[i + 1] >= value &&
+          poss_values[i + 1] - value <= cur_match - value) {
+         cur_match = poss_values[i + 1];
+         mon_name = poss_values[i];
+      }
+   }
+   if (mon_name) {
+      j = member_array(mon_name, mon_array);
+      i = member_array(mon_name, poss_values);
+      mon_array[j + 1] -= 1;
+      value = poss_values[i + 1] - value;
+      ret += ({ poss_values[ i ], 1 });
+   } else {
+      return 0;
+   }
+   return ({ ret, value, mon_array });
+}
+varargs mixed *make_payment( string type, int value, object thing,
+                             string where ) {
+   mixed *mon_array;
+   mixed *stuff;
+   if (!type) {
+     return 0;
+   }
+   mon_array = copy(thing->query_money_array());
+   stuff = make_money_array_payment( type, value, mon_array, where, 1);
+   if (!stuff) {
+      return stuff;
+   }
+   if (stuff[MONEY_PAY_CHANGE]) {
+      return ({ stuff[MONEY_PAY_RETURN], calc_change(stuff[MONEY_PAY_CHANGE],
+                                                     values[where]) });
+   }
+   return ({ stuff[MONEY_PAY_RETURN], stuff[MONEY_PAY_CHANGE] });
+}
+varargs object pay_amount_from(int value, object money, string where) {
+   int i;
+   object change;
+   mixed *m_array, *p_array;
+   mixed *change_array;
+   mixed *pay_array;
+   if (!where || where == "") {
+      where = "default";
+   }
+   change_array = ({ });
+   pay_array = ({ });
+   m_array = create_money_array(value, where);
+   for (i = 0; i < sizeof(m_array); i += 2) {
+      p_array = make_payment(m_array[i], m_array[i + 1], money, where);
+      if (!pointerp(p_array)) {
+         continue;
+      }
+      if (sizeof(p_array[0]) > 0)
+         pay_array = merge_money_arrays(pay_array, p_array[0]);
+      if (sizeof(p_array[1]) > 0) {
+         change_array = merge_money_arrays(change_array, p_array[1]);
+      }
+   }
+   if (sizeof(pay_array) > 0)  {
+      for (i = 0; i < sizeof(pay_array); i += 2) {
+         pay_array[i + 1] = -pay_array[i + 1];
+      }
+      money->adjust_money(pay_array);
+   }
+   if (sizeof(change_array) == 0) {
+      return 0;
+   }
+#ifdef USE_VAULT
+   change = MONEY_VAULT->get_money_ob();
+   change->set_money_array(change_array);
+#else
+   change = clone_object(MONEY_OBJECT);
+#endif
+   return change;
+}
+varargs object make_new_amount( int value, string where ) {
+   object money;
+   if ( !where || ( where == "" ) ) {
+      where = "default";
+   }
+#ifdef USE_VAULT
+   money = MONEY_VAULT->get_money_ob();
+#else
+   money = clone_object( MONEY_OBJECT );
+#endif
+   money->set_money_array( create_money_array( value, where ) );
+   if ( !(int)money->query_value_in( where ) ) {
+      money->dest_me();
+      return 0;
+   }
+   return money;
+}
+varargs object *filter_legal_tender(object money, string where) {
+   mixed *m_array;
+   m_array = (mixed *)money->query_money_array();
+   money->dest_me();
+   return filter_legal_money_array(m_array, where);
+}
+varargs object *filter_legal_money_array(mixed *m_array, string where) {
+   int i;
+   object good, no_good;
+   mixed *poss_values;
+   mixed *good_array = ({ });
+   mixed *no_good_array = ({ });
+   if (sizeof(m_array) == 0) {
+      return ({ 0, 0 });
+   }
+   if (!(poss_values = values[where])) {
+      poss_values = ({ });
+   }
+   if (!where || where == "") {
+     where = "default";
+   }
+   for (i = 0; i < sizeof(m_array); i += 2) {
+      if (member_array(m_array[i], poss_values) != -1) {
+         good_array += ({ m_array[i], m_array[i + 1] });
+      } else {
+         no_good_array += ({ m_array[i], m_array[i + 1] });
+      }
+   }
+   if (sizeof(good_array) == 0) {
+      good = 0;
+   }
+   else  {
+#ifdef USE_VAULT
+      good = MONEY_VAULT->get_money_ob();
+#else
+      good = clone_object(MONEY_OBJECT);
+#endif
+      good->set_money_array(good_array);
+   }
+   if (sizeof(no_good_array) == 0) {
+      no_good = 0;
+   }
+   else  {
+#ifdef USE_VAULT
+     no_good = MONEY_VAULT->get_money_ob();
+#else
+     no_good = clone_object(MONEY_OBJECT);
+#endif
+     no_good->set_money_array(no_good_array);
+   }
+   return ({ good, no_good });
+}
+mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2)  {
+   int i;
+   int idx;
+   mixed *new_m_array;
+   if (!m_array1)
+      m_array1 = ({ });
+   if (!m_array2)
+      m_array2 = ({ });
+   if (sizeof(m_array1) < sizeof(m_array2))  {
+      new_m_array = copy(m_array2);
+      for (i = 0; i < sizeof(m_array1); i += 2)  {
+         idx = member_array(m_array1[i], new_m_array);
+         if (idx > -1)  {
+            new_m_array[idx + 1] += m_array1[i + 1];
+            if (new_m_array[idx + 1] <= 0)
+               new_m_array = delete(new_m_array, idx, 2);
+         }
+         else
+            new_m_array += ({ m_array1[i], m_array1[i + 1] });
+      }
+   }
+   else  {
+      new_m_array = copy(m_array1);
+      for (i = 0; i < sizeof(m_array2); i += 2)  {
+         idx = member_array(m_array2[i], new_m_array);
+         if (idx > -1)  {
+            new_m_array[idx + 1] += m_array2[i + 1];
+            if (new_m_array[idx + 1] <= 0)
+               new_m_array = delete(new_m_array, idx, 2);
+         }
+         else
+            new_m_array += ({ m_array2[i], m_array2[i + 1] });
+      }
+   }
+   return new_m_array;
+}
+varargs mixed parse_money(string words, object player, string place) {
+   object  thing;
+   object *monies;
+   object *things;
+   mixed  *m_array;
+   mixed  *m_array2;
+   int     i;
+   things = match_objects_for_existence(words, ({ player }));
+   if (sizeof(things) == 0) {
+      m_array = money_array_from_string(words, place);
+       if (sizeof(m_array) == 0) {
+         return NO_MATCH;
+      }
+      thing = present(MONEY_ALIAS, player);
+      if (!thing) {
+         return NO_MATCH;
+      }
+      for (i = 0; i < sizeof(m_array); i += 2) {
+         if (thing->query_money(m_array[0]) < m_array[1]) {
+            return NO_MATCH;
+         }
+      }
+   }
+   else {
+      things = filter(things, (: $1->query_property("money") :));
+      if (sizeof(things) == 0)
+         return NO_MONEY;
+      m_array = ({ });
+      foreach (thing in things)  {
+         m_array = merge_money_arrays(m_array, thing->query_money_array());
+#ifdef USE_VAULT
+         MONEY_VAULT->add_to_list(thing);
+#endif
+      }
+   }
+   monies = filter_legal_money_array(m_array, place);
+   if (monies[1])  {
+      tell_object(player, monies[1]->the_short() +
+            (monies[1]->query_number_coins() == 1 ? " is" : " are") +
+            " not legal tender here.\n");
+      m_array = monies[1]->query_money_array();
+#ifdef USE_VAULT
+      MONEY_VAULT->add_to_list(monies[1]);
+#endif
+   }
+   else
+      m_array = ({ });
+   if (monies[0])  {
+      m_array2 = copy(monies[0]->query_money_array());
+      for (i = 0; i < sizeof(m_array2); i += 2)
+         m_array2[i + 1] = -m_array2[i + 1];
+      merge_money_arrays(m_array, m_array2);
+      this_player()->adjust_money(m_array);
+      return monies[0];
+   }
+   else return NO_LEGAL;
+}
+mixed *query_person_payments(int value, string place,
+                             object payer, object payee) {
+   mixed *stuff;
+   mixed *mon_array;
+   mixed *rabbit;
+   mon_array = copy(payer->query_money_array());
+   stuff = make_money_array_payment( 0, value, mon_array, place, 0);
+   if (!stuff) {
+      return 0;
+   }
+   if (stuff[MONEY_PAY_CHANGE]) {
+      mon_array = copy(payee->query_money_array());
+      rabbit = make_money_array_payment( 0, stuff[MONEY_PAY_CHANGE],
+                                         mon_array, place, 0);
+      if (!rabbit || rabbit[MONEY_PAY_CHANGE]) {
+         return 0;
+      }
+      return ({ stuff[MONEY_PAY_RETURN], rabbit[MONEY_PAY_RETURN] });
+   }
+   return ({ stuff[MONEY_PAY_RETURN], ({ }) });
+}
+string * query_valid_types(){
+  mixed *tmp;
+  string *elem, *valid_types = ({ });
+  int i;
+  tmp = values(query_all_values());
+  foreach( elem in tmp ){
+    for( i = 0; i < sizeof( elem ); i += 2 ){
+      if ( stringp( elem[i] ) )
+        valid_types += ({ elem[i] });
+    }
+  } return valid_types;
+}
+string query_origin_of( string type ){
+  string elem, *places;
+  if( member_array( type, query_valid_types() ) == -1 )
+    return 0;
+  places = query_all_places();
+  foreach( elem in places ){
+    if( member_array( type,query_values_in( elem ) ) != -1 )
+      return elem;
+  }
+}
+string * query_aliases_of( string word ){
+  string *types, elem, *aliases = ({ });
+  types = query_valid_types();
+  foreach( elem in types ){
+    if( member_array( word,query_aliases_for( elem ) ) != -1 )
+      aliases += ({ elem });
+  } return aliases;
+}
+int query_value_of( string type ){
+  if( member_array( type, query_valid_types() ) == -1 )
+    return 0;
+   return query_value( type, query_origin_of( type ) );
+}
+string smallest_in( string place ) {
+   int i, smallest, r;
+   mixed *values;
+   values = query_values_in( place );
+   for ( i = 1; i < sizeof( values ); i += 2 ) {
+      if ( !smallest || ( values[i] < smallest ) ) {
+         smallest = values[i];
+         r = i;
+      }
+   }
+   return values[r-1];
+}
+int smallest_value_in( string place ) {
+   int i, smallest, r;
+   mixed *values;
+   values = query_values_in( place );
+   for ( i = 1; i < sizeof( values ); i += 2 ) {
+      if ( !smallest || ( values[i] < smallest ) ) {
+         smallest = values[i];
+         r = i;
+      }
+   }
+   return values[r];
+}
+mapping query_mapped_values_in( string where ) {
+   mapping values = ([]);
+  mixed * array;
+  int i;
+   if ( !where || ( where == "" ) )
+      where = "default";
+  array = query_values_in(where);
+   for ( i = 1; i < sizeof(array); i += 2 )
+  {
+      values += ([array[i-1]:array[i]]);
+   }
+   return values;
+}
+
+==================================================
+FILE: handlers/non_refuelling_lantern.c
+==================================================
+
+#include <fuel_handler.h>
+inherit "/std/object";
+#define BRIGHTNESS      60
+#define FUEL_PER_TICK  FUEL_TIME
+#define MAX_FUEL 3600
+int  fuel_left;
+int  is_lit;
+void create(){
+  ::create();
+}
+string short( int i ) {
+  if ( is_lit )
+    return ::short( 0 ) + " (lit)";
+  return ::short( 0 );
+}
+int do_extinguish() {
+   if ( !is_lit ) {
+      this_player()->add_failed_mess(this_object(), "$D is not lit.\n", ({ }));
+      return 0;
+   }
+   FUEL_HANDLER->remove_burner( this_object() );
+   is_lit = 0;
+   set_light( 0 );
    return 1;
 }
-int delete_member(string list_name, string mem) {
-   class mailing_list list = mailing_lists[list_name];
-   SECURITY
-   if (!remove_member(list_name, mem)) {
+int do_dowse() {
+   return do_extinguish();
+}
+int do_light() {
+   if ( is_lit ) {
+      this_player()->add_failed_mess( this_object(), "$D is already lit.\n",
+                                     ({ }) );
       return 0;
    }
-   remove_controller(list_name, mem);
-   if (!sizeof(list->members)) {
-      delete_list(list_name);
+   if ( fuel_left <= 0 ) {
+      this_player()->add_failed_mess( this_object(), "$D is out of fuel.\n",
+                                     ({ }) );
+      return 0;
    }
-   save_me();
+   FUEL_HANDLER->add_burner( this_object() );
+   is_lit = 1;
+   set_light( BRIGHTNESS );
    return 1;
+}
+void init() {
+   this_player()->add_command("light", this_object());
+   this_player()->add_command("extinguish", this_object());
+   this_player()->add_command("dowse", this_object());
+}
+void out_of_fuel() {
+   object env;
+   is_lit    = 0;
+   fuel_left = 0;
+   env = environment( this_object() );
+   FUEL_HANDLER->remove_burner( this_object() );
+   set_light( 0 );
+   if ( interactive( env ) ) {
+      write( poss_short() +" burns out.\n" );
+      tell_room( environment(env), poss_short() +" burns out.\n", env );
+   } else
+      say( poss_short() +" burns out.\n" );
+}
+void consume_fuel() {
+   fuel_left -= FUEL_PER_TICK;
+   switch ( fuel_left ) {
+    case -10000 .. 0:
+      out_of_fuel();
+      break;
+    default:
+   }
+}
+string pretty_plural( object thing) {
+  if ( is_lit )
+    return ::pretty_plural(thing) + " (lit)";
+  return ::pretty_plural(thing);
+}
+void dest_me() {
+   set_light( 0 );
+   FUEL_HANDLER->remove_burner( this_object() );
+   ::dest_me();
+}
+mixed *stats() {
+  return ::stats() + ({
+    ({ "fuel" , fuel_left, }),
+    ({ "is lit", is_lit, }),
+   });
+}
+mapping query_dynamic_auto_load() {
+   return ([ "::" : ::query_dynamic_auto_load(),
+             "fuel left" : fuel_left,
+             "is lit" : is_lit,
+          ]);
+}
+void init_dynamic_arg( mapping arg ) {
+   fuel_left = arg["fuel left"];
+   if ( arg[ "is lit" ] ) {
+      FUEL_HANDLER->add_burner( this_object() );
+      is_lit = 1;
+      set_light(BRIGHTNESS);
+   }
+   ::init_dynamic_arg( arg["::"] );
+}
+int query_fuel_left() {
+    return fuel_left;
+}
+void set_fuel_left( int i ) {
+    if ( i > MAX_FUEL ) {
+        i = MAX_FUEL;
+    }
+    fuel_left = i;
+}
+int query_max_fuel() {
+    return MAX_FUEL;
+}
+
+==================================================
+FILE: handlers/nquest_handler.c
+==================================================
+
+#include <player_handler.h>
+#define LIBRARY "/obj/handlers/nlibrary"
+#define QUEST_LOG "QUESTS"
+#define SAVE_FILE "/save/quests"
+#define BACKUP_FILE "/save/quests/quests"
+inherit "/std/object";
+private int *quest_level;
+private int *num_times_done;
+private int *quest_status;
+private string *quest_name;
+private string *quest_title;
+private string *quest_story;
+private string *last_done_by;
+private nosave int total_qp;
+void load_quests() { unguarded( (: restore_object, SAVE_FILE :) ); }
+void save_quests() { unguarded( (: save_object, SAVE_FILE :) ); }
+void create() {
+   int i;
+   ::create();
+   load_quests();
+   if ( !quest_name ) {
+      quest_name = ({ });
+   }
+   if ( !quest_level ) {
+      quest_level = ({ });
+   }
+   if ( !quest_title ) {
+      quest_title = ({ });
+   }
+   if ( !quest_story ) {
+      quest_story = ({ });
+   }
+   if ( !last_done_by ) {
+      last_done_by = ({ });
+   }
+   if ( !num_times_done ) {
+      num_times_done = ({ });
+   }
+   if ( !quest_status ) {
+     if(sizeof(quest_name)) {
+       quest_status = allocate(sizeof(quest_name));
+       for(i=0; i<sizeof(quest_name); i++) {
+         quest_status[i] = 1;
+       }
+     } else {
+       quest_status = ({ });
+     }
+   }
+   for(i = 0; i<sizeof(quest_level); i++) {
+     if(quest_status[i]) {
+       total_qp += quest_level[i];
+     }
+   }
+}
+int query_total_qp() { return total_qp; }
+int add_quest( string name, int level, string title, string story ) {
+   string log_name;
+   if ( member_array( name, quest_name ) != -1 )
+      return 0;
+   quest_name += ({ name });
+   quest_level += ({ level });
+   quest_title += ({ title });
+   quest_story += ({ story });
+   last_done_by += ({ "nobody" });
+   num_times_done += ({ 0 });
+   quest_status += ({ 1 });
+   if ( this_player() ) {
+      log_name = this_player()->query_name();
+   }
+   else {
+      log_name = file_name( previous_object() );
+   }
+   log_file( QUEST_LOG, log_name +
+         " added: "+ name +", "+ level +", "+ title +", "+ story +"\n" );
+   save_quests();
+   unguarded( (: cp, SAVE_FILE +".o", BACKUP_FILE +"."+ time() :) );
+   total_qp += level;
+   return 1;
+}
+int change_quest_status(string name) {
+  int temp;
+  temp = member_array(name, quest_name);
+  if(temp == -1) {
+    return -1;
+  }
+  quest_status[temp] = !quest_status[temp];
+  return quest_status[temp];
+}
+int query_quest_status(string name) {
+  int temp;
+  temp = member_array(name, quest_name);
+  if(temp == -1) {
+    return -1;
+  }
+  return quest_status[temp];
+}
+int query_quest_level(string name) {
+  int temp;
+  temp = member_array(name, quest_name);
+  if(temp == -1) {
+    return -1;
+  }
+  return quest_level[temp];
+}
+int set_quest_level(string name, int level) {
+   int temp;
+   string log_name;
+   temp = member_array(name, quest_name);
+   if(temp == -1) {
+      return 0;
+   }
+   if ( this_player() ) {
+      log_name = this_player()->query_name();
+   }
+   else {
+      log_name = file_name( previous_object() );
+   }
+   log_file(QUEST_LOG, "%s : level set for %s to %d\n\n",
+            log_name, name, level);
+   quest_level[ temp ] = level;
+   save_quests();
+   return 1;
+}
+string query_quest_story(string name) {
+  int temp;
+  temp = member_array(name, quest_name);
+  if(temp == -1) {
+    return "did nothing";
+  }
+  return quest_story[temp];
+}
+int set_quest_story(string name, string story) {
+   int temp;
+   string log_name;
+   temp = member_array(name, quest_name);
+   if(temp == -1) {
+      return 0;
+   }
+   if ( this_player() ) {
+      log_name = this_player()->query_name();
+   }
+   else {
+      log_name = file_name( previous_object() );
+   }
+   log_file(QUEST_LOG, "%s : story set for %s to %s\n\n",
+            log_name, name, story);
+   quest_story[ temp ] = story;
+   save_quests();
+   return 1;
+}
+string query_quest_title(string name) {
+  int temp;
+  temp = member_array(name, quest_name);
+  if(temp == -1 || quest_title[temp] == "") {
+    return "Unknown Quester";
+  }
+  return quest_title[temp];
+}
+int set_quest_title(string name, string title) {
+   int temp;
+   string log_name;
+   temp = member_array(name, quest_name);
+   if(temp == -1) {
+      return 0;
+   }
+   if ( this_player() ) {
+      log_name = this_player()->query_name();
+   }
+   else {
+      log_name = file_name( previous_object() );
+   }
+   log_file(QUEST_LOG, "%s : title set for %s to %s\n\n",
+            log_name, name, title);
+   quest_title[ temp ] = title;
+   save_quests();
+   return 1;
+}
+int query_quest_times( string name ) {
+   int i;
+   i = member_array( name, quest_name );
+   if ( i == -1 )
+      return -1;
+   return num_times_done[ i ];
+}
+mixed query_quest_done( string name ) {
+   int i;
+   i = member_array( name, quest_name );
+   if ( i == -1 )
+      return -1;
+   return last_done_by[ i ];
+}
+int delete_quest(string name) {
+   int temp;
+   string log_name;
+   if ( this_player() ) {
+      log_name = this_player()->query_name();
+   }
+   else {
+      log_name = file_name( previous_object() );
+   }
+   log_file(QUEST_LOG, log_name + " removed : " +
+            name + "\n\n");
+   temp = member_array(name, quest_name);
+   if(temp == -1) {
+      return 0;
+   }
+   total_qp -= quest_level[temp];
+   quest_name = delete(quest_name, temp, 1);
+   quest_level = delete(quest_level, temp, 1);
+   quest_title = delete(quest_title, temp, 1);
+   quest_story = delete(quest_story, temp, 1);
+   last_done_by = delete( last_done_by, temp, 1 );
+   num_times_done = delete( num_times_done, temp, 1 );
+   save_quests();
+   return 1;
+}
+string *query_quest_names() {
+  return quest_name + ({ });
+}
+int *query_quest_levels() {
+  return quest_level + ({ });
+}
+string *query_quest_titles() {
+  return quest_title + ({ });
+}
+string *query_quest_stories() {
+  return quest_story + ({ });
+}
+void quest_completed( string name, string quest, object prev_ob ) {
+   int i;
+   string word;
+   log_file( QUEST_LOG, ctime( time() ) +" "+ name +" completed "+
+         quest +"\n" );
+   user_event( "inform", name +" completes "+ quest, "quest" );
+   if ( file_name( previous_object() ) != LIBRARY ) {
+      prev_ob = previous_object();
+   }
+   word = (string)prev_ob->query_name();
+   if ( !word ) {
+      word = file_name( prev_ob );
+   } else {
+      word += " ("+ file_name( prev_ob ) +")";
+   }
+   log_file( QUEST_LOG, "given by "+ word +"\n" );
+   i = member_array( quest, quest_name );
+   if ( i == -1 ) {
+      log_file( QUEST_LOG, "non existent quest\n" );
+      return;
+   }
+   last_done_by[ i ] = name;
+   num_times_done[ i ]++;
+   save_quests();
+}
+int query_player_fame(string name){
+   int playerqp, rank;
+   if (!name){
+      return 0;
+   }
+   if (this_player()){
+      name = (string)this_player()->expand_nickname(name);
+   }
+   if (!PLAYER_HANDLER->test_user(name)){
+      return 0;
+   }
+   playerqp = (int)LIBRARY->query_quest_points(name);
+   rank = ( playerqp * 125 ) / query_total_qp();
+   return rank;
+}
+string query_fame_str( string name ) {
+   switch ( query_player_fame( name ) ) {
+      case 0 .. 4 :
+         return "completely unknown";
+      case 5 .. 14 :
+         return "unknown";
+      case 15 .. 24 :
+         return "unknown";
+      case 25 .. 34 :
+         return "moderately well known";
+      case 35 .. 44 :
+         return "well known";
+      case 45 .. 54 :
+         return "very well known";
+      case 55 .. 64 :
+         return "known throughout the region";
+      case 65 .. 74 :
+         return "famous";
+      case 75 .. 84 :
+         return "renowned";
+      case 85 .. 94 :
+         return "Disc renowned";
+      default :
+         return "so renowned that no introduction is needed";
+   }
+}
+string *query_player_story(string name){
+   string *quests;
+   string *story;
+   int i;
+   story = ({ });
+   if (!name){
+      return ({ });
+   }
+   if (this_player()){
+      name = (string)this_player()->expand_nickname(name);
+   }
+   if (!PLAYER_HANDLER->test_user(name)){
+      return 0;
+   }
+   quests = query_quest_names();
+   if (sizeof(quests) == 1){
+      story = ({"Is an under achiever."});
+   }
+   else{
+      for(i=0;i<sizeof(quests);i++){
+         if (LIBRARY->query_quest_done(name, quests[i])){
+            story = ({ query_quest_story( quests[ i ] ) }) + story;
+         }
+      }
+   }
+   return story;
+}
+void print_some_stats()  {
+   int i;
+   for (i = 0; i < sizeof(quest_name); i++)
+      printf("%s: %6d, %3d\n", quest_name[i], num_times_done[i], quest_level[i]);
 }

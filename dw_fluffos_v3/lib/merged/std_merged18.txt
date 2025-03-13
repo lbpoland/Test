@@ -1,1832 +1,2184 @@
-# Total Tokens: 17922
-# Total Files Merged: 5
-# Total Characters: 59754
+# Total Tokens: 22319
+# Total Files Merged: 11
+# Total Characters: 74422
 
-r_shop/office.c
+_shop/office_code/applications.c
 ==================================================
 
-inherit "/std/room/basic_room";
-#include <player_shop.h>
-#include <mail.h>
-#include <board.h>
-#include <money.h>
-#include <move_failures.h>
-#include <refresh.h>
-#include "office.h"
-private nosave string _proprietor = UNSET_STR,
-                      _shop_name = UNSET_STR,
-                      _very_short = UNSET_STR,
-                      _place = UNSET_STR,
-                      _channel = UNSET_STR,
-                      _storeroom = "",
-                      _shop_front = "",
-                      _counter = "",
-                      _mgr_office = "",
-                      _store_dir = "",
-                      _counter_dir = "",
-                      _shop_dir = "",
-                      _shopkeeper = "",
-                      _stock_policy = "",
-                      _cab_name = "",
-                      _review_month = "",
-                      _savedir = "",
-                      _creator = CREATOR;
-private nosave object _chart = 0,
-                      _board = 0,
-                      _notice = 0;
-private nosave mapping _history = 0,
-                       _applicants = 0,
-                       _policies = 0,
-                       _new_policies = 0,
-                       _list = ([]),
-                       _times = ([]),
-                       _employees = ([]);
-private nosave int _call_save = 0,
-                   _call_hist = 0,
-                   _call_hist_clear = 0,
-                   _call_times = 0,
-                   _call_hire_list = 0,
-                   _call_mail_hirees = 0,
-                   _call_summon = 0,
-                   _call_emps = 0,
-                   _call_review = 0,
-                   _call_apps = 0,
-                   _call_apps_clear = 0,
-                   _call_pols = 0,
-                   _call_pols_clear = 0,
-                   _call_newpols = 0,
-                   _call_newpols_clear = 0;
-private string *_retired = ({}),
-               *_got_bonus = ({}),
-               _last_month = "last month",
-               _eom = CREATOR;
-private mapping _baddies = ([]),
-                _declined = ([]),
-                _accounts = (["profit":0,"bonus":0]);
-private int _max_emp = MAX_EMP,
-            _bonus_val = 0,
-            _bonus = 0,
-            _pay_val = 4,
-            _num_cabinets = MIN_CABINETS,
-            _net_takings = 0;
-private mixed *_register = ({});
-void create()
+void add_applicant(string player, string message)
 {
-   do_setup++;
-   ::create();
-   do_setup--;
-   if (!do_setup)
+   if (previous_object() && previous_object() != find_object(_shop_front))
    {
-      this_object()->setup();
-      this_object()->reset();
-   }
-   seteuid("Room");
-   add_property("determinate", "");
-   add_help_file("player_shop_office");
-}
-#include "office_code/admin.c"
-#include "office_code/applications.c"
-#include "office_code/baddies.c"
-#include "office_code/cabinets.c"
-#include "office_code/emp_cmd.c"
-#include "office_code/lists.c"
-#include "office_code/logging.c"
-#include "office_code/masked.c"
-#include "office_code/memo.c"
-#include "office_code/personnel.c"
-#include "office_code/policies.c"
-#include "office_code/review.c"
-#include "office_code/save.c"
-#include "office_code/stock.c"
-protected void add_manager_exit(string dir, string path)
-{
-   add_exit(dir, path, "door");
-   modify_exit(dir, ({"function", ({this_object(),
-     "check_manager"}), "door short", "office door", "door long",
-     "There is a sign on the door which reads: \""+ _proprietor+
-     "- Private\".\n"}));
-   _mgr_office = path;
-}
-mapping get_applicants()
-{
-   load_applicants();
-   clear_applicants();
-   return copy(_applicants + ([]));
-}
-mapping get_baddies() { return copy(_baddies + ([])); }
-string *get_employees()
-{
-   string *employees = m_indices(_employees);
-   foreach (string word in employees)
-      if (_employees[word][EMP_POINTS] & SUPERVISOR)
-         employees -= ({word});
-   return copy(sort_array(employees, 1));
-}
-string *get_managers()
-{
-   return copy(sort_array(keys(filter(_employees,
-        (: _employees[$1][EMP_POINTS] & MANAGER :))), 1));
-}
-mapping get_new_policies()
-{
-   load_new_policies();
-   clear_new_policies();
-   return copy(_new_policies);
-}
-mapping get_policies(int type)
-{
-   load_policies();
-   clear_policies();
-   if (type)
-      return copy(filter(_policies, (: _policies[$1][1] :)));
-   else
-      return copy(filter(_policies, (: !_policies[$1][1] :)));
-}
-string *get_retired() { return copy(sort_array(_retired, 1)); }
-string *get_supervisors()
-{
-   string *supervisors = keys(filter(_employees,
-        (: _employees[$1][EMP_POINTS] & SUPERVISOR :)));
-   foreach (string word in supervisors)
-      if (_employees[word][EMP_POINTS] & MANAGER)
-         supervisors -= ({word});
-   return copy(sort_array(supervisors, 1));
-}
-int num_employees_in()
-{
-   int any = 0;
-   foreach (string word in m_indices(_employees))
-      if (_employees[word][EMP_POINTS] & CLOCKED_IN)
-      {
-         if (_employees[word][EMP_POINTS] & NPC) continue;
-         if (!find_player(word) || !interactive(find_player(word)))
-         {
-            reset_employee(word, CLOCKED_IN);
-            shop_log(GENERAL, word, "was clocked out", UNPAID);
-         }
-         else any++;
-      }
-   return any;
-}
-int query_applicant(string player)
-{
-   load_applicants();
-   clear_applicants();
-   if (!sizeof(_applicants)) return FALSE;
-   if (_applicants[player]) return copy(_applicants[player][APP_TYPE]);
-   return FALSE;
-}
-int query_baddie(string player)
-{
-   if (!m_sizeof(_baddies)) return FALSE;
-   if (_baddies[player]) return copy(_baddies[player][BAD_TIME]);
-   return FALSE;
-}
-int query_bonus() { return copy(_accounts["bonus"]); }
-string query_channel() { return copy(_channel); }
-string query_counter() { return copy(_counter); }
-void query_creator(string creator) { return copy(_creator); }
-int query_declined(string player)
-{
-   if (!sizeof(_declined)) return FALSE;
-   if (_declined[player]) return copy(_declined[player]);
-   return FALSE;
-}
-int query_employee(string player)
-{
-   if (_employees[player]) return copy(_employees[player][EMP_POINTS]);
-   return FALSE;
-}
-mapping query_employees() { return copy(_employees + ([])); }
-string *query_list_array() { return copy(m_indices(_list) + ({})); }
-mapping query_list_mapping() { return copy(_list) + ([]); }
-string query_list_string()
-{
-   if (!m_sizeof(_list)) return "absolutely nothing at the moment";
-   return query_multiple_short(m_indices(_list));
-}
-int query_manager(string player)
-{
-   if (_employees[player]) return (_employees[player][EMP_POINTS] & MANAGER);
-   return FALSE;
-}
-int query_maxemp() { return copy(_max_emp); }
-string query_mgr_office() { return copy(_mgr_office); }
-int query_num_cabinets() { return copy(_num_cabinets); }
-int query_pay() { return copy(_pay_val); }
-string query_place() { return copy(_place); }
-int query_policy(string policy)
-{
-   load_policies();
-   clear_policies();
-   if (m_sizeof(_policies) && _policies[policy]) return 2;
-   load_new_policies();
-   clear_new_policies();
-   if (m_sizeof(_new_policies) && _new_policies[policy]) return 1;
-   return 0;
-}
-int query_profit() { return copy(_accounts["profit"]); }
-string query_proprietor() { return copy(_proprietor); }
-int query_retired(string player)
-{
-   return (member_array(player, _retired) == -1)?FALSE:TRUE;
-}
-string query_savedir() { return copy(_savedir); }
-string query_shop_front() { return copy(_shop_front); }
-string query_shop_name() { return copy(_shop_name); }
-string query_shopkeeper() { return copy(_shopkeeper); }
-int query_stock(string items) { return _storeroom->query_num_items(items, 0); }
-string query_storeroom() { return copy(_storeroom); }
-int query_supervisor(string player)
-{
-   if (_employees[player])
-      return (_employees[player][EMP_POINTS] & SUPERVISOR);
-   return FALSE;
-}
-protected void save_emps()
-{
-   if (_very_short == UNSET_STR) return;
-   remove_call_out(_call_emps);
-   _call_emps = call_out((: do_save_emps() :), SAVE_DELAY);
-}
-protected void save_me()
-{
-   if (_very_short == UNSET_STR) return;
-   remove_call_out(_call_save);
-   _call_save = call_out((: do_save() :), SAVE_DELAY);
-}
-protected void set_channel(string name, int board)
-{
-   _channel = lower_case(name);
-   if (board)
-   {
-      _board = clone_object("/obj/misc/board");
-      _board->set_datafile(name);
-      _board->move(this_object());
-   }
-}
-protected void set_counter(string path) { _counter = path; }
-protected void set_creator(string creator) { _creator = creator; }
-protected void set_directions(string store, string counter, string shop)
-{
-   _store_dir = store;
-   _counter_dir = counter;
-   _shop_dir = shop;
-}
-protected void set_place(string place) { _place = place; }
-protected void set_proprietor(string name) { _proprietor = name; }
-protected void set_shop_front(string path) { _shop_front = path; }
-protected void set_shop_name(string name) { _shop_name = name; }
-protected void set_shopkeeper(string path)
-{
-   _shopkeeper = path;
-   path=_shopkeeper->query_name();
-   if (!_employees || !_employees[path])
-   {
-      _employees += ([path:EMP_MAP]);
-      _employees[path][EMP_POINTS] = EMPLOYEE + NPC;
-   }
-}
-protected void set_storeroom(string path) { _storeroom = path; }
-protected void set_stock_policy(string desc) { _stock_policy = desc; }
-protected void set_very_short(string name)
-{
-   if (PLAYER_SHOP->query_shop(name) != file_name(this_object()))
+      LOG_ERROR("office.c", "add_applicant("+player+","+message+")");
       return;
-   _very_short = name;
-   _savedir = sprintf("/save/player_housing/%s/player_shops/%s/",
-      lower_case(geteuid(this_object())), name);
-   if (file_size(_savedir+ "shop_data.o") > 0)
-      unguarded((: restore_object, _savedir+ "shop_data" :));
-   if (file_size(_savedir+ "employees") > 0)
-      _employees = restore_variable(unguarded((: read_file,
-        _savedir+ "employees" :)));
-   if (file_size(_savedir+ "times") > 0)
-      _times = restore_variable(unguarded((: read_file,
-      _savedir+ "times" :)));
-   if (file_size(_savedir+ "list") > 0)
-      _list = restore_variable(unguarded((: read_file, _savedir+ "list" :)));
+   }
+   player = lower_case(player);
+   if (!query_applicant(player))
+   {
+      load_applicants();
+      if (!sizeof(_applicants)) _applicants = ([ player:APP_MAP ]);
+      else _applicants += ([ player:APP_MAP ]);
+      _applicants[player][APP_TIME] = time();
+      _applicants[player][APP_MESSAGE] = message;
+      employee_log( player, "Applied for employment" );
+      save_applicants();
+   }
 }
-string shop_very_short() { return copy(_very_short); }
+private void add_declined(string applicant)
+{
+   applicant = lower_case(applicant);
+   if (!query_declined(applicant))
+   {
+      if (!sizeof(_declined)) _declined = ([applicant:0]);
+      else _declined += ([applicant:0]);
+      _declined[applicant] = time();
+      save_me();
+   }
+}
+private void add_vote(string applicant, int vote)
+{
+   string voter = this_player()->query_name();
+   int managers = sizeof(get_managers());
+   if (!managers) managers = 1;
+   load_applicants();
+   if (vote == VABSTAIN) _applicants[applicant][APP_ABSTAIN] += ({voter});
+   else if (vote == VFOR) _applicants[applicant][APP_FOR] += ({voter});
+   else _applicants[applicant][APP_AGAINST] += ({voter});
+   shop_log(GENERAL, voter, "voted on "+ cap_name(applicant), PAID);
+   save_applicants();
+   managers -= sizeof(_applicants[applicant][APP_ABSTAIN]);
+   if (sizeof(_applicants[applicant][APP_FOR]) > managers / 2)
+   {
+      PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
+         "Congratulations!  You've been accepted to work at "+
+         _shop_name+ ".  Please return to the shop within the next "
+         "seven days to \"confirm\" that you wish to accept "
+         "the position.\n");
+      _applicants[applicant][APP_TYPE] = HIRED;
+      _applicants[applicant][APP_TIME] = time();
+      employee_log(applicant, "Application was accepted");
+   }
+   else if (sizeof(_applicants[applicant][APP_AGAINST]) >=
+      managers / 2)
+   {
+      remove_applicant(applicant);
+      PLAYER_SHOP->auto_mail(applicant, _proprietor, _shop_name, "",
+         "Thank you for your recent application for employment "
+         "with us.  Unfortunately, I have to inform you that you "
+         "have been unsuccessful at this time.  Please feel free "
+         "to re-apply again in the future, when your application "
+         "will be re-considered.\n");
+      employee_log(applicant, "Application was declined");
+      add_declined(applicant);
+   }
+}
+void check_hire_list()
+{
+   int count;
+   string *hirees = ({});
+   load_applicants();
+   foreach (string word in m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == HIRED :))))
+      if (time() - _applicants[word][APP_TIME] > HIRE_TIMEOUT)
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor,
+            _shop_name, "", "Since you have not returned to confirm "
+            "your employment with us, we have assumed that you are no "
+            "longer interested, and removed your name from our files.  "
+            "If you wish to re-apply at any time in the future, please "
+            "return to the shop to do so.\n");
+         employee_log(word, "Lapsed their application");
+         remove_applicant(word);
+      }
+   foreach (string word in m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == APPLIED :))))
+      if (sizeof(_applicants[word][APP_FOR]) >
+         sizeof(get_managers()) / 2)
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+            "Congratulations!  You've been accepted to work at "+
+            _shop_name+ ".  Please return to the shop within the next "
+            "seven days to \"confirm\" that you wish to accept "
+            "the position.\n");
+         _applicants[word][APP_TYPE] = HIRED;
+         _applicants[word][APP_TIME] = time();
+         employee_log(word, "Application was accepted");
+      }
+      else if (time() - _applicants[word][APP_TIME] > VOTE_TIMEOUT)
+      {
+         if (sizeof(_applicants[word][APP_FOR]) <=
+            sizeof(_applicants[word][APP_AGAINST]))
+         {
+            remove_applicant(word);
+            PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+               "Thank you for your recent application for employment "
+               "with us.  Unfortunately, I have to inform you that you "
+               "have been unsuccessful at this time.  Please feel free "
+               "to re-apply again in the future, when your application "
+               "will be re-considered.\n");
+            employee_log(word, "Application was declined");
+            add_declined(word);
+         }
+         else
+         {
+            PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+               "Congratulations!  You've been accepted to work at "+
+               _shop_name+ ".  Please return to the shop within the next "
+               "seven days to \"confirm\" that you wish to accept "
+               "the position.\n");
+            _applicants[word][APP_TYPE] = HIRED;
+            _applicants[word][APP_TIME] = time();
+            employee_log(word, "Application was accepted");
+         }
+      }
+   count = _max_emp - sizeof(_employees);
+   if (count < 1) return;
+   hirees = sort_array(keys(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))),
+      (: _applicants[$1][APP_TIME] - _applicants[$2][APP_TIME] :));
+   if (count > sizeof(hirees)) count = sizeof( hirees );
+   for (int n = 0; n < count; n++) hire(hirees[n]);
+   save_applicants();
+}
+int do_cancel()
+{
+   object tp = this_player();
+   remove_applicant(tp->query_name());
+   employee_log(tp->query_name(), "Cancelled application");
+   tell_object(tp, "You cancel your application.\n");
+   return 1;
+}
+int do_confirm()
+{
+   object tp = this_player();
+   string applicant = lower_case(tp->query_name());
+   if (previous_object() && previous_object() != find_object(_shop_front))
+   {
+      LOG_ERROR("office.c", "do_confirm()");
+      return 0;
+   }
+   load_applicants();
+   _applicants[applicant][APP_TYPE] = AWAITING;
+   _applicants[applicant][APP_TIME] = time();
+   tell_object(tp, "You have now been added to "
+      "our waiting list.  You will be notified of your position in the "
+      "list as it changes.  You may \"cancel\" your application at "
+      "any time.  You are currently at position " +
+      sizeof(m_indices(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))))+
+      " in the waiting list.\n");
+   save_applicants();
+   employee_log(applicant, "Confirmed employment");
+   tell_object(tp, "You confirm your employment.\n");
+   return 1;
+}
+int do_vote(mixed *args, string pattern)
+{
+   int query_app;
+   string tp = this_player()->query_name();
+   if (pattern == VOTE_APPLICANT)
+   {
+      args[0] = lower_case(args[0]);
+      if (!(query_app = query_applicant(args[0])))
+      {
+         tell_object(this_player(),cap_name(args[0])+
+            " hasn't applied!\n");
+         return 1;
+      }
+      if (query_app != APPLIED)
+      {
+         tell_object(this_player(), cap_name( args[0])+
+            " has already been hired!\n");
+         return 1;
+      }
+      load_applicants();
+      if (member_array(tp, _applicants[args[0]][APP_FOR]) != -1 ||
+         member_array(tp, _applicants[args[0]][APP_AGAINST]) != -1 ||
+         member_array(tp, _applicants[args[0]][APP_ABSTAIN]) != -1)
+      {
+         tell_object(this_player(),
+            "You have already voted for this person!\n");
+         return 1;
+      }
+      switch (args[1][0])
+      {
+      case 'y' :
+         add_vote(args[0], VFOR);
+         tell_object(this_player(), "You vote for " +
+            cap_name( args[0] ) + " to work for the shop.\n");
+         break;
+      case 'a' :
+         add_vote(args[0], VABSTAIN);
+         tell_object(this_player(), "You abstain on " +
+            cap_name(args[0] ) + ".\n");
+         break;
+      default :
+         add_vote(args[0], VAGAINST);
+         tell_object(this_player(), "You vote against " +
+            cap_name( args[0] ) + " working for the shop.\n");
+      }
+      clear_applicants();
+   }
+   else do_policy_vote(tp, args[0], args[1]);
+   return 1;
+}
+private void mail_hirees()
+{
+   string *hirees;
+   load_applicants();
+   hirees = sort_array(keys(filter(_applicants,
+      (: _applicants[$1][APP_TYPE] == AWAITING :))),
+      (: _applicants[$1][APP_TIME] - _applicants[$2][APP_TIME] :));
+   for (int x = 0; x < sizeof(hirees); x++)
+      PLAYER_SHOP->auto_mail(hirees[x], _proprietor, _shop_name, "",
+         "I am writing to inform you that you have now moved to position "+
+         (x + 1)+ " in the employment waiting list.  If you are not near "
+         "the top of the list, please be patient.\nThank you.\n");
+   clear_applicants();
+}
+private void remove_applicant(string applicant)
+{
+   applicant = lower_case(applicant);
+   if (query_applicant(applicant))
+   {
+      load_applicants();
+      map_delete(_applicants, applicant);
+      save_applicants();
+   }
+}
+private void remove_declined(string declined)
+{
+   declined = lower_case(declined);
+   if (query_declined(declined))
+   {
+      map_delete(_declined, declined);
+      save_me();
+   }
+}
 
 ==================================================
-FILE: shops/player_shop/office.h
+FILE: shops/player_shop/office_code/baddies.c
 ==================================================
 
-#define clear_applicants() _call_apps_clear = \
-                         call_out((: _applicants = 0 :), CLEAR_DELAY)
-#define clear_history() _call_hist_clear = \
-                         call_out((: _history = 0 :), CLEAR_DELAY)
-#define clear_new_policies() _call_newpols_clear = \
-                             call_out((: _new_policies = 0 :), CLEAR_DELAY)
-#define clear_policies() _call_pols_clear = \
-                         call_out((: _policies = 0 :), CLEAR_DELAY)
-#define save_applicants() _call_apps = \
-                          call_out((: do_save_applicants() :), SAVE_DELAY);
-#define save_hist() _call_hist = \
-                          call_out((: do_save_hist() :), SAVE_DELAY);
-#define save_new_policies() _call_newpols = \
-                          call_out((: do_save_new_policies() :), SAVE_DELAY);
-#define save_policies() _call_pols = \
-                          call_out((: do_save_policies() :), SAVE_DELAY);
-void     add_applicant(string,string);
-private void add_baddie( string, string, string);
-private void add_board_message(string, string);
-private void add_chart_cabinet(string, int);
-private void add_declined(string);
-private void add_employee(string);
-protected void add_manager_exit(string, string);
-private void add_policy(string);
-void     add_policy_suggest(string, string, string, int);
-private void add_vote(string, int);
-private void adjust_bonus(string, int);
-void     adjust_bought(string, int);
-private void adjust_profit(string, int);
-void     adjust_sold(string, int);
-void     adjust_takings(int);
-string   badge_list();
-void     calc_bonus();
-int      calc_pay();
-private string cap_name(string);
-void check_hire_list();
-int      check_manager(string);
-void     confirm_cabinet(string, int);
-private void demote(string, string);
-string   directions_to(string);
-private int do_ban(mixed *);
-private int do_bank(mixed);
-int do_cancel();
-private int do_chart(mixed *, string);
-private int do_check();
-private int do_claim(string);
-private int do_clock(string);
-int      do_commend(string);
-private int do_confirm();
-int      do_demote(string);
-int      do_fire(mixed *);
-int      do_leave(mixed *);
-int      do_list();
-int      do_logs(mixed *, string);
-private int do_memo();
-private int do_office();
-private int do_policy_vote(string, string, string);
-private int do_promote(string);
-int      do_remove();
-int      do_rent();
-private int do_resign();
-int      do_retire();
-private void do_save();
-private void do_save_applicants();
-private void do_save_emps();
-private void do_save_hist();
-private void do_save_new_policies();
-private void do_save_policies();
-int      do_set(mixed *, string);
-int      do_suspend(mixed *);
-int      do_transfer(mixed *);
-int      do_unban(string);
-int      do_vote(mixed *, string);
-int      do_warn(mixed *);
-private void employee_log(string, string);
-string   employees_clocked_in();
-private void end_memo(string,string);
-private void fire_them(string, string, string);
-mapping  get_applicants();
-mapping  get_baddies();
-string  *get_employees();
-string  *get_managers();
-mapping  get_new_policies();
-mapping  get_policies(int);
-string  *get_retired();
-string   get_stock_policy();
-string  *get_supervisors();
-private void hire(string);
-private string list_stuff(string);
-private void load_applicants();
-private void load_history();
-private void load_new_policies();
-private void load_policies();
-private void mail_hirees();
-private void monthly_review();
-int      num_employees_in();
-private void put_on_list(string);
-int      query_applicant(string);
-int      query_ave(string);
-int      query_baddie(string);
-int      query_bonus();
-int      query_buy(string);
-int     *query_cabinet(string);
-int      query_cabinet_used(int);
-string   query_channel();
-string   query_counter();
-void     query_creator(string);
-int      query_declined(string);
-int      query_employee(string );
-mapping  query_employees();
-string  *query_list_array();
-string   query_list_string();
-int      query_manager(string);
-int      query_max(string);
-int      query_maxemp();
-string   query_mgr_office();
-int      query_num_cabinets();
-int      query_on_list(string);
-int      query_pay();
-string   query_place();
-int      query_policy(string);
-int      query_profit();
-string   query_proprietor();
-int      query_retired(string);
-int      query_sell(string);
-string   query_shop_front();
-string   query_shop_name();
-string   query_shopkeeper();
-int      query_stock(string);
-string   query_storeroom();
-int      query_supervisor(string);
-private string query_worked(string);
-private void remove_applicant(string);
-private void remove_baddie(string);
-private void remove_chart_cabinet(string, int);
-private void remove_declined(string);
-private void remove_employee(string);
-private void remove_policy(string);
-private void remove_retired(string);
-private void reset_employee(string, int);
-mixed   *restore_register();
-private void review_employees();
-private void rm_cab();
-protected void save_emps();
-private void save_list();
-protected void save_me();
-void     save_register(mixed *);
-private void save_times();
-private void send_memo(string, string, string);
-private void set_buy(string, int);
-protected void set_channel(string, int);
-protected void set_counter(string);
-protected void set_creator(string);
-protected void set_directions(string, string, string);
-private void set_emp_time(string);
-private void set_employee(string, int);
-private void set_max(string, int);
-protected void set_place(string);
-protected void set_proprietor(string);
-private void set_sell(string, int);
-protected void set_shop_front(string);
-protected void set_shop_name(string);
-protected void set_shopkeeper(string);
-protected void set_stock_policy(string);
-protected void set_storeroom(string);
-protected void set_very_short(string);
-void     shop_log(int, string, string, int);
-string   shop_very_short();
-void     summon_shopkeeper();
-private void take_off_list(string);
-private void update_averages();
-void     view_record(string,string);
-private void write_memo(string);
-#define CHART_ADDITEM       "add <string'item'>"
-#define CHART_REMITEM       "remove <string'item'>"
-#define CHART_MAXITEM       "max <string'item'> <number>"
-#define CHART_BUYITEM       "buy <string'item'> <number>"
-#define CHART_SELLITEM      "sell <string'item'> <number>"
-#define CHART_ASSIGN_ITEM   "assign <string'item'> <number'cabinet number'>"
-#define CHART_UNASSIGN_ITEM "unassign <string'item'> <number'cabinet number'>"
-#define LOG_BLANK  ""
-#define LOG_NUMBER "<number>"
-#define LOG_MGR    "{personnel|accounts|chart}"
-#define LOG_CHART  "chart"
-#define LIST_BLANK  ""
-#define LIST_CHOICE "{employees|applicants|baddies}"
-#define SET_EMPS "maximum <number> [employees]"
-#define SET_PAY  "pay <number'amount'> <string'type'>"
-#define VOTE_APPLICANT "<word'applicant'> {y|n|a}"
-#define VOTE_POLICY    "policy <word'name'> {y|n}"
-#define VIEW_EMP "<string'employee'>"
-#define VIEW_APP "application [by] <string'applicant'>"
-#define POLICY_SUGGEST "suggest {manager|shop} <word'policy'>"
-#define POLICY_REMOVE  "remove <word'policy'>"
-#define LIST_CABINET      "cabinet <number'cabinet'>"
-#define LIST_ITEM         "<string'item'>"
-#define LIST_ITEM_CABINET "<string'item'> in cabinet <number'cabinet'>"
+private void add_baddie(string word, string reason, string banner)
+{
+   object ob;
+   word = lower_case(word);
+   if (query_baddie(word))
+   {
+      if (_baddies[word][BAD_TIME] == time() ||
+         reason == _baddies[word][BAD_REASON]) return;
+      remove_baddie( word );
+   }
+   if (!sizeof(_baddies)) _baddies = ([word:BAD_MAP]);
+   else _baddies += ([word:BAD_MAP]);
+   _baddies[word][BAD_REASON] = reason;
+   _baddies[word][BAD_BANNER] = banner;
+   _baddies[word][BAD_TIME] = time();
+   save_me();
+   shop_log(GENERAL, banner, "banned "+ cap_name(word)+
+      " for "+ reason, PAID);
+   employee_log(word, sprintf("Banned by %s for %s.", cap_name(banner),
+      reason));
+   fire_them(_proprietor, word, reason);
+   remove_applicant(word);
+   if (!(ob = find_player(word))) return;
+   if (environment(ob) == find_object(_shop_front))
+   {
+      tell_room(_shop_front, ob->query_short()+ " drifts out of the door, "
+        "seemingly against "+ ob->query_possessive()+ " will.\n", ({ob}));
+      tell_object(ob , "You feel yourself pushed out of the shop "
+        "by a mysterious force.\n");
+      tell_room(_shop_front->query_outside(), ob->query_short()+
+        " drifts through the door of "+ _shop_name +
+        ", seemingly against "+ ob->query_possessive()+ " will.\n", ({ob}));
+      ob->move(_shop_front->query_outside());
+   }
+}
+int do_ban(mixed *args)
+{
+   if (!test_player(lower_case(args[0])))
+   {
+      tell_object(this_player(), args[0]+ " is not a player.\n");
+      return 1;
+   }
+   if (_employees[args[0]][EMP_POINTS] & MANAGER &&
+      !this_player()->query_creator())
+   {
+      tell_object(this_player(), "You cannot ban "+ cap_name(args[0])+
+         ".\n");
+      return 1;
+   }
+   add_baddie(args[0], args[1], this_player()->query_name());
+   tell_object(this_player(), "You ban "+ cap_name(args[0])+
+     " for "+ args[1]+ ".\n");
+   return 1;
+}
+int do_unban(string person)
+{
+   if (!query_baddie(person))
+   {
+      tell_object(this_player(), person+ " is not currently banned.\n");
+      return 1;
+   }
+   remove_baddie(person);
+   shop_log(GENERAL, this_player()->query_name(),
+     "removed the ban on "+ cap_name(person), PAID);
+   tell_object(this_player(), "You remove the ban on "+
+     cap_name(person)+ ".\n" );
+   return 1;
+}
+private void remove_baddie(string word)
+{
+   if (!query_baddie(word)) return;
+   map_delete(_baddies, word);
+   save_me();
+}
 
 ==================================================
-FILE: shops/player_shop/patterns.h
+FILE: shops/player_shop/office_code/cabinets.c
 ==================================================
 
-#define CHART_ADDITEM       "add <string'item'>"
-#define CHART_REMITEM       "remove <string'item'>"
-#define CHART_MAXITEM       "max <string'item'> <number>"
-#define CHART_BUYITEM       "buy <string'item'> <number>"
-#define CHART_SELLITEM      "sell <string'item'> <number>"
-#define CHART_ASSIGN_ITEM   "assign <string'item'> <number'cabinet number'>"
-#define CHART_UNASSIGN_ITEM "unassign <string'item'> <number'cabinet number'>"
-#define LOG_BLANK  ""
-#define LOG_NUMBER "<number>"
-#define LOG_MGR    "{personnel|accounts|chart}"
-#define LOG_CHART  "chart"
-#define LIST_BLANK  ""
-#define LIST_CHOICE "{employees|applicants|baddies}"
-#define SET_EMPS "maximum <number> [employees]"
-#define SET_PAY  "pay <number'amount'> <string'type'>"
-#define VOTE_APPLICANT "<word'applicant'> {y|n|a}"
-#define VOTE_POLICY    "policy <word'name'> {y|n}"
-#define VIEW_EMP "<string'employee'>"
-#define VIEW_APP "application [by] <string'applicant'>"
-#define POLICY_SUGGEST "suggest {manager|shop} <word'policy'>"
-#define POLICY_REMOVE  "remove <word'policy'>"
-#define LIST_CABINET      "cabinet <number'cabinet'>"
-#define LIST_ITEM         "<string'item'>"
-#define LIST_ITEM_CABINET "<string'item'> in cabinet <number'cabinet'>"
+private void add_chart_cabinet(string word, int number)
+{
+   if (!_list[word]) return;
+   _list[word][CHART_CAB] += ({number});
+   _list[word][CHART_CAB] = sort_array(_list[word][CHART_CAB], 1);
+   save_list();
+}
+void confirm_cabinet(string confirm, int rent)
+{
+   if (previous_object() && previous_object() != this_object())
+   {
+      LOG_ERROR("office.c", "confirm_cabinet("+confirm+","+rent+")");
+      return;
+   }
+   confirm = lower_case(confirm);
+   if ( strlen(confirm) < 1 ||
+     (confirm[0] != 'y' && confirm[0] != 'n'))
+   {
+       tell_object(this_player(), sprintf("Please enter 'yes' or 'no'.\n"
+         "Are you sure you want to %s a cabinet? ", (rent)?"rent":"remove"));
+       input_to("confirm_cabinet", 0, rent);
+       return ;
+   }
+   if (confirm[0] == 'n')
+   {
+      tell_object(this_player(), "Ok.\n");
+      return;
+   }
+   if (rent)
+      if (_storeroom->add_cabinet())
+      {
+         _num_cabinets++;
+         adjust_profit(this_player()->query_name(), -CABINET_COST);
+         shop_log(ACCOUNTS, this_player()->query_name(),
+           "rented cabinet for "+ MONEY_HAND->money_value_string(CABINET_COST,
+           _place), PAID);
+         save_me();
+      }
+   else
+   {
+      string cab_name;
+      if ((cab_name = _storeroom->remove_cabinet()) != "")
+      {
+         _num_cabinets--;
+         shop_log(ACCOUNTS, this_player()->query_name(),
+           "removed cabinet", PAID);
+         if (file_size(_savedir+ _cab_name + ".o") > 0)
+         {
+            _cab_name = cab_name;
+            call_out((: rm_cab() :), 5);
+         }
+         save_me();
+      }
+   }
+   tell_object(this_player(), "Cabinet "+ (rent)?"rent":"remov" + "ed.\n");
+}
+private int do_check()
+{
+   string result = "Current cabinet assignments are:\n";
+   for (int x = 0; x < _num_cabinets; x++)
+   {
+      string *items = ({});
+      result += sprintf("Cabinet %2d: ", x+1);
+      foreach(string item in m_indices(_list))
+         if (member_array(x+1, _list[item][CHART_CAB]) != -1)
+            items += ({sprintf("%s (%d)", item, _list[item][CHART_MAX])});
+      if (sizeof(items)) result += query_multiple_short( items );
+      result += "\n";
+   }
+   result += "\n";
+   tell_object(this_player(), "$P$Cabinet assignments$P$"+ result);
+   return 1;
+}
+int do_remove()
+{
+   int stock;
+   if (!((stock = _num_cabinets) > MIN_CABINETS))
+   {
+      tell_object(this_player(), "The shop already contains the "
+        "minimum number of cabinets.\n");
+      return 1;
+   }
+   if (sizeof(_storeroom->query_stock(stock)))
+   {
+      tell_object(this_player(), "Cabinet "+ stock+
+        " still contains stock.\n");
+      return 1;
+   }
+   if (query_cabinet_used(stock))
+   {
+      tell_object(this_player(), "Cabinet "+ stock+
+        " is still assigned to hold stock.\n");
+      return 1;
+   }
+   tell_object(this_player(), "Are you sure you wish to remove a cabinet? ");
+   input_to("confirm_cabinet", 0, 0);
+   return 1;
+}
+int do_rent()
+{
+   if (!(_num_cabinets < MAX_CABINETS))
+   {
+      tell_object(this_player(), "The shop already contains the "
+        "maximum number of cabinets.\n");
+      return 1;
+   }
+   if (CABINET_COST > _accounts["profit"])
+   {
+      tell_object(this_player(), "Cabinets currently cost "+
+        MONEY_HAND->money_value_string(CABINET_COST, _place) +
+        ".  There is not enough money in the profit account.\n");
+      return 1;
+   }
+   tell_object(this_player(), "Are you sure you wish to rent a cabinet for "+
+     MONEY_HAND->money_value_string( CABINET_COST, _place ) + " per month? ");
+   input_to("confirm_cabinet", 0, 1);
+   return 1;
+}
+int *query_cabinet(string item)
+{
+   return (!_list[item])?({}):copy(_list[item][CHART_CAB]);
+}
+int query_cabinet_used(int cabinet)
+{
+   foreach(string word in m_indices(_list))
+      if ( member_array(cabinet, _list[word][CHART_CAB]) != -1)
+         return TRUE;
+   return FALSE;
+}
+private void remove_chart_cabinet(string word, int number)
+{
+   if (!_list[word]) return;
+   _list[word][CHART_CAB] -= ({number});
+   save_list();
+}
+private void rm_cab()
+{
+#ifdef DEBUG
+   tell_creator(CREATOR, "Removing cabinet file %s.\n",
+     _savedir+ _cab_name+ ".o");
+#endif
+   unguarded((: rm, _savedir+ _cab_name+ ".o" :));
+   _cab_name = "";
+}
 
 ==================================================
-FILE: shops/player_shop/shop_front.c
+FILE: shops/player_shop/office_code/emp_cmd.c
 ==================================================
 
-inherit "/std/room/basic_room";
-#include <player_shop.h>
-#include <mail.h>
-private nosave class applying_player
+private int do_bank(mixed *args)
 {
-    int step;
-    string *answers;
+   object tp = this_player();
+   string word = tp->query_name();
+   if (tp->query_creator())
+   {
+      tell_object(tp, "Creators don't get paid.\n");
+      return 1;
+   }
+   add_succeeded_mess( "" );
+   if ( !sizeof( args ) )
+   {
+      string message = "You are currently being paid into your account at "+
+        BANKS[_employees[word][EMP_BANK]][0]+ ".  To change which bank "
+        "you would like your pay to be deposited at, use the command "
+        "\"bank <number>\" where <number> is one of the following:\n\n";
+      for (int x = 0; x < sizeof(BANKS); x++)
+         message += sprintf("     %d: %s\n", x+1, BANKS[x][0]);
+      tell_object(tp, message + "\n");
+      return 1;
+   }
+   if (args[0] < 1 || args[0] > sizeof(BANKS))
+   {
+      tell_object(tp,  "There are "+ sizeof(BANKS)+
+        " banks to choose from.\n");
+      return 1;
+   }
+   _employees[word][EMP_BANK] = args[0] - 1;
+   save_emps();
+   tell_object(tp, "You change your bank details.\n");
+   return 1;
 }
-private nosave string _inside = "",
-_outside = "",
-_office = "",
-_counter = "",
-_storeroom = "",
-_mgr_office = "",
-_channel;
-private void abort_app(class applying_player);
-private void apply(class applying_player);
-private string cap_name(string);
-int check_employee(string, object, string);
-private void confirm_abort(string, class applying_player);
-private void confirm_apply(string, string, class applying_player);
-private void continue_loop(class applying_player);
-string directions_to(string);
-private int do_apply();
-private int do_cancel();
-private int do_complain();
-private int do_confirm();
-private int do_push();
-private int do_suggestion();
-private void end_app(class applying_player);
-private void end_complaint(string);
-private void end_suggestion(string);
-private void finish_edit(string, class applying_player);
-string query_office();
-string query_outside();
-protected void set_exit_counter(string);
-protected void set_exit_out(string, string);
-protected void set_office(string);
-string sign_text();
-int tinkle_bell(string);
-void create()
+private int do_claim(string item)
 {
-    do_setup++;
-    ::create();
-    do_setup--;
-    add_property("no burial", 1);
-    add_property("los", "closed");
-    add_property("determinate", "");
-    add_item("counter", "The counter divides this room of the shop in two.  "
-      "You get the feeling that only employees can pass it.  There's a "
-      "%^BOLD%^card%^RESET%^ on the counter that catches your attention, "
-      "next to which is a small %^BOLD%^bell%^RESET%^.");
-    add_item("card", "The card seems to be a simple form.  One section "
-      "seems to allow you to \"apply\" for a job here, whilst the "
-      "bottom section could be filled out to make a \"suggestion\".\n"
-      "If you wish to \"complain\" about an employee, you may do so here.  "
-      "If you have been accepted for employment, you can also \"confirm\" "
-      "you accept, or you can \"cancel\" your application at any time.");
-    add_item("doorbell", "The bell above the door is positioned so that as the "
-      "door passes underneath it, it will ring.");
-    add_item(({"bell", "push-bell"}),
-      ({"long", "This is a small push-bell for summoning the employees.",
-        "push", (: do_push() :)}));
-    if (!do_setup)
-    {
-        this_object()->setup();
-        this_object()->reset();
-    }
-    add_help_file("player_shop_shopfront");
-}
-void init()
-{
-    string tp;
-    ::init();
-    if (!_office || _office == "") return;
-    tp = this_player()->query_name();
-    _office->summon_shopkeeper();
-    add_command("complain", "", (: do_complain() :));
-    add_command("suggestion", "", (: do_suggestion() :));
-    if (!check_employee("void", this_player(), "void"))
-        add_command("apply", "", (: do_apply() :));
-    if ( _office->query_applicant(tp) == HIRED)
-        add_command("confirm", "employment", (: do_confirm() :));
-    if (_office->query_applicant(tp))
-        add_command( "cancel", "application", (: do_cancel() :) );
-}
-private void abort_app(class applying_player player_info)
-{
-    tell_object(this_player(),
-      "Are you sure you want to ABORT the application? ");
-    input_to((: confirm_abort($1,$(player_info)) :), 0);
-}
-private void apply(class applying_player player_info)
-{
-    object tp = this_player();
-    tell_object(tp, "\n\n");
-    tell_object(tp, "%^BOLD%^Application for employment with "+
-      _office->query_shop_name()+ "%^RESET%^\n\n"
-      "Please note that a blank entry will abort your application.\n");
-    tell_object(tp, "There are " + query_num(sizeof(APP_QUESTIONS))+
-      " questions on this application form.  Please answer them all.  "
-      "You will get an opportunity at the end to let us know anything "
-      "else about you that seems relevant.\n\n" );
-    continue_loop(player_info);
-}
-private string cap_name(string name)
-{
-    if (test_player(name))
-        return PLAYER_HANDLER->query_cap_name(name);
-    else return capitalize(name);
-}
-int check_employee(string verb, object thing, string special)
-{
-    if (thing->query_creator() ||
-      _office->query_retired(thing->query_name())) return 1;
-    return _office->query_employee(thing->query_name());
-}
-private void confirm_abort(string confirm, class applying_player player_info)
-{
-    confirm = lower_case(confirm);
-    if (strlen(confirm) < 1 || (confirm[0] != 'y' && confirm[0] != 'n'))
-    {
-        tell_object(this_player(), "Please enter 'yes' or 'no'.\n"
-          "Are you sure you want to ABORT the application? ");
-        input_to((: confirm_abort($1,$(player_info)) :), 0);
-        return ;
-    }
-    if (confirm[0..0] != "y")
-    {
-        continue_loop(player_info);
-        return ;
-    }
-    tell_object(this_player(), "Application aborted.\n");
-    return;
-}
-private void confirm_apply(string str, string message,
-  class applying_player player_info)
-{
-    string from, *managers;
-    str = lower_case( str );
-    if (strlen(str) < 1 || (str[0] != 'y' && str[0] != 'n'))
-    {
-        tell_object(this_player(), "Are you sure you want to send "
-          "the application (Yes or No)? ");
-        input_to((: confirm_apply($1,$(message),$(player_info)) :), 0);
-        return;
-    }
-    if(str[0] == 'n')
-    {
-        confirm_abort("y", player_info);
-        return;
-    }
-    from = (string)this_player()->query_name();
-    managers = _office->get_managers();
-    if (!sizeof(managers)) managers = ({ _office->query_creator() });
-    AUTO_MAILER->auto_mail(implode(managers, ","),
-      _office->query_proprietor(), "Application for employment with "+
-      _office->shop_very_short(), "", "There is a new application to be "
-      "viewed.\nPlease vote on "+ cap_name( from )+ "'s application as "
-      "soon as possible.\n", 0, 0);
-    _office->add_applicant(from, message);
-    tell_object(this_player(), "\nYour application has now been sent "
-      "to the managers.  You will hear from us as soon as they have "
-      "made a decision.  Thank you for your application, and good luck.\n");
-}
-private void continue_loop(class applying_player player_info)
-{
-    string q_str = "Question #"+(player_info->step+1)+": ";
-    tell_object(this_player(), "\n%^CYAN%^" + sprintf("%s%-=*s\n",
-        q_str, this_player()->query_cols() - strlen(q_str),
-        APP_QUESTIONS[player_info->step]) + "%^RESET%^");
-    this_player()->do_edit("", (: finish_edit($1,$(player_info)) :), 0);
-}
-string directions_to(string place)
-{
-    if (place == _counter || place == _office || place == _storeroom)
-        return copy(_inside);
-    return "here";
-}
-private int do_apply()
-{
-    int awaiting_vacancies = 0;
-    mapping applicants;
-    string tp = this_player()->query_name();
-    class applying_player player_info;
-    if (_office->query_applicant(tp))
-    {
-        tell_object(this_player(), "You've already applied here!\n");
+   object thing,
+          tp = this_player();
+   int give_bonus;
+   string tp_name = tp->query_name();
+   switch(item)
+   {
+     case "badge" :
+        thing = clone_object(BADGE);
+        thing->set_props(file_name(this_object()), tp->query_name());
+        break;
+     case "handbook" :
+        thing = clone_object(STAFF_BOOK);
+        thing->set_read_mess("\n   "+ _shop_name+ "\n\n"
+          "   Staff Handbook\n\n   This handbook belongs to: "+
+          tp->query_short()+ "\n\n", "common", 100);
+        thing->set_office(file_name(this_object()));
+        tp->add_property(_very_short+ " handbook",1);
+        break;
+     case "bonus" :
+        if (member_array(tp_name, _got_bonus) != -1)
+        {
+           tell_object(tp, "You are not entitled to a "
+             "bonus this month!\n");
+           return 1;
+        }
+        if (_employees[tp_name][EMP_POINTS] & MANAGER)
+        {
+           give_bonus = _bonus_val * 2;
+        }
+        else if (_employees[tp_name][EMP_POINTS] & SUPERVISOR ||
+           _eom == tp_name)
+        {
+           give_bonus = to_int(_bonus_val * 1.5);
+        }
+        else
+        {
+           give_bonus = _bonus_val;
+        }
+        if (!give_bonus)
+        {
+           tell_object(tp,  "There is no money in the bonus "
+             "fund this month.\n");
+           return 1;
+        }
+        _got_bonus += ({tp_name});
+        _bonus -= give_bonus;
+        if (_bonus < 0) _bonus = 0;
+        thing = MONEY_HAND->make_new_amount(give_bonus, _place);
+        shop_log(GENERAL, tp_name, "claimed "+
+          MONEY_HAND->money_value_string(give_bonus, _place), UNPAID);
+        if (thing->move(tp) != MOVE_OK)
+        {
+           thing->move(environment(tp));
+           tell_object(tp, "You drop "+ thing->query_short()+
+             " as you're carrying too much.\n");
+        }
+        save_me();
+        add_succeeded_mess("$N $V "+ MONEY_HAND->
+          money_value_string(give_bonus, _place )+ ".\n");
         return 1;
-    }
-    if (_office->query_declined(tp))
-    {
-        tell_object(this_player(), "I'm sorry, but you cannot make another "
-          "application just yet.\n");
-        return 1;
-    }
-    applicants = _office->get_applicants();
-    foreach (string applicant in m_indices(applicants))
-    if (applicants[applicant][APP_TYPE] == AWAITING)
-        awaiting_vacancies++;
-    if ((awaiting_vacancies > (_office->query_maxemp() / 10)))
-    {
-        tell_object(this_player(), "I'm sorry, but we do not have any "
-          "vacancies at the moment.  Please try again at a later date.\n");
-        return 1;
-    }
-    player_info = new(class applying_player);
-    player_info->step = 0;
-    player_info->answers = ({});
-    call_out((: apply($(player_info)) :), 0);
+        break;
+   }
+   if (thing->move(tp) != MOVE_OK)
+   {
+      thing->move(this_object());
+      tell_object(tp, "You drop your "+ item+
+        " as you're carrying too much.\n");
+   }
+   add_succeeded_mess("$N $V a new "+ item+ ".\n");
+   return 1;
+}
+private int do_clock(string clock)
+{
+   object tp = this_player();
+   string word = tp->query_name();
+   int pay_them = UNPAID;
+   if (tp->query_creator())
+   {
+      tell_object(tp, "Creators don't clock in or out.\n");
+      return 1;
+   }
+   switch(clock)
+   {
+     case "in" :
+        if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+        {
+           tell_object(tp, "You are already clocked in!\n");
+           return 1;
+        }
+        remove_call_out(_call_summon);
+        if (tp->query_property("no score") &&
+           !_employees[word][EMP_NOPROMOTE])
+        {
+           _employees[word][EMP_NOPROMOTE] = TRUE;
+           save_emps();
+        }
+        pay_them = PAID;
+        set_employee(word, CLOCKED_IN);
+        break;
+     case "out" :
+        if (!(_employees[word][EMP_POINTS] & CLOCKED_IN))
+        {
+           tell_object(tp, "You are already clocked out!\n");
+           return 1;
+        }
+        remove_call_out(_call_summon);
+        _call_summon = call_out((: summon_shopkeeper() :), 60);
+        reset_employee(word, CLOCKED_IN);
+        break;
+   }
+   add_succeeded_mess("$N $V "+ clock+ ".\n");
+   shop_log(GENERAL, word, "clocked "+ clock, pay_them);
+   return 1;
+}
+
+==================================================
+FILE: shops/player_shop/office_code/lists.c
+==================================================
+
+string badge_list()
+{
+   string *results = ({}),
+          *creators = ({});
+   foreach(object ob in children(BADGE))
+   {
+      if (ob == find_object(BADGE)) continue;
+      if (ob->query_channel() != _channel) continue;
+      if (environment(ob)->query_creator())
+         creators += ({ environment(ob)->query_name() });
+   }
+   if (member_array(CREATOR, creators) != -1)
+   {
+      object ob = find_player(CREATOR);
+      creators -= ({CREATOR});
+      if (ob && !ob->query_invis())
+      {
+         string temp_result = ob->query_cap_name() +
+            "%^YELLOW%^ (C)%^RESET%^";
+         results += ({temp_result});
+      }
+   }
+   if (sizeof(creators))
+      foreach(string word in sort_array(creators, 1))
+      {
+         string temp_result = cap_name(word) +
+            "%^YELLOW%^ (C)%^RESET%^";
+         results += ({temp_result});
+      }
+   foreach (string word in sort_array(_retired, 1))
+   {
+      object ob;
+      if (ob = find_player(word))
+      {
+         string temp_result = "%^CYAN%^"+ ob->query_cap_name() +
+            "%^RESET%^ (R)";
+         int idle = 0;
+         if (interactive(ob))
+            idle = query_idle(ob);
+         else temp_result += " [net-dead]";
+         if (idle > 90)
+            temp_result += sprintf(" [idle: %d:%02d]",
+               idle  / 60, idle % 60);
+         results += ({temp_result});
+      }
+   }
+   foreach (string word in get_managers())
+   {
+      string temp_result = "";
+      object ob;
+      if (ob = find_player(word))
+      {
+         int idle = 0;
+         if (interactive(ob))
+            idle = query_idle(ob);
+         else temp_result += " [net-dead]";
+         if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+            temp_result = "%^YELLOW%^";
+         temp_result += ob->query_cap_name()+ "%^RESET%^ (m)";
+         if (idle > 90)
+            temp_result += sprintf(" [idle: %d:%02d]",
+               idle  / 60, idle % 60);
+         results += ({temp_result});
+      }
+   }
+   foreach (string word in get_supervisors())
+   {
+      string temp_result = "";
+      object ob;
+      if (ob = find_player(word))
+      {
+         int idle = 0;
+         if (interactive(ob))
+            idle = query_idle(ob);
+         else temp_result += " [net-dead]";
+         if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+            temp_result = "%^YELLOW%^";
+         temp_result += ob->query_cap_name()+ "%^RESET%^ (s)";
+         if (idle > 90)
+            temp_result += sprintf(" [idle: %d:%02d]",
+               idle  / 60, idle % 60);
+         results += ({temp_result});
+      }
+   }
+   foreach (string word in get_employees())
+   {
+      string temp_result = "";
+      object ob;
+      if (ob = find_player(word))
+      {
+         int idle = 0;
+         if (interactive(ob))
+            idle = query_idle(ob);
+         else temp_result += " [net-dead]";
+         if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+            temp_result = "%^YELLOW%^";
+         temp_result += ob->query_cap_name()+ "%^RESET%^";
+         if (idle > 90)
+            temp_result += sprintf(" [idle: %d:%02d]",
+               idle  / 60, idle % 60);
+         results += ({temp_result});
+      }
+   }
+   if (!sizeof(results))
+      return "\nJust you, I'm afraid.\n";
+   return sprintf("\n%s\n", query_multiple_short(results));
+}
+int do_list()
+{
+   int emps_in;
+   string results = "   Employees of "+ _shop_name + "\n"
+                    "     As at " + ctime(time()) + "\n\n";
+   foreach (string word in sort_array(_retired, 1))
+   {
+      object ob = find_player(word);
+      if (ob)
+         results += "%^GREEN%^";
+      results += "     "+ cap_name(word)+
+      "%^RESET%^ (retired manager)\n";
+   }
+   foreach (string word in get_managers())
+   {
+      object ob = find_player(word);
+      if (ob)
+      {
+         emps_in++;
+         results += "%^GREEN%^";
+      }
+      results += "     "+ cap_name(word)+ "%^RESET%^ (manager)"+
+        list_stuff(word);
+   }
+   foreach (string word in get_supervisors())
+   {
+      object ob = find_player(word);
+      if (ob)
+      {
+         emps_in++;
+         results += "%^GREEN%^";
+      }
+      results += "     "+ cap_name(word)+ "%^RESET%^ (supervisor)"+
+        list_stuff(word);
+   }
+   foreach (string word in get_employees())
+   {
+      object ob = find_player(word);
+      if (ob)
+      {
+         emps_in ++;
+         results += "%^GREEN%^";
+      }
+      results += "     "+ cap_name(word)+ "%^RESET%^"+ list_stuff(word);
+   }
+   results += "\n";
+   if (this_player()->query_creator() ||
+     _employees[this_player()->query_name()][EMP_POINTS] & MANAGER)
+   {
+      results += (emps_in == 1)?"   There is one employee ":
+                 "   There are "+ query_num(emps_in,0)+ " employees ";
+      results += "out of "+ query_num(sizeof(_employees) - 1)+
+        " on " + mud_name() + " at the moment, with "+ query_num(num_employees_in(),
+          0) + " currently clocked in.\n\n";
+   }
+   tell_object(this_player(), "$P$Employees$P$"+ results);
+   add_succeeded_mess("");
+   return 1;
+}
+private int do_office()
+{
+   int employee;
+   object tp = this_player();
+   string tp_name = tp->query_name(),
+          board_mess = "";
+   if (!_board)
+      board_mess = "   memo      - send a memo to the other employees\n";
+   add_succeeded_mess("");
+   tp = this_player();
+   tp_name = tp->query_name();
+   if (member_array(tp_name, _retired) != -1)
+   {
+      tell_object( tp, "As a retired manager, you can use the following "
+        "commands:\n"
+        "   claim     - claim a badge or handbook\n"
+        "   list      - list the other employees of the shop\n"
+        "   logs      - review the shop's logs\n"
+        "   resign    - terminate your association with Tarnach's\n"+
+        board_mess+
+        "You may also enter the managers' office for more commands.\n" );
+      return 1;
+   }
+   employee = (tp->query_creator())?SUPERVISOR + MANAGER:
+              _employees[tp_name][EMP_POINTS];
+   tell_object(tp, "As an employee, you can use the following commands:\n"
+     "   clock     - start or finish your working day\n"+
+     "   claim     - claim a badge, handbook, or this month's bonus\n"
+     "   bank      - set to which bank account you are paid\n"
+     "   list      - list the other employees of the shop\n"
+     "   promotion - request to be ignored for promotion\n"
+     "   resign    - end your employment at the shop\n"+
+     board_mess );
+   if (employee & SUPERVISOR)
+      tell_object( tp, "\nAs a supervisor, you can also use:\n"
+        "   chart   - change the information on the sales chart\n"
+        "   check   - check cabinet assignments\n"
+        "   logs    - review the shop's logs\n" );
+   if (employee & MANAGER)
+      tell_object( tp, "\nAs a manager you can enter the managers' "
+        "office and use the commands listed there.\n" );
+   add_succeeded_mess("");
+   return 1;
+}
+string employees_clocked_in()
+{
+   object *words = ({}), ob;
+   if (!num_employees_in()) words = ({"No employees"});
+   if (find_object(_shopkeeper) &&
+      _employees[_shopkeeper->query_name()][EMP_POINTS] & CLOCKED_IN)
+      words = ({_shopkeeper->query_short()});
+   foreach (string word in m_indices(_employees))
+   {
+      ob = find_player(word);
+      if (ob && _employees[word][EMP_POINTS] & CLOCKED_IN)
+            words += ({ob->query_cap_name()});
+   }
+   return query_multiple_short(words);
+}
+private string list_stuff(string word)
+{
+   string results = "",
+          tp = this_player()->query_name();
+   if (member_array(word, _retired) != -1) return "\n";
+   if (_employees[word][EMP_POINTS] & NPC) return query_worked(word) + "\n";
+   if (this_player()->query_creator())
+      results = " ["+ (_employees[word][EMP_POINTS] / 32) +"]";
+   else if ((word == tp) && !(_employees[word][EMP_POINTS] & MANAGER))
+      if (_employees[word][EMP_POINTS] & SUPERVISOR)
+         results = " ["+ ((100 * (_employees[word][EMP_POINTS] /
+           32 - SUPER_POINTS)) /
+           (MANAGER_POINTS - SUPER_POINTS)) +"%]";
+      else
+         results = " ["+ ((100 * (_employees[word][EMP_POINTS] / 32)) /
+           SUPER_POINTS) +"%]";
+   if (this_player()->query_creator() || (_employees[tp][EMP_POINTS] & MANAGER))
+      results += query_worked(word);
+   return results + "\n";
+}
+
+==================================================
+FILE: shops/player_shop/office_code/logging.c
+==================================================
+
+int do_logs(mixed *args, string pattern)
+{
+    string start, end, file, *files, words;
     add_succeeded_mess("");
-    return 1;
-}
-private int do_cancel() { return _office->do_cancel(); }
-private int do_complain()
-{
-    tell_object(this_player(), COMPLAINT_TEXT +
-      "  This complaint will then be sent to the managers of the shop.  "
-      "If you would rather remain anonymous to the managers, please "
-      "contact a liaison, or send a mail with all the above details to "+
-      cap_name(_office->query_creator())+ ".\n");
-    this_player()->do_edit("%^CYAN%^"+ COMPLAINT_TEXT + "%^RESET%^\n\n",
-      (: end_complaint($1) :));
-    add_succeeded_mess("");
-    return 1;
-}
-private int do_confirm() { return _office->do_confirm(); }
-private int do_push()
-{
-    if (this_player()->query_property("shop bell pressed"))
-        return notify_fail( "Calm down!  You've only just pushed it.  Try "
-          "in a minute or so if there's still no reply.\n" );
-    if (check_employee("void", this_player(), "void"))
-        return notify_fail("There's already an employee here: You!\n");
-    if (!_channel || _channel == "")
-        return notify_fail( "You push the bell, but no-one can hear you.\n" );
-    this_player()->add_property("shop bell pressed", 1, BELL_TIMEOUT);
-    HISTORY_HANDLER->add_chat_history(_channel, "Shop: ", this_player()->
-      query_short() + " called for assistance.");
-    children(BADGE)->receive(_channel, "Shop", this_player()->query_short()+
-      " is calling for assistance.");
-    add_succeeded_mess("$N $V the bell.\n");
-    return 1;
-}
-private int do_suggestion()
-{
-    tell_object(this_player(), SUGGEST_TEXT+ "\n");
-    this_player()->do_edit("%^CYAN%^"+ SUGGEST_TEXT+ "%^RESET%^\n",
-      (: end_suggestion($1) :));
-    add_succeeded_mess("");
-    return 1;
-}
-private void end_app(class applying_player player_info)
-{
-    string message = "";
-    for (int i = 0; i < sizeof(APP_QUESTIONS); i++)
+    switch (pattern)
     {
-        message += "%^CYAN%^" + sprintf("%2d) %-=*s\n", (i+1), 70,
-          APP_QUESTIONS[i]) + "%^RESET%^" +
-        sprintf("      %-=*s\n\n", 72, player_info->answers[i]);
+    case LOG_BLANK :
+        files = get_dir(_savedir +"general.log*");
+        words = "Available logs:\n\n";
+        if (sizeof(files))
+            words += " 1: current log\n";
+        for (int i = sizeof(files); i > 1; i--)
+        {
+            sscanf(unguarded((: read_file, _savedir + files[i-1], 2, 1 :)),
+              "%*s, %s:", start);
+            sscanf(unguarded((: read_file, _savedir + files[i-1],
+                  file_length(_savedir + files[i-1]), 1 :)),
+              "%*s, %s: %*s", end );
+            if (start == end)
+                words += sprintf("%2d: %s\n",
+                  sizeof(files)-(i-2), start);
+            else
+                words += sprintf("%2d: %s to %s\n",
+                  sizeof(files)-(i-2), start, end);
+        }
+        words += "\nUse \"logs <number>\" to read one of them, or \"logs ";
+        if ((_employees[this_player()->query_name()] &&
+            _employees[this_player()->query_name()][EMP_POINTS] & MANAGER) ||
+          this_player()->query_creator())
+        {
+            words += "{personnel|accounts|chart}\" to view "
+            "those logs.\n";
+        }
+        else
+        {
+            words += "chart\" to view that log.\n";
+        }
+        tell_object(this_player(),"$P$Logs$P$"+ words);
+        break;
+    case LOG_NUMBER :
+        files = get_dir(_savedir +"general.log*");
+        if ((args[0] < 1) || (args[0] > sizeof(files)))
+        {
+            tell_object(this_player(), "There are "+ sizeof(files) +
+              " logs.  Use \"logs\".\n");
+            return 1;
+        }
+        if (args[0] == 1)
+            sscanf(unguarded((: read_file, _savedir +
+                  files[0] :)), "%*s\n%s", words);
+        else
+            sscanf(unguarded((: read_file, _savedir +
+                  files[sizeof(files) - (args[0]-1)] :)), "%*s\n%s", words);
+        tell_object(this_player(),"$P$Log "+ args[0]+ "$P$"+ words);
+        break;
+    case LOG_CHART :
+        file = _savedir + "chart.log";
+        if (file_size(file) > 0)
+        {
+            sscanf(unguarded((: read_file, file :)), "%s", words);
+            tell_object(this_player(),"$P$Chart log$P$"+ words);
+        }
+        else
+        {
+            tell_object(this_player(), "The chart log is empty.\n");
+            return 1;
+        }
+        break;
+    case LOG_MGR :
+        file = _savedir + args[0] + ".log";
+        if (file_size( file ) > 0)
+        {
+            sscanf(unguarded((: read_file, file :)), "%s", words);
+            tell_object(this_player(),"$P$"+ capitalize(args[0])+
+              " log$P$"+ words);
+        }
+        else
+        {
+            tell_object(this_player(), "The "+ args[0]+ " log is empty.\n");
+            return 1;
+        }
+        break;
     }
-    tell_object(this_player(), "We have your application as:\n" + message+
-      "\nDo you wish to send it? ");
-    input_to((: confirm_apply($1,$(message),$(player_info)) :), 0);
+    return 1;
 }
-private void end_complaint(string text)
+private void employee_log(string employee, string note)
 {
-    string *managers;
-    if (!text)
+    load_history();
+    if (!sizeof(_history)) _history = ([employee:({({}),({}),})]);
+    else if (!_history[employee]) _history += ([employee:({({}),({}),})]);
+    _history[employee][0] += ({time()});
+    _history[employee][1] += ({note});
+    save_hist();
+    remove_call_out(_call_times);
+    if (!sizeof(_times)) _times = ([employee:0]);
+    else if (!_times[employee]) _times += ([ employee:0 ]);
+    _times[employee] = time();
+    _call_times = call_out((: save_times() :), PERS_DELAY);
+}
+void shop_log(int logtype, string word, string words, int paid)
+{
+    string date, month, colour;
+    sscanf(amtime(time()), "%*s %*s %*s %s %*s", month);
+    if (file_size(_savedir +"general.log") > 0)
     {
-        tell_object(this_player(), "Aborted.\n");
+        date = ctime(time())[0 .. 9];
+        if (date != unguarded((: read_file,
+              _savedir +"general.log", 1, 1 :))[0 .. 9])
+        {
+            string logfile = _savedir +"general.log-"+ time(),
+            summary = sprintf( "%sFor the period ending %s:%s\n",
+              "%^BOLD%^", amtime(time()), "%^RESET%^" ),
+            sign = "";
+            _storeroom->force_load();
+            call_out((: update_averages() :), 60);
+            unguarded((: rename, _savedir +"general.log", logfile :));
+            call_out((: review_employees() :), 5 );
+            foreach (string item in m_indices(_list))
+            {
+                summary += sprintf(" %s - Bought %d, Sold %d\n", capitalize(item),
+                  _list[item][CHART_BOUGHT], _list[item][CHART_SOLD]);
+                _list[item][CHART_AVESALE] = (_list[item][CHART_AVESALE] +
+                  _list[item][CHART_SOLD] + random(2)) / 2;
+                _list[item][CHART_SOLD] = 0;
+                _list[item][CHART_BOUGHT] = 0;
+            }
+            save_list();
+            if (_net_takings < 0)
+            {
+                _net_takings = -_net_takings;
+                sign = "-";
+            }
+            summary += sprintf("%sThe net takings of the shop were %s%s.%s\n\n",
+              "%^BOLD%^", sign, MONEY_HAND->money_value_string(_net_takings,
+                _place), "%^RESET%^");
+            _net_takings = 0;
+            save_me();
+            unguarded((: write_file, _savedir +"general.log",
+                date +"\n" + summary :));
+            foreach (string file in get_dir(_savedir +"general.log-*"))
+            {
+                sscanf(file, "%*s-%s", date);
+                if (time() - to_int(date) > (60*60*24*LOG_DAYS))
+                    unguarded((: rm, _savedir + "general.log-"+ date :));
+            }
+        }
+    }
+    if (month != _last_month && !_call_review)
+    {
+        if (member_array(month, ({"Offle", "February", "March",
+              "April", "May", "June", "Grune", "August", "Spune",
+              "Sektober", "Ember", "December", "Ick"})) != -1)
+        {
+            _review_month = month;
+            remove_call_out(_call_review);
+            _call_review = call_out((: monthly_review() :), 60);
+        }
+    }
+    if (_employees[word])
+    {
+        if (!(_employees[word][EMP_POINTS] & NPC))
+            _employees[word][EMP_EOM]++;
+        if (paid && _employees[word][EMP_POINTS] & CLOCKED_IN)
+        {
+            if (_employees[word][EMP_POINTS] & MANAGER)
+                _employees[word][EMP_PAY] += (_pay_val * 2);
+            else if (_employees[word][EMP_POINTS] & SUPERVISOR ||
+              _eom == word)
+            {
+                _employees[word][EMP_PAY] += to_int(_pay_val * 1.5);
+                _employees[word][EMP_POINTS] += 32;
+            }
+            else
+            {
+                _employees[word][EMP_PAY] += _pay_val;
+                _employees[word][EMP_POINTS] += 32;
+            }
+        }
+        set_emp_time(word);
+        save_emps();
+    }
+    switch (logtype)
+    {
+    case PURCHASE :
+        colour = "%^GREEN%^";
+        break;
+    case SALE :
+        colour = "%^RED%^";
+        break;
+    case GENERAL :
+        colour = "%^CYAN%^";
+        break;
+    case PERSONNEL :
+        log_file(_savedir+ "personnel.log", "%s: %s - %s\n",
+          amtime(time()), cap_name(word), words);
         return;
-    }
-    if (!sizeof(managers = _office->get_managers()))
-        managers = ({_office->query_creator()});
-    AUTO_MAILER->auto_mail(implode(managers, ","),
-      this_player()->query_name(), _office->shop_very_short()+ " complaint",
-      "", text, 0, 0);
-    tell_object(this_player(), "Your complaint has now been sent to the "
-      "managers, and will be dealt with as soon as possible.\n");
-}
-private void end_suggestion(string text)
-{
-    string *managers;
-    if (!text)
-    {
-        tell_object( this_player(), "Aborted.\n" );
+        break;
+    case ACCOUNTS :
+        log_file(_savedir+ "accounts.log", "%s: %s - %s\n",
+          amtime(time()), cap_name(word), words);
         return;
+        break;
+    case CHARTLOG :
+        log_file(_savedir+ "chart.log", "%s: %s - %s\n",
+          amtime(time()), cap_name(word), words);
+        return;
+        break;
+    default :
+        colour = "%^RESET%^";
+        break;
     }
-    if (!sizeof(managers = _office->get_managers()))
-        managers = ({_office->query_creator()});
-    AUTO_MAILER->auto_mail( implode( managers, "," ),
-      this_player()->query_name(), _office->shop_very_short()+ " suggestion",
-      "", text, 0, 0 );
-    tell_object(this_player(), "Your suggestion has been sent to the "
-      "managers, and will be dealt with as soon as possible.\n");
+    unguarded((: write_file, _savedir +"general.log", colour + amtime(time())+
+        ": "+ cap_name(word) +"%^RESET%^ - "+ words +"\n" :));
 }
-void event_death(object k, object *o, object k2, string r, string k3)
+
+==================================================
+FILE: shops/player_shop/office_code/masked.c
+==================================================
+
+void dest_me()
 {
-    _office->event_death(k,o,k2,r,k3);
+   if (_very_short != UNSET_STR)
+   {
+      if (remove_call_out(_call_save) != -1) do_save();
+      if (remove_call_out(_call_apps) != -1) do_save_applicants();
+      if (remove_call_out(_call_hist) != -1) do_save_hist();
+      if (remove_call_out(_call_newpols) != -1) do_save_new_policies();
+      if (remove_call_out(_call_pols) != -1) do_save_policies();
+      if (remove_call_out(_call_times) != -1) save_times();
+      if (remove_call_out(_call_emps) != -1) do_save_emps();
+   }
+   if (_chart) _chart->dest_me();
+   if (_board) _board->dest_me();
+   if (_notice) _notice->dest_me();
+   ::dest_me();
+}
+void event_death(object killed, object *others, object killer,
+  string rmess, string kmess)
+{
+   if (!killed->query_player() &&
+     !(query_employee(killed->query_name()) & NPC)) return;
+   if (!killer) return;
+   if ((query_employee(killed->query_name()) & NPC)  ||
+    (query_employee(killed->query_name())))
+   {
+      add_baddie(killer->query_name(), "the vicious assault on "+
+        killed->query_name(), _proprietor);
+      foreach(object baddie in others)
+         if (baddie->query_player())
+            add_baddie(baddie->query_name(),
+              "the vicious assault on "+ killed->query_name(),
+              _proprietor);
+      return;
+   }
+   if (query_employee(killer->query_name()) & CLOCKED_IN)
+      add_baddie(killer->query_name(), "the vicious assault on "+
+        killed->query_name(), _proprietor);
+   if (sizeof(others))
+      foreach(object baddie in others)
+      {
+         if (!baddie->query_player()) continue;
+         if (query_employee(baddie->query_name())& CLOCKED_IN)
+            add_baddie(baddie->query_name(), "the vicious assault on "+
+               killed->query_name(), _proprietor);
+      }
 }
 void event_enter(object ob, string message, object from)
 {
-    mapping baddies;
-    int days;
-    string name = ob->query_name();
-    if (_office->query_baddie(name))
-    {
-        baddies = _office->get_baddies();
-        days = (((BAN_LENGTH*60*60*24) -
-            (time() - baddies[name][2])) / (60*60*24)) + 1;
-        tell_room(this_object(), ob->query_short()+
-          " drifts out of the door, seemingly against "+
-          ob->query_possessive()+ " will.\n", ({ob}));
-        tell_object(ob, "You feel yourself pushed out of the shop by "
-          "a mysterious force.\nYou have been banned from this shop for "+
-          baddies[name][0]+ " and will not be re-admitted for a maximum of "+
-          query_num(days)+ " days.\n");
-        ob->move(_outside);
-    }
-}
-string long(string word, int dark)
-{
-    int emps_in = 0;
-    if (find_object(_office->query_shopkeeper()) &&
-      _office->query_employee(_office->query_shopkeeper()->
-        query_name()) & CLOCKED_IN)
-    {
-        emps_in = 1;
-    }
-    emps_in += _office->num_employees_in();
-    return sprintf("%s%s %s currently clocked in.\n",
-      ::long(word,dark), _office->employees_clocked_in(),
-      (emps_in == 1)? "is" : "are");
-}
-private void finish_edit(string message, class applying_player player_info)
-{
-    if (!message || message == "")
-    {
-        abort_app(player_info);
-        return;
-    }
-    player_info->answers += ({message});
-    player_info->step++;
-    if (player_info->step == sizeof(APP_QUESTIONS)) end_app(player_info);
-    else continue_loop(player_info);
-}
-string query_office() { return copy(_office); }
-string query_outside() { return copy(_outside); }
-protected void set_exit_counter(string direction)
-{
-    _inside = direction;
-    add_exit(direction, _counter, "hidden");
-    modify_exit(direction, ({"function", "check_employee"}));
-}
-protected void set_exit_out(string direction, string path)
-{
-    _outside = path;
-    add_exit(direction, path, "door");
-    modify_exit(direction, ({"open/close func", ({this_object(),
-          "tinkle_bell"})}));
-}
-protected void set_office(string path)
-{
-    _office = path;
-    _counter = path->query_counter();
-    _mgr_office = path->query_mgr_office();
-    _storeroom = path->query_storeroom();
-    _channel = path->query_channel();
-    set_short( path->query_shop_name() );
-    add_sign("A small golden plaque with engraved text.\n",
-      (: sign_text :), "small plaque", "plaque",
-      "common")->add_property("there", "on one wall");
-}
-string sign_text()
-{
-    string *eom = _office->query_eom();
-    return sprintf("\n%%^YELLOW%%^  Employee Of The Month for %s : %s%%^RESET%%^\n\n",
-       eom[0], cap_name(eom[1]));
-}
-int tinkle_bell(string action)
-{
-    tell_room(this_object(), "The bell tinkles as the door "+
-      action+ "s.\n");
-    tell_room(find_object(_counter), "The bell over the shop door "
-      "tinkles.\n");
-    tell_room(find_object(_office), "You hear the bell tinkle in "
-      "the main room of the shop.\n");
-    tell_room(find_object(_storeroom), "You hear the bell tinkle in "
-      "the main room of the shop.\n");
-    tell_room(find_object(_mgr_office), "You hear the bell tinkle in "
-      "the main room of the shop.\n");
-    return 1;
-}
-
-==================================================
-FILE: shops/player_shop/shopkeeper.c
-==================================================
-
-inherit "/obj/monster";
-#include <player_shop.h>
-#include <money.h>
-#include <living.h>
-#include <move_failures.h>
-#define set_busy(O) (_busy = O)
-#define reset_busy() (_busy = 0)
-#define NOT_EIGHT (({ "between seven and nine", \
-                     "just over seven", \
-                     "just under nine", \
-                     "seven plus one", \
-                     "nine minus one", \
-                     "two times four", \
-                  })[random(5)])
-#define num_str(i) ((i == 8)?NOT_EIGHT:query_num(i))
-#define DEARIE (", "+ _dearie[random(sizeof(_dearie)-1)])
-private nosave object _busy = 0;
-private nosave mixed _info = 0;
-private nosave string _office = "",
-_storeroom = "",
-_shop_front = "",
-_counter = "",
-_place = "",
-_smallest_in,
-_smallest_plural_in,
-*_dearie = ({""});
-private nosave int * _work_hrs = ({9,0,17,30,}),
-_smallest_value_in,
-_failed = 0;
-private nosave mapping _values_sing = ([]),
-_values_plural = ([]);
-private void announce_number();
-private void announce_price();
-private void buy_something(object *);
-private void check_money(mixed);
-private void deposit_money();
-int do_buy(string);
-int do_browse(string);
-int do_list(mixed  *);
-int do_sell(object *);
-private void end_shift();
-private void get_from_store();
-private void get_money();
-private void get_more_stuff();
-private void give_stuff();
-private void how_many(string);
-private void how_much(string);
-private void look_chart();
-private void look_how_much();
-private void no_coins();
-private int outside_hours(int);
-private void put_in_store();
-private int query_busy();
-string query_office();
-private void say_to_room(object, string, string);
-private void sell_something(string);
-protected object * item_test(object *);
-protected void set_dearie(string *);
-void set_failed(int);
-protected void set_office(string);
-protected void set_work_hours(int *);
-void shuffle_to(string,function);
-private int sort_keys(string, string, int);
-void start_shift();
-private void taken_over();
-private void what_items();
-void create()
-{
-    do_setup++;
-    ::create();
-    do_setup--;
-    add_property("determinate", "");
-    add_property("unique", 1);
-    add_property("run away", -1);
-    add_alias("shopkeeper");
-    if (!do_setup)
-    {
-        this_object()->setup();
-        this_object()->reset();
-    }
-}
-private void announce_number()
-{
-    if (stringp(_info))
-    {
-        int number = _storeroom->query_num_items(_info);
-        if (!number) do_command("'I'm afraid we don't have any "+ _info +
-              " in stock"+ DEARIE+ ".");
-        else do_command("'You're in luck"+ DEARIE+ ".  We have "+
-              num_str(number) + " in stock.");
-    }
-    reset_busy();
-    _info = 0;
-}
-private void announce_price()
-{
-    if (stringp(_info))
-        do_command("'We sell "+ _info + " for "+
-          num_str(_office->query_sell(_info))+ " "+ _smallest_plural_in+
-          " each, and buy them for "+ num_str(_office->query_buy(_info))+
-          " "+ _smallest_plural_in + " each.");
-    reset_busy();
-    _info = 0;
-}
-void attack_by(object baddie)
-{
-    if (_office == "") return;
-    this_object()->stop_fight(baddie);
-    baddie->stop_fight(this_object());
-    do_command("'Why are you attacking me, "+ baddie->query_cap_name()+ "?");
-    do_command("'I'm not staying here for this!");
-    do_command(_office->query_channel()+ "@ is being attacked by "+
-      baddie->query_cap_name()+ ".");
-    call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
-    _office->event_death(this_object(), 0, baddie, 0, 0);
+   string room;
+   if (!from || ob->query_creator() || from == find_object("/room/void") ||
+     !ob->query_player()) return;
+   room = file_name(from);
+   if (room == _counter || room == _shop_front || room == _storeroom ||
+     room == _mgr_office || from == this_object()) return;
 #ifdef DEBUG
-    tell_creator(CREATOR,  "Attacked by %s.\n", baddie->query_short());
+   tell_creator(CREATOR, "%s arrived from %O.\n", ob->query_name(), from);
 #endif
-}
-private void buy_something(object *obs)
-{
-    int spare, number, amount = 0;
-    object *give_back, cont = clone_object("/std/container");
-    obs->move(cont);
-    _info = ({});
-    foreach(string item in _office->query_list_array())
-    _info += ((class obj_match)match_objects_in_environments(item, cont))->objects;
-    give_back = obs - _info;
-    if (sizeof(give_back))
-    {
-        give_back->move(_busy);
-        do_command("'I'm afraid I can't buy "+
-          query_multiple_short(give_back)+ " from you"+ DEARIE+ ".");
-    }
-    if (number = sizeof(_info))
-    {
-        if (_info[0]->query_collective())
-            number = _info[0]->query_amount();
-    }
-    if (number > (MAX_INVEN + query_dex()))
-    {
-        _info->move(_busy);
-        do_command("'I'm sorry"+ DEARIE+ ", but I can only carry "+
-          num_str(MAX_INVEN+ query_dex())+ " items.");
-        cont->dest_me();
-        reset_busy();
-        return;
-    }
-    give_back = ({});
-    give_back = filter(_info, (: ($1)->query_continuous() :));
-    if (sizeof(give_back))
-    {
-        _info -= give_back;
-        do_command("'I have nothing to carry "+
-          query_multiple_short(give_back)+ " in.");
-        give_back->move(_busy);
-    }
-    give_back = item_test(_info);
-    if (sizeof(give_back))
-    {
-        give_back->move(_busy);
-        _info -= give_back;
-    }
-    if (!(number = sizeof(_info)))
-    {
-        do_command("'You don't have anything to sell"+ DEARIE+ ".");
-        cont->dest_me();
-        reset_busy();
-        return;
-    }
-    if (_info[0]->query_collective())
-        number = _info[0]->query_amount();
-#ifdef DEBUG
-    tell_creator(CREATOR,  "Checking stock.\n");
-#endif
-    spare = _office->query_max(pluralize(_info[0]->query_name())) -
-    _office->query_stock(pluralize(_info[0]->query_name()));
-    if (spare < 1)
-        foreach(string alias in _info[0]->query_alias())
-    {
-        int check_spare;
-        if((check_spare = _office->query_max(pluralize(alias)) -
-            _office->query_stock(pluralize(alias))) > 0)
-            spare = check_spare;
-    }
-    if (spare < 1)
-        spare = _office->query_max(pluralize(_info[0]->query_short())) -
-        _office->query_stock(pluralize(_info[0]->query_short()));
-    if (spare < 1)
-    {
-        do_command("'I'm afraid we don't need any of those"+ DEARIE+ ".");
-        _info->move(_busy);
-        cont->dest_me();
-        reset_busy();
-        return;
-    }
-    if (number > spare)
-    {
-        do_command("'I'm afraid we don't need that many"+ DEARIE+
-          ", but I could take "+ num_str(spare)+ " from you.");
-        _info->move(_busy);
-        cont->dest_me();
-        reset_busy();
-        return;
-    }
-#ifdef DEBUG
-    tell_creator(CREATOR,  "Checking money.\n");
-#endif
-    foreach(string item in _office->query_list_array())
-    {
-obs = ((class obj_match)match_objects_in_environments(item, this_object()))->objects;
-        if (number = sizeof(obs))
-        {
-            if (obs[0]->query_collective())
-                number = obs[0]->query_amount();
-            amount += _office->query_buy(item) * number;
-        }
-        if (_counter->query_register() < amount * _smallest_value_in)
-        {
-            do_command("'I'm afraid we don't have enough money to buy "+
-              query_multiple_short(_info) + " from you" + DEARIE+ ".");
-            _info->move(_busy);
-            cont->dest_me();
-            reset_busy();
-            return;
-        }
-    }
-    give_back = ({});
-#ifdef DEBUG
-    tell_creator(CREATOR,  "Checking we can carry it.\n");
-#endif
-    if (sizeof(_info))
-    {
-        obs = _info;
-        foreach(object thing in obs)
-        if ((int)thing->move(this_object()) != MOVE_OK)
-        {
-#ifdef DEBUG
-            tell_creator(CREATOR,  "Can't carry %O.\n", thing);
-#endif            _info -= ({ thing });
-            give_back += ({ thing });
-        }
-        tell_room(environment(this_object()), query_short()+
-          " takes "+ query_multiple_short(_info) +".\n");
-    }
-    obs = all_inventory(cont) - give_back;
-    if (sizeof(give_back))
-    {
-        do_command("'I cannot carry "+ query_multiple_short(give_back, "the")
-          +DEARIE+".");
-        give_back->move(_busy);
-    }
-    if (sizeof(obs))
-    {
-        do_command("'I'm afraid we can't buy "+
-          query_multiple_short(obs, "the") +" from you"+ DEARIE+ ".");
-        obs->move(_busy);
-    }
-    obs = all_inventory(cont);
-    if (sizeof(obs)) obs->move(environment(_busy),
-          "$N manage$s to get knocked onto the floor.");
-    if (sizeof(_info))
-    {
-#ifdef DEBUG
-        tell_creator(CREATOR,  "Buying: %O\n", _info);
-#endif
-        do_command("'I'll be right back.");
-        call_out("shuffle_to", NPC_DELAY, _counter, (: get_money() :));
-    }
-    else reset_busy();
-    cont->dest_me();
-}
-private void check_money(mixed monies)
-{
-#ifdef DEBUG
-    tell_creator(CREATOR, "Buying %d %s for %d each - total %d.\n", monies[1],
-      monies[2], monies[3], monies[0] );
-#endif
-    if (monies[0] > query_value_in(_place))
-    {
-#ifdef DEBUG
-        tell_creator(CREATOR, "No correct change (%d).\n", query_value_in(_place));
-#endif
-        do_command("put coins in register");
-        call_out("shuffle_to", NPC_DELAY, _shop_front, (: no_coins() :));
-        return;
-    }
-    do_command("log shop bought "+ monies[1] +" "+ monies[2] +
-      " for "+ (monies[3] * monies[1]));
-#ifdef DEBUG
-    tell_creator(CREATOR, "Total: %d   My value: %d\n", monies[0],
-      query_value_in( _place ) );
-#endif
-    call_out("shuffle_to", NPC_DELAY, _storeroom, (: put_in_store() :));
-}
-private void deposit_money()
-{
-    if (pointerp(_info))
-    {
-        do_command("log shop sold "+ _info[1]+ " "+ _info[0]+ " for "+
-          _info[2]);
-        do_command("put coins in register");
-    }
-    call_out("shuffle_to", NPC_DELAY, _storeroom, (: get_from_store() :));
-}
-int do_buy(string stuff)
-{
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In do_buy()\n");
-#endif
-    if (outside_hours(TRUE)) return 1;
-    say_to_room(this_player(), "say", "I would like to buy "+ stuff +
-      ", please.\n%^RESET%^");
-    if (query_busy())
-        init_command(":seems busy at the moment.", NPC_DELAY);
-    else
-    {
-        set_busy(this_player());
-        call_out((: sell_something($(stuff)) :), NPC_DELAY);
-    }
-    return 1;
-}
-int do_browse(string item)
-{
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In do_browse()\n");
-#endif
-    if (outside_hours(TRUE)) return 1;
-    say_to_room(this_player(), "ask", "How much do "+ item +" cost?\n");
-    if (query_busy())
-        init_command(":seems busy at the moment.", NPC_DELAY);
-    else
-    {
-        set_busy(this_player());
-        call_out((: how_much($(item)) :), NPC_DELAY);
-    }
-    return 1;
-}
-int do_list(mixed *args)
-{
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In do_list()\n");
-#endif
-    if (outside_hours(TRUE)) return 1;
-    if (!sizeof(args) || !args[0] || args[0] == "")
-    {
-        say_to_room( this_player(), "ask", "What items do you buy and sell?\n");
-        if (query_busy())
-            init_command(":seems busy at the moment.", NPC_DELAY);
-        else
-        {
-            set_busy(this_player());
-            call_out((: what_items() :), NPC_DELAY);
-        }
-        return 1;
-    }
-    say_to_room(this_player(), "ask", "How many "+ args[0]+ " do you have?\n");
-    if (query_busy())
-        init_command(":seems busy at the moment.", NPC_DELAY);
-    else
-    {
-        set_busy(this_player());
-        call_out((: how_many($(args[0])) :), NPC_DELAY);
-    }
-    return 1;
-}
-int do_sell(object *obs)
-{
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In do_sell()\n" );
-#endif
-    if (outside_hours(TRUE)) return 1;
-    say_to_room(this_player(), "say", "I would like to sell " +
-      query_multiple_short(obs, "the")+ ", please.\n%^RESET%^");
-    if (query_busy())
-        init_command(":seems busy at the moment.", NPC_DELAY);
-    else
-    {
-        set_busy(this_player());
-        call_out((: buy_something($(obs)) :), NPC_DELAY);
-    }
-    return 1;
-}
-private void end_shift()
-{
-    if (environment() != find_object("/room/rubbish"))
-        do_command(_office->query_channel()+ "@ is clocking out.");
-    do_command("clock out");
-    move("/room/rubbish", "$N make$s some tea.", "$N go$s home for tea.");
-}
-void event_person_say(object thing, string start, string mess, string lang)
-{
-    string words;
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In event_person_say()\n" );
-#endif
-    if (outside_hours(TRUE)) return;
-    if (!mess || (mess == "")) return;
-    mess = lower_case(mess);
-    if (query_busy()) return;
-    set_busy(thing);
-    if (sscanf(mess, "%*s buy %s, please.", words) == 2)
-    {
-        call_out((: sell_something($(words)) :), NPC_DELAY);
-        return;
-    }
-    if (sscanf(mess, "%*show many %s", words) == 2)
-    {
-        call_out((: how_many($(words)) :), NPC_DELAY);
-        return;
-    }
-    if (sscanf(mess, "%*show much %s", words) == 2)
-    {
-        call_out((: how_much($(words)) :), NPC_DELAY);
-        return;
-    }
-    if (( sscanf( mess, "%*s take over%*s") == 2) &&
-      (_office->query_employee(thing->query_name()) ||
-        thing->query_name() == CREATOR))
-    {
-        call_out((: taken_over() :), NPC_DELAY);
-        return;
-    }
-    reset_busy();
-    ::event_person_say(thing, start, mess, lang);
-}
-private void get_from_store()
-{
-    if (pointerp(_info))
-    {
-        int number, bag_item_weight, info1 = to_int(_info[1]);
-        object *inven;
-        _failed = 0;
-        if (info1 > (MAX_INVEN + query_dex())) number = MAX_INVEN + query_dex();
-        else number = info1;
-#ifdef DEBUG
-        tell_creator(CREATOR, "Removing %d %s\n", number, _info[0]);
-#endif
-        inven = all_inventory();
-        do_command("remove " + number+ " "+ _info[0]);
-        if (_failed)
-        {
-            do_command("add "+ _failed+ " "+ _info[0]);
-            do_command("get "+ _info[0]);
-        }
-        inven = all_inventory() - inven;
-        number -= _failed;
-        info1 -= number;
-        foreach(object thing in inven)
-        if (thing->query_weight() < MAX_BAG_WEIGHT/5)
-            bag_item_weight += thing->query_weight();
-        bag_item_weight = (MAX_BAG_WEIGHT+bag_item_weight-1)/MAX_BAG_WEIGHT;
-        if ( number > 9 )
-        {
-            number = (((number+9)/10) > bag_item_weight)?
-            (number+9)/10:bag_item_weight;
-            for(int i=0; i < number; i++) do_command("pull roll");
-            for(int i=0; i < number; i++)
-                do_command("put "+ _info[0]+ " in bag "+ (i+1));
-        }
-        if (info1)
-        {
-            _info[1] = sprintf("%d",info1);
-            call_out("shuffle_to", NPC_DELAY, _shop_front,
-              (: get_more_stuff() :));
-            return;
-        }
-    }
-    call_out("shuffle_to", NPC_DELAY, _shop_front, (: give_stuff() :));
-}
-private void get_money()
-{
-    if (pointerp(_info))
-    {
-        int total;
-        mixed monies = ({0,0,0,0,});
-        string *sort_keys_sing = sort_array(keys(_values_sing),
-          (: sort_keys($1,$2,1) :));
-        string *sort_keys_plural = sort_array(keys(_values_plural),
-          (: sort_keys($1,$2,0) :));
-#ifdef DEBUG
-        tell_creator(CREATOR, "Singular: %O\n", sort_keys_sing);
-        tell_creator(CREATOR, "Plural: %O\n", sort_keys_plural);
-#endif
-        foreach(string item in _office->query_list_array())
-        {
-            object *things = ((class obj_match)match_objects_in_environments(item,
-              this_object()))->objects;
-#ifdef DEBUG
-            tell_creator(CREATOR, "We have %d %s\n", sizeof(things), item);
-#endif
-            if (monies[1] = sizeof(things))
-            {
-                if (things[0]->query_collective())
-                    monies[1] = things[0]->query_amount();
-                monies[3] = _office->query_buy(item);
-                do_command( "'"+ capitalize(item) +" are worth "+
-                  num_str(monies[3]) +" "+ _smallest_plural_in +
-                  " each, and I have "+ num_str(monies[1]) + ".");
-                monies[0] += monies[3] * monies[1];
-                monies[2] = item;
-                break;
-            }
-        }
-        monies[0] *= _smallest_value_in;
-        total = monies[0];
-        for (int i=0; i < sizeof(sort_keys_sing); i++)
-        {
-            if (total < _values_sing[sort_keys_sing[i]]) continue;
-            for (int c = total / _values_sing[sort_keys_sing[i]]; c > 0; c--)
-            {
-                string coins = sprintf("%d %s", c,
-                  (c == 1)?sort_keys_sing[i]:sort_keys_plural[i]);
-#ifdef DEBUG
-                tell_creator(CREATOR, "Trying to get %s\n", coins);
-#endif
-                do_command("get "+ coins+ " from register");
-                if (sizeof(match_objects_for_existence(coins, this_object())))
-                {
-                    total -= (c * _values_sing[sort_keys_sing[i]]);
-#ifdef DEBUG
-                    tell_creator(CREATOR, "New total: %d\n", total);
-#endif
-                    break;
-                }
-            }
-        }
-#ifdef DEBUG
-        tell_creator(CREATOR, "Buying %d %s for %d each.\n", monies[1],
-          monies[2], monies[3]);
-#endif
-        call_out((: check_money($(monies)) :), 1);
-    }
-    else
-        call_out("shuffle_to", NPC_DELAY, _storeroom, (: put_in_store() :));
-}
-private void get_more_stuff()
-{
-    if (query_busy())
-    {
-        do_command("give all to "+ _busy->query_name());
-        do_command("drop all");
-        do_command("'I still need to get you "+ num_str(to_int(_info[1]))+ " "+
-          _info[0]+ DEARIE+ ".  I won't be long.");
-        call_out( "shuffle_to", NPC_DELAY, _storeroom,
-          (: get_from_store() :) );
-        return;
-    }
-    else
-    {
-        do_command("'Well now.  I wonder where they could have gone.");
-        do_command("ponder");
-    }
-    do_command("drop all");
-    reset_busy();
-    _info = 0;
-}
-private void give_stuff()
-{
-    if (query_busy())
-    {
-        do_command("give all to "+ _busy->query_name());
-        do_command("'Thank you for your custom" + DEARIE+ ".");
-    }
-    else
-    {
-        do_command("'Well now.  I wonder where they could have gone.");
-        do_command("ponder");
-    }
-    do_command("drop all");
-    reset_busy();
-    _info = 0;
-}
-private void how_many(string item)
-{
-    _info = 0;
-    foreach (string thing in _office->query_list_array())
-    if (sscanf(item, "%*s"+ thing +"%*s") == 2) _info = item;
-    if (!_info)
-    {
-        do_command("'I'm afraid we don't deal in those" + DEARIE+ ".");
-        reset_busy();
-        return;
-    }
-    do_command("'"+ capitalize( _info ) +"?  I'll just go and see.");
-    call_out("shuffle_to", NPC_DELAY, _office, (: look_chart() :));
-}
-private void how_much(string item)
-{
-    _info = 0;
-    foreach (string thing in _office->query_list_array())
-    if (sscanf(item, "%*s"+ thing +"%*s") == 2) _info = thing;
-    if (!_info)
-    {
-        do_command("'I'm afraid we don't deal in those"+ DEARIE+ ".");
-        reset_busy();
-        return;
-    }
-    do_command("'"+ capitalize( _info ) +"?  I'll just go and see.");
-    call_out("shuffle_to", NPC_DELAY, _office, (: look_how_much() :));
+   fire_them(_proprietor, ob->query_name(), "for teleporting into the shop");
 }
 void init()
 {
-    object tp = this_player();
+   object tp = this_player();
+   string word = tp->query_name();
+   ::init();
+   if (!tp->query_creator() && !_employees[word] &&
+     (member_array(word, _retired) == -1)) return;
+   add_command("claim", "{badge|handbook|bonus}", (: do_claim($4[0]) :));
+   add_command("resign", "", (: do_resign() :));
+   add_command("list", "", (: do_list() :));
+   add_command("office", "", (: do_office() :));
+   if (!_board) add_command("memo", "", (: do_memo() :));
+   if (member_array(word, _retired) != -1) return;
+   add_command("clock", "{in|out}", (: do_clock($4[0]) :));
+   add_command("bank", ({ "", "<number>" }), (: do_bank($4) :));
+   if (!this_player()->query_property("no score"))
+      add_command( "promotion", "{on|off}", (: do_promote($4[0]) :) );
+   if (!tp->query_creator() &&  !(_employees[word][EMP_POINTS] & SUPERVISOR))
+      return;
+   add_command("chart", ({CHART_ADDITEM, CHART_REMITEM, CHART_MAXITEM,
+      CHART_BUYITEM, CHART_SELLITEM, CHART_ASSIGN_ITEM, CHART_UNASSIGN_ITEM}),
+     (: do_chart($4,$5) :));
+   add_command("check", "cabinets", (: do_check() :));
+   if (!tp->query_creator() && !(_employees[word][EMP_POINTS] & MANAGER))
+      add_command( "logs", ({LOG_BLANK, LOG_NUMBER, LOG_CHART}),
+      (: do_logs($4,$5) :));
+   else
+      add_command("logs", ({LOG_BLANK, LOG_NUMBER,
+        LOG_MGR}), (: do_logs($4,$5) :));
+}
+void refresh_function(mixed employee, int flag)
+{
+   string emp_name;
+   switch (flag)
+   {
+      case PLAYER_DELETED :
+        emp_name = employee;
+        break;
+      case TOTAL_REFRESH :
+      case PARTIAL_REFRESH :
+        emp_name = employee->query_name();
+        break;
+   }
+   if (query_applicant(emp_name))
+   {
+      remove_employee(emp_name);
+      switch (flag)
+      {
+         case PLAYER_DELETED :
+           shop_log(PERSONNEL, emp_name, "deleted character", UNPAID);
+           employee_log(emp_name, "Deleted character");
+           break;
+         case TOTAL_REFRESH :
+         case PARTIAL_REFRESH :
+           tell_object(employee, "Your application at "+ _shop_name+
+             " has been removed.\n");
+           shop_log(PERSONNEL, emp_name, "refreshed character", UNPAID);
+           employee_log(emp_name, "Refreshed character");
+           break;
+      }
+   }
+   if (member_array(emp_name, _retired) != -1)
+   {
+      remove_employee(emp_name);
+      switch (flag)
+      {
+         case PLAYER_DELETED :
+           shop_log(PERSONNEL, emp_name, "deleted character", UNPAID);
+           employee_log(emp_name, "Deleted character");
+           break;
+         case TOTAL_REFRESH :
+         case PARTIAL_REFRESH :
+           tell_object(employee, "Your employment at "+ _shop_name+
+             " has been terminated.\n");
+           shop_log(PERSONNEL, emp_name, "refreshed character", UNPAID);
+           employee_log(emp_name, "Refreshed character");
+           break;
+      }
+   }
+   if (!_employees[emp_name]) return;
+   switch (flag)
+   {
+      case PLAYER_DELETED :
+        shop_log(PERSONNEL, emp_name, "deleted character", UNPAID);
+        employee_log(emp_name, "Deleted character");
+        remove_employee(emp_name);
+        break;
+      case TOTAL_REFRESH :
+        tell_object(employee, "Your employment at "+ _shop_name+
+          " has been terminated.\n");
+        shop_log(PERSONNEL, emp_name, "refreshed totally", UNPAID);
+        employee_log(emp_name, "Refreshed totally");
+        remove_employee(emp_name);
+        break;
+      case PARTIAL_REFRESH :
+        tell_object(employee, "Your employment level at "+ _shop_name+
+          " has been reset.\n");
+        shop_log(PERSONNEL, emp_name, "refreshed character", UNPAID);
+        employee_log(emp_name, "Refreshed character");
+        _employees[emp_name] = EMP_MAP;
+        set_emp_time(emp_name);
+        _got_bonus += ({emp_name});
+        save_me();
+        break;
+   }
+}
+protected void set_long(string long_desc)
+{
+   string ob_file = file_name(this_object());
+   _chart = clone_object(SHOP_CHART);
+   _chart->set_office(ob_file);
+   add_hidden_object(_chart);
+   _notice = clone_object(SHOP_NOTICE);
+   _notice->set_office(ob_file);
+   add_hidden_object(_notice);
+   long_desc += "Employees may \"clock\" in and out of work here "
+     "and examine the items chart.  There is also a policy notice "
+     "located next to the chart.\n";
+   ::set_long(long_desc);
+}
+
+==================================================
+FILE: shops/player_shop/office_code/memo.c
+==================================================
+
+private int do_memo()
+{
+   tell_object(this_player(), "Subject: (hit enter for general memo)\n");
+   input_to((: write_memo($1) :), 0);
+   add_succeeded_mess("");
+   return 1;
+}
+private void end_memo(string text, string subject)
+{
+   if (!text)
+   {
+      tell_object(this_player(), "Aborted.\n");
+      return;
+   }
+   tell_object(this_player(), "Do you want to keep a copy of the memo? ");
+   input_to((: send_memo($1,$(subject),$(text)) :), 0);
+}
+private void send_memo(string ans, string subject, string text)
+{
+   object tp = this_player();
+   string *employees = _retired,
+          tp_name = tp->query_name();
+   tp = this_player();
+   tp_name = tp->query_name();
+   ans = lower_case(ans);
+   if (strlen(ans) < 1 || (ans[0] != 'y' && ans[0] != 'n'))
+   {
+      tell_object(tp,
+        "Do you want to keep a copy of the memo? (Yes or No)? ");
+      input_to((: send_memo($1,$(subject),$(text)) :), 0);
+      return;
+   }
+   if (tp->query_creator() && tp_name != _creator)
+      employees += ({tp_name});
+   employees += ({_creator});
+   foreach(string employee in m_indices(_employees))
+      if (!(_employees[employee][EMP_POINTS] & NPC))
+         employees += ({employee});
+   if (ans[0] == 'n') employees -= ({tp_name});
+   if (!sizeof(employees))
+   {
 #ifdef DEBUG
-    tell_creator(CREATOR,  "In init()\n" );
+      tell_creator(CREATOR, "No employees to send mail to.\n");
 #endif
-    if (environment(this_object()) == find_object("/room/rubbish")) return;
+      tell_object(tp, "There is no-one to send a memo to!\n");
+      return;
+   }
 #ifdef DEBUG
-    tell_creator(CREATOR,  "Not in /room/rubbish\n");
+   tell_creator(CREATOR, "Sending employee memo to %s.\n",
+     implode(employees, "," ));
 #endif
-    ::init();
-    tp->add_command("buy", this_object(), "<string'item(s)'>",
-      (: do_buy($4[0]) :));
-    tp->add_command("sell", this_object(), "<indirect:object:me>",
-      (: do_sell($1) :));
-    tp->add_command("list", this_object(), ({"", "<string'item(s)'>"}),
-      (: do_list($4) :));
-    tp->add_command("browse", this_object(), "<string'item(s)'>",
-      (: do_browse($4[0]) :));
-    outside_hours(TRUE);
+   tell_object( tp, "Sending your memo.\n" );
+   if (subject && subject != "") subject = " - " + subject;
+   else subject = "";
+   AUTO_MAILER->auto_mail(implode(employees, ","),
+     tp_name, _very_short+ " employee memo" + subject, "", text, 0, 0);
 }
-private void look_chart()
+private void write_memo(string text)
 {
-    if (stringp(_info)) do_command("'Now, let me see, "+ _info +"...");
-    call_out("shuffle_to", NPC_DELAY, _shop_front, (: announce_number() :));
+   this_player()->do_edit(0, (: end_memo($1,$(text)) :));
 }
-private void look_how_much()
+
+==================================================
+FILE: shops/player_shop/office_code/personnel.c
+==================================================
+
+private void add_employee(string player)
 {
-    if (stringp(_info)) do_command("'Now, let me see, "+ _info +"...");
-    call_out("shuffle_to", NPC_DELAY, _shop_front, (: announce_price() :));
-}
-private void no_coins()
-{
-    if (query_busy())
+    if (!_employees[player])
     {
-        do_command("give all to "+ _busy->query_name());
-        do_command("'I'm sorry" + DEARIE+ ".  I don't have the correct "
-          "change to give you.  Please call again later.");
+        _employees += ([player:EMP_MAP]);
+        _employees[player][EMP_NOBONUS] = 1;
+        set_emp_time(player);
+        _got_bonus += ({player});
+        save_me();
+        save_emps();
+    }
+}
+private void demote(string demoter, string demotee)
+{
+    int points = _employees[demotee][EMP_POINTS] & CLOCKED_IN;
+    if (_employees[demotee][EMP_POINTS] & MANAGER)
+        points += (SUPER_POINTS * 32) + EMPLOYEE + SUPERVISOR;
+    else points += EMPLOYEE;
+    _employees[demotee][EMP_POINTS] = points;
+    save_emps();
+    PLAYER_SHOP->auto_mail(demotee, _proprietor, "Demotion", "",
+      "This is to advise you that you have today been demoted.\n"
+      "This demotion will now stay on your employment record.\n");
+    employee_log(demotee, "Demoted by "+ demoter);
+    shop_log(PERSONNEL, demoter, "demoted "+ cap_name(demotee), PAID);
+}
+int do_commend(string emp)
+{
+    string commender;
+    if (!_employees[emp])
+    {
+        tell_object(this_player(), cap_name(emp)+
+          " is not an active employee!\n");
+        return 1;
+    }
+    if (_employees[emp][EMP_POINTS] & MANAGER)
+    {
+        tell_object(this_player(), "You can't commend a manager.\n");
+        return 1;
+    }
+    if (_employees[emp][EMP_POINTS] & NPC)
+    {
+        tell_object(this_player(), "Don't be silly!  "
+          "You can't commend $C$"+ emp +".\n");
+        return 1;
+    }
+    commender = this_player()->query_cap_name();
+    AUTO_MAILER->auto_mail(emp, lower_case(commender), "Commendation",
+      "", "This is to advise you that you have today received a "
+      "commendation for outstanding service.\nThis will now stay on "
+      "your employment record.\n");
+    employee_log(emp, "Received a commendation from "+ commender);
+    shop_log(PERSONNEL, commender, "commended "+ cap_name(emp), PAID);
+    _employees[emp][EMP_POINTS] += (_employees[emp][EMP_POINTS] & SUPERVISOR)?
+    to_int(MANAGER_POINTS * 0.05 * 32) : to_int(SUPER_POINTS * 0.05 * 32);
+    save_emps();
+    tell_object(this_player(), "You commend "+ cap_name(emp)+ ".\n");
+    return 1;
+}
+int do_demote(string emp)
+{
+    object tp = this_player();
+    emp = lower_case(emp);
+    if (!_employees[emp])
+    {
+        tell_object(tp, cap_name(emp)+ " is not an active employee!\n");
+        return 1;
+    }
+    if (_employees[emp][EMP_POINTS] & MANAGER && !tp->query_creator())
+    {
+        tell_object(tp, "You don't have the authority to "
+          "demote $C$"+ emp +".\n");
+        return 1;
+    }
+    if (!( _employees[emp][EMP_POINTS] & SUPERVISOR))
+    {
+        tell_object(tp, "Don't be silly!  You can't demote $C$"+
+          emp +".\n");
+        return 1;
+    }
+    demote(tp->query_cap_name(), emp);
+    tell_object(tp, "You demote "+ cap_name(emp)+ ".\n");
+    return 1;
+}
+int do_fire(mixed *args)
+{
+    args[0] = lower_case(args[0]);
+    if (!_employees[args[0]])
+    {
+        tell_object(this_player(), cap_name(args[0])+
+          " doesn't work at the shop!\n");
+        return 1;
+    }
+    if ((member_array(args[0], _retired) != -1) ||
+      query_manager(args[0]) && !this_player()->query_creator())
+    {
+        tell_object(this_player(), "You don't have the authority "
+          "to fire $C$"+ args[0] +".\n");
+        return 1;
+    }
+    if (_employees[args[0]][EMP_POINTS] & NPC)
+    {
+        tell_object(this_player(), "Don't be silly!  You can't fire $C$"+
+          args[0] +".\n");
+        return 1;
+    }
+    fire_them(this_player()->query_name(), args[0], args[1]);
+    tell_object(this_player(), "You fire "+ cap_name(args[0])+
+      " for "+ args[1]+ ".\n" );
+    return 1;
+}
+int do_leave(mixed *args)
+{
+    object tp = this_player();
+    args[0] = lower_case(args[0]);
+    if (!_employees[args[0]])
+    {
+        tell_object(tp, cap_name(args[0])+ " is not an employee!\n");
+        return 1;
+    }
+    if (args[1] > MAX_LEAVE)
+    {
+        tell_object(tp, "You cannot place an employee on leave "
+          "for more than "+ MAX_LEAVE+ " days at a time.\n");
+        return 1;
+    }
+    _times[args[0]] = time() + (args[1] * 86400);
+    remove_call_out(_call_times);
+    _call_times = call_out((: save_times() :), PERS_DELAY);
+    add_succeeded_mess(cap_name(args[0])+
+      " is on leave until "+ ctime(time() + (args[1] * 86400))+ ".\n");
+    shop_log(PERSONNEL, tp->query_name(), "placed "+
+      cap_name(args[0])+ " on leave for " + args[1]+ " days", PAID);
+    employee_log(args[0], "Placed on leave by "+ tp->query_cap_name()+
+      " for "+ args[1]+ " days.");
+    tell_object(tp, "You place "+ cap_name(args[0])+
+      " on leave for " + args[1]+ " days.\n");
+    return 1;
+}
+private int do_promote(string on)
+{
+    object tp = this_player();
+    add_succeeded_mess("");
+    if (tp->query_creator())
+    {
+        tell_object(tp, "Creators don't get promoted.\n");
+        return 1;
+    }
+    switch (on)
+    {
+    case "off" :
+        _employees[tp->query_name()][EMP_NOPROMOTE] = TRUE;
+        tell_object(tp, "You have now requested to be "
+          "passed over for promotion.\n");
+        break;
+    case "on" :
+        if (tp->query_property("no score"))
+        {
+            tell_object(tp, "Sorry, you cannot be promoted.\n");
+            return 1;
+        }
+        _employees[tp->query_name()][EMP_NOPROMOTE] = FALSE;
+        tell_object(tp, "You have now requested to be "
+          "considered for promotion.\n");
+        break;
+    }
+    save_emps();
+    return 1;
+}
+private int do_resign()
+{
+    string word = this_player()->query_name();
+    add_succeeded_mess("$N $V.\n");
+    remove_employee(word);
+    shop_log(PERSONNEL, word, "resigned", UNPAID);
+    employee_log(word, "Resigned");
+    return 1;
+}
+int do_retire()
+{
+    string manager = this_player()->query_name();
+    if (!(_employees[manager][EMP_POINTS] & MANAGER)) return 0;
+    remove_employee(manager);
+    _retired += ({manager});
+    shop_log(PERSONNEL, manager, "retired from management", UNPAID);
+    employee_log(manager, "Retired from management");
+    save_me();
+    add_succeeded_mess("$N retire$s.\n");
+    return 1;
+}
+int do_suspend(mixed *args)
+{
+    string suspender;
+    object tp = this_player();
+    args[0] = lower_case(args[0]);
+    if (!_employees[args[0]])
+    {
+        tell_object(tp, cap_name(args[0])+ " is not an active employee!\n");
+        return 1;
+    }
+    if ((_employees[args[0]][EMP_POINTS] & MANAGER) &&
+      (!tp->query_creator()))
+    {
+        tell_object(tp, "You don't have the authority to "
+          "suspend $C$"+ args[0] +"'s bonus.\n");
+        return 1;
+    }
+    if (_employees[args[0]][EMP_POINTS] & NPC)
+    {
+        tell_object(tp, "Don't be silly!  "
+          "You can't suspend $C$"+ args[0] +"'s bonus.\n");
+        return 1;
+    }
+    suspender = tp->query_cap_name();
+    _employees[args[0]][EMP_NOBONUS] = args[1];
+    save_emps();
+    AUTO_MAILER->auto_mail(args[0], _proprietor, "Suspended bonus", "",
+      sprintf( "This is to advise you that you have had your bonus "
+        "entitlement suspended for %d month%s.\nThis suspension will "
+        "now stay on your employment record.\n", args[1],
+        (args[1] == 1)?"":"s"));
+    employee_log(args[0], sprintf("Bonus suspended for %d month%s by %s",
+        args[1], (args[1] == 1)?"":"s", suspender));
+    shop_log(PERSONNEL, suspender,
+      sprintf("suspended %s's bonus for %d month%s", args[0],
+        args[1], (args[1] == 1)?"":"s"), PAID);
+    tell_object(tp, "You suspend "+ cap_name(args[0])+
+      "'s bonus for "+ args[1]+ " months.\n");
+    return 1;
+}
+int do_warn(mixed *args)
+{
+    string warner;
+    object tp = this_player();
+    int points;
+    args[0] = lower_case(args[0]);
+    if (!_employees[args[0]])
+    {
+        tell_object(tp, cap_name(args[0])+ " is not an active employee!\n");
+        return 1;
+    }
+    if (_employees[args[0]][EMP_POINTS] & MANAGER && !tp->query_creator() )
+    {
+        tell_object( tp, "You don't have the authority to "
+          "warn $C$"+ args[0] +".\n" );
+        return 1;
+    }
+    if (_employees[args[0]][EMP_POINTS] & NPC)
+    {
+        tell_object(tp, "Don't be silly!  You can't warn $C$"+ args[0] +".\n");
+        return 1;
+    }
+    warner = tp->query_cap_name();
+    AUTO_MAILER->auto_mail(args[0], _proprietor, "Official warning", "",
+      "This is to advise you that you have today received a formal "
+      "warning for " + args[1] + ".\nThis warning will now stay on "
+      "your employment record.\n");
+    employee_log(args[0], "Received a warning from "+ warner+
+      " for "+ args[1]);
+    shop_log(PERSONNEL, warner, "warned "+
+      cap_name( args[0] ) + " for "+ args[1], PAID);
+    points = _employees[args[0]][EMP_POINTS] & CLOCKED_IN;
+    if (_employees[args[0]][EMP_POINTS] & SUPERVISOR)
+        _employees[args[0]][EMP_POINTS] -= to_int(MANAGER_POINTS * 0.05 * 32);
+    else
+    {
+        _employees[args[0]][EMP_POINTS] -= to_int(SUPER_POINTS * 0.05 * 32) +
+        EMPLOYEE;
+        if (_employees[args[0]][EMP_POINTS] < 1)
+            _employees[args[0]][EMP_POINTS] = EMPLOYEE + points;
+    }
+    save_emps();
+    tell_object(tp, "You warn "+ cap_name(args[0])+ " for "+
+      args[1]+ ".\n");
+    return 1;
+}
+private void fire_them(string word, string them, string reason)
+{
+    if (!_employees[them]) return;
+    BANK_HANDLER->adjust_account(them, BANKS[_employees[them][EMP_BANK]][1],
+      _employees[them][EMP_PAY]);
+    shop_log(ACCOUNTS, _proprietor, "paid "+
+      MONEY_HAND->money_value_string(_employees[them][EMP_PAY], _place)+
+      " to "+ cap_name(them), UNPAID);
+    shop_log(PERSONNEL, word, "fired "+ cap_name(them) +
+      " for "+ reason, PAID);
+    PLAYER_SHOP->auto_mail(them, word, _shop_name, "",
+      "Unfortunately, I have to inform you that you have today "
+      "been fired for " + reason + ".  You have been paid the sum of "+
+      MONEY_HAND->money_value_string( _employees[them][EMP_PAY], _place )+
+      " for the work you have carried out to this date.\nIf you feel you "
+      "have been unfairly dismissed, please refer to a manager.\n");
+    employee_log(them, "Fired by "+ cap_name(word)+
+      " for "+ reason);
+    remove_employee(them);
+}
+private void hire(string word)
+{
+    int gender;
+    remove_applicant(word);
+    if (!test_player(word) || _employees[word] || query_baddie(word)) return;
+    add_employee(word);
+    employee_log(word, "Hired");
+    shop_log(PERSONNEL, _proprietor, "hired "+ cap_name(word), UNPAID);
+    PLAYER_SHOP->auto_mail(word, _proprietor, _shop_name, "",
+      "Congratulations!  You've been hired to work at "+ _shop_name+
+      ".  You'll find that you can now move through the counter "
+      "to the back areas of the shop.  The first things you should "
+      "do are \"claim\" a new badge and staff handbook.\n");
+    gender = PLAYER_HANDLER->test_gender(word);
+    add_board_message("New employee", sprintf("%s has today been employed to "
+        "work for the shop.  Please make %s feel welcome, and assist %s while "
+        "%s gets started in %s new position.\n", cap_name(word),
+        ({"it", "him", "her"})[gender] ,({"it", "him", "her"})[gender],
+        ({"it", "he", "she"})[gender], ({"its", "his", "her"})[gender]));
+    remove_call_out(_call_mail_hirees);
+    _call_mail_hirees = call_out((: mail_hirees() :), 5);
+}
+private string query_worked(string emp)
+{
+    string blurb;
+    if (_employees[emp][EMP_POINTS] & CLOCKED_IN)
+        return " is currently clocked in";
+    if (_employees[emp][EMP_POINTS] & NPC)
+        return " has gone home for tea";
+    if (_times[emp] > time())
+        return " - %^CYAN%^on leave until "+ ctime(_times[emp])+ "%^RESET%^";
+    blurb = " - last action ";
+    if (_employees[emp][EMP_POINTS] & MANAGER)
+    {
+        if ((time() - _times[emp]) > ((60*60*24*MGR_DEMOTE)-7))
+            blurb += "%^RED%^";
+        else if ((time() - _times[emp]) > (60*60*24*MGR_WARN))
+            blurb += "%^RED%^";
+    }
+    else if (_employees[emp][EMP_POINTS] & SUPERVISOR)
+    {
+        if (( time() - _times[emp]) > ((60*60*24*SPR_DEMOTE)-7))
+            blurb += "%^RED%^";
+        else if ((time() - _times[emp]) > (60*60*24*SPR_WARN))
+            blurb += "%^YELLOW%^";
+    }
+    else if (( time() - _times[emp]) > ((60*60*24*EMP_FIRE)-7))
+        blurb += "%^RED%^";
+    else if ((time() - _times[emp]) > (60*60*24*EMP_WARN))
+        blurb += "%^YELLOW%^";
+    return blurb + ctime(_times[emp])+ "%^RESET%^";
+}
+private void set_emp_time(string employee)
+{
+    if (!_employees[employee]) return;
+    if (_employees[employee][EMP_INACTIVE])
+    {
+        _employees[employee][EMP_INACTIVE] = 0;
+        save_emps();
+    }
+    if (!sizeof(_times)) _times = ([employee:0]);
+    else if (!_times[employee]) _times += ([employee:0]);
+    _times[employee] = time();
+    remove_call_out(_call_times);
+    _call_times = call_out((: save_times() :), PERS_DELAY);
+}
+void view_record(string person, string pattern)
+{
+    if (pattern == VIEW_EMP)
+    {
+        string text = sprintf("Employment history of %s:\n\n", cap_name(person));
+        load_history();
+        if (!sizeof(_history) || !_history[person])
+        {
+            tell_object(this_player(), "There is no history for that person.\n");
+            return;
+        }
+        for(int i = 0; i < sizeof(_history[person][0]); i++)
+            text += sprintf("%s: %s\n", ctime(_history[person][0][i]),
+              _history[person][1][i]);
+        tell_object(this_player(), sprintf("$P$%s's history$P$%s",
+            cap_name(person), text));
+        clear_history();
     }
     else
     {
-        do_command("'Well now.  I wonder where they could have gone.");
-        do_command("ponder");
-    }
-    do_command("drop all");
-    reset_busy();
-    _info = 0;
-}
-private int outside_hours(int working)
-{
-    int hrs, mins;
-    string am_pm;
-    if (query_busy())
-    {
-#ifdef DEBUG
-        tell_creator(CREATOR, "Outside working hours but already busy.  "
-          "Continuing.\n");
-#endif
-        return FALSE;
-    }
-    if (sscanf(amtime(time()), "%d:%d%s,%*s", hrs, mins, am_pm) == 4)
-    {
-#ifdef DEBUG
-        tell_creator(CREATOR, "Time is %02d:%02d%s.\n", hrs, mins, am_pm);
-#endif
-        if (am_pm == "am")
+        if (!query_applicant(person))
         {
-            if (hrs == 12) hrs = 0;
+            tell_object(this_player(), "That person has no application form "
+              "on file.\n");
+            return;
         }
-        else
-        if (hrs != 12) hrs += 12;
-#ifdef DEBUG
-        tell_creator(CREATOR, "Which is %02d:%02d.\n", hrs, mins);
-#endif
-        if ((hrs < _work_hrs[0] ||
-            (hrs == _work_hrs[0] && mins < _work_hrs[1])) ||
-          (hrs > _work_hrs[2] ||
-            (hrs == _work_hrs[2] && mins > _work_hrs[3])))
-        {
-            if (!working)
+        load_applicants();
+        tell_object(this_player(),
+          sprintf("$P$%s's history$P$Application of %s:\n\n%s", cap_name(person),
+            cap_name(person), _applicants[person][APP_MESSAGE]));
+        clear_applicants();
+    }
+}
+
+==================================================
+FILE: shops/player_shop/office_code/policies.c
+==================================================
+
+private void add_policy(string policy)
+{
+   load_policies();
+   load_new_policies();
+   if (!_policies[policy])
+   {
+      _policies += ([policy:({"",0})]);
+      _policies[policy][0] = _new_policies[policy][POLICY_TEXT];
+      _policies[policy][1] = _new_policies[policy][POLICY_TYPE];
+      PLAYER_SHOP->auto_mail(_new_policies[policy][POLICY_MGR], _proprietor,
+        "Policy proposition - "+ policy, "", "Your proposition has been "
+        "accepted by majority vote and is now policy.\n" );
+      shop_log(GENERAL, "Shop", "accepted the "+ policy + " policy.", UNPAID);
+   }
+   else
+   {
+      map_delete(_policies, policy);
+      PLAYER_SHOP->auto_mail(_new_policies[policy][POLICY_MGR], _proprietor,
+        "Policy proposition - "+ policy, "",
+        "Your proposition to remove the above policy has been accepted "
+        "by majority vote.\n");
+      shop_log(GENERAL, "Shop", "removed the "+ policy + " policy.", UNPAID);
+   }
+   map_delete(_new_policies, policy);
+   save_policies();
+   save_new_policies();
+}
+void add_policy_suggest(string name, string text, string mgr, int type)
+{
+   if (previous_object() && previous_object() != find_object(_mgr_office))
+   {
+      LOG_ERROR("office.c", "add_policy_suggest("+name+","+text+","+mgr+")");
+      return;
+   }
+   load_new_policies();
+   if (!sizeof(_new_policies)) _new_policies = ([ name:POLICY_MAP ]);
+   else _new_policies += ([ name:POLICY_MAP ]);
+   load_policies();
+   if (sizeof(_policies) && _policies[name]) text = _policies[name][0];
+   _new_policies[name][POLICY_TIME] = time();
+   _new_policies[name][POLICY_MGR] = mgr;
+   _new_policies[name][POLICY_TEXT] = text;
+   _new_policies[name][POLICY_TYPE] = type;
+   do_policy_vote(mgr, name, "y");
+   clear_policies();
+   save_new_policies();
+}
+private int do_policy_vote(string mgr, string policy, string decision)
+{
+   int managers;
+   load_new_policies();
+   if (!m_sizeof(_new_policies) || !_new_policies[policy])
+   {
+      tell_object(this_player(), "There is no such policy pending!\n");
+      return 1;
+   }
+   if (member_array(mgr, _new_policies[policy][POLICY_FOR]) != -1 ||
+     member_array(mgr, _new_policies[policy][POLICY_AGAINST]) != -1 )
+   {
+      tell_object(this_player(), "You have already voted on this policy!\n");
+      return 1;
+   }
+   if (decision == "y")
+   {
+      _new_policies[policy][POLICY_FOR] += ({mgr});
+      tell_object(this_player(), "You vote for the " + policy+ " policy.\n");
+   }
+   else
+   {
+      _new_policies[policy][POLICY_AGAINST] += ({mgr});
+      tell_object(this_player(), "You vote against the "+
+         policy+ " policy.\n");
+   }
+   shop_log(GENERAL, mgr, "voted on the "+ policy + " policy.", PAID);
+   save_new_policies();
+   managers = sizeof(get_managers()) + sizeof(get_retired());
+   if (sizeof(_new_policies[policy][POLICY_FOR]) > managers / 2)
+      add_policy(policy);
+   else if (sizeof(_new_policies[policy][POLICY_AGAINST]) >= managers / 2)
+      remove_policy(policy);
+   return 1;
+}
+string get_stock_policy() { return copy(_stock_policy); }
+private void remove_policy(string policy)
+{
+   load_new_policies();
+   PLAYER_SHOP->auto_mail(_new_policies[policy][POLICY_MGR],
+     "Tarnach Fendertwin", "Policy proposition - "+ policy, "",
+     "Your proposition has been rejected by majority vote.\n");
+   shop_log(GENERAL, "Shop", "rejected the "+ policy + " policy.\n", UNPAID);
+   map_delete(_new_policies, policy);
+   save_new_policies();
+}
+
+==================================================
+FILE: shops/player_shop/office_code/review.c
+==================================================
+
+private void monthly_review()
+{
+   int amount = calc_pay(),
+       bonus_divisor = 0,
+       cabinet_cost = (_num_cabinets - MIN_CABINETS) * CABINET_COST,
+       pay;
+   float pay_multiplier = 1.0;
+   string *emps = m_indices(_employees);
+   log_file("/log/PLAYER_SHOP", "%s: %s entered monthly review (review.c)\n",
+      ctime(time()), _very_short);
+   if (cabinet_cost)
+   {
+      adjust_profit(_proprietor, -cabinet_cost);
+      shop_log(ACCOUNTS, _proprietor,
+         "paid "+ MONEY_HAND->money_value_string(cabinet_cost,
+         _place) + " for the rent of " + (_num_cabinets - MIN_CABINETS) +
+         " cabinets", UNPAID);
+   }
+   if (_accounts["profit"] < 0) adjust_bonus("Shop",_accounts["profit"]);
+   if (amount > _accounts["profit"])
+      pay_multiplier = _accounts["profit"] / amount;
+   foreach (string word in emps)
+   {
+      if (!_employees[word][EMP_PAY]) continue;
+      pay = to_int(_employees[word][EMP_PAY] * pay_multiplier);
+      if (!(_employees[word][EMP_POINTS] & NPC))
+      {
+         BANK_HANDLER->adjust_account(word,
+            BANKS[_employees[word][EMP_BANK]][1], pay );
+         PLAYER_SHOP->auto_mail(word, _proprietor, "Pay advice for "+
+            _last_month, "", sprintf("For your work during %s, you have been "
+            "paid a total of %s.  Keep up the good work.\n--\n%s "
+            "(proprietor)\n", _last_month, MONEY_HAND->money_value_string(pay,
+            _place ), _proprietor));
+      }
+      else _employees[word][EMP_POINTS] = EMPLOYEE + NPC;
+      shop_log(ACCOUNTS, _proprietor, "paid "+ MONEY_HAND->
+        money_value_string(pay, _place)+ " to "+ cap_name(word), UNPAID);
+      _employees[word][EMP_PAY] = 0;
+      _accounts["profit"] -= pay;
+   }
+   _bonus += _accounts["bonus"];
+   if (_bonus < 0)
+   {
+      _accounts["bonus"] = _bonus;
+      _bonus = 0;
+   }
+   else _accounts["bonus"] = 0;
+   foreach (string word in m_indices(_employees))
+   {
+      if (_employees[word][EMP_NOBONUS]) continue;
+      if (!test_prop(word, _very_short+ " handbook")) continue;
+      if (_employees[word][EMP_POINTS] & MANAGER)
+      {
+         bonus_divisor += 4;
+      }
+      else if (_employees[word][EMP_POINTS] & SUPERVISOR ||
+         _eom == word)
+      {
+         bonus_divisor += 3;
+      }
+      else
+      {
+         bonus_divisor += 2;
+      }
+   }
+   if (!bonus_divisor) _bonus_val = _bonus;
+   else _bonus_val = (_bonus * 2) / bonus_divisor;
+   _got_bonus = ({});
+   _eom = sort_array(get_employees(),
+      (: _employees[$2][EMP_EOM] - _employees[$1][EMP_EOM] :))[0];
+   foreach (string word in m_indices(_employees))
+   {
+      if (_employees[word][EMP_NOBONUS])
+      {
+         _employees[word][EMP_NOBONUS]--;
+         _got_bonus += ({word});
+      }
+      _employees[word][EMP_EOM] = 0;
+   }
+   employee_log(_eom, _last_month+ "'s Employee Of The Month");
+   add_board_message("Bonuses for "+ _last_month,
+      sprintf("Based on the bonus fund of %s for %s, the following "
+      "bonuses have been awarded:\n\n     Managers    - %s\n     Supervisors"
+      " - %s\n     Employees   - %s\n\n%s's Employee Of The Month was %s.  "
+      "Well done to you.\n", MONEY_HAND->money_value_string(_bonus, _place),
+      _last_month, MONEY_HAND->money_value_string(_bonus_val * 2, _place),
+      MONEY_HAND->money_value_string(to_int(_bonus_val * 1.5), _place),
+      MONEY_HAND->money_value_string(_bonus_val, _place), _last_month,
+      cap_name(_eom)));
+   if (_bonus)
+   {
+      shop_log( ACCOUNTS, _proprietor, "paid out "+
+        MONEY_HAND->money_value_string(_bonus, _place)+
+        " in bonuses for "+ _last_month, UNPAID );
+   }
+   if (_eom == _shopkeeper->query_name())
+   {
+      _bonus -= to_int(_bonus_val * 1.5);
+      shop_log(GENERAL, _eom, "claimed "+
+         MONEY_HAND->money_value_string(to_int(_bonus_val * 1.5), _place),
+         UNPAID);
+   }
+   else
+   {
+      _bonus -= _bonus_val;
+      shop_log(GENERAL, _shopkeeper->query_name(), "claimed "+
+         MONEY_HAND->money_value_string(_bonus_val, _place), UNPAID);
+   }
+   if (_bonus < 0) _bonus = 0;
+   _last_month = _review_month;
+   _call_review = 0;
+   save_me();
+   save_emps();
+}
+private void review_employees()
+{
+   int prom = FALSE,
+       prom_number,
+       managers,
+       time = time();
+   string *promos = ({}),
+          promopost,
+          *emps = _retired + m_indices(_employees);
+   log_file("/log/PLAYER_SHOP", "%s: %s entered review_employees (review.c)\n",
+      ctime(time()), _very_short);
+   foreach (string word in emps)
+   {
+      if (!test_player(word))
+      {
+         if (_employees[word][EMP_POINTS] & NPC) continue;
+         fire_them(_proprietor, word, "not existing");
+      }
+      else if (test_cre(word))
+         fire_them(_proprietor, word, "being a creator");
+      else if (test_prop(word,"no score") &&
+         _employees[word][EMP_POINTS] & SUPERVISOR )
+      {
+         _employees[word][EMP_POINTS] =
+            _employees[word][EMP_POINTS] & CLOCKED_IN + EMPLOYEE;
+         save_emps();
+         PLAYER_SHOP->auto_mail(word, _proprietor, "Demotion", "",
+         "This is to advise you that, due to you having a creator alt, "
+         "you have today been demoted.\n");
+         employee_log(word, "Demoted by "+ _proprietor);
+         shop_log(PERSONNEL, _proprietor, "demoted "+ cap_name(word), UNPAID);
+      }
+      if (!test_prop(word, _very_short+ " handbook"))
+      {
+         _employees[word][EMP_PAY] = 0;
+         _employees[word][EMP_POINTS] =
+            _employees[word][EMP_POINTS] & CLOCKED_IN + EMPLOYEE;
+      }
+   }
+   foreach (string word in get_managers())
+      if ((time - _times[word]) > (60*60*24*MGR_DEMOTE) &&
+         _employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+            demote( _proprietor, word );
+      else if (time - _times[word] > (60*60*24*MGR_WARN) &&
+         !_employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor, "Poor attendance",
+           "", "It has come to my attention that you have now been "
+           "inactive for over " + MGR_WARN+ " days.  As you are a manager, "
+           "you are required to meet certain levels of attendance.  "
+           "You are now in serious danger of being demoted without "
+           "further warning.\n---\n" + _proprietor+ " (proprietor)\n");
+         _employees[word][EMP_INACTIVE] = TRUE;
+         employee_log(word, "Warned about inactivity");
+         shop_log(PERSONNEL, _proprietor, "warned "+
+               cap_name(word) + " about inactivity", UNPAID);
+      }
+   foreach(string word in sort_array(get_supervisors(),
+     (: _employees[$1][EMP_POINTS] - _employees[$2][EMP_POINTS] :)))
+      if (time - _times[word] > (60*60*24*SPR_DEMOTE) &&
+         _employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+            demote( _proprietor, word );
+      else if (time - _times[word] > (60*60*24*SPR_WARN) &&
+        !_employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+      {
+         PLAYER_SHOP->auto_mail(word, _proprietor, "Poor attendance",
+            "", "It has come to my attention that you have now been "
+            "inactive for over "+ SPR_WARN+ " days.  As you are a supervisor, "
+            "you are required to meet certain levels of attendance.  "
+            "You are now in serious danger of being demoted without "
+            "further warning.\n---\n" + _proprietor+ " (proprietor)\n");
+         _employees[word][EMP_INACTIVE] = TRUE;
+         employee_log(word, "Warned about inactivity");
+         shop_log(PERSONNEL, _proprietor, "warned "+
+            cap_name(word) + " about inactivity", UNPAID);
+      }
+      else
+      {
+         prom_number = (_max_emp * PERCENT_M) / 100;
+         if ((_employees[word][EMP_POINTS] > 32 * MANAGER_POINTS) &&
+           sizeof(get_managers()) < prom_number &&
+           !_employees[word][EMP_NOPROMOTE])
+         {
+            set_employee(word, MANAGER);
+            shop_log(PERSONNEL, _proprietor, "promoted "+
+               cap_name(word)+ " to manager", UNPAID);
+            employee_log(word, "Promoted to manager");
+            PLAYER_SHOP->auto_mail(word, _proprietor, "Promotion!",
+              "", "Congratulations!  You've been promoted to manager "
+              "of "+ _shop_name+ ".  You'll find that you can now enter "
+              "the managers' office.  Please remember to use the \"memo\" "
+              "facility from there to discuss any major admin points with "
+              "other managers.  This includes hiring, firing, and so on.\n");
+            promos += ({word});
+            prom = TRUE;
+         }
+      }
+   foreach(string word in sort_array(get_employees(),
+     (: _employees[$1][EMP_POINTS] - _employees[$2][EMP_POINTS] :)))
+   {
+      if (_employees[word][EMP_POINTS] & NPC) continue;
+      if (time - _times[word] > (60*60*24*EMP_FIRE) &&
+         _employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+      {
+         fire_them(_proprietor, word, "serious inactivity");
+         continue;
+      }
+      if (time - _times[word] > (60*60*24*EMP_WARN))
+      {
+         if (!_employees[word][EMP_INACTIVE] &&
+         last_login(word) - _times[word] > (60*60*24*2))
+         {
+            PLAYER_SHOP->auto_mail(word, _proprietor, "Inactivity",
+              "", "It has come to my attention that you have now been "
+              "inactive for over "+ EMP_WARN+ " days.  Unless this "
+              "situation is resolved, the management may have no option "
+              "but to terminate your employment.\n---\n"+ _proprietor+
+              " (proprietor)\n");
+            _employees[word][EMP_INACTIVE] = TRUE;
+            shop_log(PERSONNEL, _proprietor, "warned "+
+              cap_name(word)+ " about inactivity", UNPAID);
+            employee_log(word, "Warned about inactivity");
+         }
+      }
+      else
+      {
+         prom_number = (_max_emp * PERCENT_S) / 100;
+         if ((_employees[word][EMP_POINTS] > 32 * SUPER_POINTS) &&
+           sizeof( get_supervisors() ) < prom_number &&
+           !_employees[word][EMP_NOPROMOTE])
+         {
+            if(_employees[word][EMP_POINTS] & CLOCKED_IN)
+               _employees[word][EMP_POINTS] = (SUPER_POINTS * 32) +
+                 EMPLOYEE+ SUPERVISOR + CLOCKED_IN;
+            else
+               _employees[word][EMP_POINTS] = (SUPER_POINTS * 32) +
+                 EMPLOYEE+ SUPERVISOR;
+            shop_log(PERSONNEL, _proprietor, "promoted "+
+              cap_name(word)+ " to supervisor", UNPAID);
+            employee_log(word, "Promoted to supervisor");
+            PLAYER_SHOP->auto_mail(word, _proprietor, "Promotion!", "",
+              "Congratulations!  You've been promoted to supervisor "
+              "of "+ _shop_name+ ".  You will now be able to use your "
+              "newly acquired supervisor commands.\n");
+            promos += ({word});
+            prom = TRUE;
+         }
+      }
+   }
+   if (prom)
+   {
+      promopost = "The following employees have been promoted:\n\n";
+      foreach (string word in promos)
+         promopost += sprintf("     %s has been promoted to %s\n",
+           cap_name(word), (_employees[word][EMP_POINTS] & MANAGER)?
+           "manager":"supervisor");
+      promopost += "\nCongratulations!\n";
+      add_board_message("Promotions", promopost);
+   }
+   foreach (string word in m_indices(_baddies))
+      if (time - _baddies[word][BAD_TIME] > (60*60*24*BAN_LENGTH))
+         remove_baddie( word );
+   foreach (string word in m_indices(_declined))
+      if (time - _declined[word] > (60*60*24*DECLINE_LENGTH))
+         remove_declined(word);
+   remove_call_out(_call_hire_list);
+   _call_hire_list = call_out((: check_hire_list() :), 5);
+   save_emps();
+   managers = sizeof(get_managers()) + sizeof(get_retired());
+   load_new_policies();
+   if (sizeof(_new_policies))
+   {
+      foreach (string word in m_indices(_new_policies))
+      {
+         if (sizeof(_new_policies[word][POLICY_FOR]) > managers / 2)
+         {
+            add_policy(word);
+         }
+         else if (time - _new_policies[word][POLICY_TIME] > VOTE_TIMEOUT)
+         {
+            if (sizeof(_new_policies[word][POLICY_FOR]) >=
+               sizeof(_new_policies[word][POLICY_AGAINST]))
             {
-#ifdef DEBUG
-                tell_creator(CREATOR, "Outside working hours & not "
-                  "working.  Sending to /room/rubbish.\n");
-#endif
-                move("/room/rubbish");
-                return TRUE;
+               add_policy(word);
             }
-#ifdef DEBUG
-            tell_creator(CREATOR, "Outside working hours & working.  "
-              "Sending home now.\n");
-#endif
-            call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
-private void put_in_store()
-{
-    if (pointerp(_info)) do_command("add all");
-    do_command("drop all");
-    foreach (string value in keys(_values_sing))
-    do_command("get every "+ value);
-    call_out("shuffle_to", NPC_DELAY, _shop_front, (: give_stuff() :));
-}
-private int query_busy()
-{
-    if (!objectp(_busy) || !interactive(_busy) || _busy->query_invis())
-        return 0;
-    if (environment(_busy) != find_object(_shop_front)) return 0;
-    return (_busy != 0);
-}
-string query_office() { return copy(_office); }
-private void say_to_room(object me, string t, string message)
-{
-    tell_object(me, "You "+ t+ ": "+ message);
-    foreach(object player in all_inventory(environment(this_object())))
-    if (interactive(player) && player != me)
-        tell_object(player, player->colour_event("say", "%^CYAN%^")+
-          me->query_short()+ " "+ t + "s: "+ message);
-}
-private void sell_something(string items)
-{
-    int each, number, in_stock;
-    mixed *money_array;
-    _info = 0;
-    foreach (string item in _office->query_list_array())
-    if (sscanf(items, "%*s"+ item +"%*s") == 2) _info = item;
-    else if (sscanf(pluralize(items), "%*s"+ item +"%*s") == 2)
-        _info = item;
-    if (!_info)
-    {
-        do_command("'I'm afraid we don't deal in those"+ DEARIE+ ".");
-        reset_busy();
-        return;
-    }
-    if (sscanf(items, "%*s%d "+ _info +"%*s", number) != 3) number = 1;
-#ifdef DEBUG
-    tell_creator(CREATOR, "Customer asked for %d %s.\n", number, _info);
-#endif
-    if (number > (in_stock = _storeroom->query_num_items(_info)))
-    {
-        if (!in_stock)
-        {
-            do_command("'I'm afraid we don't have any "+ _info+ " in stock"+
-              DEARIE+ ".");
-            reset_busy();
-            return;
-        }
-        do_command("'I'm afraid we don't have that many "+ _info +
-          " in stock, but I can sell you "+ num_str(in_stock)+ ".");
-        reset_busy();
-        return;
-    }
-    if (number < 1)
-    {
-        do_command("'My, my.  You are amusing aren't you" + DEARIE+ "?");
-        do_command("peer "+ _busy->query_name());
-        reset_busy();
-        return;
-    }
-    each = _office->query_sell(_info);
-    do_command( "'"+ capitalize(_info) +" are worth "+
-      num_str(each) +" "+ _smallest_plural_in + " each, and you want "+
-      num_str(number) + ".");
-    each *= number;
-    if (_busy->query_value_in(_place) < (each * _smallest_value_in))
-    {
-        do_command("'I'm afraid you don't have enough money" + DEARIE+ ".");
-        reset_busy();
-        return;
-    }
-    money_array = MONEY_HAND->create_money_array(each * _smallest_value_in,
-      _place);
-    _busy->pay_money(money_array, _place);
-    adjust_money(money_array);
-#ifdef DEBUG
-    tell_creator(CREATOR, "Monies adjusted by %O.\n", money_array);
-#endif
-    tell_room( environment( this_object() ), query_short()+
-      " takes the money.\n" );
-    do_command("'I'll be right back"+ DEARIE+ ".");
-    _info = ({ _info, sprintf("%d", number), sprintf("%d", each) });
-#ifdef DEBUG
-    tell_creator(CREATOR,  "Selling: %O\n", _info);
-#endif
-    call_out("shuffle_to", NPC_DELAY, _counter, (: deposit_money() :));
-}
-protected object * item_test(mixed * items) { return ({}); }
-protected void set_dearie(string *dearie) { _dearie = dearie; }
-void set_failed(int failed) { _failed = failed; }
-protected void set_office(string path)
-{
-    mapping values;
-    string new_key;
-    _office = path;
-    _place = _office->query_place();
-    _smallest_in = MONEY_HAND->smallest_in( _place );
-    _smallest_value_in = MONEY_HAND->smallest_value_in(_place);
-    _smallest_plural_in = MONEY_HAND->query_plural_for(_smallest_in);
-    values = MONEY_HAND->query_mapped_values_in(_place);
-    foreach(string key in keys(values))
-    {
-        new_key = MONEY_HAND->query_aliases_for(key)[0];
-        _values_sing += ([new_key:values[key]]);
-    new_key = MONEY_HAND->query_details_for(key)[5];
-    _values_plural += ([new_key:values[key]]);
-}
-#ifdef DEBUG
-tell_creator(CREATOR, "Singular values: %O.\n", _values_sing);
-tell_creator(CREATOR, "Plural values: %O.\n", _values_plural);
-#endif
-_storeroom = _office->query_storeroom();
-_counter = _office->query_counter();
-_shop_front = _office->query_shop_front();
-add_respond_to_with(({ "@say", "hello" }), "'Hello, $hcname$.  What can I do for you?");
-add_respond_to_with(({ "@smile", query_name() }), "smile at $hname$");
-}
-protected void set_work_hours(int *hours) { _work_hrs = hours; }
-void shuffle_to(string location, function next_action)
-{
-    string direc = environment()->directions_to(location);
-    if (!direc)
-    {
-        if (environment() == find_object("/room/rubbish")) return;
-        if (environment() == _shop_front->query_outside())
-        {
-            move(_shop_front, "$N enter$s the shop.",
-              "$N enter$s _shop_front->query_short().");
-        }
-        else
-        {
-            do_command("'I seem to be lost...");
-            do_command("sob");
-            move(_office, "$N runs in, sobbing.", "$N leave$s, sobbing.");
-            end_shift();
-            return;
-        }
-        call_out("shuffle_to", NPC_DELAY, location, next_action);
-        return;
-    }
-    if (direc == "here")
-    {
-        do_command("smile brightly");
-        do_command("'Here we are.");
-        if (next_action) call_out(next_action, NPC_DELAY);
-        else reset_busy();
-        return;
-    }
-    do_command(direc);
-    call_out("shuffle_to", NPC_DELAY, location, next_action);
-}
-private int sort_keys(string s1, string s2, int sing)
-{
-    if (sing) return (_values_sing[s1] < _values_sing[s2])?1:-1;
-    else return (_values_plural[s1] < _values_plural[s2])?1:-1;
-}
-void start_shift()
-{
-#ifdef DEBUG
-    tell_creator(CREATOR,  "In start_shift()\n" );
-#endif
-    if (outside_hours(FALSE)) return;
-    set_busy(this_object());
-    move(_office, "$N arrive$s for " + query_possessive()+ " shift.");
-    if (_office->query_employee(query_name()) & CLOCKED_IN)
-        do_command("clock out");
-    do_command("claim badge");
-    do_command("wear badge");
-    do_command("clock in");
-    do_command(_office->query_channel()+ "@ is clocking in.");
-    call_out("shuffle_to", NPC_DELAY, _shop_front, 0);
-}
-private void taken_over()
-{
-    do_command("'Okay then" + DEARIE+ ".  See you later.");
-    set_busy(this_object());
-    call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
-}
-private void what_items()
-{
-    do_command("'Well" + DEARIE+ ", we trade in "+
-      _office->query_list_string()+ ".");
-    reset_busy();
+            else remove_policy(word);
+         }
+      }
+   }
+   clear_new_policies();
+   load_history();
+   foreach (string word in m_indices(_history))
+   {
+      if (!test_player(word) || test_cre(word) ||
+        !_times[word] || _times[word] < (time - HIST_TIMEOUT))
+      {
+         map_delete(_times, word);
+         map_delete(_history, word);
+      }
+   }
+   save_hist();
+   save_times();
 }

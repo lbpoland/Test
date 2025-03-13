@@ -1,12 +1,14 @@
-# Total Tokens: 41600
+# Total Tokens: 35083
 # Total Files Merged: 1
-# Total Characters: 138668
+# Total Characters: 116947
 
-t/player_craft_shop.c
+t/player_craft_shop_base.c
 ==================================================
 
-inherit "/std/basic/expressions";
 inherit "/std/shops/inherit/craft_shop_category";
+inherit "/std/shops/inherit/expression_util";
+inherit "/std/shops/inherit/person_expressions";
+inherit "/std/shops/inherit/object_expressions";
 #include <player.h>
 #include <money.h>
 #include <move_failures.h>
@@ -17,7 +19,7 @@ inherit "/std/shops/inherit/craft_shop_category";
 #include <expressions.h>
 #include <mail.h>
 #include <nroff.h>
-#define CHARGE_MULT 10
+#include <player_handler.h>
 #define PLAYER_CRAFT_SHOP_CHECK_PROP "player craft shop check"
 #define PLAYER_CRAFT_SHOP_SELL      1
 #define PLAYER_CRAFT_SHOP_SELL_AUTO 2
@@ -54,6 +56,7 @@ class approval_obs {
    int* saved;
    int enter_time;
    int* checkout;
+   string* shorts;
 }
 #if USE_TRANSACTIONS
 class shop_transaction {
@@ -69,6 +72,28 @@ class shop_transaction {
 class shop_stats {
    int num_sold;
    int value_sold;
+   string seller;
+   string name;
+}
+class helper_stats {
+   int num_approved;
+   int total_cost;
+   int num_rejected;
+   mapping items_approved;
+}
+class item_stats {
+   int num_sold;
+   int total_cost;
+   int total_made;
+   int num_bought;
+}
+class weekly_stats {
+   int num_sold;
+   int total_cost;
+   int total_made;
+   int num_bought;
+   mapping items;
+   mapping helper;
 }
 class seller_information {
    int max_sellable;
@@ -80,68 +105,37 @@ private class approval_obs* _approved;
 private class approval _automatic_approval;
 private string* _list_names;
 private int _automatic_percentage;
-private int _royalty_percentage;
 private int _current_save_num;
 private int _total_outgoing;
 private int _total_ingoing;
-private string _shop_name;
+private int _time_of_mail;
 private class parse_node *_tax_expression;
 #if USE_TRANSACTIONS
 private class shop_transaction* _transactions;
 #endif
-private mapping _sell_stats;
+private mapping _sold_stats;
 private int _stats_start;
 private mapping _sellers;
-private string *_black_list;
-private class parse_node* _buy_expression;
-private class parse_node* _use_expression;
-private string _auto_load_sign_str;
-private int _broken_sign;
 private mapping _num_checked_so_far;
+private string* _helpers;
+private class weekly_stats _weekly_stats;
 private nosave string _parcel_post;
 private nosave int _something_checkedout;
 private nosave int _maximum_inventory;
-private nosave object _sign_ob;
 private nosave int _round_value;
 private nosave int _max_list_names;
 private nosave int _max_items_in_queue;
-private nosave object _royalty_ob;
 protected void confirm_approval(string answer, class approval_obs approve, int final_cost);
-private mixed* parse_or(string str);
-private int variable_player_level(string seller, int cost, object* ob);
-private string variable_player_guild(string seller, int cost, object* ob);
-private string variable_player_deity(string seller, int cost, object* ob);
-private string variable_player_family(string seller, int cost, object* ob);
-private string variable_player_order(string seller, int cost, object* ob);
 private object* variable_objects(string seller, int cost, object* ob);
-private string function_object_type(object*, string seller, int cost, object* ob);
-private int function_object_value(object*, string seller, int cost, object* ob);
-private int function_object_base_value(object*, string seller, int cost, object* ob);
-private int function_object_condition(object*, string seller, int cost, object* ob);
-private int function_object_enchant(object*, string seller, int cost, object* ob);
-private object* function_object_stolen(object*, string seller, int cost, object* ob);
-private object* function_object_warded(object*, string seller, int cost, object* ob);
-private int function_object_charges(object*, string seller, int cost, object *ob);
 private int variable_sale_cost(string seller, int cost, object* ob, string name, string category);
 private string variable_sale_name(string seller, int cost, object* ob, string name, string category);
 private string variable_sale_category(string seller, int cost, object* ob, string name, string category);
-private int function_club_member(string club, string seller, int cost, object* ob);
-private object* function_object_contains_spell(object*, string spell, string seller, int cost, object* ob);
-private object* function_object_contains_imbue(object*, string spell, string seller, int cost, object* ob);
-private int function_object_percentage_liquid(object*, string liquid, string seller, int cost, object* ob);
-private object* function_object_matching(object*, string match, string seller, int cost, object* ob);
-private object* function_object_short(object* obs, string match, string seller, int cost, object* fluff);
 private int function_inventory_number(string short, string seller, int cost, object* ob);
-private object* function_contents(object ob, string seller, int cost, object* obs);
 string query_owner();
 int is_allowed(string person);
-void do_save();
 void event_save(object thing);
-string *query_allowed();
-void set_short(string short);
-void add_property(string name, mixed value);
+int is_open_for(string type, string name);
 void create() {
-   class parse_node* expr;
    _round_value = 1;
    if (!_waiting_for_approval) {
       _waiting_for_approval = ({ });
@@ -165,8 +159,11 @@ void create() {
       _transactions = ({ });
    }
 #endif
-   if (!_sell_stats) {
-      _sell_stats = ([ ]);
+   if (!_sold_stats) {
+      _sold_stats = ([ ]);
+   }
+   if (!_helpers) {
+      _helpers = ({ });
    }
    if (!_stats_start) {
       _stats_start = time();
@@ -174,119 +171,42 @@ void create() {
    if (!_sellers) {
       _sellers = ([ ]);
    }
-   if (!_black_list) {
-      _black_list = ({ });
-   }
    if (!_num_checked_so_far) {
       _num_checked_so_far = ([ ]);
    }
    if (!_tax_expression)  {
       _tax_expression = ({ });
    }
+   if (!_weekly_stats) {
+      _weekly_stats = new(class weekly_stats);
+      _weekly_stats->items = ([ ]);
+      _weekly_stats->helper = ([ ]);
+   }
    set_cut(100);
    _max_items_in_queue = 100;
    craft_shop_category::create();
-   expressions::create();
-   if (_shop_name) {
-      set_short(_shop_name);
-      add_property("determinate", "");
-   }
+   expression_util::create();
    set_always_ask_price(1);
-   if (!_buy_expression) {
-      expr = parse_boolean_string("false");
-      _buy_expression = expr;
-   }
-   if (!_use_expression) {
-      expr = parse_boolean_string("false");
-      _use_expression = expr;
-   }
-   add_allowed_variable("level", EXPRESSION_TYPE_INTEGER,
-                        (: variable_player_level :) );
-   add_allowed_variable("guild", EXPRESSION_TYPE_STRING,
-                        (: variable_player_guild :) );
-   add_allowed_variable("deity", EXPRESSION_TYPE_STRING,
-                        (: variable_player_deity :) );
-   add_allowed_variable("family", EXPRESSION_TYPE_STRING,
-                        (: variable_player_family :) );
-   add_allowed_variable("order", EXPRESSION_TYPE_STRING,
-                        (: variable_player_order :) );
    add_allowed_variable("objects", EXPRESSION_TYPE_OBJECT +
                                    EXPRESSION_TYPE_ARRAY_OFFSET,
                         (: variable_objects :) );
-   add_allowed_function("objectenchant", EXPRESSION_TYPE_INTEGER,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_enchant :) );
-   add_allowed_function("objectvalue", EXPRESSION_TYPE_MONEY,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_value :) );
-   add_allowed_function("objectbasevalue", EXPRESSION_TYPE_MONEY,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_base_value :) );
-   add_allowed_function("objectcondition", EXPRESSION_TYPE_INTEGER,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_condition :) );
-   add_allowed_function("objecttype", EXPRESSION_TYPE_STRING,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_type :) );
-   add_allowed_function("objectwarded", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_warded :) );
-   add_allowed_function("objectstolen", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_stolen :) );
    add_allowed_variable("salecost", EXPRESSION_TYPE_MONEY,
                         (: variable_sale_cost :) );
    add_allowed_variable("salename", EXPRESSION_TYPE_STRING,
                         (: variable_sale_name :) );
    add_allowed_variable("salencategory", EXPRESSION_TYPE_STRING,
                         (: variable_sale_category :) );
-   add_allowed_function("charges", EXPRESSION_TYPE_INTEGER,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET }),
-                        (: function_object_charges :) );
-   add_allowed_function("clubmember", EXPRESSION_TYPE_BOOLEAN,
-                        ({ EXPRESSION_TYPE_STRING }),
-                        (: function_club_member :) );
-   add_allowed_function("containsspell", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET,
-                           EXPRESSION_TYPE_STRING }),
-                        (: function_object_contains_spell :) );
-   add_allowed_function("containsimbue", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET,
-                           EXPRESSION_TYPE_STRING }),
-                        (: function_object_contains_imbue :) );
-   add_allowed_function("percentageliquid", EXPRESSION_TYPE_INTEGER,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET,
-                           EXPRESSION_TYPE_STRING }),
-                        (: function_object_percentage_liquid :) );
-   add_allowed_function("objectmatch", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET,
-                           EXPRESSION_TYPE_STRING }),
-                        (: function_object_matching :) );
-   add_allowed_function("objectshort", EXPRESSION_TYPE_OBJECT + EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT +
-                           EXPRESSION_TYPE_ARRAY_OFFSET,
-                           EXPRESSION_TYPE_STRING,
-                           EXPRESSION_TYPE_BOOLEAN }),
-                        (: function_object_short :) );
-   add_allowed_function("inventorynumber", EXPRESSION_TYPE_INTEGER,
-                        ({ EXPRESSION_TYPE_STRING, }),
-                        (: function_inventory_number :) );
-   add_allowed_function("contents", EXPRESSION_TYPE_OBJECT +
-                                    EXPRESSION_TYPE_ARRAY_OFFSET,
-                        ({ EXPRESSION_TYPE_OBJECT }),
-                        (: function_contents :) );
+   set_expression_type("shop");
+   object_expressions::create();
+   person_expressions::create();
+   set_no_royalty_commands(1);
+}
+int is_helper(string person) {
+   if (!_helpers) {
+      _helpers = ({ });
+   }
+   return member_array(person, _helpers) != -1 ||
+          is_allowed(person);
 }
 private string strip_quotes(string str)  {
    if (str)  {
@@ -313,13 +233,17 @@ void set_parcel_post(string parcel) {
 string query_parcel_post() {
    return _parcel_post;
 }
-void set_shop_name(string name) {
-   _shop_name = name;
-   add_property("determinate", "");
-   set_short(_shop_name);
+int query_royalty(string person) {
+   return query_controller()->query_royalty(person);
 }
-string query_shop_name() {
-   return _shop_name;
+int query_owners_money() {
+   return query_royalty(query_owner());
+}
+void adjust_royalty(string person, int amount) {
+   query_controller()->adjust_royalty(person, amount);
+}
+int adjust_owners_money(int amount) {
+   return adjust_royalty(query_owner(), amount);
 }
 void set_round_price(int round) {
    _round_value = round;
@@ -346,12 +270,6 @@ int query_number_of_items_listed(string name) {
    }
    return num;
 }
-int query_royalty(string name) {
-   return query_controller()->query_royalty(name);
-}
-void adjust_royalty(string name, int amount) {
-   query_controller()->adjust_royalty(name, amount);
-}
 mixed is_item_approved(string seller, int value, string name, object* sellables,
                      string category, int ref final_cost) {
    string short;
@@ -363,7 +281,8 @@ mixed is_item_approved(string seller, int value, string name, object* sellables,
    mixed item;
    final_cost = ((value * (100 + _automatic_percentage)) / 100);
    value = value - (cost % _round_value);
-   if (is_allowed(seller)) {
+   if (is_allowed(seller) ||
+       is_helper(seller)) {
       final_cost = value;
       return 1;
    }
@@ -456,11 +375,11 @@ mixed is_item_approved(string seller, int value, string name, object* sellables,
             if (cost >= value) {
                if (bing->list_name) {
                   return bing->list_name;
-               }
-               else if (classp(_automatic_approval->items[short]))  {
+               } else if (classp(_automatic_approval->items[short]))  {
                   return ((class approval_item)_automatic_approval->items[short])->list_name;
+               } else {
+                  return 1;
                }
-               else return 1;
             }
          } else {
             return -1;
@@ -489,12 +408,8 @@ mixed is_item_approved(string seller, int value, string name, object* sellables,
    return 0;
 }
 int is_allowed_to_use_shop(string person) {
-   class parse_node frog;
-   if (is_allowed(person) || !sizeof(_use_expression)) {
-      return 1;
-   }
-   frog = evaluate_expression(_use_expression, person, 0, ({ }), 0, 0);
-   return frog->value;
+   return (is_allowed(person) || is_helper(person) ||
+           is_open_for("use", person));
 }
 int check_open(object player, string type) {
    if (!::check_open(player)) {
@@ -505,10 +420,6 @@ int check_open(object player, string type) {
          add_failed_mess("Unable to sell things, the shop is full.\n");
          return 0;
       }
-   }
-   if (member_array(player->query_name(), _black_list) != -1) {
-      add_failed_mess("You are not allowed to use this shop.\n");
-      return 0;
    }
    if (!is_allowed_to_use_shop(player->query_name())) {
       add_failed_mess("The shop is currently closed.\n");
@@ -539,15 +450,15 @@ int is_allowed_to_sell(object *obs, string name, string *sellable_names) {
          return 0;
       }
    }
-   if (member_array(lower_case(name), _black_list) != -1) {
-      add_failed_mess("You are not allowed to sell things here.\n");
+   if (sizeof(filter(obs, (: $1->query_property("money") :))) > 0) {
+      add_failed_mess("You cannot sell money.\n");
       return 0;
    }
    num = sizeof(query_controller()->query_sell_list_obs());
    if (num + sizeof(obs) > query_maximum_inventory_size()) {
       add_failed_mess("The shop is full, it can only hold " +
-                      query_maximum_inventory_size() + " and it currently "
-                      "holds " + num + ".\n");
+                      query_maximum_inventory_size() + " items and it currently "
+                      "holds " + num + " items.\n");
       return 0;
    }
    return 1;
@@ -571,6 +482,9 @@ int* query_maximum_sale_value_both(string person, object item) {
    }
    if (!max_deny) {
       max_deny = _automatic_approval->high_cost_deny;
+   }
+   if (!item) {
+      return ({ 0, 0 });
    }
    short = item->query_short();
    if (_automatic_approval->items[short]) {
@@ -722,9 +636,11 @@ int destroy_checkout_object(object ob) {
    if (!ob) {
       return 0;
    }
+   ob->add_property("destroy checkout object", 1, 2);
    if (ob->move("/room/rubbish") != MOVE_OK) {
       return 0;
    }
+   debug_printf("Destroying the checkout object %O\n", ob);
    ids = ob->effects_matching("/std/effects/object/no_save"->query_classification());
    foreach (id in ids) {
       ob->delete_effect(id);
@@ -760,6 +676,7 @@ object* add_to_approval_list(string seller, object* sellables, int value,
             if (ob->move("/room/rubbish") == MOVE_OK) {
                stuff->saved += ({ create_auto_load_file(ob, 0) });
                stuff->checkout += ({ 0 });
+               stuff->shorts += ({ ob->query_short() });
                obs += ({ ob });
             }
          }
@@ -775,10 +692,12 @@ object* add_to_approval_list(string seller, object* sellables, int value,
    stuff->name = name;
    stuff->category = category;
    stuff->saved = ({ });
+   stuff->shorts = ({ });
    stuff->enter_time = time();
    foreach (ob in sellables) {
       if (ob->move("/room/rubbish") == MOVE_OK) {
          stuff->saved += ({ create_auto_load_file(ob, 0) });
+         stuff->shorts += ({ ob->query_short() });
          obs += ({ ob });
       }
    }
@@ -962,9 +881,11 @@ class approval_obs query_approval_class(string name) {
          return 0;
       }
       if (pos >= sizeof(query_approval_list(0))) {
-         add_failed_mess("The " + name + " is out of range, must be between AA-" +
+         add_failed_mess("The " + name + " is out of range, must be "
+                         "between -AA and -" +
                          query_letter_value(sizeof(query_approval_list(0)) - 1) +
                          ".\n");
+         return 0;
       }
       return query_approval_list(0)[pos];
    }
@@ -988,13 +909,10 @@ int ownership_change(string old_owner, string new_owner) {
 #if USE_TRANSACTIONS
    _transactions = ({ });
 #endif
-   _sell_stats = ([ ]);
+   _sold_stats = ([ ]);
    _stats_start = time();
    _sellers = ([ ]);
-   _black_list = ({ });
    expr = parse_boolean_string("false");
-   _buy_expression = expr;
-   _use_expression = expr;
 }
 void inform_of_buy(int value, object *obs, object player, string *sellers,
                    string *names, string *cats, int *values) {
@@ -1011,38 +929,53 @@ void inform_of_buy(int value, object *obs, object player, string *sellers,
                       values[i],
                       name_cat,
                       sellers[i]);
-      stat = _sell_stats[sellers[i] + " - " + name_cat];
+      if (!_sold_stats) {
+         _sold_stats = ([ ]);
+      }
+      stat = _sold_stats[sellers[i] + " - " + name_cat];
       if (!stat) {
          stat = new(class shop_stats);
+         stat->name = name_cat;
+         stat->seller = sellers[i];
       }
       stat->num_sold++;
       stat->value_sold += values[i];
-      _sell_stats[sellers[i] + " - " + name_cat] = stat;
+      _sold_stats[sellers[i] + " - " + name_cat] = stat;
    }
+   _weekly_stats->total_made += value;
 }
 object* check_for_checkout(object ob) {
    object* obs = ({ });
-   if (_something_checkedout) {
+   if (_something_checkedout && ob) {
       if (living(ob)) {
          obs = filter(deep_inventory(ob), (: is_checkout_object($1) :));
+         if (sizeof(obs)) {
+            foreach (ob in obs) {
+               if (!destroy_checkout_object(ob)) {
+                  obs -= ({ ob });
+               }
+            }
+         }
       } else {
          if (is_checkout_object(ob)) {
-            obs = ({ ob });
-         }
-      }
-      if (sizeof(obs)) {
-         foreach (ob in obs) {
-            if (!destroy_checkout_object(ob)) {
-               obs -= ({ ob });
-            }
+            call_out("verify_destroy_checkout_object", 2, ob);
          }
       }
       return obs;
    }
    return ({ });
 }
+void verify_destroy_checkout_object(object ob) {
+   if (destroy_checkout_object(ob)) {
+      tell_room(environment(), ob->the_short() +
+                " magically checks itself back in.\n");
+   }
+}
 void event_exit(object ob, string message, object to) {
    object *obs;
+   if (ob->query_property("destroy checkout object")) {
+      return ;
+   }
    obs = check_for_checkout(ob);
    if (sizeof(obs)) {
       tell_object(ob, "You suddenly find the uncheckout items " +
@@ -1053,9 +986,6 @@ void event_exit(object ob, string message, object to) {
 }
 void event_dest_me(object ob) {
    check_for_checkout(ob);
-   if (_sign_ob) {
-      _sign_ob->dest_me();
-   }
 }
 void return_all_checkedout_objects() {
    object ob;
@@ -1075,50 +1005,16 @@ void dest_me() {
    ::dest_me();
 }
 int is_able_to_change(object ob) {
-   return is_allowed(this_player()->query_name());
+   return is_allowed(this_player()->query_name()) ||
+          is_helper(this_player()->query_name());
 }
-int query_owners_money() {
-   return query_royalty(query_owner());
-}
-void adjust_owners_money(int amt) {
-   adjust_royalty(query_owner(), amt);
-}
-object query_sign_object() {
-   object* obs;
-   if (!_sign_ob && _auto_load_sign_str && !_broken_sign) {
-      if (catch(obs = PLAYER_OB->load_auto_load_to_array(_auto_load_sign_str))) {
-         _broken_sign = 1;
-      } else {
-         if (sizeof(obs)) {
-            _sign_ob = obs[0];
-            _sign_ob->reset_get();
-         } else {
-            _broken_sign = 1;
-         }
-      }
-   }
-   return _sign_ob;
-}
-void set_sign_object(object ob) {
-   if (ob) {
-      _auto_load_sign_str = PLAYER_OB->create_auto_load(({ ob }));
-      ob->reset_get();
-   } else {
-      _auto_load_sign_str = 0;
-   }
-   _sign_ob = ob;
-   event_save(this_object());
-}
-int do_buy(object *obs) {
-   int status;
-   if (!evaluate_expression(_buy_expression, this_player()->query_name(), 0, ({ }), 0, 0)->value &&
-       !is_allowed_to_use_shop(this_player()->query_name())) {
+int do_buy(object *obs, int force) {
+   if (!is_open_for("buy", this_player()->query_name()) ||
+       !is_open_for("use", this_player()->query_name())) {
       add_failed_mess("You cannot buy anything at this shop.\n");
       return 0;
    }
-   status = ::do_buy(obs);
-   if (!status)  return 0;
-   return 1;
+   return ::do_buy(obs, force);
 }
 int do_check_sell(object *obs) {
    int *stuff;
@@ -1156,8 +1052,6 @@ int do_list_approval(int approved) {
    int shown;
    int allowed;
    int checkout;
-   int i;
-   int fluff;
    string place;
    string ret;
    object* obs;
@@ -1166,11 +1060,14 @@ int do_list_approval(int approved) {
    string *possible_names;
    string start;
    mapping result_type;
+   int i;
+   int fluff;
    place = query_property("place");
    if (!place) {
       place = "default";
    }
-   allowed = is_allowed(this_player()->query_name());
+   allowed = is_allowed(this_player()->query_name()) ||
+             is_helper(this_player()->query_name());
    if (!allowed) {
       approved = 1;
    }
@@ -1181,8 +1078,6 @@ int do_list_approval(int approved) {
    }
    result_type = ([ ]);
    ret = "";
-   current = query_controller()->create_all_real_objects(this_player(),
-                 query_controller()->query_sell_list_obs());
    while (allowed || approved) {
       if (approved == 2) {
          approved = 0;
@@ -1201,9 +1096,11 @@ int do_list_approval(int approved) {
             possible_names = obs->query_short();
             obs->move("/room/rubbish");
             if (!result_type[lower_case(approve->name)]) {
-               result = filter(current,
-                        (: member_array($1->query_short(),
-                                        $(possible_names)) > -1 :));
+               if (!current) {
+                  current = map(query_controller()->query_sell_list_obs(),
+                                (: query_controller()->query_short_of_shop_object($1) :));
+               }
+               result = current & possible_names;
                result_type[lower_case(approve->name)] = sizeof(result);
             }
             ret += start + query_letter_value(pos) + ") " +
@@ -1296,7 +1193,7 @@ int do_return(string name) {
    foreach (ob in obs) {
       if (ob->move(this_player()) == MOVE_OK) {
          ok += ({ ob });
-      } else if (ob->move(this_object())) {
+      } else if (ob->move(environment(this_player()))) {
          here += ({ ob });
       } else {
          fail += ({ ob });
@@ -1304,7 +1201,7 @@ int do_return(string name) {
    }
    remove_from_approval_list(approve);
    if (sizeof(ok)) {
-      add_succeeded_mess("$N $V $I.\n", map(ok, (: $1->poss_short() :)));
+      add_succeeded_mess("$N return$s $I.\n", map(ok, (: $1->poss_short() :)));
    }
    if (sizeof(here)) {
       add_succeeded_mess("$N $V their $I and they get put on the floor.\n",
@@ -1323,7 +1220,8 @@ int do_approve_item(string name, string money_str) {
    string place;
    int final_cost;
    int num;
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You are not allowed to approve items.\n");
       return 0;
    }
@@ -1372,6 +1270,91 @@ int do_approve_item(string name, string money_str) {
    confirm_approval("y", approve, final_cost);
    return 1;
 }
+void reset_weekly_status() {
+   _weekly_stats = new(class weekly_stats);
+   _weekly_stats->num_sold = 0;
+   _weekly_stats->total_cost = 0;
+   _weekly_stats->total_made = 0;
+   _weekly_stats->num_bought = 0;
+   _weekly_stats->helper = ([ ]);
+}
+string query_weekly_status_string() {
+   string ret;
+   string place;
+   string player;
+   class helper_stats helpers;
+   class item_stats items;
+   string* item_bits;
+   string item;
+   int num;
+   place = query_property("place");
+   ret = "$I$0=Total Outgoing  : " +
+          MONEY_HAND->money_value_string(_weekly_stats->total_cost, place) + "\n";
+   ret += "$I$0=Total Incoming : " +
+          MONEY_HAND->money_value_string(_weekly_stats->total_made, place) + "\n";
+   if (_weekly_stats->total_made > _weekly_stats->total_cost) {
+      ret += "$I$0=Profit of      : " +
+          MONEY_HAND->money_value_string(_weekly_stats->total_made - _weekly_stats->total_cost, place) + "\n";
+   } else {
+      ret += "$I$0=Loss of        : " +
+          MONEY_HAND->money_value_string(-(_weekly_stats->total_made - _weekly_stats->total_cost), place) + "\n";
+   }
+   ret += "$I$0=Items             : " +
+          _weekly_stats->num_sold + " sold and " +
+          _weekly_stats->num_bought + " bought.\n";
+   ret += "\n$I$0=Player summaries:\n";
+   foreach (player, helpers in _weekly_stats->helper) {
+      item_bits = ({ });
+      if (sizeof(helpers->items_approved)) {
+         foreach (item, num in helpers->items_approved) {
+            item_bits += ({ num + " " + item });
+         }
+      } else {
+         item_bits = ({ "nothing" });
+      }
+      ret += "$I$6=   " + player + ": " + helpers->num_approved +
+             " approved, " + helpers->num_rejected + " rejected, " +
+             MONEY_HAND->money_value_string(helpers->total_cost, place) +
+             " approved " + query_multiple_short(item_bits) + "\n";
+   }
+   return ret;
+}
+protected void inform_of_approved_item(string name,
+                            int cost,
+                            class approval_obs approve) {
+   string str;
+   if (!_weekly_stats) {
+      _weekly_stats = new(class weekly_stats);
+      _weekly_stats->items = ([ ]);
+      _weekly_stats->helper = ([ ]);
+   }
+   _weekly_stats->total_cost += cost;
+   str = approve->name;
+   name = this_player()->query_name();
+   if (!_weekly_stats->helper[name]) {
+      _weekly_stats->helper[name] = new(class helper_stats);
+      _weekly_stats->helper[name]->items_approved = ([ ]);
+   }
+   _weekly_stats->helper[name]->num_approved++;
+   _weekly_stats->helper[name]->total_cost += cost;
+   if (!mapp(_weekly_stats->helper[name]->items_approved)) {
+      _weekly_stats->helper[name]->items_approved = ([ ]);
+   }
+   _weekly_stats->helper[name]->items_approved[str]++;
+}
+protected void inform_of_rejected_item(string name,
+                            class approval_obs approve) {
+   if (!_weekly_stats) {
+      _weekly_stats = new(class weekly_stats);
+      _weekly_stats->items = ([ ]);
+      _weekly_stats->helper = ([ ]);
+   }
+   name = this_player()->query_name();
+   if (!_weekly_stats->helper[name]) {
+      _weekly_stats->helper[name] = new(class helper_stats);
+   }
+   _weekly_stats->helper[name]->num_rejected++;
+}
 protected void confirm_approval(string answer,
                                 class approval_obs approve,
                                 int final_cost) {
@@ -1411,6 +1394,7 @@ protected void confirm_approval(string answer,
       final_cost = ((approve->value * (100 + _automatic_percentage)) / 100);
    }
    final_cost -= final_cost % _round_value;
+   obs->remove_property("dropped");
    bought = query_controller()->buy_objects(obs, approve->name,
                                    final_cost,
                                    approve->seller, approve->category, 1);
@@ -1450,6 +1434,10 @@ protected void confirm_approval(string answer,
             approve->name + " in " + approve->category + " for " +
             MONEY_HAND->money_value_string(approve->value, place) + ".\n");
       add_succeeded_mess( ({ "", "$N approves something in the shop.\n" }) );
+      cost = approve->value * (sizeof(obs) + sizeof(checkout));
+      cost -= cost % _round_value;
+      inform_of_approved_item(this_player()->query_name(),
+                              cost, approve);
       add_transaction(this_player()->query_name(),
                       obs,
                       PLAYER_CRAFT_SHOP_APPROVE,
@@ -1457,8 +1445,8 @@ protected void confirm_approval(string answer,
                       approve->name + " in " + approve->category,
                       approve->seller);
    } else {
-      write("Unable to move the items into the shops inventory.  "
-            "Contact a creator or error report this please.\n");
+      write("Unable to move the items into the shops inventory, you "
+            "will need to reject this item.\n");
    }
    return ;
 }
@@ -1481,7 +1469,8 @@ int do_approve_reject(string name, string mess, int reject_pos) {
    if (lower_case(approve->seller) == this_player()->query_name()) {
       return do_return(name);
    }
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You're not allowed to reject items.\n");
       return 0;
    }
@@ -1513,8 +1502,8 @@ int do_approve_reject(string name, string mess, int reject_pos) {
          }
       }
    }
-   obs -= ({ 0 });
-   checkout -= ({ 0 });
+   obs = filter(obs, (: $1 && objectp($1) :));
+   checkout = filter(checkout, (: $1 && objectp($1) :));
    if (member_array(0, obs) != -1) {
       add_failed_mess("There seems to be a problem with this rejection set, "
                       "one of the items is 0.\n");
@@ -1529,7 +1518,7 @@ int do_approve_reject(string name, string mess, int reject_pos) {
       write("The items " + query_multiple_short(checkout) + " were "
             "checked out and lost.\n");
       adjust_royalty(lower_case(approve->seller),
-                                approve->value * sizeof(checkout));
+                     approve->value * sizeof(checkout));
       AUTO_MAILER->auto_mail(lower_case(approve->seller),
                             this_player()->query_name(),
                             "Rejected items", "",
@@ -1539,6 +1528,7 @@ int do_approve_reject(string name, string mess, int reject_pos) {
                                    ",so you have been paid but the items "
                                    "were not returned.\n"));
    }
+   inform_of_rejected_item(this_player()->query_name(), approve);
    if (!sizeof(obs)) {
       write("Nothing to give back or send off.\n");
    } else {
@@ -1550,7 +1540,7 @@ int do_approve_reject(string name, string mess, int reject_pos) {
             if (ob) {
                if (ob->move(play) == MOVE_OK) {
                   ok += ({ ob });
-               } else if (ob->move(this_object()) == MOVE_OK) {
+               } else if (ob->move(environment(play)) == MOVE_OK) {
                   here += ({ ob });
                }
             }
@@ -1567,14 +1557,20 @@ int do_approve_reject(string name, string mess, int reject_pos) {
          }
          write("You reject the item.\n");
       } else {
-         if (!_parcel_post) {
+         if (!query_parcel_post()) {
             add_failed_mess("Eeek!  No parcel post defined on this room.\n");
             return 0;
+         } else if(!load_object(query_parcel_post())) {
+           add_failed_mess("Eeek!  Parcel post cannot be loaded.\n");
+           return 0;
          }
          ob_mess = "The shop " + this_player()->convert_message(the_short()) +
                    " rejected " + query_multiple_short(obs, "the", 1) +
                    " because:\n";
-         ret = _parcel_post->deposit_parcel(obs, lower_case(approve->seller), 1);
+         if (!mess) {
+            mess = "They didn't want to add a reject message.";
+         }
+         ret = query_parcel_post()->deposit_parcel(obs, lower_case(approve->seller), 1);
          if (ret != 1) {
             if (ret == -5) {
                write("The player " + approve->seller + " has been denied use "
@@ -1661,6 +1657,7 @@ int do_approve_browse(string name) {
    object ob;
    string read;
    string ret;
+   string bits;
    class approval_obs approve;
    int pos;
    string place;
@@ -1671,7 +1668,8 @@ int do_approve_browse(string name) {
    if (lower_case(approve->seller) == this_player()->query_name()) {
       return do_return(name);
    }
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You are not allowed to reject items.\n");
       return 0;
    }
@@ -1698,6 +1696,10 @@ int do_approve_browse(string name) {
              ")\n" + ob->long();
       read = ob->query_readable_message();
       if (read) {
+         bits = ob->query_read_short(this_player());
+         if (!bits) {
+            bits = "$name$";
+         }
          ret += "You read " +
                  replace_string(ob->query_read_short(this_player()), "$name$",
                          ob->a_short()) + ":\n" +
@@ -1721,10 +1723,12 @@ int do_approve_checkout(string name) {
    if (!approve) {
       return 0;
    }
-   if (lower_case(approve->seller) == this_player()->query_name()) {
+   if (lower_case(approve->seller) == this_player()->query_name() &&
+       lower_case(approve->seller) != "pinkfish") {
       return do_return(name);
    }
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You are not allowed to reject items.\n");
       return 0;
    }
@@ -1796,7 +1800,8 @@ int do_approve_checkin(object* obs) {
 }
 int do_approve_name_change(string name, string new_name) {
    class approval_obs approve;
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You are not allowed to approve items.\n");
       return 0;
    }
@@ -2204,7 +2209,8 @@ int do_approve_auto_item_test(object* obs) {
    int allowed;
    class expression_type stuff;
    class parse_node frog;
-   allowed = is_allowed(this_player()->query_name());
+   allowed = is_allowed(this_player()->query_name()) ||
+             is_helper(this_player()->query_name());
    place = query_property("place");
    if (!place) {
       place = "default";
@@ -2265,8 +2271,9 @@ int do_approve_auto_item_test(object* obs) {
                         ".\n");
                }
                found |= 2;
+            } else {
+               found |= 4;
             }
-            else found |= 4;
          }
       }
       if (found & 4)  {
@@ -2617,221 +2624,14 @@ int do_approve_limit_person_remove(string name) {
                          "$N fiddle$s with something in the shop.\n" }) );
    return 1;
 }
-int do_approve_black_list_add(string name) {
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to add people to the black list.\n");
-      return 0;
-   }
-   name = lower_case(name);
-   if (!PLAYER_HANDLER->test_user(name)) {
-      add_failed_mess("Sorry, " + name + " does not play here.\n");
-      return 0;
-   }
-   if (is_allowed(name)) {
-      add_failed_mess("This person is in the list of people allowed to use "
-                      "the shop.  They cannot be put on a black list.\n");
-      return 0;
-   }
-   if (member_array(name, _black_list) != -1) {
-      add_failed_mess("The person " + name + " is already in the "
-                      "black list.\n");
-      return 0;
-   }
-   _black_list += ({ name });
-   event_save(this_object());
-   add_succeeded_mess(({ "You add " + name + " to the black list.\n",
-                         "$N fiddle$s with something in the shop.\n" }) );
-   return 1;
-}
-int do_approve_black_list_add_ignore() {
-   string *people;
-   string *bad;
-   string *ok;
-   string name;
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to add people to the black list.\n");
-      return 0;
-   }
-   people = this_player()->query_property("ignoring");
-   if (!people) {
-      add_failed_mess("You are not ignoring anyone.\n");
-      return 0;
-   }
-   bad = ({ });
-   ok = ({ });
-   foreach (name in people) {
-      name = lower_case(name);
-      if (!PLAYER_HANDLER->test_user(name)) {
-         bad += ({ name });
-      } else if (member_array(name, _black_list) != -1) {
-         bad += ({ name });
-      } else {
-         _black_list += ({ name });
-         ok += ({ name });
-      }
-   }
-   event_save(this_object());
-   if (!sizeof(ok)) {
-      add_failed_mess("Your ignore list is already added to the black list.\n");
-      return 0;
-   }
-   add_succeeded_mess(({ "You add " + query_multiple_short(ok) + " to the "
-                         "black list.\n",
-                         "$N fiddle$s with something in the shop.\n" }) );
-   return 1;
-}
-int do_approve_black_list_remove(string name) {
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to remove people from "
-                      "the black list.\n");
-      return 0;
-   }
-   name = lower_case(name);
-   if (member_array(name, _black_list) == -1) {
-      add_failed_mess("The person " + name + " is not in the black list.\n");
-      return 0;
-   }
-   _black_list -= ({ name });
-   event_save(this_object());
-   add_succeeded_mess(({ "You remove " + name + " from the black list.\n",
-                         "$N fiddle$s with something in the shop.\n" }) );
-   return 1;
-}
-int do_user_function_add(string def, string expr) {
-   string name;
-if (this_player()->query_name() != "presto")
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to add functions to this store.\n");
-      return 0;
-   }
-   name = parse_user_expression(def, expr);
-   if (name) {
-      if (strlen(query_last_expression_warning())) {
-         write("WARNING!!! Any changes of types could cause expressions "
-               "currently using the functions to fail.\n" +
-               query_last_expression_warning());
-      }
-      write("You successfully add:\n" + query_user_function_string(name));
-      add_succeeded_mess(({ "",
-                         "$N fiddle$s with something in the shop.\n" }) );
-      event_save(this_object());
-      return 1;
-   }
-   add_failed_mess(query_last_expression_error() + "\n");
-   return 0;
-}
-int do_user_function_remove(string name) {
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to remove functions from this store.\n");
-      return 0;
-   }
-   if (query_user_function_return_type(name) != EXPRESSION_TYPE_ERROR) {
-      if (remove_user_expression(name)) {
-         add_succeeded_mess(({ "You remove the function " + name + ".\n",
-                         "$N fiddle$s with something in the shop.\n" }) );
-         return 1;
-      }
-   }
-   add_failed_mess(query_last_expression_error() + "\n");
-   return 0;
-}
-int do_approve_status_internal_functions() {
-   string* names;
-   string name;
-   string ret;
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to see the status of this store.\n");
-      return 0;
-   }
-   names = query_function_names();
-   ret = "Functions:\n";
-   foreach (name in names) {
-      ret += query_type_name(query_function_type(name)) + " " + name +
-             "(" + implode(map(query_function_args_types(name),
-                               (: query_type_name($1) :)), ", ") +
-             ")\n";
-   }
-   ret += "\nVariables:\n";
-   names = query_variable_names();
-   foreach (name in names) {
-      ret += query_type_name(query_variable_type(name)) + " " + name +
-             "\n";
-   }
-   write("$P$Internal functions$P$" + ret);
-   add_succeeded_mess(({ "",
-                         "$N fiddle$s with something in the shop.\n" }) );
-   return 1;
-}
-int do_function_help(string name) {
-   string nroff_fn;
-   string str;
-   string fname;
-   fname = CRAFT_SHOP_EXPRESSION_HELP_DIR + name;
-   if (file_size(fname) <= 0) {
-      add_failed_mess("There is no help for the function '" + name + "'.\n");
-      return 0;
-   }
-   nroff_fn = NROFF_DIR + replace(fname, "/", ".");
-   str = NROFF_HAND->cat_file(nroff_fn, 1);
-   if (!str) {
-      NROFF_HAND->create_nroff(fname, nroff_fn);
-      str = NROFF_HAND->cat_file(nroff_fn, 0);
-   }
-   write("$P$function: " + name + "$P$" + str);
-   return 1;
-}
-int do_function_help_list() {
-   string *names;
-   names = get_dir(CRAFT_SHOP_EXPRESSION_HELP_DIR);
-   if (!sizeof(names)) {
-      add_failed_mess("There is no help on any functions.\n");
-      return 0;
-   }
-   names -= ({ ".", "..", "RCS" });
-   write(sprintf("%-#*s\n", this_player()->query_cols(), implode(names, "\n")));
-   return 1;
-}
-int do_approve_status_functions(int hints) {
-   string* names;
-   string name;
-   string ret;
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to see the status of this store.\n");
-      return 0;
-   }
-   names = query_user_function_names();
-   if (!sizeof(names)) {
-      add_failed_mess("Could not find any user defined expressions.\n");
-      return 0;
-   }
-   ret = "";
-   foreach (name in names) {
-      ret += query_user_function_string(name) + "\n";
-   }
-   if (hints) {
-      ret += "$I$0=       Hint: add function <function> as <expression>";
-      ret += "$I$0=       Hint: remove function <function>";
-   }
-   write("$P$User functions$P$" + ret);
-   add_succeeded_mess(({ "",
-                         "$N fiddle$s with something in the shop.\n" }) );
-   return 1;
-}
-int do_approve_status(int status) {
+string query_main_status(int hint) {
    string ret;
    string place;
-   mixed expr;
-   string str;
    string name;
    class seller_information stuff;
    string *bits;
-   int pos;
-   int hint;
-   int show_expr;
-   class expression_type bing;
-   class expression_type binger;
-   class approval_item approval;
-   if (!is_allowed(this_player()->query_name())) {
+   if (!is_allowed(this_player()->query_name()) &&
+       !is_helper(this_player()->query_name())) {
       add_failed_mess("You are not allowed to see the status of this store.\n");
       return 0;
    }
@@ -2839,257 +2639,240 @@ int do_approve_status(int status) {
    if (!place) {
       place = "default";
    }
-   hint = status & 1;
-   show_expr = status & 2;
-   ret = "";
-   if (!show_expr) {
-      ret += "$I$5=The owner of the shop is " + query_owner() + ".\n";
-      ret += "$I$5=The name of the shop is " + _shop_name + ".\n";
-      if (hint) {
-         ret += "$I$0=       Hint: name shop <name>\n";
-      }
-      if (query_sign_object()) {
-         ret += "$I$5=The shop currently has a sign set.\n";
-      } else {
-         ret += "$I$5=The shop does not currently have a sign set.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set sign <object>\n";
-         ret += "$I$0=       Hint: remove sign\n";
-      }
-      if (sizeof(query_allowed())) {
-         ret += "$I$5=People allowed to change the shop are " +
-                query_multiple_short(sort_array(query_allowed(), 0)) + ".\n";
-      } else if (hint) {
-         ret += "$I$5=Only the owner can change the shop.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: allow <person>\n";
-         ret += "$I$0=       Hint: deny <person>\n";
-         ret += "$I$0=       Hint: allow list\n";
-      }
-      if (sizeof(_black_list)) {
-         ret += "$I$5=People denied access to the shop are ";
-         ret += query_multiple_short(sort_array(_black_list, 0)) + "\n";
-      } else {
-         ret += "$I$0=Noone is denied access to the shop.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: add <person> to blacklist\n";
-         ret += "$I$0=       Hint: remove <person> from blacklist\n";
-         ret += "$I$0=       Hint: add ignore to blacklist\n";
-      }
-      ret += "$I$0=\n";
-      ret += "The current percentage to automatically add to the buy price is: " +
-             _automatic_percentage + "%\n";
-      if (hint) {
-         ret += "$I$0=       Hint: markup <percent>\n";
-      }
-      ret += "Limits on what can be sold.\n";
-      ret += "Maximum number of items allowed in the shop : ";
-      if (query_maximum_inventory_size()) {
-         ret += query_maximum_inventory_size() + " currently " +
-                sizeof(query_controller()->query_sell_list_obs()) + " (fixed).\n";
-      } else {
-         ret += "disabled (fixed).\n";
-      }
-      ret += "Maximum number of items allowed per player  : ";
-      if (_automatic_approval->num_allowed) {
-         ret += _automatic_approval->num_allowed + ".\n";
-      } else {
-         ret += "disabled.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set max number <number|disable>\n";
-      }
-      ret += "Automatically queue sales more than         : ";
-      if (_automatic_approval->high_cost) {
-         ret += MONEY_HAND->money_value_string(_automatic_approval->high_cost, place) +
-                ".\n";
-      } else {
-         ret += "disabled.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set high queue cost <cost|disable>\n";
-      }
-      ret += "Automatically deny sales more than          : ";
-      if (_automatic_approval->high_cost_deny) {
-         ret += MONEY_HAND->money_value_string(_automatic_approval->high_cost_deny, place) +
-                ".\n";
-      } else {
-         ret += "disabled.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set high deny cost <cost|disable>\n";
-      }
-      if (sizeof(_sellers)) {
-         ret += "Limits set per player.\n";
-         ret += sprintf("   %-15s %-15s %-20s %s\n", "Name", "Max Sellable",
-                        "Approve Limit", "Deny limit (per item)");
-         bits = sort_array(keys(_sellers), 0);
-         foreach (name in bits) {
-            stuff = _sellers[name];
-            ret += sprintf("   %-15s %-15s %-20s %s\n", name,
-                       (stuff->max_sellable?stuff->max_sellable+"":"disabled"),
-                       (stuff->value_limit?MONEY_HAND->money_value_string(stuff->value_limit, place):"disabled"),
-                       (stuff->deny_value_limit?MONEY_HAND->money_value_string(stuff->deny_value_limit, place):"disabled"));
-         }
-      } else {
-         ret += "No limits set per player.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set max number <max sellable|disable> for <player>\n";
-         ret += "$I$0=       Hint: set high queue cost <cost|disable> for <player>\n";
-         ret += "$I$0=       Hint: set high deny cost <cost|disable> for <player> to <cost|disable>\n";
-      }
-      ret += "\nAutomatically approve sales less than       : ";
-      if (_automatic_approval->low_cost) {
-         ret += MONEY_HAND->money_value_string(_automatic_approval->low_cost, place) +
-                ".\n";
-      } else {
-         ret += "disabled.\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: set low approve cost <cost|disable>\n";
-      }
+   ret = "$I$0=" + the_short() + "\n";
+   ret += "$I$6=   The current percentage to automatically add to the buy price is: " +
+          _automatic_percentage + "%\n";
+   if (hint) {
+      ret += "$I$0=       Hint: markup <percent>\n";
    }
-   if (show_expr) {
-      if (sizeof(_automatic_approval->items)) {
-         ret += "$I$0=%^BOLD%^Automatically accept sales of items%^RESET%^\n";
-         foreach (str, expr in _automatic_approval->items) {
-            if (classp(expr)) {
-               approval = (class approval_item)expr;
-               expr = ((class approval_item)expr)->value;
-            } else {
-               approval = new(class approval_item);
-            }
-            if (pointerp(expr) && intp(expr[0])) {
-               map_delete(_automatic_approval->items, str);
-            } else {
-               ret += sprintf("$I$10=   %-20s", "* " + str);
-               if (sizeof(approval) == 3) {
-                  approval = new(class approval_item,
-                         markup : approval->markup,
-                         value : approval->value,
-                         list_name : approval->list_name,
-                         final_cost : 0);
-               }
-               if (approval->list_name) {
-                  ret += " listed as '" + approval->list_name + "'";
-               }
-               if (approval->markup) {
-                  ret += " markup of " + approval->markup;
-               }
-               if (approval->final_cost) {
-                  ret += " final cost of " +
-                  MONEY_HAND->money_value_string(approval->final_cost, place);
-               }
-               ret += " max value:";
-               if (pointerp(expr)) {
-                  str = query_expression_string(expr, 0);
-                  if (strsrch(str, "\n") != -1) {
-                     ret += "\n" + str;
-                  } else {
-                     ret += str;
-                  }
-               } else {
-                  ret += MONEY_HAND->money_value_string(expr, place);
-               }
-               ret += "\n";
-            }
+   ret += "$I$6=   Limits on what can be sold.\n";
+   ret += "$I$6=   Maximum number of items allowed in the shop : ";
+   if (query_maximum_inventory_size()) {
+      ret += query_maximum_inventory_size() + " currently " +
+             sizeof(query_controller()->query_sell_list_obs()) + " (fixed).\n";
+   } else {
+      ret += "disabled (fixed).\n";
+   }
+   ret += "$I$6=   Maximum number of items allowed per player  : ";
+   if (_automatic_approval->num_allowed) {
+      ret += _automatic_approval->num_allowed + ".\n";
+   } else {
+      ret += "disabled.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set max number <number|disable>\n";
+   }
+   ret += "$I$6=   Automatically queue sales more than         : ";
+   if (_automatic_approval->high_cost) {
+      ret += MONEY_HAND->money_value_string(_automatic_approval->high_cost, place) +
+             ".\n";
+   } else {
+      ret += "disabled.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set high queue cost <cost|disable>\n";
+   }
+   ret += "$I$6=   Automatically deny sales more than          : ";
+   if (_automatic_approval->high_cost_deny) {
+      ret += MONEY_HAND->money_value_string(_automatic_approval->high_cost_deny, place) +
+             ".\n";
+   } else {
+      ret += "disabled.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set high deny cost <cost|disable>\n";
+   }
+   ret += "$I$6=   Helpers     : ";
+   if (sizeof(_helpers)) {
+      ret += query_multiple_short(_helpers) + "\n";
+   } else {
+      ret += "None at all.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: helper add <name>\n";
+      ret += "$I$0=       Hint: helper remove <name>\n";
+      ret += "$I$0=       Hint: helper list\n";
+   }
+   if (sizeof(_sellers)) {
+      ret += "$I$6=   Limits set per player.\n";
+      ret += sprintf("   %-15s %-15s %-20s %s\n", "Name", "Max Sellable",
+                     "Approve Limit", "Deny limit (per item)");
+      bits = sort_array(keys(_sellers), 0);
+      foreach (name in bits) {
+         stuff = _sellers[name];
+         ret += sprintf("   %-15s %-15s %-20s %s\n", name,
+                    (stuff->max_sellable?stuff->max_sellable+"":"disabled"),
+                    (stuff->value_limit?MONEY_HAND->money_value_string(stuff->value_limit, place):"disabled"),
+                    (stuff->deny_value_limit?MONEY_HAND->money_value_string(stuff->deny_value_limit, place):"disabled"));
+      }
+   } else {
+      ret += "$I$6=   No limits set per player.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set max number <max sellable|disable> for <player>\n";
+      ret += "$I$0=       Hint: set high queue cost <cost|disable> for <player>\n";
+      ret += "$I$0=       Hint: set high deny cost <cost|disable> for <player> to <cost|disable>\n";
+   }
+   ret += "\n$I$6=   Automatically approve sales less than       : ";
+   if (_automatic_approval->low_cost) {
+      ret += MONEY_HAND->money_value_string(_automatic_approval->low_cost, place) +
+             ".\n";
+   } else {
+      ret += "disabled.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set low approve cost <cost|disable>\n";
+   }
+   ret += "$I$0=Use 'expressions' to see the expressions.\n";
+   ret += "$I$0=Use 'functions shop' to see the user defined "
+          "functions.\n";
+   return ret;
+}
+string query_expression_status(int hint) {
+   string ret;
+   string place;
+   mixed expr;
+   string str;
+   int pos;
+   class expression_type bing;
+   class expression_type binger;
+   class approval_item approval;
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   ret = "";
+   if (sizeof(_automatic_approval->items)) {
+      ret += "$I$0=%^BOLD%^Automatically accept sales of items%^RESET%^\n";
+      foreach (str, expr in _automatic_approval->items) {
+         if (classp(expr)) {
+            approval = (class approval_item)expr;
+            expr = ((class approval_item)expr)->value;
+         } else {
+            approval = new(class approval_item);
          }
-      } else {
-         ret += "Automatically accept sales of               : (none setup)\n";
-      }
-      if (hint) {
-         ret += "$I$0=       Hint: auto add name <name> up to <value>\n";
-         ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name>\n";
-         ret += "$I$0=       Hint: auto add name <name> up to <value> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add name <name> up to <value> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto add name <name> with <expression>\n";
-         ret += "$I$0=       Hint: auto add name <name> with <expression> as <list name>\n";
-         ret += "$I$0=       Hint: auto add name <name> with <expression> and markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add name <name> with <expression> and value <final cost>\n";
-         ret += "$I$0=       Hint: auto add name <name> with <expression> as <list name> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name> with markup <percentage>\n";
-         ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name> with value <final cost>\n";
-         ret += "$I$0=       Hint: auto remove name <name>\n";
-         ret += "$I$0=       Hint: auto remove object <object>\n";
-      }
-      ret += "\n$I$0=%^BOLD%^Automatic approval expressions.%^RESET%^\n";
-      if (sizeof(_automatic_approval->expressions)) {
-         pos = 0;
-         foreach (bing in _automatic_approval->expressions) {
-            if (sizeof(bing) == 3) {
-               binger = new(class expression_type);
-               binger->type = bing->type;
-               binger->condition = bing->condition;
-               binger->value = bing->value;
-               bing = binger;
-               event_save(this_object());
+         if (pointerp(expr) && intp(expr[0])) {
+            map_delete(_automatic_approval->items, str);
+         } else {
+            ret += sprintf("$I$10=   %-20s", "* " + str);
+            if (sizeof(approval) == 3) {
+               approval = new(class approval_item,
+                      markup : approval->markup,
+                      value : approval->value,
+                      list_name : approval->list_name,
+                      final_cost : 0);
             }
-            if (bing->type != PLAYER_CRAFT_SHOP_EXPR_DENY) {
-               str = query_expression_string(bing->value, 0);
+            if (approval->list_name) {
+               ret += " listed as '" + approval->list_name + "'";
+            }
+            if (approval->markup) {
+               ret += " markup of " + approval->markup;
+            }
+            if (approval->final_cost) {
+               ret += " final cost of " +
+               MONEY_HAND->money_value_string(approval->final_cost, place);
+            }
+            ret += " max value:";
+            if (pointerp(expr)) {
+               str = query_expression_string(expr, 0);
                if (strsrch(str, "\n") != -1) {
-                  str = "\n" + str;
-               }
-               str = " accept value: " + str;
-               if (bing->list_name) {
-                  str += " as " + bing->list_name;
+                  ret += "\n" + str;
+               } else {
+                  ret += str;
                }
             } else {
-               str = " -- deny item";
+               ret += MONEY_HAND->money_value_string(expr, place);
             }
-            ret += "$I$5=" + query_letter_value(pos) + ") " +
-                   query_expression_string(bing->condition, 0) + str + ".\n";
-            pos++;
+            ret += "\n";
          }
-      } else {
-         ret += "$I$0=No automatic approval expressions setup.\n";
       }
-      if (hint) {
-         ret += "$I$0=       Hint: auto add approve expression <condition> cost <value> as <list name>\n";
-         ret += "$I$0=       Hint: auto deny expression <expression>\n";
-         ret += "$I$0=       Hint: auto remove expression <id>\n";
+   } else {
+      ret += "Automatically accept sales of               : (none setup)\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: auto add name <name> up to <value>\n";
+      ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name>\n";
+      ret += "$I$0=       Hint: auto add name <name> up to <value> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add name <name> up to <value> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add name <name> up to <value> as <list name> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto add name <name> with <expression>\n";
+      ret += "$I$0=       Hint: auto add name <name> with <expression> as <list name>\n";
+      ret += "$I$0=       Hint: auto add name <name> with <expression> and markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add name <name> with <expression> and value <final cost>\n";
+      ret += "$I$0=       Hint: auto add name <name> with <expression> as <list name> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add object <object> up to <value> as <list name> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name> with markup <percentage>\n";
+      ret += "$I$0=       Hint: auto add item object <object> with <expression> as <list name> with value <final cost>\n";
+      ret += "$I$0=       Hint: auto remove name <name>\n";
+      ret += "$I$0=       Hint: auto remove object <object>\n";
+   }
+   ret += "\n$I$0=%^BOLD%^Automatic approval expressions.%^RESET%^\n";
+   if (sizeof(_automatic_approval->expressions)) {
+      pos = 0;
+      foreach (bing in _automatic_approval->expressions) {
+         if (sizeof(bing) == 3) {
+            binger = new(class expression_type);
+            binger->type = bing->type;
+            binger->condition = bing->condition;
+            binger->value = bing->value;
+            bing = binger;
+            event_save(this_object());
+         }
+         if (bing->type != PLAYER_CRAFT_SHOP_EXPR_DENY) {
+            str = query_expression_string(bing->value, 0);
+            if (strsrch(str, "\n") != -1) {
+               str = "\n" + str;
+            }
+            str = " accept value: " + str;
+            if (bing->list_name) {
+               str += " as " + bing->list_name;
+            }
+         } else {
+            str = " -- deny item";
+         }
+         ret += "$I$5=" + query_letter_value(pos) + ") " +
+                query_expression_string(bing->condition, 0) + str + ".\n";
+         pos++;
       }
+   } else {
+      ret += "$I$0=No automatic approval expressions setup.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: auto add approve expression <condition> cost <value> as <list name>\n";
+      ret += "$I$0=       Hint: auto deny expression <expression>\n";
+      ret += "$I$0=       Hint: auto remove expression <id>\n";
    }
    ret += "\n$I$0=";
-   if (sizeof(_buy_expression)) {
-      ret += "Buy condition: " + query_expression_string(_buy_expression, 0) +
-             ".\n";
-   } else {
-      ret += "Anyone can buy from the shop.\n";
-   }
-   if (hint) {
-      ret += "$I$0=       Hint: buy expression <expression|disable>\n";
-   }
-   if (sizeof(_use_expression)) {
-      ret += "Use condition: " + query_expression_string(_use_expression, 0) +
-             ".\n";
-   } else {
-      ret += "Anyone can use the shop.\n";
-   }
-   if (hint) {
-      ret += "$I$0=       Hint: use expression <expression|disable>\n";
-   }
-   if (!show_expr) {
-      ret += "$I$0=Use 'expressions' to see the expressions.\n";
-   }
-   ret += "$I$0=Use 'functions' to see the user defined "
+   ret += "$I$0=Use 'functions shop' to see the user defined "
           "functions.\n";
-   write("$P$Status$P$" + ret);
+   return ret;
+}
+int do_main_status(int hint) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("Cannot do that!\n");
+      return 0;
+   }
+   write("$P$Status$P$" + query_main_status(hint));
+   add_succeeded_mess(({ "",
+                         "$N fiddle$s with something in the shop.\n" }) );
+   return 1;
+}
+int do_expression_status(int hint) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("Cannot do that!\n");
+      return 0;
+   }
+   write("$P$Status$P$" + query_expression_status(hint));
    add_succeeded_mess(({ "",
                          "$N fiddle$s with something in the shop.\n" }) );
    return 1;
@@ -3122,62 +2905,30 @@ int do_approve_pay_deficit() {
                    ".\n");
    return 0;
 }
-int do_approve_buy_expression(string str) {
-   class parse_node* expr;
+int do_category_description(string category, string desc) {
    if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to add restrictions to the shop.\n");
+      add_failed_mess("You are not allowed to add categories.\n");
       return 0;
    }
-   if (str == "disable")  {
-      _buy_expression = ({ });
-      add_succeeded_mess(({"You disable checking to see if someone "
-         "can buy from the shop.\n",
-         "$N fiddle$s about with " + the_short() + " a bit.\n"}));
-      return 1;
-   }
-   expr = parse_boolean_string(str);
-   if (!sizeof(expr)) {
-      add_failed_mess(query_last_expression_error() + ".\n");
+   if (!query_controller()->is_valid_category(category)) {
+      add_failed_mess("The category doesn't exists.\n");
       return 0;
-   } else {
-      _buy_expression = expr;
-      add_succeeded_mess(({ "You set the expression to use when checking "
-                            "to see if someone can buy from the shop to " +
-                            query_expression_string(expr, 1) +
-                            ".\n",
-                            "$N fiddle$s about with " + the_short() +
-                                " a bit.\n" }));
-      event_save(this_object());
    }
+   set_category_description(category, desc);
+   add_succeeded_mess("$N set$s the description of " + category + ".\n");
    return 1;
 }
-int do_approve_use_expression(string str) {
-   class parse_node* expr;
+int do_category_information(string category, string desc) {
    if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You are not allowed to add restrictions to the shop.\n");
+      add_failed_mess("You are not allowed to add categories.\n");
       return 0;
    }
-   if (str == "disable")  {
-      _use_expression = ({ });
-      add_succeeded_mess(({ "You disable checking to see if "
-         "someone can use the shop.\n",
-         "$N fiddle$s about with " + the_short() + " a bit.\n" }));
-      return 1;
-   }
-   expr = parse_boolean_string(str);
-   if (!sizeof(expr)) {
-      add_failed_mess(query_last_expression_error() + ".\n");
+   if (!query_controller()->is_valid_category(category)) {
+      add_failed_mess("The category doesn't exists.\n");
       return 0;
-   } else {
-      _use_expression = expr;
-      add_succeeded_mess(({ "You set the expression to use when checking "
-                            "to see if someone can use the shop to " +
-                            query_expression_string(expr, 1) +
-                            ".\n",
-                            "$N fiddle$s about with " + the_short() +
-                                " a bit.\n" }));
-      event_save(this_object());
    }
+   set_category_information(category, desc);
+   add_succeeded_mess("$N set$s the description of " + category + ".\n");
    return 1;
 }
 int do_add_new_category(string category) {
@@ -3195,14 +2946,16 @@ int do_add_new_category(string category) {
 }
 int do_remove_category(string category) {
    object* obs;
+   string old_cat;
    if (!is_allowed(this_player()->query_name())) {
       add_failed_mess("You are not allowed to remove categories.\n");
       return 0;
    }
+   old_cat = category;
    category = query_real_category_name(category);
    if (!category ||
        !query_controller()->is_valid_category(category)) {
-      add_failed_mess("The category " + category + " does not exist.\n");
+      add_failed_mess("The category " + old_cat + " does not exist.\n");
       return 0;
    }
    if (category == query_default_category()) {
@@ -3306,15 +3059,6 @@ int do_list_categories() {
    add_succeeded_mess(({ "", "$N browses the categories.\n" }));
    return 1;
 }
-int do_name_shop(string name) {
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You cannot set the name of " + the_short() + ".\n");
-      return 0;
-   }
-   set_shop_name(name);
-   add_succeeded_mess("$N set$s the shop name to '" + name + "'.\n");
-   return 1;
-}
 int do_stats_items(int type) {
    class shop_stats stat;
    string ret;
@@ -3325,7 +3069,7 @@ int do_stats_items(int type) {
       add_failed_mess("You cannot read " + the_short() + "'s ledger.\n");
       return 0;
    }
-   if (!sizeof(_sell_stats)) {
+   if (!sizeof(_sold_stats)) {
       add_failed_mess("Nothing has been sold in this transaction section "
                       "yet.\n");
       return 0;
@@ -3336,18 +3080,24 @@ int do_stats_items(int type) {
    }
    switch (type) {
    case 1:
-      bits = sort_array(keys(_sell_stats), (: _sell_stats[$1]->num_sold - _sell_stats[$2]->num_sold :));
+      bits = sort_array(keys(_sold_stats), (: _sold_stats[$1]->num_sold - _sold_stats[$2]->num_sold :));
       break;
    case 2:
-      bits = sort_array(keys(_sell_stats), (: _sell_stats[$1]->value_sold - _sell_stats[$2]->value_sold :));
+      bits = sort_array(keys(_sold_stats), (: _sold_stats[$1]->value_sold - _sold_stats[$2]->value_sold :));
+      break;
+   case 3 :
+      bits = sort_array(keys(_sold_stats), (: strcmp(((class shop_stats)_sold_stats[$1])->seller, ((class shop_stats)_sold_stats[$1])->seller) :));
+      break;
+   case 4 :
+      bits = sort_array(keys(_sold_stats), (: strcmp(((class shop_stats)_sold_stats[$1])->name, ((class shop_stats)_sold_stats[$1])->name) :));
       break;
    default :
-      bits = sort_array(keys(_sell_stats), 0);
+      bits = sort_array(keys(_sold_stats), 0);
       break;
    }
    ret = "Statistics for items sold since " + ctime(_stats_start) + ".\n";
    foreach (name in bits) {
-      stat = _sell_stats[name];
+      stat = _sold_stats[name];
       ret += name + ": " + stat->num_sold + " for " +
              MONEY_HAND->money_value_string(stat->value_sold, place) + ".\n";
    }
@@ -3410,254 +3160,46 @@ int do_stats_money() {
    add_succeeded_mess(({ "", "$N looks at the ledger.\n" }));
    return 1;
 }
-int do_set_sign(object* obs) {
-   object ob;
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You cannot set the sign for the shop.\n");
-      return 0;
-   }
-   if (sizeof(obs) > 1) {
-      add_failed_mess("You must only specifiy one sign.\n");
-      return 0;
-   }
-   if (living(obs[0])) {
-      add_failed_mess("You have to wait till " + obs[0]->the_short() +
-                      " dies first.\n");
-      return 0;
-   }
-   if (obs[0]->get()) {
-      add_failed_mess("Cannot set something as a sign that you cannot get.\n");
-      return 0;
-   }
-   ob = query_sign_object();
-   if (obs[0]->move("/room/rubbish") == MOVE_OK) {
-      set_sign_object(obs[0]);
-   } else {
-      add_failed_mess("Unable to move $I off you.\n", obs[0..0]);
-      return 0;
-   }
-   if (query_sign_object() != ob) {
-      if (ob) {
-         ob->set_get();
-         if (ob->move(this_player()) != MOVE_OK) {
-            ob->move(this_object());
-         }
-         add_succeeded_mess(({ "You remove the sign " +ob->the_short() +
-                               " and set " + obs[0]->the_short() +
-                               " as your shop sign.\n",
-                               "$N sets the sign for outside " + the_short() +
-                               ".\n" }));
-      } else {
-         add_succeeded_mess(({ "You set " + obs[0]->the_short() +
-                               " as your shop sign.\n",
-                               "$N sets the sign for outside " + the_short() +
-                               ".\n" }));
-      }
-      return 1;
-   } else {
-      obs[0]->move(this_player());
-      add_failed_mess("You cannot set the sign for some reason.\n");
-      return 0;
-   }
-}
-int do_remove_sign() {
-   object ob;
-   if (!is_allowed(this_player()->query_name())) {
-      add_failed_mess("You cannot set the sign for the shop.\n");
-      return 0;
-   }
-   if (!query_sign_object()) {
-      add_failed_mess("You cannot remove the sign since there is no sign.\n");
-      return 0;
-   }
-   ob = query_sign_object();
-   ob->set_get();
-   if (ob->move(this_player()) == MOVE_OK) {
-      add_succeeded_mess("$N $V $I from " + the_short() +
-                         ".\n", ({ ob }));
-      set_sign_object(0);
-      return 1;
-   } else {
-      ob->reset_get();
-      add_failed_mess("You cannot remove the sign, unable to hold it?\n");
-      return 0;
-   }
-}
-int do_collect_partial_royalties(string amount) {
-   int amt;
-   string place;
-   if (query_owner() != this_player()->query_name()) {
-      add_failed_mess("Only the owner can do this.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   amt = value_from_string(amount, place);
-   if (!amt) {
-      add_failed_mess("The value " + amount + " is not a valid money "
-                      "amount.\n");
-      return 0;
-   }
-   if (amt > query_owners_money()) {
-      add_failed_mess("You cannot collect more money than you have.\n");
-      return 0;
-   }
-   query_controller()->pay_out_royalty(this_player()->query_name(), place, amt);
-   add_succeeded_mess(({ "You collect " +
-                      MONEY_HAND->money_value_string(amt, place) +
-                      " in royalties.\n",
-                      "$N collects some money in royalties.\n" }));
+int do_helper_list() {
+   write("$I$3=The current helpers are: " +
+         query_multiple_short(_helpers) + ".\n");
    return 1;
 }
-private int variable_player_level(string seller, int cost, object* ob) {
-   return PLAYER_HANDLER->test_level(seller);
-}
-private string variable_player_guild(string seller, int cost, object* ob) {
-   string guild;
-   guild = PLAYER_HANDLER->test_guild(seller);
-   if (guild) {
-      return guild->query_name();
-   }
-   return "";
-}
-private string variable_player_order(string seller, int cost, object* ob) {
-   string guild;
-   guild = PLAYER_HANDLER->test_guild(seller);
-   if (guild) {
-      guild = guild->query_wizard_order();
-      if (guild) {
-         return replace_string(lower_case(guild), "_", " ");
-      }
-   }
-   return "";
-}
-private string variable_player_deity(string seller, int cost, object* ob) {
-   string deity;
-   deity = PLAYER_HANDLER->test_deity(seller);
-   if (deity) {
-      return deity;
-   }
-   return "";
-}
-private string variable_player_family(string seller, int cost, object* ob) {
-   string family;
-   family = PLAYER_HANDLER->test_family(seller);
-   if (family) {
-      return family;
-   }
-   return "";
-}
-private int function_object_base_value(object* obs, string seller, int cost, object* fluff) {
-   int value;
-   object ob;
-   int tmp;
-   value = 1000000000;
-   foreach (ob in obs) {
-      tmp = ob->query_base_value();
-      if (tmp < value) {
-         value = tmp;
-      }
-   }
-   return value;
-}
-private int function_object_value(object* obs, string seller, int cost, object* fluff) {
-   int value;
-   object ob;
-   int tmp;
-   value = 1000000000;
-   foreach (ob in obs) {
-      tmp = ob->query_value();
-      if (tmp < value) {
-         value = tmp;
-      }
-   }
-   return value;
-}
-private int function_object_condition(object* obs, string seller, int cost, object* fluff) {
-   int cond;
-   object ob;
-   int tmp;
-   int max;
-   cond = 100;
-   foreach (ob in obs) {
-      tmp = ob->query_cond();
-      max = ob->query_max_cond();
-      if (max) {
-         tmp = tmp * 100 / max;
-         if (tmp < cond) {
-            cond = tmp;
-         }
-      }
-   }
-   return cond;
-}
-private int function_object_enchant(object*obs, string seller, int cost, object* fluff) {
-   int enchant;
-   object ob;
-   int tmp;
-   int max;
-   string bing;
-   if (!sizeof(obs)) {
+int do_helper_add(string helper) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to mess with the helpers.\n");
       return 0;
    }
-   if (!PLAYER_HANDLER->test_guild(query_owner())->query_see_octarine()) {
-      foreach (bing in query_allowed()) {
-         if (PLAYER_HANDLER->test_guild(bing)->query_see_octarine()) {
-            tmp = 1;
-         }
-      }
-      if (!tmp) {
-         return 0;
-      }
+   helper = lower_case(helper);
+   if (is_helper(helper)) {
+      add_failed_mess(capitalize(helper) + " is already a helper.\n");
+      return 0;
    }
-   enchant = 100;
-   foreach (ob in obs) {
-      tmp = ob->query_enchant();
-      max = ob->query_max_enchant();
-      tmp = tmp * 100 / max;
-      if (tmp < enchant) {
-         enchant = tmp;
-      }
+   if (!PLAYER_HANDLER->test_user(helper)) {
+      add_failed_mess(capitalize(helper) + " is not a player.\n");
+      return 0;
    }
-   return enchant;
+   _helpers += ({ helper });
+   add_succeeded_mess("$N add$s " + capitalize(helper) +
+                      " as a helper.\n");
+   return 1;
+}
+int do_helper_remove(string helper) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to mess with the helpers.\n");
+      return 0;
+   }
+   helper = lower_case(helper);
+   if (!is_helper(helper)) {
+      add_failed_mess(capitalize(helper) + " is not a helper to remove.\n");
+      return 0;
+   }
+   _helpers -= ({ helper });
+   add_succeeded_mess("$N remove$s " + capitalize(helper) +
+                      " as a helper.\n");
+   return 1;
 }
 private object* variable_objects(string seller, int cost, object* obs) {
-   return obs;
-}
-private string function_object_type(object* obs, string seller, int cost, object* fluff) {
-   string type;
-   string old_type;
-   object ob;
-   if (!sizeof(obs)) {
-      return 0;
-   }
-   foreach (ob in obs) {
-      if (ob->query_weapon()) {
-         type = "weapon";
-      } else if (ob->query_armour()) {
-         type = "armour";
-      } else if (ob->query_clothing()) {
-         type = "clothing";
-      } else {
-         type = "misc";
-      }
-      if (old_type && old_type != type) {
-         type = "mixed";
-      }
-      old_type = type;
-   }
-   return type;
-}
-private object* function_object_stolen(object* obs, string seller, int cost, object* fluff) {
-   obs = filter(obs, (: $1->query_property("stolen") :));
-   return obs;
-}
-private object* function_object_warded(object* obs, string seller, int cost, object* fluff) {
-   string classification;
-   classification = "/std/effects/object/ward"->query_classification();
-   obs = filter(obs, (: sizeof($1->effects_matching($2)) :), classification);
    return obs;
 }
 private string variable_sale_name(string seller, int cost, object* ob, string name, string category) {
@@ -3675,155 +3217,9 @@ private string variable_sale_category(string seller, int cost, object* ob, strin
 private int variable_sale_cost(string seller, int cost, object* ob, string name, string category) {
    return cost;
 }
-private object* function_object_contains_spell(object* obs, string spell_name,
-                          string seller, int cost, object* fluff) {
-   string bing;
-   int tmp;
-   if (!sizeof(obs)) {
-      return 0;
-   }
-   if (!PLAYER_HANDLER->test_guild(query_owner())->query_see_spells()) {
-      foreach (bing in query_allowed()) {
-         if (PLAYER_HANDLER->test_guild(bing)->query_see_spells()) {
-            tmp = 1;
-         }
-      }
-      if (!tmp) {
-         return 0;
-      }
-   }
-   obs = filter(obs, (: $1->query_magic_scroll() &&
-           ($2 == "any" || lower_case($1->query_spell_name()) == lower_case($2)) :), spell_name);
-   return obs;
-}
-private object* function_object_contains_imbue(object* obs, string ritual_name,
-                          string seller, int cost, object* fluff) {
-   if (!sizeof(obs)) {
-      return ({ });
-   }
-   obs = filter(obs, (: $1->query_faith_imbue() &&
-      ($2 == "any" ||
-       lower_case($1->query_ritual_name()) == lower_case($2)) :), ritual_name );
-   return obs;
-}
-private int function_object_percentage_liquid(object* obs, string liquid_name,
-                          string seller, int cost, object* fluff) {
-   object ob;
-   object* liquids;
-   object liq;
-   int volume;
-   int found;
-   int tmp;
-   if (!sizeof(obs)) {
-      return 0;
-   }
-   volume = 100;
-   foreach (ob in obs) {
-      liquids = filter(all_inventory(ob), (: $1->query_liquid() :));
-      if (sizeof(liquids))  {
-         foreach (liq in liquids) {
-            if (liq->query_short() &&
-                lower_case(liq->query_short()) == lower_case(liquid_name)) {
-               tmp = liq->query_weight() * 100 / ob->query_max_weight();
-               if (tmp < volume) {
-                  volume = tmp;
-                  found = 1;
-               }
-            }
-         }
-      }
-      else if (ob->query_liquid_short() &&
-               lower_case(ob->query_liquid_short()) ==
-               lower_case(liquid_name))
-      {
-         tmp = ob->query_water_volume() * 100 / ob->query_max_volume();
-         if (tmp < volume)  {
-            volume = tmp;
-            found = 1;
-         }
-      }
-   }
-   if (found) {
-      return volume;
-   }
-   return 0;
-}
-private int function_object_charges(object* obs, string seller, int cost, object *fluff)  {
-   int total = 0;
-   int possible = 0;
-   int charges;
-   mixed info;
-   object ob;
-   foreach (ob in obs)  {
-      charges = ob->query_charges();
-      if (charges)  {
-         info = ob->query_static_auto_load();
-         if (pointerp(info)  &&  sizeof(info) == 2  &&  info[0] == charges)  {
-            possible += info[1] * CHARGE_MULT;
-            total += charges;
-         }
-      }
-   }
-   if (possible)
-      return 100 * total / possible;
-   else
-      return 0;
-}
-private object* function_object_matching(object* obs, string match,
-                          string seller, int cost, object* fluff) {
-   object ob;
-   string *bits;
-   string bit;
-   object* ret;
-   bits = explode(match, ",");
-   ret = ({ });
-   foreach (ob in obs)  {
-      foreach(bit in bits)   {
-         if (ob && ob->full_id(bit)) {
-            ret += ({ ob });
-         }
-      }
-   }
-   return ret;
-}
-private object* function_object_short(object* obs, string match,
-                          string seller, int cost, object* fluff) {
-   string* bits;
-   object* result;
-   bits = explode(match, ",");
-   result = filter(obs, (: member_array($1->query_short(), $2) != -1 :),
-                   bits);
-   return result;
-}
-private int function_inventory_number(string inventory_type,
-                          string seller, int cost, object* fluff) {
-   object* result;
-   int quantity;
-   string lc_type;
-   result = filter(query_controller()->query_sell_list_obs(),
-     (: lower_case(query_controller()->query_name_of_shop_object($1)) == $2 :),
-                   lc_type);
-   quantity = sizeof(result);
-   return quantity;
-}
-private int function_club_member(string club, string seller, int cost, object* ob) {
-   return CLUB_HANDLER->is_member_of(club, seller);
-}
-private object* function_contents(object ob, string seller, int cost, object* obs) {
-   if (!ob) {
-      return ({ });
-   }
-   return all_inventory(ob);
-}
-void inform_of_royalties(object player) {
-   if (player && environment(player) == this_object()) {
-      tell_object(player, "You have some royalties to pick up.\n");
-   }
-}
 void init() {
-   if (query_controller()->query_royalty(this_player()->query_name())) {
-      call_out("inform_of_royalties", 5);
-   }
+   expression_util::init();
+   craft_shop_category::init();
    add_command("waiting", "", (: do_list_approval(1) :));
    add_command("waiting", "unapproved", (: do_list_approval(0) :));
    add_command("reject", "<string'id'>",
@@ -3832,8 +3228,7 @@ void init() {
    add_command("return", "<string'id'>", (: do_return($4[0]) :) );
    add_command("value", "<indirect:object>",
                (: do_approve_auto_item_test($1) :));
-   if (!is_allowed(this_player()->query_name())) {
-      ::init();
+   if (!is_helper(this_player()->query_name())) {
       return ;
    }
    add_command("approve", "<string'id'>", (: do_approve_item($4[0], 0) :));
@@ -3845,6 +3240,15 @@ void init() {
                (: do_approve_reject($4[0], $4[1], -1) :));
    add_command("reject", "<string'id'> position <number> message <string'reject message'>",
                (: do_approve_reject($4[0], $4[2], $4[1]) :));
+   add_command("browse", "waiting <string'id'>",
+               (: do_approve_browse($4[0]) :));
+   add_command("checkout", "<string'id'>",
+               (: do_approve_checkout($4[0]) :));
+   add_command("checkin", "<indirect:object:me-here>",
+               (: do_approve_checkin($1) :));
+   if (!is_allowed(this_player()->query_name())) {
+      return ;
+   }
    add_command("set", "low approve cost <string'cost|disable'>",
                (: do_approve_auto_low($4[0]) :));
    add_command("auto", "add approve expression <string'condition'> cost <string'value'> as <string'list name'>",
@@ -3923,61 +3327,22 @@ void init() {
                (: do_approve_limit_person_value_deny($4[1], $4[0]) :));
    add_command("approve", "limit remove <string'player'>",
                (: do_approve_limit_person_remove($4[0]) :));
-   add_command("add", "<string'player'> to blacklist",
-               (: do_approve_black_list_add($4[0]) :));
-   add_command("add", "ignore to blacklist",
-               (: do_approve_black_list_add_ignore() :));
-   add_command("remove", "<string'player'> from blacklist",
-               (: do_approve_black_list_remove($4[0]) :));
-   add_command("add",
-               "function <string'function'> as <string'expression'>",
-               (: do_user_function_add($4[0], $4[1]) :));
-   add_command("remove",
-               "function <string'function'>",
-               (: do_user_function_remove($4[0]) :));
-   add_command("status", "",
-               (: do_approve_status(0) :));
    add_command("expressions", "",
-               (: do_approve_status(2) :));
-   add_command("functions", "internal",
-               (: do_approve_status_internal_functions() :));
-   add_command("functions", "",
-               (: do_approve_status_functions(0) :));
-   add_command("functions", "help list",
-               (: do_function_help_list() :));
-   add_command("functions", "help <string'function name'>",
-               (: do_function_help($4[0]) :));
-   add_command("functions", "hints",
-               (: do_approve_status_functions(1) :));
+               (: do_expression_status(0) :));
    add_command("expressions", "hints",
-               (: do_approve_status(3) :));
-   add_command("status", "hints",
-               (: do_approve_status(1) :));
-   add_command("browse", "waiting <string'id'>",
-               (: do_approve_browse($4[0]) :));
-   add_command("checkout", "<string'id'>",
-               (: do_approve_checkout($4[0]) :));
-   add_command("checkin", "<indirect:object>",
-               (: do_approve_checkin($1) :));
+               (: do_expression_status(1) :));
    add_command("pay", "deficit",
                (: do_approve_pay_deficit() :));
-   add_command("buy", "expression <string'expression|disable'>",
-               (: do_approve_buy_expression($4[0]) :));
-   add_command("use", "expression <string'expression|disable'>",
-               (: do_approve_use_expression($4[0]) :));
-   add_command("name", "shop <string'shop name'>",
-               (: do_name_shop($4[0]) :));
-   add_command("set", "sign <indirect:object'sign'>",
-               (: do_set_sign($1) :) );
-   add_command("remove", "sign",
-               (: do_remove_sign() :) );
-   add_command("stats", "items by name", (: do_stats_items(0) :));
+   add_command("stats", "items by name", (: do_stats_items(4) :));
+   add_command("stats", "items by seller", (: do_stats_items(3) :));
    add_command("stats", "items by number", (: do_stats_items(1) :));
    add_command("stats", "items by value", (: do_stats_items(2) :));
 #if USE_TRANSACTIONS
    add_command("stats", "transactions", (: do_stats_transactions() :));
 #endif
    add_command("stats", "money", (: do_stats_money() :));
+   add_command("status", "<direct:object>", (: do_main_status(0) :));
+   add_command("status", "<direct:object> hints", (: do_main_status(1) :));
    add_command("check", "sell <indirect:object>",
                 (: do_check_sell($1) :));
    add_command("category", "list", (: do_list_categories() :));
@@ -3985,11 +3350,25 @@ void init() {
                (: do_set_default_category($4[0]) :));
    add_command("category", "add <string'category'>",
                (: do_add_new_category($4[0]) :));
+   add_command("category", "description <string'category'> <string:quoted'description'>",
+               (: do_category_description($4[0], $4[1]) :));
+   add_command("category", "description <string'category'> remove",
+               (: do_category_description($4[0], 0) :));
+   add_command("category", "information <string'category'> <string:quoted'information'>",
+               (: do_category_information($4[0], $4[1]) :));
+   add_command("category", "information <string'category'> remove",
+               (: do_category_information($4[0], 0) :));
    add_command("category", "remove <string'category'>",
                (: do_remove_category($4[0]) :));
    add_command("category", "rename <string'category'> to <string'category'>",
                (: do_rename_category($4[0], $4[1]) :));
-   add_command("collect", "royalties of <string'amount'>",
-               (: do_collect_partial_royalties($4[0]) :));
-   ::init();
+   add_command("helper", "list",
+               (: do_helper_list() :));
+   add_command("helper", "add <string'helper'>",
+               (: do_helper_add($4[0]) :));
+   add_command("helper", "remove <string'helper'>",
+               (: do_helper_remove($4[0]) :));
+   add_command("buy", "force <indirect:object:" +
+                      file_name(query_controller()->query_sell_list()) + ">",
+                (: do_buy($1, 1) :));
 }

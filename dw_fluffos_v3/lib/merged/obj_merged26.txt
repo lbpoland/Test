@@ -1,1352 +1,2394 @@
-# Total Tokens: 12651
-# Total Files Merged: 5
-# Total Characters: 42181
+# Total Tokens: 22418
+# Total Files Merged: 8
+# Total Characters: 74747
 
-ul_compiler.c
+todoc/autodoc_file.c
 ==================================================
 
-#include "soul.h"
-#include "user_parser.h"
-private nosave string _current_file;
-private nosave int _current_line;
-private nosave int _file_len;
-private nosave int _depth;
-private nosave int _look_for;
-private nosave int _last_chunk_compile;
-private nosave mixed *_to_compile;
-private nosave mixed *_arguments;
-private nosave object _current_player;
-void start_compile();
-void parse_chunk(string chunk);
-void make_into_soul_commands(mapping commands);
-#define CHUNK_SIZE 20
-#define OPEN_BRACKET 1
-#define START_ARGUMENT 2
-#define END_BRACKET 3
-#define END_STRING 4
-#define ARGUMENT_VALUE 5
-#define ARGUMENT_NAME 6
-#define REST_OF_ARGUMENT 7
+#define MASTER_OB "/secure/master.c"
+#define EOF -1
+#define SAVE_DIR "/save/autodoc/"
+nosave mapping private_functions;
+mapping public_functions;
+mapping protected_functions;
+mapping inherits;
+mapping main_docs;
+mapping define_docs;
+mapping includes;
+mapping class_docs;
+string file_name;
+int last_changed;
+int num_failed_tries;
+nosave string current_comment;
+nosave string current_file;
+nosave int current_position;
+nosave int changed;
+nosave mapping defines;
+nosave mixed *exclude_methods;
+private void setup();
+private mapping parse_comment(string stuff);
+private void do_parse_file(function func);
+private int query_file_position();
+private void handle_inherit(mixed *bits);
 void create() {
-   _to_compile = ({ });
-   seteuid("Root");
+   seteuid(getuid());
+   setup();
 }
-int test_security(string fname) {
-   return 1;
+private void setup() {
+   changed = 0;
+   main_docs = 0;
+   file_name = "";
+   private_functions = ([ ]);
+   public_functions = ([ ]);
+   protected_functions = ([ ]);
+   inherits = ([ ]);
+   defines = ([ ]);
+   define_docs = ([ ]);
+   includes = ([ ]);
+   class_docs = ([ ]);
+   current_comment = 0;
+   current_file = "";
+   current_position = 0;
+   last_changed = 0;
+   exclude_methods = ({ "setup", "create", "init", "dest_me", "reset" });
 }
-void notify(string mess) {
-   if (_current_player)
-      tell_object(_current_player, mess);
+private int query_file_position() {
+   return current_position;
 }
-void compile_file(string fname) {
-   if (file_size(SOUL_DIR+fname) == -1) {
-      tell_object(this_player(), "The file "+
-                         SOUL_DIR+fname+" does not exist.\n");
-      return ;
+private int lookahead_character(int num) {
+   if (current_position + num - 1 < strlen(current_file)) {
+      return current_file[current_position + num - 1];
    }
-   if (file_size(SOUL_DIR+fname) == -2) {
-      tell_object(this_player(), "The file "+
-                         SOUL_DIR+fname+" is a directory exist.\n");
-      return ;
-   }
-   _to_compile += ({ SOUL_DIR+fname, this_player() });
-   start_compile();
+   return EOF;
 }
-void compile_directory(string fname) {
-   string *bits, start;
+private int next_character() {
+   if (current_position < strlen(current_file)) {
+      return current_file[current_position++];
+   }
+   return EOF;
+}
+private int pop_character(int num) {
+   current_position += num;
+}
+private void skip_to_end_of_line() {
+   int ch;
+   do {
+      ch = next_character();
+   } while (ch != '\r' && ch != '\n' && ch != EOF);
+}
+private string skip_to_end_of_comment() {
+   string data;
+   int ch;
+   int ok;
+   data = "";
+   do {
+      ok = 1;
+      ch = next_character();
+      if (ch == '*' && lookahead_character(1) == '/') {
+         ok = 0;
+         pop_character(1);
+      } else if (ch == '\r' || ch == '\n') {
+         data += "\n";
+         if (lookahead_character(1) == ' ') {
+            pop_character(1);
+         }
+         if (lookahead_character(1) == '*' && lookahead_character(2) != '/') {
+            pop_character(1);
+            if (lookahead_character(1) == ' ') {
+               pop_character(1);
+            }
+         }
+      } else if (ch == EOF) {
+         ok = 0;
+      } else if (ch == '\\' && (lookahead_character(1) == '/' ||
+                               lookahead_character(1) == '*' ||
+                               lookahead_character(1) == '\\')) {
+      } else {
+         data += sprintf("%c", ch);
+      }
+   } while (ok);
+   return data;
+}
+private void skip_spaces_and_comments() {
+   int ok;
+   do {
+     switch (lookahead_character(1)) {
+        case ' ' :
+        case '\t' :
+        case '\n' :
+        case '\r' :
+           ok = 1;
+           pop_character(1);
+           break;
+        case '/' :
+           if (lookahead_character(2) == '/') {
+              ok = 1;
+              skip_to_end_of_line();
+           } else if (lookahead_character(2) == '*') {
+              ok = 1;
+              if (lookahead_character(3) != '*' ||
+                  lookahead_character(4) == '*') {
+                 pop_character(2);
+                 skip_to_end_of_comment();
+                 current_comment = 0;
+              } else {
+                 pop_character(3);
+                 if (lookahead_character(1) == ' ') {
+                    pop_character(1);
+                 }
+                 if (!main_docs) {
+                    main_docs = parse_comment(skip_to_end_of_comment());
+                 } else {
+                    current_comment = skip_to_end_of_comment();
+                 }
+              }
+           } else {
+              ok = 0;
+           }
+           break;
+        default :
+           ok = 0;
+           break;
+     }
+   } while (ok);
+}
+private string expand_token(string token) {
+   if (defines[token]) {
+      return defines[token];
+   }
+   return 0;
+}
+private string get_word() {
+   string data;
+   int ok;
+   int ch;
+   skip_spaces_and_comments();
+   ok = 1;
+   data = "";
+   ch = lookahead_character(1);
+   if ((ch >= 'a' && ch <= 'z') ||
+       (ch >= 'A' && ch <= 'Z') ||
+       (ch == '_')) {
+      do {
+         ch = lookahead_character(1);
+         if ((ch >= 'a' && ch <= 'z') ||
+             (ch >= 'A' && ch <= 'Z') ||
+             (ch >= '0' && ch <= '9') ||
+             (ch == '_')) {
+            ch = next_character();
+            data += sprintf("%c", ch);
+         } else {
+            ok = 0;
+         }
+      } while (ok);
+      if (expand_token(data)) {
+         current_file = expand_token(data) + current_file[current_position..];
+         current_position = 0;
+         return get_word();
+      }
+   } else if ((ch >= '0' && ch <= '9') ||
+              (ch == '-')) {
+      if (ch == '-') {
+         data += sprintf("%c", next_character());
+      }
+      do {
+         ch = lookahead_character(1);
+         if ((ch >= '0' && ch <= '9') ||
+             (ch >= '.')) {
+            ch = next_character();
+            data += sprintf("%c", ch);
+         } else {
+            ok = 0;
+         }
+      } while (ok);
+   } else if (ch == '\"' || ch == '\'') {
+      int end_ch;
+      end_ch = ch;
+      ch = next_character();
+      data += sprintf("%c", ch);
+      do {
+         ch = next_character();
+         if (ch == end_ch) {
+            ok = 0;
+            data += sprintf("%c", ch);
+         } else if (ch == '\\') {
+            ch = next_character();
+            data += sprintf("\\%c", ch);
+         } else if (ch == EOF) {
+            ok = 0;
+         } else {
+            data += sprintf("%c", ch);
+         }
+      } while (ok);
+   } else if (ch == '(') {
+      if (lookahead_character(2) == '{' ||
+          lookahead_character(2) == '[') {
+         return sprintf("%c%c", next_character(), next_character());
+      }
+      return sprintf("%c", next_character());
+   } else if (ch == '}' || ch == ']') {
+      if (lookahead_character(2) == ')') {
+         return sprintf("%c%c", next_character(), next_character());
+      }
+      return sprintf("%c", next_character());
+   } else if (ch == ';' ||
+              ch == ')' ||
+              ch == '=' ||
+              ch == '{' ||
+              ch == '}') {
+      return sprintf("%c", next_character());
+   } else if (ch == EOF) {
+      return "";
+   } else {
+      do {
+         ch = lookahead_character(1);
+         if ((ch >= 'a' && ch <= 'z') ||
+             (ch >= 'A' && ch <= 'Z') ||
+             (ch >= '0' && ch <= '9') ||
+             (ch == '_') ||
+             (ch == ' ') ||
+             (ch == '\t') ||
+             (ch == '\n') ||
+             (ch == '(') ||
+             (ch == ')') ||
+             (ch == EOF) ||
+             (ch == ';') ||
+             (ch == '=') ||
+             (ch == '{') ||
+             (ch == '}') ||
+             (ch == '\'') ||
+             (ch == '\"') ||
+             (ch == '\r')) {
+            ok = 0;
+         } else {
+            ch = next_character();
+            data += sprintf("%c", ch);
+         }
+      } while (ok);
+   }
+   return data;
+}
+private mixed *get_statement(string start) {
+   mixed *bits;
+   string curr;
+   int depth;
+   string temp_comment;
+   int last_pos;
+   int in_class;
+   bits = ({ start });
+   do {
+      last_pos = query_file_position();
+      curr = get_word();
+      bits += ({ curr });
+      if (last_pos != query_file_position()) {
+         reset_eval_cost();
+      }
+   } while (curr != ";" && curr != "{" && curr != "");
+   if (curr == "{") {
+      if (member_array("class", bits) != -1 &&
+          member_array("(", bits) == -1) {
+         in_class = 1;
+      }
+      temp_comment = current_comment;
+      depth = 1;
+      do {
+        last_pos = query_file_position();
+        curr = get_word();
+        if (curr == "{") {
+           depth++;
+        } else if (curr == "}") {
+           depth--;
+        } else if (curr == "") {
+           depth = 0;
+        }
+        if (last_pos != query_file_position()) {
+           reset_eval_cost();
+        }
+        if (in_class) {
+           bits += ({ curr });
+        }
+      } while (depth > 0);
+      current_comment = temp_comment;
+   }
+   return bits;
+}
+private mapping parse_comment(string stuff) {
+   string *bits;
    int i;
-   if (file_size(SOUL_DIR+fname) != -2) {
-      tell_object(this_player(), "The file "+
-                         fname+" is not a directory exist.\n");
+   mapping frog;
+   string name;
+   int j;
+   int rabbit;
+   if (!stuff) {
+      return ([ ]);
+   }
+   if (stuff[0] == '@') {
+      stuff = "\n" + stuff;
+   } else {
+      stuff = "\n@main " + stuff;
+   }
+   bits = explode(stuff, "\n@");
+   frog = ([ ]);
+   for (i = 0; i< sizeof(bits); i++) {
+      j = strsrch(bits[i], " ");
+      rabbit = strsrch(bits[i], "\n");
+      if (j == -1 || (rabbit != -1 && rabbit < j)) {
+         j = rabbit;
+      }
+      if (j > 0) {
+         name = bits[i][0..j - 1];
+         stuff = bits[i][j+1..];
+         if (!frog[name]) {
+            frog[name] = ({ stuff });
+         } else {
+            frog[name] += ({ stuff });
+         }
+      }
+   }
+   return frog;
+}
+private void handle_class(mixed *bits) {
+   string name;
+   int i;
+   string *types;
+   mapping comm;
+   name = bits[1];
+   types = ({ });
+   i = member_array("{", bits);
+   if (i != -1) {
+      bits = bits[i + 1..];
+      while (sizeof(bits)) {
+         i = member_array(";", bits);
+         if (i != -1) {
+            types += ({ ({ bits[i - 1], bits[0..i - 2] }) });
+            bits = bits[i + 1..];
+         } else {
+            bits = ({ });
+         }
+      }
+      comm = parse_comment(current_comment);
+      if (!comm["ignore"]) {
+         class_docs[name] = ({ 0, types,
+                               parse_comment(current_comment) });
+      }
+   }
+}
+private void handle_inherit(mixed *bits) {
+   int pos;
+   string name;
+   pos = member_array("inherit", bits);
+   if (pos >= 0) {
+      name = implode(map(bits[pos+1.. sizeof(bits)-2],
+                         function(string str) {
+                            if (str[0] == '\"') {
+                               sscanf(str, "\"%s\"", str);
+                               return str;
+                            }
+                            return "";
+                         } ), "");
+      inherits[name] = bits[0..pos-1];
+   }
+}
+private void handle_function_definition(mixed *bits) {
+   int pos;
+   int end_pos;
+   int new_pos;
+   string name;
+   string *type;
+   mixed *args;
+   mapping comm;
+   pos = member_array("(", bits);
+   if (pos > 0) {
+      name = bits[pos-1];
+      if (member_array(name, exclude_methods) == -1) {
+         type = bits[0..pos-2];
+         if (sizeof(type) == 0) {
+            type = ({ "int" });
+         }
+         end_pos = member_array(")", bits, pos);
+         args = ({ });
+         if (end_pos > pos + 1) {
+            pos++;
+            while (member_array(",", bits, pos) != -1) {
+               new_pos = member_array(",", bits, pos);
+               args += ({ bits[pos..new_pos-2], bits[new_pos-1] });
+               pos = new_pos + 1;
+            }
+            args += ({ bits[pos..end_pos -2], bits[end_pos-1] });
+         }
+         comm = parse_comment(current_comment);
+         if (!comm["ignore"]) {
+            if (member_array("private", type) != -1) {
+               type -= ({ "private" });
+               private_functions[name] = ({ type, args,
+                                          comm });
+            } else if (member_array("protected", type) != -1) {
+               type -= ({ "protected" });
+               protected_functions[name] = ({ type, args,
+                                           comm });
+            } else {
+               type -= ({ "public" });
+               public_functions[name] = ({ type, args,
+                                           comm });
+            }
+         }
+      }
+      current_comment = 0;
+   }
+}
+private string get_rest_of_line() {
+   string value;
+   int ch;
+   int last_pos;
+   value = "";
+   ch = lookahead_character(1);
+   while (ch == ' ' || ch == '\t') {
+      pop_character(1);
+      ch = lookahead_character(1);
+   }
+   do {
+      last_pos = query_file_position();
+      ch = next_character();
+      if (ch == '\\') {
+         ch = next_character();
+         if (ch == '\r' && lookahead_character(1) == '\n') {
+            ch = next_character();
+         }
+         ch = ' ';
+      }
+      if (last_pos != query_file_position()) {
+         reset_eval_cost();
+      }
+      value += sprintf("%c", ch);
+   } while (ch != '\n' && ch != '\r' && ch != EOF);
+   return value;
+}
+private void handle_hash() {
+   int i;
+   string token;
+   string name;
+   string value;
+   string *bits;
+   string stuff;
+   string inc_name;
+   string curr_comm;
+   mapping comm;
+   token = get_word();
+   switch (token) {
+      case "define" :
+      case "defin" :
+         curr_comm = current_comment;
+         value = get_rest_of_line();
+         if (sscanf(value, "%s %s", name, value) == 2) {
+            defines[name] = value;
+            if (token == "define") {
+               comm = parse_comment(curr_comm);
+               if (!comm["ignore"]) {
+                  define_docs[name] = comm;
+               }
+               current_comment = 0;
+            }
+         }
+         break;
+      case "include" :
+         value = get_rest_of_line();
+         if (value[0] == '\"') {
+            bits = explode(file_name, "/");
+            sscanf(value, "\"%s\"", name);
+            stuff = read_file(implode(bits[0..<2], "/") +
+                              "/" + name);
+            if (stuff) {
+               inc_name = "/" + implode(bits[0..<2], "/") +
+                              "/" + name;
+            }
+         } else if (value[0] == '<') {
+            sscanf(value, "<%s>", name);
+         }
+         if (name[0] == '/') {
+            stuff = read_file(name);
+            if (stuff) {
+               inc_name = name;
+            }
+         }
+         bits = MASTER_OB->define_include_dirs();
+         while (!stuff && i < sizeof(bits)) {
+            stuff = read_file(sprintf(bits[i], name));
+            if (stuff) {
+               stuff = replace_string(stuff, "
+               stuff = replace_string(stuff, "class ", "clas ");
+               stuff = replace_string(stuff, "#define ", "#defin ");
+               inc_name = sprintf(bits[i], name);
+            }
+            i++;
+         }
+         if (inc_name) {
+            inc_name = replace(inc_name, "
+            if (inc_name[0] != '/') {
+               inc_name = "/" + inc_name;
+            }
+         }
+         if (stuff && !includes[inc_name]) {
+            current_file = stuff + current_file[current_position..];
+            current_position = 0;
+            includes[inc_name] = unguarded( (: stat($(inc_name)) :) )[1];
+         }
+         break;
+      default :
+         skip_to_end_of_line();
+         break;
+   }
+}
+private void next_statement() {
+   string token;
+   string *bits;
+   token = get_word();
+   if (token[0] == '#') {
+      return handle_hash();
+   } else if (token == ";") {
       return ;
-   }
-   bits = explode(fname, "/");
-   start = implode(bits[0..<1], "/");
-   if (start != "") {
-      start += "/";
-   }
-   fname = SOUL_DIR+fname;
-   if (fname[<1] == '/') {
-      fname += "*.s";
-   } else {
-      fname += "
-void start_compile() {
-   if ((_current_file || !sizeof(_to_compile)) &&
-       (time() - _last_chunk_compile) > 10) {
-      return ;
-   }
-   write("Starting to compile " + _to_compile[0] + "\n");
-   _current_file = _to_compile[0];
-   _current_player = _to_compile[1];
-   _to_compile = _to_compile[2..];
-   _current_line = 1;
-   _depth = 0;
-   _look_for = OPEN_BRACKET;
-   _file_len = file_length(_current_file);
-   _arguments = ({ 0, ([ ]) });
-   call_out("compile_chunk", 2);
-}
-void compile_chunk() {
-   string chunk;
-   int end;
-   _last_chunk_compile = time();
-   if (_current_line+CHUNK_SIZE > _file_len) {
-      end = _file_len+1;
-   } else {
-      end = _current_line+CHUNK_SIZE;
-   }
-   chunk = unguarded((: read_file, _current_file, _current_line,
-                               end-_current_line :));
-   _current_line = end;
-   parse_chunk(chunk);
-   if (end > _file_len) {
-      call_out("start_compile", 2);
-      _current_file = 0;
-      make_into_soul_commands(_arguments[1]);
-   } else {
-      call_out("compile_chunk", 2);
-   }
-}
-void parse_chunk(string chunk) {
-   string *bits, s1, s2;
-   int pos, chunk_size, start;
-   chunk_size = strlen(chunk);
-   pos = 0;
-   bits = explode(chunk, "(");
-   while (pos < chunk_size) {
-      switch (_look_for) {
-         case OPEN_BRACKET :
-            if (sscanf(chunk[pos..], "%s(%s", s1, s2)) {
-               chunk = s2;
-               chunk_size = strlen(chunk);
-               pos = 0;
-               _depth++;
-               _arguments += ({ 0, 0 });
-               _look_for = ARGUMENT_NAME;
-            } else {
-               pos = chunk_size;
-            }
-            break;
-         case ARGUMENT_NAME :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos == chunk_size) {
-               break;
-            }
-            start = pos;
-            while (pos < chunk_size && chunk[pos] != ' ' &&
-                      chunk[pos] != '\t' && chunk[pos] != '\n') {
-               pos++;
-            }
-            _arguments[_depth*2] = chunk[start..pos-1];
-            _look_for = ARGUMENT_VALUE;
-            break;
-         case ARGUMENT_VALUE :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos >= chunk_size) {
-               break;
-            }
-            switch (chunk[pos]) {
-               case '(' :
-                  _arguments[_depth*2+1] = ([ ]);
-                  _depth++;
-                  _arguments += ({ 0, 0 });
-                  _look_for = ARGUMENT_NAME;
-                  pos++;
-                  break;
-               case '"' :
-                  _arguments[_depth*2+1] = "";
-                  _look_for = END_STRING;
-                  pos++;
-                  break;
-               default :
-                  start = pos;
-                  if (sscanf(chunk[pos..], "%s)%s", s1, s2) == 2) {
-                     _arguments[_depth*2+1] = replace(implode(explode(replace(s1,
-                            ({ "\n", " ", "\r", "" })), " ")-({ "" }), " "), ", ", ",");
-                     pos = 0;
-                     chunk = ")"+s2;
-                     _look_for = END_BRACKET;
-                  } else {
-                     _arguments[_depth*2+1] = chunk[pos..];
-                     _look_for = REST_OF_ARGUMENT;
-                     pos = 0;
-                     chunk = "";
-                  }
-                  chunk_size = strlen(chunk);
-                  break;
-            }
-            break;
-         case REST_OF_ARGUMENT :
-            if (sscanf(chunk[pos..], "%s)%s", s1, s2) == 2) {
-               _arguments[_depth*2+1] = replace(implode(explode(
-                                                    replace(_arguments[_depth*2+1]+s1, "\n", " "),
-                                                                         " ") - ({ "" }),
-                                                             " "), ", ", ",");
-               pos = 0;
-               chunk = ")"+s2;
-               _look_for = END_BRACKET;
-            } else {
-               _arguments[_depth*2+1] += chunk[pos..];
-               pos = 0;
-               chunk = "";
-            }
-            chunk_size = strlen(chunk);
-            break;
-         case END_BRACKET :
-            if (sscanf(chunk[pos..], "%s)%s", s1, s2)) {
-               switch (_depth) {
-                  case 2 :
-                  case 3 :
-                     if (pointerp(_arguments[_depth*2-1][_arguments[_depth*2]]))
-                        _arguments[_depth*2-1][_arguments[_depth*2]] += ({ _arguments[_depth*2+1] });
-                     else
-                        _arguments[_depth*2-1][_arguments[_depth*2]] = ({ _arguments[_depth*2+1] });
-                     break;
-                  case 1 :
-                  case 4 :
-                  case 5 :
-                  case 6 :
-                  case 7 :
-                     _arguments[_depth*2-1][_arguments[_depth*2]] = _arguments[_depth*2+1];
-                     break;
-               }
-               chunk = s2;
-               chunk_size = strlen(s2);
-               _depth--;
-               pos = 0;
-               _arguments = _arguments[0.._depth*2+1];
-               if (_depth) {
-                  _look_for = START_ARGUMENT;
-               } else {
-                  _look_for = OPEN_BRACKET;
-               }
-            }
-            break;
-         case START_ARGUMENT :
-            while (pos < chunk_size && (chunk[pos] == ' '
-                   || chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos >= chunk_size) {
-               break;
-            }
-            switch (chunk[pos]) {
-               case ')' :
-                  _look_for = END_BRACKET;
-                  break;
-               case '(' :
-                  _look_for = OPEN_BRACKET;
-                  break;
-               default :
-                  if (!sscanf(chunk[pos..], "%s\n%s", s1, s2)) {
-                     s1 = chunk;
-                  }
-                  printf("Syntax error in file %s, near %s\n", _current_file, s1);
-                  _look_for = END_BRACKET;
-                  break;
-            }
-            break;
-         case END_STRING :
-            if (sscanf(chunk[pos..], "%s\"%s", s1, s2)) {
-               if (strlen(s1) > 0 && s1[strlen(s1)-1] == '\\') {
-                  _arguments[_depth*2+1] += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
-                  chunk = s2;
-                  pos = 0;
-                  chunk_size = strlen(s2);
-               } else {
-                  _arguments[_depth*2+1] += replace(s1, "\n", "");
-                  _look_for = END_BRACKET;
-                  chunk = s2;
-                  pos = 0;
-                  chunk_size = strlen(s2);
-               }
-            } else {
-               _arguments[_depth*2+1] += replace(chunk, "\n", "");
-               pos = chunk_size;
-            }
-            break;
-         default :
-            notify("Horrible error "+_look_for+"\n");
-            pos = chunk_size;
-            break;
+   } else if (token != "") {
+      bits = get_statement(token);
+      if (member_array("inherit", bits) != -1) {
+         return handle_inherit(bits);
+      } else if (bits[0] == "class" &&
+                 member_array("(", bits) == -1) {
+         return handle_class(bits);
+      } else if (bits[sizeof(bits) - 1] == "{" &&
+                 member_array("=", bits) == -1) {
+         return handle_function_definition(bits);
+      } else {
+         return ;
       }
    }
 }
-int check_sort(string pat1, string pat2) {
-   int lvl1, lvl2;
-   lvl1 = ((mixed *)PATTERN_OB->compile_pattern(pat1))[0];
-   lvl2 = ((mixed *)PATTERN_OB->compile_pattern(pat2))[0];
-   return lvl2-lvl1;
-}
-string *sort_patterns(string *inp) {
-   if (!pointerp(inp)) {
-      printf("%O\n", inp);
-      return ({ });
-   }
-   return sort_array(inp, "check_sort", this_object());
-}
-void make_into_soul_commands(mapping comms) {
-   string *fluff;
-   int i, failed, j;
-   mapping ret, tmp;
-   fluff = keys(comms);
-   ret = ([ ]);
-   for (i=0;i<sizeof(fluff);i++) {
-      ret[fluff[i]] = ({ comms[fluff[i]]["pattern"], 0, 0 });
-      if (comms[fluff[i]]["single"]) {
-         if (comms[fluff[i]]["single"][0]["no-arguments"]) {
-            tmp = comms[fluff[i]]["single"][0]["no-arguments"][0];
-            if (!tmp["self"]) {
-               notify("The 'self' type is missing in the no-argument, single for the soul command "+fluff[i]+"\n");
-               failed = 1;
-            } else if (!tmp["rest"]) {
-               notify("The 'rest' type is missing in the no-argument, single for the soul command "+fluff[i]+"\n");
-               failed = 1;
-            } else {
-               ret[fluff[i]][SINGLE] = ({ ({ tmp["self"], tmp["rest"],
-                                                            tmp["position"] }),
-                                                         0 });
-            }
-         }
-         if (comms[fluff[i]]["single"][0]["arguments"]) {
-            j = sizeof(comms[fluff[i]]["single"][0]["arguments"]);
-            if (!ret[fluff[i]][SINGLE]) {
-               ret[fluff[i]][SINGLE] = ({ 0, allocate(j*SMALL_ARG_SIZE) });
-            } else {
-               ret[fluff[i]][SINGLE][ARGUMENTS] = allocate(j*SMALL_ARG_SIZE);
-            }
-            for (j=0;j<sizeof(comms[fluff[i]]["single"][0]["arguments"]);j++) {
-               tmp = comms[fluff[i]]["single"][0]["arguments"][j];
-               if (!mapp(tmp)) {
-                  notify("The soul command "+fluff[i]+" is totaly stuffed.\n");
-                  failed = 1;
-               } else if (!tmp["self"]) {
-                  notify("The 'self' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else if (!tmp["rest"]) {
-                  notify("The 'rest' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else if (!tmp["arguments"]) {
-                  notify("The 'arguments' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else {
-                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+SELF] = tmp["self"];
-                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+REST] = tmp["rest"];
-                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+ARGS] = explode(tmp["arguments"], ",");
-                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+POSITION_SINGLE] = tmp["position"];
-               }
-            }
-         }
-      }
-      if (comms[fluff[i]]["targeted"]) {
-         if (comms[fluff[i]]["targeted"][0]["no-arguments"]) {
-            tmp = comms[fluff[i]]["targeted"][0]["no-arguments"][0];
-            if (!tmp["self"]) {
-               notify("The 'self' type is missing in the no-argument, target for the soul command "+fluff[i]+"\n");
-               failed = 1;
-            } else if (!tmp["rest"]) {
-               notify("The 'rest' type is missing in the no-argument, target for the soul command "+fluff[i]+"\n");
-               failed = 1;
-            } else {
-               ret[fluff[i]][TARGET] = ({ ({ tmp["self"], tmp["rest"],
-                                     tmp["target"], 0, tmp["force"], tmp["position"] }),
-                                                         0 });
-            }
-         }
-         if (comms[fluff[i]]["targeted"][0]["arguments"]) {
-            j = sizeof(comms[fluff[i]]["targeted"][0]["arguments"]);
-            if (!ret[fluff[i]][TARGET])
-               ret[fluff[i]][TARGET] = ({ 0, allocate(j*ARG_SIZE) });
-            else
-               ret[fluff[i]][TARGET][ARGUMENTS] = allocate(j*ARG_SIZE);
-            for (j=0;j<sizeof(comms[fluff[i]]["targeted"][0]["arguments"]);j++) {
-               tmp = comms[fluff[i]]["targeted"][0]["arguments"][j];
-               if (!tmp["self"]) {
-                  notify("The 'self' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else if (!tmp["rest"]) {
-                  notify("The 'rest' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else if (!tmp["arguments"]) {
-                  notify("The 'arguments' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
-                  failed = 1;
-               } else {
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+SELF] = tmp["self"];
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+REST] = tmp["rest"];
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+TARG] = tmp["target"];
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+ARGS] = explode(tmp["arguments"], ",");
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+FORCE] = tmp["force"];
-                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+POSITION] = tmp["position"];
-               }
-            }
-         }
-      }
-   }
-   fluff = keys(ret);
-   for (i=0;i<sizeof(fluff);i++) {
-      ret[fluff[i]][PATTERNS] = sort_patterns(ret[fluff[i]][PATTERNS]);
-      SOUL_OBJECT->add_soul_command(fluff[i], ret[fluff[i]]);
-      notify("Added soul command "+fluff[i]+".\n");
-   }
-}
-void blue() {
-   printf("%O\n", sort_patterns(({ "[at] <indirect:object>", "<string>" })));
-}
-
-==================================================
-FILE: handlers/start_positions.c
-==================================================
-
-#include <login_handler.h>
-#define SAVE_FILE "/save/start_position_handler"
-#define CHECKED_PROP "checked start positions"
-private int _last_added;
-private string * _buggy_starts;
 void load_file() {
-   if ( file_size( SAVE_FILE + ".o" ) > 0 ||
-        file_size( SAVE_FILE + ".o.gz" ) > 0 )
-   {
-      unguarded( (: restore_object, SAVE_FILE :) );
+   unguarded((: restore_object(SAVE_DIR + replace_string(file_name, "/", ".")) :));
+   if (!includes) {
+      includes = ([ ]);
+   }
+   if (!class_docs) {
+      class_docs = ([ ]);
    }
 }
 void save_file() {
-   unguarded( (: save_object, SAVE_FILE :) );
+   unguarded((: save_object(SAVE_DIR + replace_string(file_name, "/", ".")) :));
 }
-void create() {
-   _last_added = 0;
-   _buggy_starts = ({ });
+void parse_file(string name, function func, int only_load) {
+   int curr_change;
+   int my_change;
+   string my_name;
+   int reload;
+   setup();
+   file_name = name;
    load_file();
-   if ( !_buggy_starts ) {
-      _buggy_starts = ({ });
-   }
-}
-int add_buggy_start( string fname ) {
-   if ( !fname ) {
-      return 0;
-   }
-   fname = lower_case( fname );
-   if ( fname[ <2 .. ] == ".c" ) {
-      fname = fname[ 0 .. <3 ];
-   }
-   if ( member_array( fname, _buggy_starts ) != -1 ) {
-      return -1;
-   }
-   _buggy_starts += ({ fname });
-   _last_added = time();
-   save_file();
-   return 1;
-}
-int delete_buggy_start( string fname ) {
-   if ( !fname ) {
-      return 0;
-   }
-   fname = lower_case( fname );
-   if ( fname[ <2 .. ] == ".c" ) {
-      fname = fname[ 0 .. <3 ];
-   }
-   if ( member_array( fname, _buggy_starts ) == -1 ) {
-      return -1;
-   }
-   _buggy_starts -= ({ fname });
-   save_file();
-   return 1;
-}
-string * list_buggy_starts() {
-   return copy( _buggy_starts );
-}
-void remove_buggy_starts( object player ) {
-   string * starts;
-   if ( !player ) {
-      return;
-   }
-   starts = copy( player->query_starts() );
-   for( int i = 0; i < sizeof( starts ); i += 2 ) {
-      if ( member_array( starts[i], _buggy_starts ) != -1 ) {
-         player->remove_start( starts[i] );
-      }
-   }
-   player->add_property( CHECKED_PROP, time() );
-}
-void login_callback( string player, string type ) {
-   object playerob;
-   if ( !player ||
-        !type ||
-        type != LOGIN )
-   {
-      return;
-   }
-   player = lower_case( player );
-   if ( !( playerob =  find_player( player ) ) ||
-        ( playerob->query_property( CHECKED_PROP ) >= _last_added ) )
-   {
-      return;
-   }
-   remove_buggy_starts( playerob );
-}
-void dest_me() {
-   destruct( this_object() );
-}
-
-==================================================
-FILE: handlers/state_change.c
-==================================================
-
-#include <state_change.h>
-#define PROP "state name"
-#define DATA_DIR "/obj/state_change/"
-mapping table = ([ ]);
-void set_amount_of_ob( object ob, int amount );
-mixed query_table() { return table; }
-void create() {
-    string *files;
-    int i;
-    seteuid("/secure/master"->creator_file(file_name(this_object())));
-    files = ({ "base.hdr" });
-    files += get_dir(DATA_DIR + "*.dat");
-    for (i = 0; i < sizeof(files); i++) {
-        files[i] = DATA_DIR + files[i];
-    }
-    table += "/obj/handlers/data"->compile_data(files);
-}
-varargs object transform( object ob, string transformation, object player ) {
-    string index, name;
-    object ret;
-    class state_change c;
-    function f;
-    int *weight_unit;
-    if (!stringp(name = ob->query_property(PROP)))
-      if (!stringp(name = ob->query_medium_alias()))
-        name = ob->short();
-    if ( !player )
-      player = this_player();
-    index = transformation + ":" + name;
-    if (undefinedp(table[index]))
-      return 0;
-    c = table[index];
-    ret = clone_object(c->result);
-    foreach (f in c->func)
-      evaluate(f, ob, ret, player);
-    if (ret->query_continuous()) {
-        if ( ob->query_continuous() || ob->query_collective() ) {
-            ret->set_amount(to_int(ob->query_amount() * c->factor));
-        } else {
-            weight_unit = ret->query_weight_unit();
-            set_amount_of_ob( ret, to_int( ob->query_weight() * c->factor *
-              weight_unit[1] / weight_unit[0] ) );
-        }
-    } else {
-        if ( ob->query_continuous() || ob->query_collective() ) {
-            weight_unit = ob->query_weight_unit();
-            ret->set_weight(to_int(ob->query_amount() * c->factor *
-                                   weight_unit[0] / weight_unit[1]));
-        } else {
-            ret->set_weight(to_int(ob->query_weight() * c->factor));
-        }
-    }
-    log_file( "STATE_CHANGE", "Changed %d amount of %s to %d amount of %s via %s.\n",
-      ob->query_amount(), ob->query_medium_alias(), ret->query_amount(),
-      ret->query_medium_alias(), transformation );
-    return ret;
-}
-void set_amount_of_ob( object ob, int amount ) {
-  if ( !ob )
-      return;
-  if ( !amount )
-      ob->dest_me();
-  ob->set_amount( amount );
-  return;
-}
-
-==================================================
-FILE: handlers/taskmaster.c
-==================================================
-
-#include <tasks.h>
-#define TIME_PER_USER 1800
-#define SAVE_FILES "/save/tasks/"
-#define LOG_STATS 2
-#undef LOGGING
-mapping stats;
-nosave int last_save;
-nosave int last;
-nosave string skill;
-nosave mixed *control;
-nosave int * critical_chances;
-varargs mixed perform_task( object person, string skill, int difficulty,
-                         int tm_type, int degree );
-varargs mixed attempt_task( int difficulty, int bonus, int upper,
-                            mixed extra, int degree );
-varargs mixed attempt_task_e( int difficulty, int bonus, int upper,
-                              int half, int degree );
-int is_critical( int margin );
-void create() {
-   float a, b;
-   seteuid( "Root" );
-   critical_chances = allocate(100);
-   a = 0.93260;
-   b = 0.06978;
-   for( int i = 0; i < 100; i++ ) {
-      critical_chances[i] = a * exp( b * ( i + 1 ) );
-   }
-}
-mapping query_stats( string s_name ) {
-  if ( skill != s_name ) {
-    skill = s_name;
-    if ( file_size( SAVE_FILES + skill +".o" ) > 0 )
-      unguarded( (: restore_object, SAVE_FILES + skill :) );
-    else
-      stats = 0;
-  }
-  if ( !stats )
-    stats = ([ ]);
-  return copy( stats );
-}
-int query_last() { return last; }
-mixed *query_control() { return control; }
-void set_control( mixed *args ) { control = args; }
-void reset_control() { control = 0; }
-void award_made( string p_name, string o_name, string s_name, int level ) {
-  user_event( "inform", p_name +" gains a level in "+ s_name +" from "+
-              o_name + " at level " + level, "skill" );
-#ifdef LOG_STATS
-#if LOG_STATS == 1
-  query_stats( s_name );
-  if ( !stats[ level ] )
-    stats[ level ] = ([ ]);
-  stats[ level ][ explode( o_name, "#" )[ 0 ] ]++;
-#else
-  query_stats("summary");
-  if(s_name[<7..] == ".points" || s_name[0..13] == "other.language")
-    return;
-  s_name = explode(s_name, ".")[0];
-  if(!stats[s_name])
-    stats[s_name] = ({ ({ 0 , 0 }),  ({ 0, 0 }),  ({ 0, 0 }) , ({0,0})});
-  switch(level) {
-  case 0..149:
-    stats[s_name][0] = ({ stats[s_name][0][0], stats[s_name][0][1]+1 });
-    break;
-  case 150..299:
-    stats[s_name][1] = ({ stats[s_name][1][0], stats[s_name][1][1]+1 });
-    break;
-  case 300..599:
-    stats[s_name][2] = ({ stats[s_name][2][0], stats[s_name][2][1]+1 });
-    break;
-  default:
-    stats[s_name][3] = ({ stats[s_name][3][0], stats[s_name][3][1]+1 });
-    break;
-  }
-  if(last_save < time() - 300) {
-    unguarded( (: save_object, SAVE_FILES + "summary" :) );
-    last_save = time();
-  }
-#endif
-#endif
-}
-#if LOG_STATS == 2
-void skill_checked(string s_name, int level) {
-  query_stats("summary");
-  if(s_name[<7..] == ".points" || s_name[0..13] == "other.language")
-    return;
-  s_name = explode(s_name, ".")[0];
-  if(!stats[s_name])
-    stats[s_name] = ({ ({0,0}), ({0,0}), ({0,0}), ({0,0}), ({0,0}) });
-  switch(level) {
-  case 0..49:
-    stats[s_name][0] = ({ stats[s_name][0][0]+1, stats[s_name][0][1] });
-    break;
-  case 50..149:
-    stats[s_name][1] = ({ stats[s_name][1][0]+1, stats[s_name][1][1] });
-    break;
-  case 150..299:
-    stats[s_name][2] = ({ stats[s_name][2][0]+1, stats[s_name][2][1] });
-    break;
-  case 300..599:
-    stats[s_name][3] = ({ stats[s_name][3][0]+1, stats[s_name][3][1] });
-    break;
-  default:
-    stats[s_name][4] = ({ stats[s_name][4][0]+1, stats[s_name][4][1] });
-    break;
-  }
-  if(last_save < time() - 300) {
-    unguarded( (: save_object, SAVE_FILES + "summary" :) );
-    last_save = time();
-  }
-}
-#endif
-string *query_skill_files() {
-  return unguarded( (: get_dir, SAVE_FILES +"*.o" :) );
-}
-void clear_skill_files() {
-  string word;
-  foreach ( word in unguarded( (: get_dir, SAVE_FILES +"*.o" :) ) )
-    unguarded( (: rm, SAVE_FILES + word :) );
-  skill = 0;
-}
-varargs mixed compare_skills( object offob, string offskill,
-                              object defob, string defskill,
-                              int modifier, int off_tm_type,
-                              int def_tm_type, int degree )
-{
-  int offbonus, defbonus;
-  int perc, chance;
-  int success_margin, res, deg;
-  if( !offob || !defob || !offskill || !defskill )
-    return BARF;
-  offbonus = offob->query_skill_bonus(offskill);
-  defbonus = defob->query_skill_bonus(defskill);
-  if( !defbonus ) {
-    defbonus = 1;
-  }
-  if( !offbonus ) {
-    offbonus = 1;
-  }
-  (offbonus > defbonus) ?
-    perc = (50 * offbonus * offbonus) / (offbonus * defbonus) :
-    perc = 100 - (50 * defbonus * defbonus) / (offbonus * defbonus);
-  perc += modifier;
-  if(perc > 99)
-    perc = 99;
-  if(perc < 1)
-    perc = 1;
-  chance = random(100);
-  success_margin = perc - chance;
-  if( success_margin > 0 ) {
-    switch( perform_task( offob, offskill, defbonus-modifier,
-                          off_tm_type, 0 ) )
-    {
-    case AWARD:
-      res = OFFAWARD;
-      break;
-    default:
-      res = OFFWIN;
-    }
-    if( degree ) {
-      if( is_critical(success_margin) ) {
-        deg = TASKER_CRITICAL;
-      } else {
-         if( success_margin < TASKER_MARGINAL_UPPER ) {
-           deg = TASKER_MARGINAL;
-         } else if( success_margin < TASKER_NORMAL_UPPER ) {
-           deg = TASKER_NORMAL;
-         } else {
-           deg = TASKER_EXCEPTIONAL;
+   if (!only_load) {
+      if (sizeof(unguarded( (: stat($(name)) :) )) > 1) {
+         curr_change = unguarded( (: stat($(name)) :) )[1];
+         my_name = file_name(this_object());
+         sscanf(my_name, "%s#%*s", my_name);
+         my_name += ".c";
+         my_change = unguarded( (: stat($(my_name)) :) )[1];
+         reload = curr_change > last_changed;
+         if (my_change > last_changed &&
+             my_change > curr_change) {
+            curr_change = my_change;
+            reload = 1;
          }
-      }
-      return new( class tasker_result,
-                  result : res,
-                  degree : deg,
-                  raw    : success_margin );
-    } else {
-      return res;
-    }
-  } else {
-    switch( perform_task( defob, defskill, offbonus-modifier,
-                          def_tm_type, 0 ) ) {
-    case AWARD:
-      res = DEFAWARD;
-      break;
-    default:
-      res = DEFWIN;
-    }
-    if( degree ) {
-      if( is_critical(success_margin) ) {
-        deg = TASKER_CRITICAL;
-      } else {
-         if( -success_margin < TASKER_MARGINAL_UPPER ) {
-           deg = TASKER_MARGINAL;
-         } else if( -success_margin < TASKER_NORMAL_UPPER ) {
-           deg = TASKER_NORMAL;
-         } else {
-           deg = TASKER_EXCEPTIONAL;
-         }
-      }
-      return new( class tasker_result,
-                  result : res,
-                  degree : deg,
-                  raw    : success_margin );
-    } else {
-      return res;
-    }
-  }
-}
-varargs mixed perform_task( object person, string skill, int difficulty,
-                            int tm_type, int degree ) {
-  mixed result;
-  int bonus, upper;
-  if( !person || !skill )
-    return BARF;
-  bonus = person->query_skill_bonus( skill );
-  switch(tm_type) {
-  case TM_FIXED:
-    result = attempt_task( difficulty, bonus, 100, 0, degree );
-    break;
-  case TM_FREE:
-    result = attempt_task( difficulty, bonus, 25, 0, degree );
-    break;
-  case TM_CONTINUOUS:
-    result = attempt_task( difficulty, bonus, 50, 0, degree );
-    break;
-  case TM_COMMAND:
-    if( explode( skill, "." )[0] == "covert" )
-      result = attempt_task_e
-  ( difficulty, bonus, 60, 40, degree );
-    else
-      result = attempt_task( difficulty, bonus, 100, 0, degree );
-    break;
-  case TM_RITUAL:
-    result = attempt_task_e( difficulty, bonus, 50, 25, degree );
-    break;
-  case TM_SPELL:
-    result = attempt_task_e( difficulty, bonus, 60, 40, degree );
-    break;
-  case TM_NONE:
-    result = attempt_task_e(difficulty, bonus, 1, 0, degree);
-    if(classp(result) && ( (class tasker_result)result )->result == AWARD) {
-      result->result = SUCCEED;
-    } else if( result == AWARD ) {
-      result = SUCCEED;
-    }
-    break;
-  default:
-#ifdef LOGGING
-    if(file_name(previous_object())[0..2] != "/w/")
-      log_file("ATTEMPT_TASK",
-               "%s Object %s using old perform_task [%d, %d]\n",
-               ctime(time()), base_name(previous_object()), tm_type, degree );
-#endif
-    upper = tm_type;
-    if ( !upper )
-      upper = 100;
-    result = attempt_task( difficulty, bonus, upper, 0, degree );
-  }
-  if(classp(result) && ( (class tasker_result)result )->result == AWARD ||
-     result == AWARD) {
-    if(person->advancement_restriction() ||
-       !person->add_skill_level(skill, 1, previous_object())) {
-      if(classp(result))
-        result->result = SUCCEED;
-      else
-        result = SUCCEED;
-    }
-  }
-  return result;
-}
-varargs mixed attempt_task( int difficulty, int bonus, int upper,
-                            mixed extra, int degree )
-{
-   int margin, success_margin, deg, res;
-   float tmp;
-#ifdef LOGGING
-   if( call_stack(2)[1] != "perform_task" &&
-       base_name( previous_object() ) != "/std/effects/fighting/combat" &&
-       file_name( previous_object() )[0..2] != "/w/" )
-   {
-     log_file("ATTEMPT_TASK", "%s Object %s is using old attempt_task "
-              "[%O]\n",
-              ctime( time() ), base_name( previous_object() ), call_stack(2) );
-   }
-#endif
-#if LOG_STATS == 2
-   if(pointerp(control) && control[1]) {
-      skill_checked(control[1], control[0]->query_skill(control[1]));
-   }
-#endif
-   if ( bonus < difficulty ) {
-#ifdef DEBUG
-      if(pointerp(control) && control[0]->query_name() == WATCH_PLAYER &&
-         find_player(DEBUG))
-      {
-         tell_creator( DEBUG, "%^RED%^"
-           + sprintf( "TM: %s Skill: %s [%d] [%d] Failed\n",
-                      control[0]->query_name(), control[1], bonus, difficulty )
-           + "%^RESET%^" );
-      }
-#endif
-      if( degree ) {
-         return new( class tasker_result,
-                     result : FAIL,
-                     degree : ( is_critical( -100 ) ?
-                                TASKER_CRITICAL :
-                                TASKER_EXCEPTIONAL ),
-                     raw    : -100 );
-      } else {
-         return FAIL;
-      }
-   }
-   if ( !extra )
-      margin = 3 * sqrt( difficulty );
-   else {
-      if ( intp( extra ) )
-         margin = extra;
-      if ( pointerp( extra ) )
-         margin = extra[ 0 ] + extra[ 1 ] * sqrt( difficulty );
-   }
-   if ( !margin )
-      return BARF;
-   if ( bonus > difficulty + margin ) {
-#ifdef DEBUG
-     if(pointerp(control) &&
-        WATCH_PLAYER || control[0]->query_name() == WATCH_PLAYER &&
-        find_player(DEBUG))
-       tell_object(find_player(DEBUG), "%^RED%^" + sprintf("TM: %s Skill: %s [%d] [%d] [%d] Succeeded\n", control[0]->query_name(), control[1], bonus, difficulty, margin) + "%^RESET%^");
-#endif
-      if( degree ) {
-         return new( class tasker_result,
-                     result : SUCCEED,
-                     degree : ( is_critical(100) ?
-                                TASKER_CRITICAL :
-                                TASKER_EXCEPTIONAL ),
-                     raw    : 100 );
-      } else {
-         return SUCCEED;
-      }
-   }
-   if(!margin)
-     margin = 1;
-   success_margin = ( ( 100 * ( bonus - difficulty ) ) / margin ) - random(100);
-   if ( success_margin <= 0 ) {
-#ifdef DEBUG
-     if(pointerp(control) &&
-        control[0]->query_name() == WATCH_PLAYER &&
-        find_player(DEBUG))
-       tell_object(find_player(DEBUG), "%^RED%^" + sprintf("TM: %s Skill: %s [%d] [%d] Failed (2)\n", control[0]->query_name(), control[1], bonus, difficulty) + "%^RESET%^");
-#endif
-      if( degree ) {
-         if( is_critical(success_margin) ) {
-            deg = TASKER_CRITICAL;
-         } else {
-            if( -success_margin < TASKER_MARGINAL_UPPER ) {
-               deg = TASKER_MARGINAL;
-            } else if( -success_margin < TASKER_NORMAL_UPPER ) {
-               deg = TASKER_NORMAL;
-            } else {
-               deg = TASKER_EXCEPTIONAL;
+         if (!reload) {
+            foreach (my_name, my_change in includes) {
+               if ( unguarded( (: stat($(my_name)) :) )[1] != my_change) {
+                  reload = 1;
+                  break;
+               }
             }
          }
-         return new( class tasker_result,
-                     result : FAIL,
-                     degree : deg,
-                     raw    : success_margin );
-      } else {
-         return FAIL;
-      }
-   }
-   if ( pointerp( control ) ) {
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), "%^RED%^" +
-                   sprintf("TM: %s Skill: %s [%d,%d] OU: %d ",
-                           control[0]->query_name(),
-                           control[1], bonus,
-                           control[0]->query_skill(control[1]),
-                           upper));
-#endif
-     upper = (int)control[ 0 ]->stat_modify(upper, control[ 1 ] );
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG),
-                   sprintf("SU: %d ", upper));
-#endif
-     tmp = exp((control[0]->query_skill(control[1])-BASE) / DECAY);
-     upper = to_int(upper / tmp) - MODIFIER;
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), sprintf("LU: %d ", upper));
-#endif
-     if(upper < 0)
-       upper = 0;
-#ifdef DEBUG
-      if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), sprintf("FU: %d\n",
-                                                 upper) + "%^RESET%^");
-#endif
-   }
-#ifdef DEBUG
-   else
-     if(find_player(DEBUG))
-       tell_object(find_player(DEBUG), sprintf("No control: %O\n",
-                                                 previous_object(-1)));
-#endif
-     if(!margin)
-        margin = 1;
-   if( random(100) < ( upper * ( difficulty + margin - bonus ) ) / margin )
-      res = AWARD;
-   else
-      res = SUCCEED;
-   if( degree ) {
-      if( is_critical(success_margin) ) {
-         deg = TASKER_CRITICAL;
-      } else {
-         if( success_margin < TASKER_MARGINAL_UPPER ) {
-            deg = TASKER_MARGINAL;
-         } else if( success_margin < TASKER_NORMAL_UPPER ) {
-            deg = TASKER_NORMAL;
-         } else {
-            deg = TASKER_EXCEPTIONAL;
-         }
-      }
-      return new( class tasker_result,
-                  result : res,
-                  degree : deg,
-                  raw    : success_margin );
-   } else {
-      return res;
-   }
-}
-varargs mixed attempt_task_e( int difficulty, int bonus, int upper,
-                              int half, int degree )
-{
-   float fail_chance;
-   float tmp;
-   int success_margin, deg, res;
-#ifdef LOGGING
-   if(call_stack(2)[1] != "perform_task" &&
-      base_name(previous_object()) != "/std/effects/fighting/combat" &&
-      file_name(previous_object())[0..2] != "/w/") {
-     log_file("ATTEMPT_TASK", "%s Object %s is using old attempt_task "
-              "[%O]\n",
-              ctime(time()), base_name(previous_object()), call_stack(2));
-   }
-#endif
-#if LOG_STATS == 2
-   if(pointerp(control) && control[1]) {
-     skill_checked(control[1], control[0]->query_skill(control[1]));
-   }
-#endif
-   if ( bonus < difficulty ) {
-      if( degree ) {
-         return new( class tasker_result,
-                     result : FAIL,
-                     degree : ( is_critical( -100 ) ?
-                                TASKER_CRITICAL :
-                                TASKER_EXCEPTIONAL ),
-                     raw    : -100 );
-      } else {
-         return FAIL;
-      }
-   }
-   if( !half )
-      half = 6 * sqrt( difficulty );
-   if( !half )
-      half = 1;
-   fail_chance = exp( ( -0.693 * ( bonus - difficulty ) ) / half );
-   success_margin = ( random( 1000 ) - ( 1000 * fail_chance ) ) / 10;
-   if ( success_margin < 0 ) {
-      if( degree ) {
-         if( is_critical(success_margin) ) {
-            deg = TASKER_CRITICAL;
-         } else {
-            if( -success_margin < TASKER_MARGINAL_UPPER ) {
-               deg = TASKER_MARGINAL;
-            } else if( -success_margin < TASKER_NORMAL_UPPER ) {
-               deg = TASKER_NORMAL;
-            } else {
-               deg = TASKER_EXCEPTIONAL;
+         if (reload) {
+            setup();
+            num_failed_tries = 0;
+            file_name = name;
+            changed = 1;
+            last_changed = curr_change;
+            current_file = read_file(name);
+            current_position = 0;
+            if (catch(do_parse_file(func))) {
+               evaluate(func);
             }
-         }
-         return new( class tasker_result,
-                     result : FAIL,
-                     degree : deg,
-                     raw    : success_margin );
-      } else {
-         return FAIL;
-      }
-   }
-   if ( pointerp( control ) ) {
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), "%^RED%^" +
-                   sprintf("TM: %s Skill: %s [%d,%d] OU: %d ",
-                           control[0]->query_name(),
-                           control[1], bonus,
-                           control[0]->query_skill(control[1]),
-                           upper));
-#endif
-     upper = (int)control[ 0 ]->stat_modify( upper, control[ 1 ] );
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG),
-                   sprintf("SU: %d ", upper));
-#endif
-     tmp = exp((control[0]->query_skill(control[1])-BASE) / DECAY);
-     upper = to_int(upper / tmp) - E_MODIFIER;
-#ifdef DEBUG
-     if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), sprintf("LU: %d ", upper));
-#endif
-     if(upper < 0)
-       upper = 0;
-#ifdef DEBUG
-      if(find_player(DEBUG) && bonus >= MIN_LEVEL)
-       tell_object(find_player(DEBUG), sprintf("FU: %d\n",
-                                                 upper) + "%^RESET%^");
-#endif
-   }
-   if ( random(1000) < ( upper * fail_chance * 10 )
-    &&  bonus < difficulty + ( half * 5 ) ) {
-      res = AWARD;
-   } else {
-      res = SUCCEED;
-   }
-   if( degree ) {
-      if( is_critical(success_margin) ) {
-         deg = TASKER_CRITICAL;
-      } else {
-         if( success_margin < TASKER_MARGINAL_UPPER ) {
-            deg = TASKER_MARGINAL;
-         } else if( success_margin < TASKER_NORMAL_UPPER ) {
-            deg = TASKER_NORMAL;
          } else {
-            deg = TASKER_EXCEPTIONAL;
+            if (num_failed_tries) {
+               num_failed_tries = 0;
+               save_file();
+            }
+            call_out( (: evaluate($1) :), 2, func);
          }
+      } else {
+         num_failed_tries++;
+         save_file();
+         call_out( (: evaluate($1) :), 2, func);
       }
-      return new( class tasker_result,
-                  result : res,
-                  degree : deg,
-                  raw    : success_margin );
    } else {
-      return res;
+      call_out( (: evaluate($1) :), 2, func);
    }
 }
-int is_critical( int margin ) {
-   if ( margin < 0 ) {
-      margin *= -1;
+private void do_parse_file(function func) {
+   int num;
+   if (unguarded( (: stat(file_name) :))[1] > last_changed) {
+      return parse_file(file_name, func, 0);
    }
-   if ( margin > 100 ) {
-      margin = 100;
+   num = 0;
+   while (lookahead_character(1) != EOF && num < 2) {
+      next_statement();
+      num++;
    }
-   if ( margin == 0 ) {
+   if (lookahead_character(1) == EOF) {
+      save_file();
+      call_out((: evaluate($1) :), 2, func);
+   } else {
+      call_out((: do_parse_file($1) :), 2, func);
+   }
+}
+mapping query_inherits() { return inherits; }
+mapping query_private_functions() { return private_functions; }
+mapping query_public_functions() { return public_functions; }
+mapping query_protected_functions() { return protected_functions; }
+mapping query_main_docs() {
+   if (main_docs) {
+      return main_docs;
+   }
+   return ([ ]);
+}
+string query_file_name() { return file_name; }
+mapping query_defines() { return defines; }
+int query_changed() { return changed; }
+int query_num_failed_tries() { return num_failed_tries; }
+string *query_includes() { return keys(includes); }
+mapping query_define_docs() { return define_docs; }
+mapping query_class_docs() { return class_docs; }
+void dest_me() {
+   destruct(this_object());
+}
+
+==================================================
+FILE: handlers/autodoc/autodoc_handler.c
+==================================================
+
+#include <autodoc.h>
+#define MAIN_FILE 0
+#define INDEX_FILE 1
+#define SAVE_FILE (SAVE_DIR "main_rubbish")
+string *files;
+int file_pos;
+int something_changed;
+int last_created_index;
+nosave function *filters;
+nosave int call_id;
+nosave mapping summary_map;
+nosave mixed *extra_indexes;
+mapping help_map;
+private void create_nroff_file(object ob, int type);
+private void create_html_file(object ob, int type);
+private void after_thingy(int no_index);
+private void start_processing();
+private void do_parse_next_file();
+private void create_index();
+private void add_to_index(object ob);
+private void load();
+private void save();
+string *query_files();
+int remove_file(string fname);
+void create() {
+   seteuid(getuid());
+   filters = ({ (: create_nroff_file($1, $2) :),
+                (: create_html_file($1, $2) :) });
+   file_pos = 0;
+   something_changed = 0;
+   files = ({ });
+   load();
+   do_parse_next_file();
+}
+private void create_nroff_file(mixed ob, int type) {
+   string fname;
+   mixed *stuff;
+   mixed *index_stuff;
+   int i;
+   if (type == MAIN_FILE) {
+      fname = replace(ob->query_file_name(), "/", ".");
+      if (fname[0] == '.') {
+         fname = fname[1..];
+      }
+      rm(NROFF_DOC_DIR + fname);
+      AUTODOC_NROFF->create_nroff_file(ob, NROFF_DOC_DIR + fname);
+   } else if (type == INDEX_FILE) {
+      index_stuff = ob;
+      stuff = map(query_files(), function (string name) {
+           string *bits;
+           bits = explode(name, "/");
+           return ({ bits[sizeof(bits)-1], name });
+        } );
+      stuff = unique_array(index_stuff + stuff, (: lower_case($1[0])[0] :));
+      for (i = 0; i < sizeof(stuff); i++) {
+         fname = NROFF_DOC_DIR + "index_" + lower_case(stuff[i][0][0][0..0]);
+         AUTODOC_NROFF->create_nroff_index_file(stuff[i], fname);
+      }
+   }
+}
+private void create_html_file(mixed ob, int type) {
+   string fname;
+   mixed *stuff;
+   mixed *index_stuff;
+   int i;
+   mapping chars;
+   if (type == MAIN_FILE) {
+      fname = replace(ob->query_file_name(), "/", ".");
+      if (fname[0] == '.') {
+         fname = fname[1..];
+      }
+      fname += ".html";
+      rm(HTML_DOC_DIR + fname);
+      AUTODOC_HTML->create_html_file(ob, HTML_DOC_DIR + fname);
+   } else if (type == INDEX_FILE) {
+      index_stuff = ob;
+      stuff = map(query_files(), function (string name) {
+           string *bits;
+           bits = explode(name, "/");
+           return ({ bits[sizeof(bits)-1], name, "", summary_map[name] });
+        } );
+      stuff = unique_array(index_stuff + stuff, (: lower_case($1[0])[0] :));
+      chars = ([ ]);
+      for (i = 0; i < sizeof(stuff); i++) {
+         fname = "index_" + lower_case(stuff[i][0][0][0..0]) + ".html";
+         rm(HTML_DOC_DIR + fname);
+         AUTODOC_HTML->create_html_index_file(stuff[i], stuff[i][0][0][0..0],
+                                       HTML_DOC_DIR + fname);
+         reset_eval_cost();
+         chars[capitalize(stuff[i][0][0][0..0])] =  fname;
+      }
+      fname = HTML_DOC_DIR;
+      AUTODOC_HTML->create_main_index(chars, fname);
+   }
+}
+private void after_thingy(int no_index) {
+   int i;
+   if (no_index) {
+      printf("Finished recreating the documentation for %O\n",
+              previous_object()->query_file_name(),
+             previous_object());
+   }
+   if (previous_object()->query_changed()) {
+      something_changed = 1;
+   }
+   if (previous_object()->query_num_failed_tries() > 1) {
+      remove_file(files[file_pos - 1]);
+   } else if (previous_object()->query_changed() || no_index) {
+      for (i = 0; i < sizeof(filters); i++) {
+         call_out((: evaluate($1, $2, $3) :), 0, filters[i],
+                  previous_object(), MAIN_FILE);
+      }
+   }
+   call_out((: $1->dest_me() :), 20, previous_object());
+   save();
+}
+private void do_parse_next_file() {
+   call_id = call_out((: start_processing() :), 60);
+   if (file_pos >= sizeof(files)) {
+      file_pos = 0;
+   }
+   new(AUTODOC_FILE)->parse_file(files[file_pos++], (: after_thingy(0) :));
+}
+private void start_processing() {
+   if (sizeof(files) == 0) {
+      return ;
+   }
+   if (last_created_index + SAVE_INDEX_DELAY < time()) {
+      if (something_changed) {
+         call_out( (: create_index() :), 2);
+      }
+      something_changed = 0;
+      save();
+   }
+   call_id = call_out((: do_parse_next_file() :), 360);
+}
+private string query_short_args_def(mixed *args) {
+   string ret;
+   int i;
+   ret = "";
+   for (i = 0; i < sizeof(args); i += 2) {
+      if (i != 0) {
+         ret += ", ";
+      }
+      ret += implode(args[AUTO_ARGS_TYPE], " ");
+   }
+   return "(" + ret + ")";
+}
+private string *process_stuff(string name,
+                              string fname,
+                              string fn,
+                              mapping docs) {
+   string blue;
+   int i;
+   int end;
+   mixed *ret;
+   mapping fluff;
+   if (name != "create" && name != "setup" && name != "init") {
+      if (help_map[name]) {
+         help_map[name] += ({ fn });
+      } else {
+         help_map[name] = ({ fn });
+      }
+   }
+   if (docs[name]) {
+      if (arrayp(docs[name])) {
+         fluff = docs[name][AUTO_DOCS];
+         ret =  ({ name, fname, query_short_args_def(docs[name][AUTO_ARGS]) });
+      } else {
+         ret = ({ name, fname, "" });
+         fluff = docs[name];
+      }
+   } else {
+      ret = ({ name, fname, "" });
+      if (mapp(docs)) {
+         fluff = docs;
+      } else {
+         fluff = ([ ]);
+      }
+   }
+   if (fluff["main"]) {
+      blue = implode(fluff["main"], "\n");
+      end = strlen(blue);
+      i = strsrch(blue, ".");
+      if (i > 0) {
+         end = i;
+      }
+      i = strsrch(blue, "!");
+      if (i > 0 && i < end) {
+         end = i;
+      }
+      i = strsrch(blue, "?");
+      if (i > 0 && i < end) {
+         end = i;
+      }
+      blue = blue[0..end];
+   }
+   ret += ({ blue });
+   if (fluff["index"]) {
+      foreach (blue in fluff["index"]) {
+         blue = replace(blue, ({ " ", "", "\n", "" }));
+         if (help_map[blue]) {
+            help_map[blue] += ({ fn });
+         } else {
+            help_map[blue] = ({ fn });
+         }
+         extra_indexes += ({ ({ blue, fname, "", ret[AUTO_INDEX_SUMMARY] }) });
+      }
+   }
+   return ret;
+}
+private void create_index() {
+   int i;
+   mixed *index_stuff;
+   mixed *rabbit;
+   string fname;
+   string fn;
+   string *bits;
+   object parse;
+   index_stuff = ({ });
+   help_map = ([ ]);
+   extra_indexes = ({ });
+   summary_map = ([ ]);
+   parse = clone_object(AUTODOC_FILE);
+   for (i = 0; i < sizeof(files); i++) {
+      parse->parse_file(files[i], 0, 1);
+      fname = parse->query_file_name();
+      if (fname) {
+         fn = replace(fname, "/", ".");
+         if (fn[0] == '.') {
+            fn = fn[1..];
+         }
+         fn = NROFF_DOC_DIR + fn;
+         bits = explode(fname[0..strlen(fname)-3], "/");
+         rabbit = process_stuff(bits[sizeof(bits) - 1], "", fn,
+                                parse->query_main_docs());
+         if (rabbit[AUTO_INDEX_SUMMARY]) {
+            summary_map[fname] = rabbit[AUTO_INDEX_SUMMARY];
+         } else {
+            map_delete(summary_map, fname);
+         }
+         index_stuff += map(keys(parse->query_public_functions()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_public_functions()) :) );
+         index_stuff += map(keys(parse->query_protected_functions()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_protected_functions()) :) );
+         index_stuff += map(keys(parse->query_class_docs()),
+                            (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_class_docs()) :) );
+         if (sscanf(fname, "%*s.h") == 1) {
+            index_stuff += map(keys(parse->query_define_docs()),
+                               (: process_stuff($1, $(fname), $(fn),
+                               $(parse)->query_define_docs()) :) );
+         }
+      }
+      reset_eval_cost();
+   }
+   index_stuff += extra_indexes;
+   extra_indexes = ({ });
+   for (i = 0; i < sizeof(filters); i++) {
+      reset_eval_cost();
+      catch(evaluate(filters[i], index_stuff, INDEX_FILE));
+   }
+   summary_map = ([ ]);
+   last_created_index = time();
+   save();
+}
+int recreate_documentation(string fname) {
+   object ob;
+   if (member_array(fname, files) != -1) {
+      ob = clone_object(AUTODOC_FILE);
+      ob->parse_file(fname, (: after_thingy(1) :));
+      return 1;
+   }
+   return 0;
+}
+void recreate_indexes() {
+   unguarded( (: create_index() :));
+}
+int add_file(string fname) {
+   fname = "/" + implode(explode(fname, "/") - ({ "" }), "/");
+   if (member_array(fname, files) == -1) {
+      if (sizeof(unguarded( (: stat($(fname)) :) ))) {
+         files += ({ fname });
+         save();
+         if (sizeof(files) == 1) {
+            start_processing();
+         } else {
+            call_out((: recreate_documentation($1) :), random(60), fname);
+         }
+         return 1;
+      }
+   }
+   return 0;
+}
+int remove_file(string fname) {
+   string fn;
+   string dfn;
+   string *our_files;
+   if (member_array(fname, files) != -1) {
+      files -= ({ fname });
+      file_pos = 0;
+      fn = HTML_DOC_DIR + replace(fname, "/", ".");
+      unguarded((: rm($(fn)) :));
+      fn = NROFF_DOC_DIR + replace(fname, "/", ".");
+      unguarded((: rm($(fn)) :));
+      fn = NROFF_DOC_SINGLE + fname[0..<3] + "/";
+      our_files = get_dir(fn);
+      if (sizeof(our_files)) {
+         foreach (dfn in our_files) {
+            dfn =  fn + dfn;
+            unguarded( (: rm($(dfn)) :) );
+         }
+      }
+      if (file_size(fn[0..<2]) != -1) {
+         unguarded((: rm($(fn[0..<2])) :));
+      }
+      save();
+      if (!sizeof(files)) {
+         remove_call_out(call_id);
+      }
+      return 1;
+   }
+   return 0;
+}
+private void load() {
+   unguarded( (: restore_object( SAVE_FILE ) :) );
+}
+private void save() {
+   unguarded( (: save_object( SAVE_FILE ) :) );
+}
+string *query_files() { return files; }
+mapping query_help_map() { return help_map; }
+string query_help_on(string file, string func) {
+   if (file[0] == '/') {
+      file = file[1..];
+   }
+   if (sscanf(file, "%*s.c") == 1) {
+      file = file[0..<3];
+   }
+   file = NROFF_DOC_SINGLE + file + "/" + func;
+   if (file_size(file) > 0) {
+      return file;
+   }
+   return 0;
+}
+mapping query_summary_map() { return summary_map; }
+int is_autodoc_file(string name) {
+   return member_array(name, files) != -1;
+}
+
+==================================================
+FILE: handlers/autodoc/autodoc_html.c
+==================================================
+
+#include <autodoc.h>
+#include <config.h>
+private string query_func_def(mixed *stuff, string func);
+private string query_methods(string *funcs, function data,
+                           int prot);
+private string query_method_description(mapping docs);
+private string create_href(string str);
+private string query_method_summary(string *funcs, object file);
+private string query_defines(string *defs, mapping docs);
+private string query_class_summary(mapping classes);
+private string query_classes(mapping classes);
+private string query_class_def(mixed *stuff, string name);
+private string query_class_description(mapping docs);
+void create() {
+   seteuid(getuid());
+}
+void create_html_file(object file, string output) {
+   int i;
+   mapping stuff;
+   string *pub_funcs;
+   string *pro_funcs;
+   string *defs;
+   string *bits;
+   string name;
+   string bing;
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   bing = "<html><head><title>";
+   bing += "File " + name +
+           "\n</title></head><body bgcolor=\"#ffffff\" TEXT=\"#000030\" LINK=\"#4a529c\" VLINK=\"#b57339\">";
+   bing += "[ <a href=\"index.html\">Package Index</a></code> | ";
+   bing += "<a href=\"index_std.html\">Mudlib Index</a></code> | ";
+   bing += "<a href=\"index_eff.html\">Effect Index</a></code> ]<br>";
+   stuff = file->query_main_docs();
+   if (stuff["main"]) {
+      bing += "<h2>File " + file->query_file_name() +
+                         "</h2>";
+      bing += implode(stuff["main"], " ");
+      if (stuff["see"]) {
+         bing += "<p><b>See also:</b><br>" +
+                            query_multiple_short(
+                            map(stuff["see"], (: create_href($1) :)));
+      }
+      if (stuff["author"]) {
+         bing += "<p>Written by " +
+                    query_multiple_short(stuff["author"]);
+      }
+      if (stuff["started"]) {
+         bing += "<p>Started " +
+                    query_multiple_short(stuff["started"]);
+      }
+      if (stuff["example"]) {
+         if (sizeof(stuff["example"]) > 1) {
+            for (i = 0; i < sizeof(stuff["example"]); i++) {
+               bing += "<h3>Example " + (i + 1) + "</h3>\n";
+               bing += "<pre>"+stuff["example"][i]+"</pre>\n";
+            }
+         } else {
+            bing +=  "<h3>Example</h3>\n<pre>" + stuff["example"][0] +
+                             "</pre>\n";
+         }
+      }
+      if (stuff["changed"]) {
+         bing += "<h3>Change history</h3>\n<dl>" +
+                            implode(map(stuff["changed"], function (string str) {
+                   string start;
+                   string rest;
+                   if (sscanf(str, "%s\n%s", start, rest) == 2) {
+                      return "<dt>" + start + "<dd>" + rest;
+                   }
+                   return "<dd>" + str;
+             } ), "\n") + "</dl>\n";
+      }
+   }
+   if (sizeof(file->query_inherits())) {
+      bing += "<hr><h2>Inherits</h2>\n";
+      bing += "This class inherits the following classes " +
+                         query_multiple_short(
+               map(keys(file->query_inherits()), (: create_href :)));
+   }
+   if (sizeof(file->query_includes())) {
+      bing += "<hr><h2>Includes</h2>\n";
+      bing += "This class includes the following files " +
+                         query_multiple_short(
+               map(file->query_includes(), (: create_href :)));
+   }
+   if (sizeof(file->query_class_docs())) {
+       bing += query_class_summary(file->query_class_docs());
+   }
+   pub_funcs = keys(file->query_public_functions());
+   pro_funcs = keys(file->query_protected_functions());
+   bing += query_method_summary(pub_funcs + pro_funcs, file);
+   if (sizeof(pub_funcs)) {
+      bing += "<hr><h2>Public Functions</h2>\n";
+      bing += "These are functions that everyone can "
+                         "access.<p><dl>\n.";
+      bing += query_methods(pub_funcs, (: $(file)->query_public_functions()[$1] :),
+                    0);
+      bing += "</dl>\n";
+   }
+   if (sizeof(pro_funcs)) {
+      bing += "<hr><h2>Protected Functions</h2>\n";
+      bing += "These are functions that only "
+                         "objects inheriting the class can access.<p>\n";
+      bing += query_methods(pro_funcs, (: $(file)->query_protected_functions()[$1] :),
+                    1);
+      bing +=  "\n";
+   }
+   if (sscanf(name, "%*s.h") == 1 &&
+       sizeof(file->query_define_docs())) {
+      defs = sort_array(keys(file->query_define_docs()),
+                        (: strcasecmp($1, $2) :));
+      bing +=  "<hr><h2>Defines</h2>\n";
+      query_defines(defs, file->query_define_docs());
+      bing = "";
+   }
+   if (sizeof(file->query_class_docs())) {
+      bing += "<hr><h2>Classes</h2>\n";
+      bing += "These are nice data types for dealing with...  Data!"
+                         "<p>\n";
+      bing += query_classes(file->query_class_docs());
+   }
+   write_file(output, bing, 1);
+   bing = "/www/footer"->www_function(output);
+   write_file(output, bing + "</body></html>");
+}
+void create_html_index_file(string *index, string letter, string output) {
+   int i;
+   string name;
+   string bing;
+   bing = "<html><head><title>\nIndex of " + letter +
+                      "\n</title></head><body bgcolor=\"#ffffff\" TEXT=\"#000030\" LINK=\"#4a529c\" VLINK=\"#b57339\">\n";
+   bing += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                       "pics/dw4.gif\">\n"
+                      "<p align=right><code><a href=\"index.html\">"
+                      "Main Index</a></code></p>\n"
+                      "<h2>Index of " + letter + "</h2>\n"
+                      "<h3><i>Letters can change the world, remove the l "
+                      "from world and you have word</i></h3>\n"
+                      "<br clear=both>\n"
+                      "<hr><dl>\n";
+   index = sort_array(index, (: strcasecmp($1[0], $2[0]) ? strcasecmp($1[0], $2[0]) :
+                                        strcasecmp($1[1], $2[1]) :) );
+   for (i = 0; i < sizeof(index); i++) {
+      name = replace(index[i][AUTO_INDEX_FILE_NAME], "/", ".");
+      if (name[0] == '.') {
+         name = name[1..];
+      }
+      if (sscanf(index[i][AUTO_INDEX_NAME], "%*s.%*s") == 2) {
+         bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                            "height=6 width=6 alt=\" . \"><b><a href=\"" +
+                            name + ".html\">" + index[i][AUTO_INDEX_NAME] +
+                            "</a></b>.\n";
+      } else {
+         bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                            "height=6 width=6 alt=\" . \"><b><a href=\"" +
+                            name + ".html#" + index[i][AUTO_INDEX_NAME] +
+                            "\">" + index[i][AUTO_INDEX_NAME] + "</a></b>" +
+                            index[i][AUTO_INDEX_ARGS] +
+                            "; <a href=\"" + name + ".html\">" +
+                            index[i][AUTO_INDEX_FILE_NAME] + "</a>\n";
+      }
+      if (index[i][AUTO_INDEX_SUMMARY]) {
+         bing += "<dd>"+index[i][AUTO_INDEX_SUMMARY]+"\n";
+      }
+      reset_eval_cost();
+   }
+   write_file(output, bing + "</dl>", 1);
+   write_file(output, "/www/footer"->www_function(output) + "</body></html>");
+}
+private string bing_cre;
+private string bing_eff;
+private string bing_index;
+void create_main_index(mapping chars, string output_dir) {
+   int i;
+   string output_index;
+   string output_eff;
+   string output_cre;
+   string *files;
+   mixed *stuff;
+   string str;
+   string fname;
+   string *index;
+   mapping summaries;
+   function write_all;
+   string bing_file;
+   string fluff;
+   summaries = AUTODOC_HANDLER->query_summary_map();
+   output_index = output_dir + "index_std.html";
+   output_eff = output_dir + "index_eff.html";
+   output_cre = output_dir + "index_cre.html";
+   bing_cre = "";
+   bing_eff = "";
+   bing_file = "";
+   bing_index = "";
+   rm (output_eff);
+   rm (output_index);
+   rm (output_cre);
+   write_all = (: bing_eff += $1,
+                  bing_cre += $1,
+                  bing_index += $1 :);
+   evaluate(write_all, "<html><head><title>\n");
+   evaluate(write_all, "" + mud_name() + " autodoc index\n</title></head>\n"
+                            "<body bgcolor=\"#ffffff\" TEXT=\"#000030\" "
+                             "LINK=\"#4a529c\" VLINK=\"#b57339\">\n");
+   bing_index += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "/pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Documentation</h2>\n"
+                      "<h3><i>Where cabbages evaporate in the sun</i></h3>\n"
+                      "<br clear=both>\n";
+   bing_eff += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "/pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Effect Documentation</h2>\n"
+                      "<h3><i>Where your consequences are vanquished</i></h3>\n"
+                      "<br clear=both>\n";
+   bing_cre += "<img align=left src=\"" + CONFIG_EXTERNAL_WEB_ADDRESS +
+                      "pics/dw4.gif\">\n"
+                      "<h2>" + mud_name() + " Creator Documentation</h2>\n"
+                      "<h3><i>Blue fluff?  No red and scruffy!</i></h3>\n"
+                      "<br clear=both>\n";
+   evaluate(write_all, "<h2>Function index</h2>\n");
+   files = AUTODOC_HANDLER->query_files();
+   files = sort_array(files, (: strcasecmp :) );
+   index = sort_array(keys(chars), (: strcasecmp :) );
+   for (i = 0; i < sizeof(index); i++) {
+      if (i > 0) {
+         evaluate(write_all, ", ");
+      }
+      evaluate(write_all, "<a href=\"" + chars[index[i]] + "\">" + index[i] +
+                         "</a>\n");
+   }
+   bing_index += ", <a href=\"index_eff.html\">Effects</a>";
+   bing_index += ", <a href=\"index_cre.html\">Creator</a>";
+   bing_eff += ", <a href=\"index.html\">Main</a>";
+   bing_eff += ", <a href=\"index_cre.html\">Creator</a>";
+   bing_cre += ", <a href=\"index.html\">Main</a>";
+   bing_cre += ", <a href=\"index_eff.html\">Effects</a>";
+   evaluate(write_all, "<hr><h2>Class index</h2>\n");
+   evaluate(write_all, "<dl>\n");
+   stuff = unique_array(files, (: $1[0..strsrch($1, "/", -1)] :));
+   for (i = 0; i < sizeof(stuff); i++) {
+      str = stuff[i][0][0..strsrch(stuff[i][0], "/", -1)];
+      if (str[0..12] == "/std/effects/") {
+         bing_eff += "<dt><img src=\"images/cyan-ball.gif\" height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      } else if (str[0..2] == "/w/") {
+         bing_cre += "<dt><img src=\"images/cyan-ball.gif\" "
+                            "height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      } else {
+         bing_index += "<dt><img src=\"images/cyan-ball.gif\" height=12 "
+                            "width=12><b><a href=\"#" + str + "\">"+
+                            str + "</a></b>\n";
+      }
+   }
+   evaluate(write_all, "</dl>\n");
+   for (i = 0; i < sizeof(stuff); i++) {
+      fluff = "";
+      str = stuff[i][0][0..strsrch(stuff[i][0], "/", -1)];
+      fluff += "<h2><a name=\"" + str + "\">" + str + "</a></h2>\n<dl>\n";
+      reset_eval_cost();
+      foreach (str in stuff[i]) {
+         fname = replace(str, "/", ".")[1..];
+         fluff += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                            "height=6 width=6><a href=\"" + fname + ".html\">" +
+                            str[strsrch(str, "/", -1) + 1..] + "</a>\n";
+         if (summaries[str]) {
+            fluff += "<dd>" + summaries[str] + "\n";
+         }
+      }
+      fluff += "</dl>\n";
+      if (stuff[i][0][0..12] == "/std/effects/") {
+         bing_eff += fluff;
+      } else if (stuff[i][0][0..2] == "/w/") {
+         bing_cre += fluff;
+      } else {
+         bing_index += fluff;
+      }
+   }
+   write_file(output_eff, bing_eff, 1);
+   write_file(output_eff,
+              "/www/footer"->www_function(output_eff) + "</body></html");
+   write_file(output_index, bing_index, 1);
+   write_file(output_index,
+              "/www/footer"->www_function(output_index) + "</body></html");
+   write_file(output_cre, bing_cre, 1);
+   write_file(output_cre,
+              "/www/footer"->www_function(output_cre) + "</body></html");
+}
+private string query_classes(mapping classes) {
+   string name;
+   string *names;
+   string bing;
+   names = sort_array(keys(classes), (: strcasecmp :) );
+   bing = "<dl>\n";
+   foreach (name in names) {
+      reset_eval_cost();
+      bing += "<dt><a name=\"class_" + name + "\">\n";
+      bing += "<img src=\"images/cyan-ball.gif\" width=12 "
+                         "height=12 alt=\" * \">";
+      bing += "<b>" + name +
+              "</b></a><pre>\n" +
+              query_class_def(classes[name], name) + "\n</pre>";
+      if (classes[name][AUTO_CLASS_DOCS]["main"]) {
+         bing += query_class_description(classes[name][AUTO_CLASS_DOCS]);
+      }
+      bing += "\n";
+   }
+   return bing + "</dl>\n";
+}
+private string query_methods(string *funcs, function data,
+                           int prot) {
+   int i;
+   mixed *stuff;
+   string bing;
+   funcs = sort_array(funcs, (: strcasecmp($1, $2) :));
+   bing = "";
+   for (i = 0; i < sizeof(funcs); i++) {
+      reset_eval_cost();
+      stuff = evaluate(data, funcs[i]);
+      bing += "<dt><a name=\"" + funcs[i] + "\">\n";
+      if (prot) {
+        bing += "<img src=\"images/magenta-ball.gif\" width=12 "
+                           "height=12 alt=\" * \">";
+      } else {
+        bing += "<img src=\"images/cyan-ball.gif\" width=12 "
+                           "height=12 alt=\" * \">";
+      }
+      bing += "<b>" + funcs[i] +
+                         "</b></a><pre>\n" +
+                         query_func_def(stuff, funcs[i]) +
+                         "\n</pre>";
+      if (stuff[AUTO_DOCS]["main"]) {
+         bing += query_method_description(stuff[AUTO_DOCS]);
+      }
+      bing += "\n";
+   }
+   return bing;
+}
+private string query_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   int pad;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += sprintf(",\n%-"+pad+"s", "");
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_class_def(mixed *stuff, string name) {
+   string ret;
+   int pad;
+   int i;
+   ret = "class " + name + " {\n";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_CLASS_MEMBERS]); i++) {
+      ret += sprintf("%-" + pad + "s", "");
+      ret += implode(stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_TYPE], " ") +
+             " " + stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_NAME] + ";\n";
+   }
+   ret += "}\n";
+   return ret;
+}
+private string query_method_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string bing;
+   bing = "";
+   if (docs["main"]) {
+      bing += "<dd>" + implode(docs["main"], " ")
+                         +"<p>\n";
+   }
+   if (docs["param"] || docs["return"] || docs["see"] || docs["example"]) {
+      bing += "<dd><dl>\n";
+   }
+   if (docs["param"]) {
+      bing += "<dt><b>Parameters:</b>\n";
+      for (i = 0; i < sizeof(docs["param"]); i++) {
+         if (sscanf(docs["param"][i], "%s %s", name, desc) == 2) {
+            bing += "<dd>" + name + " - " + (desc) + "\n";
+         }
+      }
+   }
+   if (docs["return"]) {
+      bing += "<dt><b>Returns:</b>\n<dd>" + implode(docs["return"], " ") +
+                         "\n";
+   }
+   if (docs["see"]) {
+      bing += "<dt><b>See also:</b>\n<dd>" +
+                         query_multiple_short(
+                         map(docs["see"], (: create_href($1) :)));
+   }
+   if (docs["example"]) {
+      bing += "<dt><b>Example:</b>\n<dd><pre>" +
+                 implode(docs["example"], "</pre><dd><pre>\n") +
+                        "</pre>";
+   }
+   if (docs["param"] || docs["return"] || docs["see"] || docs["example"]) {
+      bing += "</dl>\n";
+   }
+   return bing;
+}
+private string query_class_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string bing;
+   bing = "";
+   if (docs["main"]) {
+      bing += "<dd>" + implode(docs["main"], " ")
+                         +"<p>\n";
+   }
+   if (docs["member"] || docs["see"]) {
+      bing += "<dl>\n";
+   }
+   if (docs["member"]) {
+      bing += "<dt><b>Members:</b>\n";
+      for (i = 0; i < sizeof(docs["member"]); i++) {
+         if (sscanf(docs["member"][i], "%s %s", name, desc) == 2) {
+            bing += "<dd>" + name + " - " +
+                               (desc) + "\n";
+         }
+      }
+   }
+   if (docs["see"]) {
+      bing += "<dt><b>See also:</b>\n<dd>" +
+                         query_multiple_short(
+                         map(docs["see"], (: create_href($1) :)));
+   }
+   if (docs["member"] || docs["see"]) {
+      bing += "</dl>\n";
+   }
+   return bing;
+}
+private string create_href(string str) {
+   string name;
+   string ref_name;
+   string func;
+   if (sscanf(str, "%s#%s", name, func) == 2) {
+      ref_name = replace(name, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      return "<a href=\"" + ref_name + ".c.html#" + func + "\">" +
+             name + "->" + func + "()</a>";
+   } else if (sscanf(str, "%s->%s", name, func) == 2) {
+      sscanf(func, "%s(%*s)", func);
+      ref_name = replace(name, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      return "<a href=\"" + ref_name + ".c.html#" + func + "\">" + str + "</a>";
+   } else if (sscanf(str, "%s()", func) == 1) {
+      return "<a href=\"#" + func + "\">" + str + "</a>";
+   } else if (str[0..4] == "http:") {
+      return "<a href=\"" + str + "\">" + str + "</a>";
+   } else {
+      ref_name = replace(str, "/", ".");
+      if (ref_name[0] == '.') {
+         ref_name = ref_name[1..];
+      }
+      if (sscanf(str, "%*s.%*s") != 2) {
+         ref_name += ".c";
+         str += ".c";
+      }
+      if (member_array(str, AUTODOC_HANDLER->query_files()) != -1) {
+         return "<a href=\"" + ref_name + ".html\">" + str + "</a>";
+      }
+      return str;
+   }
+}
+private string query_short_args_def(mixed *args) {
+   string ret;
+   int i;
+   ret = "";
+   for (i = 0; i < sizeof(args); i += 2) {
+      if (i != 0) {
+         ret += ", ";
+      }
+      ret += implode(args[i + AUTO_ARGS_TYPE], " ");
+   }
+   return "(" + ret + ")";
+}
+private string query_short_desc(mapping docs) {
+   mixed main;
+   int pos;
+   int tmp_pos;
+   main = docs["main"];
+   if (!main) {
       return 0;
    }
-   return random(10000) < critical_chances[ margin - 1 ];
+   main = implode(main, " ");
+   pos = strlen(main);
+   tmp_pos = strsrch(main, ".");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
+   }
+   tmp_pos = strsrch(main, "?");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
+   }
+   tmp_pos = strsrch(main, "!");
+   if (tmp_pos < pos && tmp_pos != -1) {
+      pos = tmp_pos;
+   }
+   return main[0..pos];
 }
-
-==================================================
-FILE: handlers/team.c
-==================================================
-
-#define CREATOR "Ceres"
-#include <login_handler.h>
-#define SHADOW "/std/shadows/misc/team"
-#define MAX_GROUP_SIZE 5
-class group {
-  object leader;
-  int policy;
-  object *members;
-  int locked;
-}
-mapping groups,
-        members;
-private void check_group(string g_name);
-private void disband_group(string g_name, string p_name);
-private void tidy_members(string g_name);
-void create() {
-  members = ([ ]);
-  groups = ([ ]);
-}
-void dest_me() {
-  destruct(this_object());
-}
-void leaving(string p_name, string type) {
-  class group record;
-  string g_name;
-  if((type != "logout") || (!members[p_name]))
-    return;
-  g_name = members[p_name];
-  record = (class group)groups[g_name];
-  map_delete(members, p_name);
-  if(!record)
-    return;
-  if((record->leader == 0) || ((record->leader)->query_name() == p_name)) {
-     disband_group(g_name, p_name);
-#ifdef LOG_FILE
-    log_file(LOG_FILE, sprintf("%s %s has left the game, the %s has been "
-                             "disbanded.\n", ctime(time()), p_name, g_name));
-#endif
-  } else {
-#ifdef LOG_FILE
-    log_file(LOG_FILE, sprintf("%s %s left the game while a member of the %s\n",
-                             ctime(time()), p_name, g_name));
-#endif
-    record->members = delete(record->members,
-                             member_array(0, record->members), 1);
-  }
-  return;
-}
-int new_group(string g_name, object leader, int policy) {
-  class group record;
-  if(!undefinedp(groups[g_name]))
-    return 0;
-  record = new(class group);
-  record->leader = leader;
-  record->policy = policy;
-  record->members = ({ leader });
-  groups[g_name] = record;
-  members[leader->query_name()] = g_name;
-  leader->set_title( "TEAM", "Team Leader of "+ g_name );
-   clone_object( SHADOW )->setup_shadow( leader );
-#ifdef LOG_FILE
-  log_file(LOG_FILE, sprintf("%s %s created by %s\n", ctime(time()),
-                           g_name, leader->query_name()));
-#endif
-  return 1;
-}
-int end_group(string g_name) {
-  class group record;
-  object player;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = groups[g_name];
-   foreach( player in record->members )
-      if ( player ) {
-         map_delete( members, player->query_name() );
-         player->remove_title( "TEAM" );
-         player->destruct_team_shadow();
+private string query_class_summary(mapping classes) {
+   string *names;
+   string name;
+   string short_desc;
+   string bing;
+   names = sort_array(keys(classes), (: strcasecmp :));
+   bing = "<hr><h2>Class Index</h2>\n";
+   bing += "<dl>";
+   foreach (name in names) {
+      bing += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                         "height=6 width=6 alt=\" o \">\n";
+      bing += "<a href=\"#class_" + name + "\"><b>" + name +
+                         "</b></a>\n";
+      short_desc = query_short_desc(classes[name][AUTO_CLASS_DOCS]);
+      if (short_desc) {
+         bing += "<dd>" + short_desc + "\n";
       }
-  map_delete(groups, g_name);
-#ifdef LOG_FILE
-  log_file(LOG_FILE, sprintf("%s %s disbanded\n", ctime(time()), g_name));
-#endif
-  return 1;
+   }
+   bing += "</dl>";
+   return bing;
 }
-int join_group(string g_name, object player) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = groups[g_name];
-  record->members += ({ player });
-  members[player->query_name()] = g_name;
-   player->set_title( "TEAM", "Team Member of "+ g_name );
-   clone_object( SHADOW )->setup_shadow( player );
-#ifdef LOG_FILE
-  log_file(LOG_FILE, sprintf("%s %s joined by %s\n", ctime(time()),
-                           g_name, player->query_name()));
-#endif
-  return 1;
+private string query_method_summary(string *funcs,
+                                  object file) {
+   int i;
+   mixed *stuff;
+   string short_desc;
+   int prot;
+   string bing;
+   bing = "";
+   if (sizeof(funcs)) {
+      bing += "<hr><h2>Method index</h2>\n<dl>";
+      funcs = sort_array(funcs, (: strcasecmp :) );
+      for (i = 0; i < sizeof(funcs); i++) {
+         if (file->query_public_functions()[funcs[i]]) {
+            stuff = file->query_public_functions()[funcs[i]];
+            prot = 0;
+         } else if (file->query_protected_functions()[funcs[i]]) {
+            stuff = file->query_protected_functions()[funcs[i]];
+            prot = 1;
+         }
+         if (prot) {
+           bing += "<dt><img src=\"images/magenta-ball-small.gif\" "
+                              "height=6 width=6 alt=\" o \">\n";
+         } else {
+           bing += "<dt><img src=\"images/cyan-ball-small.gif\" "
+                              "height=6 width=6 alt=\" o \">\n";
+         }
+         bing += "<a href=\"#" + funcs[i] + "\"><b>" + funcs[i] +
+                            "</b></a>" + query_short_args_def(stuff[AUTO_ARGS])
+;
+         short_desc = query_short_desc(stuff[AUTO_DOCS]);
+         if (short_desc) {
+            bing += "<dd>" + short_desc + "\n";
+         }
+      }
+      bing += "</dl>";
+   }
+   return bing;
 }
-int leave_group(string g_name, object player) {
-  class group record;
-  if(player) {
-    map_delete(members, player->query_name());
-      player->remove_title( "TEAM" );
-      player->destruct_team_shadow();
-#ifdef LOG_FILE
-    log_file(LOG_FILE, sprintf("%s %s left by %s\n", ctime(time()), g_name,
-                             player->query_name()));
-#endif
-  }
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = groups[g_name];
-  if(member_array(player, record->members) == -1)
-    return -1;
-  record->members = delete(record->members,
-                           member_array(player, record->members), 1);
-  return 1;
+private string query_defines(string *defs, mapping docs) {
+   int i;
+   string bing;
+   bing = "";
+   for (i = 0; i < sizeof(defs); i++) {
+      bing +=  "<dt><a name=\"" + defs[i] + "\">\n";
+      bing += "<img src=\"images/red-ball.gif\" width=12 "
+                         "height=12 alt=\" * \"><b>" + defs[i] + "</b></a>\n";
+      if (docs[defs[i]]["main"]) {
+         bing += query_method_description(docs[defs[i]]);
+      }
+   }
+   return bing;
 }
-object query_owner(string g_name) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = (class group)groups[g_name];
-  return record->leader;
+
+==================================================
+FILE: handlers/autodoc/autodoc_nroff.c
+==================================================
+
+#include <autodoc.h>
+private void write_single_description(string func, mixed *stuff,
+                                      string output, string fn);
+private string query_methods(string *funcs, function data,
+                           string base_single, string fn);
+private string query_func_def(mixed *stuff, string func);
+private string query_method_description(mapping docs);
+private string parse_string(string inp);
+string convert_html(string text, int depth, int preformat, int edge_width);
+private string query_defines(mapping defines);
+private string query_class_def(mixed *stuff, string name);
+private string query_class_description(mapping docs);
+private void write_single_class_description(string func, mixed *stuff,
+                                            string output, string fn);
+private string query_classes(string base_single,
+                           mapping classes,
+                           string fn);
+void create() {
+   seteuid(getuid());
 }
-object *query_members(string g_name) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  tidy_members(g_name);
-  record = groups[g_name];
-  return (object *)record->members;
+void create_nroff_file(object file, string output) {
+   mapping stuff;
+   string *funcs;
+   string *bits;
+   string name;
+   string base_single;
+   string *files;
+   string ret;
+   int pos;
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   ret = "";
+   ret += ".DT\n";
+   ret += name + "\n" + mud_name() + " autodoc help\n" + name + "\n\n";
+   stuff = file->query_main_docs();
+   if (stuff["main"]) {
+      ret += ".SH Description\n";
+      ret += convert_html(implode(stuff["main"], " "), 5, 0, 5);
+      ret += ".SP 10 5\n";
+      if (stuff["author"]) {
+         ret += "\n\nWritten by " +
+                    parse_string(query_multiple_short(stuff["author"]));
+      }
+      if (stuff["started"]) {
+         ret += "\n\nStarted " +
+                    parse_string(query_multiple_short(stuff["started"]));
+      }
+      ret += "\n.EP\n\n";
+      if (stuff["see"]) {
+         ret += "\n\n.SH See also\n.SP 5 5\n" +
+                            query_multiple_short(stuff["see"]) + "\n.EP\n";
+      }
+      if (stuff["changed"]) {
+         ret += ".SH Change history\n.SP 5 5\n" +
+                            parse_string(implode(stuff["changed"], "\n\n")) +
+                            "\n.EP\n\n";
+      }
+      if (stuff["example"]) {
+        ret += ".SH Example\n.SI 5\n" +
+               parse_string(implode(stuff["example"], "\n")) + "\n.EI\n";
+      }
+   }
+   if (sizeof(file->query_inherits())) {
+      ret += ".SH Inherits\n.SP 5 5\n";
+      ret += "This class inherits the following classes " +
+                         query_multiple_short(keys(file->query_inherits())) +
+                         ".\n.EP\n\n";
+   }
+   if (sizeof(file->query_includes())) {
+      ret += ".SH Includes\n.SP 5 5\n";
+      ret += "This class includes the following files " +
+                         query_multiple_short(file->query_includes()) +
+                         ".\n.EP\n\n";
+   }
+   funcs = filter(keys(file->query_public_functions()),
+                  (: $1 != "create" && $1 != "setup" &&
+                   !$(file)->query_public_functions()[$1][AUTO_DOCS]["ignore"] :));
+   base_single = file->query_file_name();
+   pos = strsrch(base_single, ".", -1);
+   if (pos > 0) {
+      base_single = base_single[0..pos-1];
+   }
+   base_single = NROFF_DOC_SINGLE + base_single + "/";
+   files = get_dir(base_single + "*");
+   if (pointerp(files)) {
+      foreach (name in files) {
+         if (file_size(base_single + name) >= 0) {
+            rm(base_single + name);
+         }
+      }
+   }
+   if (sizeof(file->query_class_docs())) {
+      ret += ".SH Classes\n\n";
+      ret += query_classes(base_single,
+                    file->query_class_docs(),
+                    file->query_file_name());
+      ret += "\n";
+   }
+   if (sizeof(funcs)) {
+      ret += ".SH Public Functions\n" +
+                         ".SP 5 5\nThese are functions that everyone can "
+                         "access.\n.EP\n\n";
+      ret += query_methods(funcs,
+                    (: $(file)->query_public_functions()[$1] :),
+                    base_single,
+                    file->query_file_name());
+      ret += "\n";
+   }
+   funcs = filter(keys(file->query_protected_functions()),
+                  (: !$(file)->query_protected_functions()[$1][AUTO_DOCS]["ignore"] :));
+   if (sizeof(funcs)) {
+      ret += ".SH Protected Functions\n"
+                         ".SP 5 5\nThese are functions that only "
+                         "objects inheriting the class can access.\n.EP\n\n";
+      ret += query_methods(funcs, (: $(file)->query_protected_functions()[$1] :),
+                    base_single, file->query_file_name());
+      ret += "\n";
+   }
+   bits = explode(file->query_file_name(), "/");
+   name = bits[sizeof(bits)-1];
+   if (sscanf(name, "%*s.h") == 1 &&
+       sizeof(file->query_define_docs())) {
+      ret += ".SH Defines\n";
+      ret += query_defines(file->query_define_docs());
+      ret += "";
+   }
+   write_file(output, ret);
 }
-int query_policy(string g_name) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = groups[g_name];
-  return (int)record->policy;
+private string query_defines(mapping docs) {
+   string name;
+   string *names;
+   string ret;
+   names = sort_array(keys(docs), (: strcasecmp :));
+   ret = "";
+   foreach (name in names) {
+      ret += ".SI 3\n* %^BOLD%^" + name + "%^RESET%^\n" +
+                         ".EI\n";
+      if (docs[name]["main"]) {
+         ret += query_method_description(docs[name]);
+      }
+      ret += "\n";
+   }
+   return ret;
 }
-string query_group(object player) {
-  if(undefinedp(members[player->query_name()]))
-    return 0;
-  return members[player->query_name()];
+private string query_classes(string base_single,
+                           mapping classes,
+                           string fn) {
+   string name;
+   string *names;
+   string ret;
+   names = sort_array(keys(classes), (: strcasecmp :) );
+   ret = "";
+   foreach (name in names) {
+      reset_eval_cost();
+      ret += ".SI 3\n* %^BOLD%^" + name + "%^RESET%^\n";
+      ret += query_class_def(classes[name], name) + "\n.EI\n";
+      if (classes[name][AUTO_CLASS_DOCS]["main"]) {
+         ret += query_class_description(classes[name][AUTO_CLASS_DOCS]);
+         write_single_class_description(name,
+                                        classes[name],
+                                        base_single + name,
+                                        fn);
+      }
+      ret += "\n";
+   }
+   return ret;
 }
-int test_group(string g_name) {
-  if(undefinedp(groups[g_name]))
-    return 0;
-  return 1;
+private string query_methods(string *funcs,
+                           function data,
+                           string base_single,
+                           string fn) {
+   int i;
+   mixed *stuff;
+   string ret;
+   funcs = sort_array(funcs, (: strcmp($1, $2) :));
+   ret = "";
+   for (i = 0; i < sizeof(funcs); i++) {
+      stuff = evaluate(data, funcs[i]);
+      ret += ".SI 3\n* %^BOLD%^" + funcs[i] + "%^RESET%^\n" +
+                         ".EI\n.SI 5\n" + query_func_def(stuff, funcs[i]) +
+                         "\n.EI\n";
+      if (stuff[AUTO_DOCS]["main"]) {
+         ret += query_method_description(stuff[AUTO_DOCS]);
+         write_single_description(funcs[i], stuff, base_single + funcs[i], fn);
+      }
+      ret += "\n";
+   }
+   return ret;
 }
-int query_full(string g_name) {
-  class group record;
-  object member;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  tidy_members(g_name);
-  record = (class group)groups[g_name];
-  if(sizeof(record->members) >= MAX_GROUP_SIZE)
+private string query_class_def(mixed *stuff, string name) {
+   string ret;
+   int pad;
+   int i;
+   ret = "class " + name + " {\n";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_CLASS_MEMBERS]); i++) {
+      ret += sprintf("%-" + pad + "s", "");
+      ret += implode(stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_TYPE], " ") +
+             " " + stuff[AUTO_CLASS_MEMBERS][i][AUTO_CLASS_NAME] + ";\n";
+   }
+   ret += "}\n";
+   return ret;
+}
+private string query_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += ", ";
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_long_func_def(mixed *stuff, string func) {
+   string ret;
+   int i;
+   int pad;
+   ret = implode(stuff[AUTO_TYPE], " ") + " " + func+"(";
+   pad = strlen(ret);
+   for (i = 0; i < sizeof(stuff[AUTO_ARGS]); i += 2) {
+      if (i) {
+         ret += sprintf(",\n%-"+pad+"s", "");
+      }
+      ret += implode(stuff[AUTO_ARGS][i + AUTO_ARGS_TYPE], " ") + " " +
+             stuff[AUTO_ARGS][i + AUTO_ARGS_NAME];
+   }
+   ret += ")";
+   return ret;
+}
+private string query_class_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string ret;
+   ret = "";
+   if (docs["main"]) {
+      ret += convert_html(implode(docs["main"], " "), 7, 0, 5);
+   }
+   if (docs["member"]) {
+      ret += ".SI 7\n%^BOLD%^Members:%^RESET%^\n.EI\n";
+      for (i = 0; i < sizeof(docs["member"]); i++) {
+         if (sscanf(docs["member"][i], "%s %s", name, desc) == 2) {
+            ret +=  ".SP 9 5\n" + name + " - " +
+                               parse_string(desc) + "\n.EP\n";
+         }
+      }
+   }
+   return ret;
+}
+private string query_method_description(mapping docs) {
+   int i;
+   string name;
+   string desc;
+   string ret;
+   ret = "";
+   if (docs["main"]) {
+      ret += convert_html(implode(docs["main"], " "), 7, 0, 5);
+   }
+   if (docs["param"]) {
+      ret += ".SI 7\n%^BOLD%^Parameters:%^RESET%^\n.EI\n";
+      for (i = 0; i < sizeof(docs["param"]); i++) {
+         if (sscanf(docs["param"][i], "%s %s", name, desc) == 2) {
+            ret += ".SP 9 5\n" + name + " - " +
+                               parse_string(desc) + "\n.EP\n";
+         }
+      }
+   }
+   if (docs["return"]) {
+      ret +=".SI 7\n%^BOLD%^Returns:%^RESET%^\n.EI\n.SP 9 5\n" +
+                         parse_string(implode(docs["return"], " ")) +
+                         "\n.EP\n";
+   }
+   return ret;
+}
+private void write_single_description(string func, mixed *stuff,
+                                      string output, string fn) {
+   mapping fluff;
+   string blue;
+   int i;
+   int end;
+   string *bits;
+   string name;
+   string desc;
+   string ret;
+   reset_eval_cost();
+   bits = explode(output, "/");
+   blue = "/";
+   for (i = 0; i < sizeof(bits) - 1; i++) {
+      blue += bits[i] + "/";
+      if (file_size(blue) != -2) {
+         mkdir(blue);
+      }
+   }
+   fluff = stuff[AUTO_DOCS];
+   ret = "";
+   ret += ".DT\n" + func + "\n" + mud_name() + " creator help\n" +
+                      func + "\n\n";
+   ret += ".SH Name\n.SP 5 5\n";
+   blue = implode(fluff["main"], "\n");
+   end = strlen(blue);
+   i = strsrch(blue, ".");
+   if (i > 0) {
+      end = i;
+   }
+   i = strsrch(blue, "!");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   i = strsrch(blue, "?");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   ret += "" + func + " - " + replace(blue[0..end], "\n", " ") +
+                      "\n.EP\n\n";
+   ret += ".SH Syntax\n.SI 5\n" + query_long_func_def(stuff, func) +
+                      "\n.EI\n\n";
+   if (fluff["param"]) {
+      ret += ".SH Parameters\n.SI 5\n";
+      for (i = 0; i < sizeof(fluff["param"]); i++) {
+         if (sscanf(fluff["param"][i], "%s %s", name, desc) == 2) {
+            ret += "%^BOLD%^" + name + "%^RESET%^ - " +
+                               (desc) + "\n";
+         }
+      }
+      ret += ".EI\n\n";
+   }
+   if (fluff["return"]) {
+      ret += ".SH Returns\n.SI 5\n";
+      ret += implode(fluff["return"], " ");
+      ret += ".EI\n\n";
+   }
+   ret += ".SH Defined in\n.SI 5\n" + fn + "\n.EI\n\n";
+   ret += ".SH Description\n" + convert_html(blue, 5, 0, 5) + "\n";
+   if (fluff["example"]) {
+      i = 1;
+      foreach (blue in fluff["example"]) {
+         ret += ".SH Example " + i + "\n.SI 5\n" +
+                            parse_string(blue) + "\n.EI\n\n";
+         i++;
+      }
+   }
+   if (fluff["see"]) {
+      ret += ".SH See also\n.SP 5 5\n" +
+                         implode(fluff["see"], ", ") + "\n.EP\n\n";
+   }
+   write_file(output, ret);
+}
+private void write_single_class_description(string func, mixed *stuff,
+                                            string output, string fn) {
+   mapping fluff;
+   string blue;
+   int i;
+   int end;
+   string *bits;
+   string name;
+   string desc;
+   string ret;
+   reset_eval_cost();
+   bits = explode(output, "/");
+   blue = "/";
+   for (i = 0; i < sizeof(bits) - 1; i++) {
+      blue += bits[i] + "/";
+      if (file_size(blue) != -2) {
+         mkdir(blue);
+      }
+   }
+   fluff = stuff[AUTO_DOCS];
+   ret = "";
+   ret += ".DT\n" + func + "\n" + mud_name() + " creator help\n" +
+                      func + "\n\n";
+   ret +=  ".SH Name\n.SP 5 5\n";
+   blue = implode(fluff["main"], "\n");
+   end = strlen(blue);
+   i = strsrch(blue, ".");
+   if (i > 0) {
+      end = i;
+   }
+   i = strsrch(blue, "!");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   i = strsrch(blue, "?");
+   if (i > 0 && i < end) {
+      end = i;
+   }
+   ret += "" + func + " - " + replace(blue[0..end], "\n", " ") +
+                      "\n.EP\n\n";
+   ret += ".SH Definition\n.SI 5\n" +
+              query_class_def(stuff, func) +
+                      "\n.EI\n\n";
+   if (fluff["member"]) {
+      ret += ".SH Members\n.SI 5\n";
+      for (i = 0; i < sizeof(fluff["member"]); i++) {
+         if (sscanf(fluff["member"][i], "%s %s", name, desc) == 2) {
+            ret += "%^BOLD%^" + name + "%^RESET%^ - " +
+                               (desc) + "\n";
+         }
+      }
+      ret += ".EI\n\n";
+   }
+   ret += ".SH Defined in\n.SI 5\n" + fn + "\n.EI\n\n";
+   ret += ".SH Description\n" + convert_html(blue, 5, 0, 5) + "\n";
+   if (fluff["example"]) {
+      i = 1;
+      foreach (blue in fluff["example"]) {
+         ret += ".SH Example " + i + "\n.SI 5\n" +
+                            parse_string(blue) + "\n.EI\n\n";
+         i++;
+      }
+   }
+   if (fluff["see"]) {
+      ret += ".SH See also\n.SP 5 5\n" +
+                         implode(fluff["see"], ", ") + "\n.EP\n\n";
+   }
+   write_file(output, ret);
+}
+private string parse_string(string str) {
+   return replace(str, ({ "<p>", "\n\n", "<br>", "\n\n",
+                          "<b>", "%^BOLD%^", "</b>", "%^RESET%^",
+                          "<i>", "%^CYAN%^", "</i>", "%^RESET%^",
+                          "<pre>", "\n\n", "</pre>", "\n\n" }));
+}
+#define LIST_NONE 0
+#define LIST_DYNAMIC 1
+#define LIST_ORDERED 2
+#define LIST_UNORDERED 3
+#define LIST_TYPE 0
+#define LIST_DEPTH 1
+#define LIST_START 2
+#define LIST_ADDITIONAL 3
+#define LIST_NUM 4
+string convert_html(string text, int depth, int preformat, int edge_width) {
+   string ret;
+   string *bits;
+   mixed *lists;
+   string* before_centers;
+   string start;
+   string new_start;
+   string additional;
+   string add;
+   int i;
+   string tag;
+   string rest;
+   ret = "";
+   if (text[0] == '.') {
+      text = " " + text;
+   }
+   bits = explode("#" + text, "<");
+   bits[0] = bits[0][1..];
+   start = ".SP " + depth + " " + edge_width;
+   ret = start + "\n" + bits[0];
+   additional = "";
+   lists = ({ ({ LIST_NONE, depth, start, additional }) });
+   before_centers = ({ });
+   for (i = 1; i < sizeof(bits); i++) {
+         if (sscanf(bits[i], "%s>%s", tag, rest) == 2) {
+            new_start = start;
+            add = 0;
+            switch (lower_case(tag)) {
+               case "p" :
+                  ret += "\n\n" + additional;
+                  break;
+               case "br" :
+                  ret += "\n.E" + start[2..2] + "\n" + start + "\n" + additional;
+                  break;
+               case "dl" :
+                  lists += ({ ({ LIST_DYNAMIC, depth, start, additional }) });
+                  break;
+               case "/dl" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "u" :
+                  ret += "_";
+                  break;
+               case "/u" :
+                  ret += "_";
+                  break;
+               case "center" :
+                  before_centers += ({ start });
+                  new_start = ".SC";
+                  break;
+               case "/center" :
+                  new_start = before_centers[<1];
+                  before_centers = before_centers[0..<2];
+                  break;
+               case "ol" :
+                  lists += ({ ({ LIST_ORDERED, depth, start, additional, 1 }) });
+                  break;
+               case "/ol" :
+                  if (lists[<1][LIST_TYPE] == LIST_ORDERED) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "ul" :
+                  lists += ({ ({ LIST_UNORDERED, depth, start, additional }) });
+                  break;
+               case "/ul" :
+                  if (lists[<1][LIST_TYPE] == LIST_UNORDERED) {
+                     lists = lists[0..<2];
+                     new_start = lists[<1][LIST_START];
+                     additional = lists[<1][LIST_ADDITIONAL];
+                  }
+                  break;
+               case "dd" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     new_start = ".SP " + (lists[<1][LIST_DEPTH] + 3) + " " +
+                                 edge_width;
+                     depth = lists[<1][LIST_DEPTH] + 3;
+                     start = start[0..3];
+                     additional = "";
+                  }
+                  break;
+               case "dt" :
+                  if (lists[<1][LIST_TYPE] == LIST_DYNAMIC) {
+                     new_start = ".SP " + (lists[<1][LIST_DEPTH] + 0) + " " +
+                                 edge_width;
+                     depth = lists[<1][LIST_DEPTH] + 0;
+                     start = start[0..3];
+                     additional = "";
+                  }
+                  break;
+               case "li" :
+                  if (lists[<1][LIST_TYPE] != LIST_DYNAMIC) {
+                     switch (lists[<1][LIST_TYPE]) {
+                        case LIST_ORDERED :
+                           new_start = ".SO " + (lists[<1][LIST_DEPTH] + 1) +
+                                 " 3 -" + (6 + lists[<1][LIST_DEPTH]);
+                           add = "\n\t" + (lists[<1][LIST_NUM]++) + ". \t";
+                           additional = "\t\t";
+                           depth = (lists[<1][LIST_DEPTH] + 3);
+                           break;
+                        case LIST_UNORDERED :
+                           new_start = ".SO " + (lists[<1][LIST_DEPTH] + 1) +
+                                 " 2 -" + (5 + lists[<1][LIST_DEPTH]);
+                           add = "\n\t*\t";
+                           additional = "\t\t";
+                           depth = (lists[<1][LIST_DEPTH] + 3);
+                           break;
+                     }
+                  }
+                  break;
+               case "pre" :
+                  preformat++;
+                  break;
+               case "b" :
+                  ret += "%^BOLD%^";
+                  break;
+               case "i" :
+                  ret += "%^CYAN%^";
+                  break;
+               case "/b" :
+               case "/i" :
+                  ret += "%^RESET%^";
+                  break;
+               case "/pre" :
+                  preformat--;
+                  break;
+               case "code" :
+               case "/code" :
+                  break;
+               default :
+                  rest = "<" + tag + ">" + rest;
+                  break;
+            }
+            if (new_start != start) {
+               ret += "\n.E" + start[2..2] + "\n" + new_start + "\n";
+               start = new_start;
+            }
+            if (add) {
+               ret += add;
+            }
+            if (preformat) {
+               ret += replace(rest, "\n", "\n.E" + start[2..2] + "\n" +
+                                    start + "\n" + additional);
+            } else {
+               rest = replace(rest, "\n", " ");
+               while (strlen(rest) && rest[0] == ' ') {
+                  rest = rest[1..];
+               }
+               while (strsrch(rest, "  ") != -1) {
+                  rest = replace_string(rest, "  ", " ");
+               }
+               ret += rest;
+            }
+         } else {
+            ret += ">" + bits[i];
+         }
+   }
+   ret += "\n.E" + start[2..2] + "\n";
+   return ret;
+}
+
+==================================================
+FILE: rings/high_gp_ring.c
+==================================================
+
+#define GP_AWARD 250
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 750 );
+    set_value_info( "artifact", 15000 );
+    set_weight( 1 );
+    set_enchant( 5 );
+    add_property( "artifact form", ([
+        "ring of power" : 6
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 75 );
+    set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of power"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
+}
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
     return 1;
-  return 0;
 }
-int query_locked(string g_name) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = (class group)groups[g_name];
-  return (record->locked);
+
+==================================================
+FILE: rings/invisibility.c
+==================================================
+
+inherit "/obj/ring";
+void setup() {
+   set_name( "ring" );
+   set_short( "clear crystal ring" );
+   add_adjective( ({ "clear", "crystal" }) );
+   set_main_plural( "clear crystal rings" );
+   set_long( "The ring is made from a colourless stone that seems to refract "+
+         "light in a strange way.  The outer edge has eight sides.\n" );
+   set_material( "calcite" );
+   set_value( 200 );
+   set_value_info( "artifact", 5000 );
+   set_weight( 1 );
+   set_enchant( 2 );
+   add_property( "no recycling", 1 );
+   add_property( "fluff'n'stuff", 1 );
+   add_property( "artifact form", ([
+      "ring of invisibility" : 2
+   ]) );
+   adjust_charges( 1 + random( 7 ) );
+   set_level( 60 );
+   set_zapper( file_name( this_object() ) );
 }
-int set_locked(string g_name, int lock) {
-  class group record;
-  if(undefinedp(groups[g_name]))
-    return 0;
-  record = (class group)groups[g_name];
-  record->locked = lock;
-  return 1;
+string query_ring_name() { return "ring of invisibility"; }
+void zap( object dummy, object person, object ring ) {
+   person->add_effect( "/std/effects/magic/invisibility",
+         roll_MdN( 7, (int)ring->query_level() ) );
 }
-string *list_groups() {
-  string frog;
-  foreach (frog in keys(groups)) {
-    check_group(frog);
-  }
-  return keys(groups);
+
+==================================================
+FILE: rings/low_gp_ring.c
+==================================================
+
+#define GP_AWARD 50
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 250 );
+    set_value_info( "artifact", 5000 );
+    set_weight( 1 );
+    set_enchant( 3 );
+    add_property( "artifact form", ([
+        "ring of energy" : 4
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 25 );
+    set_zapper( file_name( this_object() ) );
 }
-private void disband_group(string g_name, string p_name) {
-  class group record;
-  object person;
-  object member;
-  record = (class group)groups[g_name];
-  foreach(member in record->members) {
-    if(!member)
-      break;
-    map_delete(members, member->query_name());
-    foreach(person in member->query_protectors())
-      member->remove_protector(person);
-    foreach(person in member->query_followers())
-      member->remove_follower(person);
-    tell_object(member, p_name+" has left the game and so the "+g_name+
-                " has been disbanded.\n");
-  }
-  map_delete(groups, g_name);
+string query_ring_name() { return "ring of energy"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
 }
-private void check_group(string g_name) {
-  class group record;
-  record = (class group)groups[g_name];
-  if (record->leader == 0) {
-    disband_group(g_name, "Your leader");
-  } else {
-    record->members -= ({ 0 });
-  }
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
+    return 1;
 }
-private void tidy_members(string g_name) {
-  class group record;
-  object member;
-  record = (class group)groups[g_name];
-  foreach(member in record->members)
-    if(!member)
-      record->members -= ({ 0 });
+
+==================================================
+FILE: rings/med_gp_ring.c
+==================================================
+
+#define GP_AWARD 150
+inherit "/obj/ring";
+void setup() {
+    set_name( "ring" );
+    set_short( "pink crystal ring" );
+    add_adjective( ({ "pink", "crystal" }) );
+    set_main_plural( "pink crystal rings" );
+    set_long( "The ring is a single piece of $material$, cut and polished "+
+      "until its facets sparkle in the light.\n" );
+    set_material( "rosy-quartz" );
+    set_value( 500 );
+    set_value_info( "artifact", 10000 );
+    set_weight( 1 );
+    set_enchant( 4 );
+    add_property( "artifact form", ([
+        "ring of vigour" : 5
+      ]) );
+    adjust_charges( 1 + random( 11 ) );
+    set_level( 50 );
+    set_zapper( file_name( this_object() ) );
+}
+string query_ring_name() { return "ring of vigour"; }
+void zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly more powerful.\n" );
+    if ( ( (string)person->query_gp() + GP_AWARD ) >
+      (string)person->query_max_gp() ) {
+        person->set_gp( person->query_max_gp() );
+        return;
+    }
+    person->adjust_gp( GP_AWARD );
+}
+int failed_zap( object dummy, object person, object ring ) {
+    tell_object( person, "You feel slightly less powerful.\n" );
+    person->add_succeeded_mess( ring, "$N $V $D.\n", ({ }) );
+    if ( person->query_gp() < ( GP_AWARD / 3 ) ) {
+        person->set_gp( 0 );
+        return 1;
+    }
+    person->adjust_gp( 0 - ( GP_AWARD / 3 ) );
+    return 1;
 }

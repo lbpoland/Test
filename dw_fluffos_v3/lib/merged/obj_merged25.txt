@@ -1,1694 +1,1868 @@
-# Total Tokens: 14967
-# Total Files Merged: 10
-# Total Characters: 49914
+# Total Tokens: 19176
+# Total Files Merged: 11
+# Total Characters: 63953
 
-dom_names.c
+erit/error_handler.c
 ==================================================
 
-#include <random_names.h>
-#include <player_handler.h>
-private mapping rules;
-private string* _test_rules;
+#include <db.h>
+#include <error_handler.h>
+#define SAVE_FILE "/save/handlers/error_handler"
+#define ERROR_SUMMARY_FIELDS "id, entrydate, filename, type, category, name, reporter, status, directory"
+#define ERROR_DETAILS_FIELDS ERROR_SUMMARY_FIELDS \
+                      ", report, runtime"
+#define ERROR_REPLY_TIMEOUT (60 * 60 * 24 * 7 * 4)
+void finish_update(int type, mixed data, function finished, string query);
+private string _db;
+private string _user;
+private string _password;
 void create() {
-   seteuid("Room");
-   rules = ([ ]);
-   _test_rules = ({ });
-   unguarded((: restore_object, RANDOM_NAME_SAVE_FILE :));
-   if (!_test_rules) {
-      _test_rules = ({ });
+   unguarded( (: restore_object(SAVE_FILE) :) );
+   DB_HANDLER->make_sql_request(_db, _user, _password,
+                 "delete from error_replies where senddate < " +
+                 (time() - ERROR_REPLY_TIMEOUT), (: 1 :));
+}
+protected void setup_error_handler(string user, string db, string password) {
+   _user = user;
+   _db = db;
+   _password = password;
+   save_object(SAVE_FILE);
+}
+protected string build_sql_query(string select_rows, class error_query query) {
+   string* restrict;
+   string name;
+   string tmp;
+   restrict = ({ });
+   if (query->id != 0) {
+      restrict += ({ "id = " + query->id });
    }
-}
-private void save_me() {
-   unguarded((: save_object, RANDOM_NAME_SAVE_FILE :));
-}
-void open_file(string f) {
-   string str, *bits, *stuff, lang;
-   int i;
-   bits = explode(f, ".");
-   if (sizeof(bits) > 1) {
-      lang = implode(bits[0..sizeof(bits)-2], ".");
-   } else {
-      lang = f;
-   }
-   lang = replace(lang, "_", " ");
-   str = unguarded((: read_file, RANDOM_NAME_DATA_DIR+f :));
-   bits = explode(str, "\n");
-   rules[lang] = ([ ]);
-   for (i=0;i<sizeof(bits);i++) {
-      sscanf(bits[i], "%s#%*s", bits[i]);
-      if (strlen(bits[i])) {
-         stuff = explode("G"+bits[i], ":");
-         if (sizeof(stuff) >= 3) {
-            rules[lang][stuff[1]] = stuff[2];
-         } else {
-            write("Incorrect file format at line "+i+", less than 3 "
-                  ": seporated bits.\n");
-         }
+   if (query->dir) {
+      if (query->dir[<1] == '/') {
+         query->dir = query->dir[0..<2];
       }
-   }
-   save_me();
-}
-string random_name(string lang) {
-   string word = "W", *bing;
-   int some_caps = 1, i;
-   do {
-      some_caps = 0;
-      for (i = 0; i < strlen(word); i++)
-         if (word[i] >= 'A' && word[i] <= 'Z') {
-            bing = explode(rules[lang][word[i..i]], " ") - ({ "" });
-            word = word[0..i-1] + bing[random(sizeof(bing))] + word[i+1..];
-            some_caps = 1;
-         }
-   } while (some_caps);
-   return word;
-}
-string *query_languages() { return keys(rules) - _test_rules; }
-string *query_test_languages() {
-   return _test_rules;
-}
-void add_test_language(string lang) {
-   _test_rules += ({ lang });
-   save_me();
-}
-void remove_test_language(string lang) {
-   _test_rules -= ({ lang });
-   save_me();
-}
-string unique_name(string lang) {
-   string str;
-   int ok;
-   do {
-      ok = 1;
-      str = random_name(lang);
-      if (strlen(str) < 2 || strlen(str) > 11)
-         ok = 0;
-      if (ok && PLAYER_HANDLER->test_user(str))
-         ok = 0;
-      if (ok && !PLAYER_HANDLER->test_valid(str))
-         ok = 0;
-      if (ok && find_living(str))
-         ok = 0;
-   } while (!ok);
-   return str;
-}
-void dest_me() {
-   destruct(this_object());
-}
-
-==================================================
-FILE: handlers/random_num.c
-==================================================
-
-int seed = 100;
-varargs int random(int max, mixed lseed);
-#define Q           51924
-#define R           10855
-#define MULT        41358
-#define MOD   21474836647
-#define MAX_VALUE (MOD-1)
-#define STARTUP_RANDS  16
-void set_seed(int new_seed) {
-  int i;
-  if (seed <= 0)
-    seed = efun::random(200);
-  else
-    seed = new_seed;
-  for (i=0;i<STARTUP_RANDS;i++)
-    random(200);
-}
-varargs int random(int max, mixed lseed) {
-  int k, residue, curseed, mode;
-  if (undefinedp(lseed)) {
-    curseed = seed;
-  } else if (intp(lseed)) {
-    curseed = lseed;
-    mode = 1;
-  } else if (arrayp(lseed) && (sizeof(lseed) == 1) && (intp(lseed[0]))) {
-    curseed = lseed[0];
-    mode = 2;
-  } else {
-    curseed = seed;
-  }
-  k = curseed / Q;
-  residue = MULT * (curseed - Q*R) - R*k;
-  if (residue < 0)
-    residue += MOD;
-  if (mode == 0) {
-    seed = residue;
-  } else if (mode == 2) {
-    lseed[0] = residue;
-  }
-  return residue % max;
-}
-int query_seed() {
-  return seed;
-}
-
-==================================================
-FILE: handlers/reaction.c
-==================================================
-
-#include <move_failures.h>
-#include <reaction.h>
-#define REACTIONS "/obj/reactions/"
-#define SUBSTANCES 10
-mapping substance = allocate_mapping(SUBSTANCES);
-int debug_rh = 0;
-void restore_from_files();
-void write_dbg(string str) { if (debug_rh) write(str); }
-void create() {
-    seteuid("/secure/master"->creator_file(file_name(this_object())));
-    restore_from_files();
-}
-mapping merge_effects(mapping effects_a, mapping effects_m, int q_a, int q_m) {
-    int q_t, strength;
-    string key;
-    mapping ret = ([ ]);
-    if(!mapp(effects_a) || !mapp(effects_m))
-      return 0;
-    q_t = q_a + q_m;
-    if ( !q_t ) {
-        return 0;
-    }
-    foreach (key in keys(effects_a)) {
-        if (!intp(effects_a[key]) || !intp(effects_m[key])) {
-            continue;
-        }
-        if (undefinedp(effects_m[key])) {
-            strength = (effects_a[key]*q_a)/q_t;
-        } else {
-            strength = (effects_a[key]*q_a + effects_m[key]*q_m)/q_t
-                - effects_m[key];
-            map_delete(effects_m, key);
-        }
-        ret += ([key: strength]);
-    }
-    foreach (key in keys(effects_m)) {
-        if (!intp(effects_m[key])) {
-            continue;
-        }
-        strength = (effects_a[key]*q_a + effects_m[key]*q_m)/q_t
-            - effects_m[key];
-        ret += ([key: strength]);
-    }
-    return ret;
-}
-object merge_cont_medium(object a, string medium_alias) {
-    object medium;
-    int no_join, q_a, q_m;
-    mapping effects_a, effects_m, eff;
-    string key;
-    a->remove_alias(medium_alias);
-    no_join = a->query_no_join();
-    if ((medium = present(medium_alias, environment(a))) && !no_join) {
-        a->set_no_join();
-        a->move("/room/void");
-        q_a = a->query_amount();
-        q_m = medium->query_amount();
-        medium->adjust_amount(q_a);
-        effects_a = copy(a->query_eat_effects());
-        effects_m = copy(medium->query_eat_effects());
-        eff = merge_effects(effects_a, effects_m, q_a, q_m);
-        if (mapp(eff)) {
-           foreach (key in keys(eff)) {
-               medium->add_eat_effect(key, eff[key]);
-           }
-        }
-        effects_a = copy(a->query_external_effects());
-        effects_m = copy(medium->query_external_effects());
-        eff = merge_effects(effects_a, effects_m, q_a, q_m);
-        if(eff) {
-          foreach (key in keys(eff)) {
-            medium->add_external_effect(key, eff[key]);
-          }
-        }
-        call_out("dest_substance", 0, a);
-        return medium;
-    } else {
-        a->add_alias(medium_alias);
-        return a;
-    }
-}
-void check_reaction(object a) {
-    int amt_a, need_amt_a, amt_b, need_amt_b;
-    string name_a, name_b, i_a, i_b, msg, fcn;
-    mixed *fcns;
-    int i, j, amt_result;
-    object x, *bs, ob_a, ob_b;
-    float ratio;
-    class reaction rcn;
-    if (objectp(this_player()))
-      debug_rh = this_player()->query_property("debug_rh");
-    else
-      debug_rh = 0;
-    write_dbg("Entering reaction_handler.\n");
-    name_a = a->query_medium_alias();
-    if (!name_a || !a->query_continuous()) {
-        write_dbg("Leaving reaction_handler because there is no A or it is not "
-        "continous.\n");
-        return;
-    }
-    if ( a->query_medium_alias() == a->query_name() ) {
-        debug_printf( "WARNING: Your cont_medium alias must "
-          "not be the same as your name.\n" );
-        return;
-    }
-    a = merge_cont_medium(a, name_a);
-    bs = all_inventory(environment(a));
-    debug_printf( "A is %O at %O. Bs are: %O.\n", a, environment( a ), bs );
-    if ((sizeof(bs) < 2) || (!a->query_amount())) {
-        write_dbg("Leaving reaction_handler because there is no B, or there is "
-        "0 amounts of A.\n");
-        return;
-    }
-    write_dbg("Checking the following: ");
-    for (i = 0; i < sizeof(bs); i++) {
-        write_dbg(bs[i]->query_medium_alias() + ", ");
-    }
-    write_dbg("\n");
-    for (i = 0; i < sizeof(bs); i++) {
-        if (!a->query_amount()) {
-            write_dbg("Leaving reaction_handler.\n");
-            return;
-        }
-        name_b = bs[i]->query_medium_alias();
-        if (!name_b || !bs[i]->query_continuous() || !bs[i]->query_amount()) {
-            continue;
-        }
-        if (name_a < name_b) {
-            i_a = name_a;
-            i_b = name_b;
-            ob_a = a;
-            ob_b = bs[i];
-        } else {
-            i_a = name_b;
-            i_b = name_a;
-            ob_a = bs[i];
-            ob_b = a;
-        }
-        write_dbg("Checking " + i_a + " against " + i_b + ".\n");
-        if (!substance[i_a] || !substance[i_a][i_b]) {
-            continue;
-        }
-        write_dbg("...they react.\n");
-        rcn = substance[i_a][i_b];
-        amt_a = ob_a->query_amount();
-        amt_b = ob_b->query_amount();
-        ratio = to_float(amt_a) / amt_b;
-        if (intp(rcn->ratio)) {
-            rcn->ratio = to_float(rcn->ratio);
-        }
-        if (floatp(rcn->ratio)) {
-            write_dbg("Single ratio...\n");
-            if (ratio > rcn->ratio) {
-                need_amt_b = amt_b;
-                need_amt_a = to_int(ceil(amt_b*rcn->ratio));
-                write_dbg("Setting amt_a to "+ to_int(ceil(amt_b*rcn->ratio)) +".\n" );
-            } else {
-                need_amt_a = amt_a;
-                need_amt_b = to_int(ceil(amt_a/rcn->ratio));
-                write_dbg("Setting amt_b to "+ to_int(ceil(amt_a/rcn->ratio)) +".\n" );
-            }
-        } else if (arrayp(rcn->ratio) && (sizeof(rcn->ratio) == 2)) {
-            write_dbg("Range of ratios...");
-            if (intp(rcn->ratio[0])) {
-                rcn->ratio[0] = to_float(rcn->ratio[0]);
-            }
-            if (intp(rcn->ratio[1])) {
-                rcn->ratio[1] = to_float(rcn->ratio[1]);
-            }
-            if (ratio > rcn->ratio[1]) {
-                write_dbg("above range...(" + ratio + ")\n");
-                need_amt_b = amt_b;
-                need_amt_a = to_int(ceil(amt_b*rcn->ratio[1]));
-                write_dbg("Setting amt_a to "+ to_int(ceil(amt_b*rcn->ratio[1])) +".\n" );
-                write_dbg("This is because amta is: "+ amt_b +" and ratio is "+ rcn->ratio[1] + ".\n" );
-            } else if (ratio < rcn->ratio[0]) {
-                write_dbg("below range...(" + ratio + ")\n");
-                need_amt_a = amt_a;
-                need_amt_b = to_int(ceil(amt_a/rcn->ratio[0]));
-                write_dbg("Setting amt_b to "+ to_int(ceil(amt_a/rcn->ratio[0])) +".\n" );
-                write_dbg("This is because amta is: "+ amt_a +" and ratio is "+ rcn->ratio[0] + ".\n" );
-            } else {
-                write_dbg("within range...(" + ratio + ")\n");
-                need_amt_a = amt_a;
-                need_amt_b = amt_b;
-            }
-        } else {
-            error("Illegal reaction ratio; expecting float, int, or "
-                  "array of two floats or ints.");
-        }
-        amt_result = to_int((need_amt_a + need_amt_b)*rcn->result_amt);
-        write_dbg("...got ("+amt_a+","+amt_b+"), taking ("+need_amt_a+","+
-                  need_amt_b+"), creating " + amt_result + ".\n");
-        write_dbg("...creating "+rcn->result+".\n");
-        x = clone_object(rcn->result);
-        if (rcn->result_amt) {
-            if (function_exists("set_amount", x)) {
-                x->set_amount(amt_result);
-            } else {
-                x->set_weight(amt_result);
-            }
-        }
-        msg = rcn->message;
-        if (msg) {
-            msg = replace(rcn->message, ({
-                "#env#", file_name(environment(a)),
-                "#env2#", file_name(environment(environment(a))),
-                "#obj_a#", file_name(ob_a),
-                "#obj_b#", file_name(ob_b),
-                "#obj_x#", file_name(x)
-              }));
-            tell_room(environment(environment(a)), msg);
-        }
-        fcns = rcn->func;
-        if (fcns) {
-            for (j = 0; j < sizeof(fcns); j++) {
-                if (stringp(fcns[j])) {
-                    fcn = replace(fcns[j], ({
-                        "#env#", file_name(environment(a)),
-                        "#env2#", file_name(environment(environment(a))),
-                        "#obj_a#", file_name(ob_a),
-                        "#obj_b#", file_name(ob_b),
-                        "#obj_x#", file_name(x)
-                      }));
-                } else if (functionp(fcns[j])) {
-                    evaluate(fcns[j], ob_a, ob_b, x, environment(a),
-                             environment(environment(a)), need_amt_a,
-                             need_amt_b);
-                }
-            }
-        }
-        call_out("move_substance", 0, ({x, environment(a)}));
-        ob_a->adjust_amount( -need_amt_a );
-        ob_b->adjust_amount( -need_amt_b );
-    }
-    write_dbg("Leaving reaction_handler.\n");
-}
-void move_substance(object *ob) {
-    int vol, vol_left, cont, closed, i, mv_stat;
-    object *contents;
-    if (!ob[0] || !ob[1]) return;
-    vol_left = (int)ob[1]->query_max_volume() - (int)ob[1]->query_volume();
-    if (cont = ob[0]->query_continuous()) {
-        vol = ob[0]->query_amount();
-    } else {
-        vol = (int)ob[0]->query_weight()*200;
-    }
-    closed = ob[1]->query_closed();
-    ob[1]->set_open();
-    if ((mv_stat = ob[0]->move(ob[1])) != MOVE_OK) {
-        write_dbg(sprintf("Move error (%d)...", vol));
-        if ((vol > vol_left) && cont && !closed) {
-            write_dbg("too much...\n");
-            ob[0]->set_amount(vol_left);
-            tell_room(environment(ob[1]), ob[0]->short(0) +
-                      " leaks out of the " + ob[1]->short(0) + ".\n");
-            mv_stat = ob[0]->move(ob[1]);
-        }
-        if (mv_stat == MOVE_OK) {
-            if (closed) ob[1]->set_closed();
-        } else {
-            contents = all_inventory(ob[1]);
-            write_dbg(sprintf("contents = %O\n", contents));
-            for (i = 0; i < sizeof(contents); i++) {
-                contents[i]->dest_me();
-            }
-            if (!living(ob[1]) && !function_exists("query_co_ord", ob[1])) {
-                tell_room(environment(ob[1]), ob[1]->the_short(0) +
-                          " explodes, splattering the contents all over.\n");
-                ob[1]->move("/room/rubbish");
-            }
-            ob[0]->move("/room/rubbish");
-        }
-    } else {
-        if (closed) ob[1]->set_closed();
-    }
-}
-void dest_substance(object ob) {
-    if (ob) {
-        ob->dest_me();
-    }
-}
-mixed *query_reaction(string name_a, string name_b) {
-    if (!substance[name_a] || !substance[name_a][name_b]) {
-        return 0;
-    }
-    return substance[name_a][name_b];
-}
-mapping query_reactions() { return substance; }
-void restore_from_files() {
-    string *files;
-    int i;
-    files = ({ "base.hdr" });
-    files += get_dir(REACTIONS + "*.rcn");
-    for (i = 0; i < sizeof(files); i++) {
-        files[i] = REACTIONS + files[i];
-    }
-    substance = "/obj/handlers/data"->compile_data(files);
-}
-void update_from_files(string fn) {
-    mapping new_substance;
-    string a, b;
-    new_substance = "/obj/handlers/data"->compile_data( ({ fn }) );
-    foreach (a in keys(new_substance)) {
-      if (undefinedp(substance[a])) {
-        substance[a] = ([ ]);
-      }
-      foreach (b in keys(new_substance[a])) {
-        substance[a][b] = new_substance[a][b];
-      }
-    }
-}
-
-==================================================
-FILE: handlers/refresh.c
-==================================================
-
-#include <refresh.h>
-#include <playerinfo.h>
-#define SAVE_FILE "/save/refresh"
-mapping refresh_callbacks;
-mapping delete_callbacks;
-nosave string loaded_by;
-nosave string loaded_time;
-protected void load_me()
-{
-  refresh_callbacks = 0;
-  delete_callbacks = 0;
-  unguarded( (: restore_object, SAVE_FILE, 0 :) );
-  if (!refresh_callbacks) {
-    refresh_callbacks = ([ ]);
-  }
-  if (!delete_callbacks) {
-    delete_callbacks = ([ ]);
-  }
-}
-protected void save_me()
-{
-  unguarded( (: save_object, SAVE_FILE, 0 :) );
-}
-string query_name() {
-   return "Refresh Handler";
-}
-void create()
-{
-  seteuid("/secure/master"->creator_file(file_name(this_object())));
-  load_me();
-  if (!previous_object()) {
-    loaded_by = "The Masked Man";
-  } else {
-    if (previous_object()->query_creator()) {
-      loaded_by = "Creator: " + previous_object()->query_name();
-    } else if (previous_object()->query_interactive()) {
-      loaded_by = "Player: " + previous_object()->query_name();
-    } else {
-      loaded_by = file_name(previous_object());
-      if (this_player())
-        loaded_by += sprintf(" (%s)", this_player()->query_name());
-    }
-  }
-  loaded_time = ctime(time());
-}
-void dest_me()
-{
-  save_me();
-  destruct(this_object());
-}
-nomask mixed dwep()
-{
-  efun::destruct(this_object());
-  return "Destructed With Extreme Prejudice";
-}
-string register_refresh(mixed ob, string func)
-{
-  object real;
-  if (objectp(ob)) {
-    ob = base_name(ob);
-  }
-  if (!ob) {
-    return "Please supply an object";
-  }
-  real = load_object(ob);
-  if (!real) {
-    return "Couldn't find object";
-  }
-  if (func && !function_exists(func, real)) {
-    return "Couldn't find function";
-  }
-  if (!func) {
-    if (refresh_callbacks[ob]) {
-      map_delete(refresh_callbacks, ob);
-    }
-  } else {
-    if (refresh_callbacks[ob]) {
-      refresh_callbacks[ob] = func;
-    } else {
-      refresh_callbacks += ([ ob : func ]);
-    }
-  }
-  save_me();
-}
-string register_delete(mixed ob, string func)
-{
-  object real;
-  if (objectp(ob)) {
-    ob = base_name(ob);
-  }
-  if (!ob) {
-    return "Please supply an object";
-  }
-  real = load_object(ob);
-  if (!real) {
-    return "Couldn't find object";
-  }
-  if (func && !function_exists(func, real)) {
-    return "Couldn't find function";
-  }
-  if (!func) {
-    if (delete_callbacks[ob]) {
-      map_delete(delete_callbacks, ob);
-    }
-  } else {
-    if (delete_callbacks[ob]) {
-      delete_callbacks[ob] = func;
-    } else {
-      delete_callbacks += ([ ob : func ]);
-    }
-  }
-  save_me();
-}
-varargs void player_refreshed(object player, int totally) {
-  string ob;
-  if (base_name(file_name(previous_object())) != "/global/player") {
-    return;
-  }
-  foreach (ob in keys(refresh_callbacks)) {
-    object obj;
-    obj = load_object(ob);
-    if (obj) {
-      mixed *vals;
-      vals = ({ refresh_callbacks[ob], player, totally });
-      call_out( (: call_other, obj, vals :), 1);
-    }
-  }
-}
-varargs void player_deleted(string player)
-{
-  string ob;
-  if (file_name(previous_object()) != "/secure/delete_clear" &&
-      file_name(previous_object()) != "/cmds/lord/rmp_layer" &&
-      !master()->high_programmer(previous_object(-1))) {
-    unguarded( (: write_file, "/log/CHEAT", ctime( time() ) +
-                ": illegal attempt to delete player files using "+
-                "refresh_handler\nTrace: "+ back_trace() :) );
-    return;
-  }
-  foreach (ob in keys(delete_callbacks)) {
-    object obj;
-    obj = load_object(ob);
-    if (obj) {
-      mixed *vals;
-      vals = ({ delete_callbacks[ob], player, PLAYER_DELETED });
-      call_out( (: call_other, obj, vals :), 1);
-    }
-  }
-  "/secure/related_files"->delete_related_files(player, 1, 0);
-}
-mapping query_funcs()
-{
-  return ([
-    "refresh callbacks" : refresh_callbacks,
-    "delete callbacks" : delete_callbacks,
-    ]);
-}
-mixed *stats()
-{
-  return ({
-    ({ "refreshes", sizeof(refresh_callbacks) }),
-    ({ "deletes", sizeof(delete_callbacks) }),
-    ({ "loaded by", loaded_by }),
-    ({ "loaded time", loaded_time }),
-    });
-}
-
-==================================================
-FILE: handlers/report_handler.c
-==================================================
-
-#include <report_handler.h>
-inherit "/std/object";
-void move_to_recent_cases(mixed *thing);
-mixed *new_cases, *recent_cases;
-void setup() {
-  set_short("report handler");
-  add_property("determinate", "the ");
-  set_long("This is a rather tacky statue of a woman holding "
-    "a sword and some wonky scales.\n");
-  if(file_size(NEWCASES) > -1) {
-    new_cases = restore_variable(read_file(NEWCASES));
-  }
-  if(file_size(RECENT) > -1) {
-    recent_cases = restore_variable(read_file(RECENT));
-  }
-}
-void save_new_cases() {
-  unguarded((: rm, NEWCASES :));
-  unguarded((: write_file, NEWCASES, save_variable(new_cases)+"\n" :));
-}
-mixed query_new() {
-  return new_cases;
-}
-int sizeof_new_cases() {
-  if(!new_cases) {
-    new_cases = restore_variable(read_file(NEWCASES));
-  }
-  return sizeof(new_cases);
-}
-string query_new_cases() {
-  int i, j;
-  string reports = "";
-  for(i = 0; i < sizeof(new_cases); i++) {
-    if(i < 10) {
-      reports += "   "+(i + 1)+": ";
-    } else {
-      reports += "  "+(i + 1)+": ";
-    }
-    reports += "%^CYAN%^Player%^RESET%^: "+capitalize(new_cases[i][NAME]);
-    for(j = 0; j < (12 - sizeof(new_cases[i][NAME])); j++) {
-      reports += " ";
-    }
-    reports += "%^CYAN%^Category%^RESET%^: "+new_cases[i][CATEGORY]+"\n";
-  }
-  return reports;
-}
-string query_new_case(int i) {
-  string report = "";
-  mixed *stuff;
-  if(!new_cases) {
-    new_cases = restore_variable(read_file(NEWCASES));
-  }
-  if(i < 1 || i > sizeof(new_cases)) {
-    return 0;
-  }
-  stuff = new_cases[i - 1];
-  report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
-  if(!sizeof(stuff[CHARS])) {
-    report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
-  } else {
-    report += "  %^CYAN%^Other Characters%^RESET%^: "
-      "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
-  }
-  report += "  %^CYAN%^Creator%^RESET%^: "+stuff[CREATOR]+"\n"
-    "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
-    "  %^CYAN%^Category%^RESET%^: "+stuff[CATEGORY]+"\n"
-    "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0=";
-  return report;
-}
-void add_report(string *stuff) {
-  if(!new_cases) {
-    new_cases = restore_variable(read_file(NEWCASES));
-  }
-  new_cases += ({ stuff });
-  save_new_cases();
-}
-void deal_with_it(int num, string name, string decision) {
-  mixed *thing;
-  num--;
-  thing = new_cases[num];
-  thing += ({ name });
-  thing += ({ decision });
-  new_cases -= ({new_cases[num]});
-  move_to_recent_cases(thing);
-}
-void save_recent_cases() {
-  unguarded((: rm, RECENT :));
-  unguarded((: write_file, RECENT, save_variable(recent_cases)+"\n" :));
-}
-void move_to_recent_cases(mixed *thing) {
-  int i, j;
-  mixed *c_record, *chars;
-  for(i = sizeof(recent_cases) - NO_RECENT; i > -1; i--) {
-    chars = ({recent_cases[i][NAME]});
-    if(arrayp(recent_cases[i][CHARS])) {
-      chars += recent_cases[i][CHARS];
-    }
-    uniq_array(chars);
-    for(j = 0; j < sizeof(chars); j++) {
-      if(file_size((SAVEPATH+chars[j]+".o")) > -1) {
-        c_record = restore_variable(read_file((SAVEPATH+chars[j]+".o")));
-        c_record += ({recent_cases[j]});
+      if (query->recursive) {
+         restrict += ({ "directory like '" + query->dir + "%'" });
       } else {
-        c_record = ({recent_cases[j]});
+         restrict += ({ "directory = '" + query->dir + "'" });
       }
-      unguarded((: rm, (SAVEPATH+chars[j]+".o") :));
-      unguarded((: write_file, (SAVEPATH+chars[j]+".o"),
-        save_variable(c_record)+"\n" :));
-    }
-    recent_cases -= ({recent_cases[i]});
-  }
-  recent_cases += ({ thing });
-  save_new_cases();
-  save_recent_cases();
-}
-mixed query_recent() {
-  if(!recent_cases) {
-    recent_cases = restore_variable(read_file(RECENT));
-  }
-  return recent_cases;
-}
-string query_recent_cases() {
-  int i, j;
-  string reports = "";
-  for(i = 0; i < sizeof(recent_cases); i++) {
-    if(i < 10) {
-      reports += "   "+(i + 1)+": ";
-    } else {
-      reports += "  "+(i + 1)+": ";
-    }
-    reports += "%^CYAN%^Suspect%^RESET%^: "+capitalize(recent_cases[i][NAME]);
-    for(j = 0; j < (12 - sizeof(recent_cases[i][NAME])); j++) {
-      reports += " ";
-    }
-    reports += "%^CYAN%^Category%^RESET%^: "+recent_cases[i][CATEGORY]+"\n";
-  }
-  return reports;
-}
-string query_recent_case(int i) {
-  string report = "";
-  mixed *stuff;
-  if(!recent_cases) {
-    recent_cases = restore_variable(read_file(RECENT));
-  }
-  if(i < 1 || i > sizeof(recent_cases)) {
-    return 0;
-  }
-  stuff = recent_cases[i - 1];
-  report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
-  if(!sizeof(stuff[CHARS])) {
-    report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
-  } else {
-    report += "  %^CYAN%^Other Characters%^RESET%^: "
-      "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
-  }
-  report += "  %^CYAN%^Creator%^RESET%^: "+capitalize(stuff[CREATOR])+"\n"
-    "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
-    "  %^CYAN%^Offence%^RESET%^: "+stuff[CATEGORY]+"\n"
-    "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0="
-    "  %^YELLOW%^High Lord%^RESET%^: "+stuff[HIGHLORD]+"\n"
-    "  %^YELLOW%^High Lord Decision%^RESET%^: "+stuff[DECISION];
-  for(i = 8; i < sizeof(stuff); i += 2) {
-    report += "  %^YELLOW%^Comment from "+stuff[i]+"%^RESET%^: "
-      +stuff[i + 1];
-  }
-  return report;
-}
-string case_history(string name) {
-  int i, j;
-  mixed *history, *cases, *stuff, *all_cases, *check_case;
-  string report, *other_chars = ({ });
-  history = get_dir(SAVEPATH+lower_case(name)+".o");
-  all_cases = get_dir(SAVEPATH);
-  all_cases -= ({"recent.o", "new.o"});
-  for(i = 0; i < sizeof(all_cases); i++) {
-    check_case = restore_variable(read_file((SAVEPATH+all_cases[i])));
-    for(j = 0; j < sizeof(check_case); j++) {
-      if(arrayp(check_case[j][CHARS])) {
-        if(member_array(capitalize(name), check_case[j][CHARS]) != -1) {
-          other_chars += check_case[j][CHARS];
-          other_chars += ({check_case[j][NAME]});
-        }
+   }
+   if (query->assigned_to) {
+      restrict += ({ "AssignedTo = '" + query->assigned_to + "'" });
+   }
+   if (query->reporter) {
+      restrict += ({ "Reporter = '" + query->reporter + "'" });
+   }
+   if (query->file_name) {
+      restrict += ({ "FileName = '" + query->file_name + "'" });
+   }
+   if (sizeof(query->type)) {
+      tmp = "Type in (";
+      foreach (name in query->type) {
+         tmp += "'" + name + "',";
       }
-    }
-  }
-  if(sizeof(other_chars)) {
-    uniq_array(other_chars);
-    for(i = 0; i < sizeof(other_chars); i++) {
-      other_chars[i] = capitalize(other_chars[i]);
-    }
-    other_chars -= ({capitalize(name)});
-    other_chars = uniq_array(other_chars);
-    write(capitalize(name)+" is also "
-      +query_multiple_short(other_chars)+".\n");
-  }
-  if(!sizeof(history)) {
-    return 0;
-  }
-  write("%^CYAN%^Case History for "+capitalize(name)+"%^RESET%^:\n");
-  report = "";
-  cases = restore_variable(read_file(SAVEPATH+lower_case(name)+".o"));
-  for(i = 0; i < sizeof(cases); i++) {
-    stuff = cases[i];
-    report += "  %^CYAN%^Suspect%^RESET%^: "+capitalize(stuff[NAME])+"\n";
-    if(!sizeof(stuff[CHARS])) {
-      report += "  %^CYAN%^Other Characters%^RESET%^: Unknown.\n";
-    } else {
-      report += "  %^CYAN%^Other Characters%^RESET%^: "
-        "$I$5="+query_multiple_short(stuff[CHARS])+"$I$0=\n";
-    }
-    report +=  "  %^CYAN%^Creator%^RESET%^: "+capitalize(stuff[CREATOR])+"\n"
-      "  %^CYAN%^Time%^RESET%^: "+stuff[TIME]+"\n"
-      "  %^CYAN%^Offence%^RESET%^: "+stuff[CATEGORY]+"\n"
-      "  %^CYAN%^Report%^RESET%^: $I$5="+stuff[REPORT]+"$I$0="
-      "  %^YELLOW%^High Lord%^RESET%^: "+stuff[HIGHLORD]+"\n"
-      "  %^YELLOW%^High Lord Decision%^RESET%^: "+stuff[DECISION];
-    for(j = 8; j < sizeof(stuff); j += 2) {
-      report += "  %^YELLOW%^Comment from "+stuff[j]+"%^RESET%^: "
-        +stuff[j + 1];
-    }
-  }
-  return report;
-}
-void add_comment(int i, string name, string comment) {
-  i--;
-  recent_cases[i] += ({ capitalize(name), comment });
-  save_recent_cases();
-}
-
-==================================================
-FILE: handlers/room_handler.c
-==================================================
-
-#include <climate.h>
-#include <living.h>
-#include <move_failures.h>
-#include <player.h>
-#include <room.h>
-#include <weather.h>
-#include <position.h>
-#define CHATSIZE 80
-#define DOORSIZE 60
-mapping exit_types;
-mapping door_types;
-mapping opposite;
-mixed *chatters, *doors;
-void add_door( object thing );
-void create() {
-   seteuid( (string)"/secure/master"->
-           creator_file( file_name( this_object() ) ) );
-   exit_types = ([
-"standard" :({ 0, 1,   400, 0 }),
-"corridor" :({ 0, 1,   250, 0 }),
-"plain"    :({ 0, 1, 10000, 0 }),
-"door"     :({ 0, 1,   300, 0 }),
-"stair"    :({ 0, 1,   300, 0 }),
-"hidden"   :({ 0, 0,   300, 0 }),
-"secret"   :({ 0, 0,   300, 0 }),
-"gate"     :({ 0, 1,   450, 0 }),
-"road"     :({ 0, 1,  1300, 0 }),
-"path"     :({ 0, 1,   800, 0 }),
-"window"   :({ "$N climb$s through a window.\n", 0, 75, 0 }),
-]);
-   door_types = ([
-"door"      : ({ 0, 0, "generic_key", 2, 0, 0, "door" }),
-"secret"    : ({ 0, 0, "generic_key", 3, 1, 0, "door" }),
-"gate"      : ({ 1, 0, "generic_key", 1, 0, 1, "door" }),
-"window"    : ({ 1, 0, "generic_key", 1, 0, 1, "window" }),
-]);
-   opposite = ([
-"north" : ({ 0, "$R$[the ]+south$R$" }),
-"south" : ({ 0, "$R$[the ]+north$R$" }),
-"east" : ({ 0, "$R$[the ]+west$R$" }),
-"west" : ({ 0, "$R$[the ]+east$R$" }),
-"northeast" : ({ 0, "$R$[the ]+southwest$R$" }),
-"southwest" : ({ 0, "$R$[the ]+northeast$R$" }),
-"southeast" : ({ 0, "$R$[the ]+northwest$R$" }),
-"northwest" : ({ 0, "$R$[the ]+southeast$R$" }),
-"up":({0,"below"}), "down":({0,"above"}),
-"out":({0,"inside"}), "in":({0,"outside"}),
-"exit":({0,"inside"}), "enter":({0,"outside"}),
-"hubward":({0,"rimward"}), "rimward":({0,"hubward"}),
-"turnwise":({0,"widdershins"}),
-"widdershins":({0,"turnwise"}) ]);
-   chatters = allocate( CHATSIZE );
-   doors = allocate( DOORSIZE );
-   call_out( "housekeeping", 4 );
-}
-string query_opposite_direction(string dir) {
-   if (opposite[dir]) {
-      return opposite[dir][1];
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
+   }
+   if (sizeof(query->status)) {
+      tmp = "Status in (";
+      foreach (name in query->status) {
+         tmp += "'" + name + "',";
+      }
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
+   }
+   if (sizeof(query->category)) {
+      tmp = "Category in (";
+      foreach (name in query->category) {
+         tmp += "'" + name + "',";
+      }
+      tmp = tmp[0..<2] + ")";
+      restrict += ({ tmp });
+   }
+   if (sizeof(restrict)) {
+      tmp = "select " + lower_case(select_rows) + " from errors where " +
+             implode(restrict, " and ");
+      switch (query->order_by) {
+      case ERROR_ORDER_BY_FILENAME :
+         tmp += " order by filename, entrydate";
+         break;
+      case ERROR_ORDER_BY_DATE :
+         tmp += " order by entrydate";
+         break;
+      case ERROR_ORDER_BY_REPORTER :
+         tmp += " order by reporter, entrydate";
+         break;
+      case ERROR_ORDER_BY_DIRECTORY :
+      default :
+         tmp += " order by directory, filename, entrydate";
+         break;
+      }
+      return tmp + " limit 150";
    }
    return 0;
 }
-mixed *query_chatters() { return chatters; }
-mixed *query_doors() { return doors; }
-int add_exit_type(string type, mixed message, mixed obvious,
-                            int size, mixed func) {
-  if (exit_types[type]) {
-    return 0;
-  }
-  exit_types[type] = ({ message, obvious, size, func });
-  return 1;
+string build_sql_update(int id, string field, mixed value) {
+   string ret;
+   ret = "update errors set " + field + " = ";
+   if (stringp(value)) {
+      ret += "'" + value + "'";
+   } else {
+      ret += "" + value;
+   }
+   ret += " where id = " + id;
+   return ret;
 }
-int remove_exit_type(string type) {
-   map_delete(exit_types, type);
-   return 1;
+class error_forward create_error_forward(mapping map) {
+   class error_forward newy;
+   newy = new(class error_forward);
+   newy->date = map["forwarddate"];
+   newy->forwarder = map["forwarder"];
+   newy->old_directory = map["olddirectory"];
+   return newy;
 }
-mixed *query_door_type(string type, string direc, string dest) {
-   if (!door_types[type]) {
-      return 0;
-   }
-   call_out( "check_door", 1, ({ previous_object(), direc }) );
-   return door_types[type];
+class error_comment create_error_comment(mapping map) {
+   class error_comment newy;
+   newy = new(class error_comment);
+   newy->date = map["commentdate"];
+   newy->commenter = map["commenter"];
+   newy->comment = map["comment"];
+   return newy;
 }
-void check_door( mixed args ) {
-   string direc, dest;
-   string door_name;
-   if ( !args[ 0 ] ) {
-      return;
-   }
-   args[ 0 ]->set_destination( args[ 1 ] );
-   dest = (string)args[ 0 ]->query_destination( args[ 1 ] );
-   if ( !dest ) {
-      tell_room( args[ 0 ], "Error: "+ args[ 1 ] +
-            " is no longer an exit.\n" );
-      return;
-   }
-   if ( !find_object( dest ) ) {
-      return;
-   }
-   door_name = args[0]->call_door(args[1], "query_door_name");
-   direc = (string)dest->query_door( args[ 0 ], door_name );
-   if ( !direc &&
-       !args[ 0 ]->call_door( args[ 1 ], "query_one_way" ) ) {
-      tell_room( args[ 0 ], "Error: "+ dest +
-                "does not have a door coming back here.\n" );
-      return;
-   }
-   args[ 0 ]->modify_exit( args[ 1 ], ({ "other", direc }) );
-   args[ 0 ]->modify_exit( args[ 1 ], ({
-      "closed", (int)dest->call_door( direc, "query_closed" ),
-      "locked", (int)dest->call_door( direc, "query_locked" ) }) );
-   if ( !args[ 0 ]->call_door( args[ 1 ], "query_closed" ) &&
-       ( (string)args[ 0 ]->query_property( "location" ) == "outside" ) ) {
-      add_door( (object)args[ 0 ]->query_door_control( args[ 1 ], door_name ) );
+class error_summary create_error_summary(mapping map) {
+   class error_summary newy;
+   newy = new(class error_summary);
+   newy->id = map["id"];
+   newy->entry_date = map["entrydate"];
+   newy->filename = map["filename"];
+   newy->category = map["category"];
+   newy->assigned_to = map["assignedto"];
+   newy->reporter = map["reporter"];
+   newy->status = map["status"];
+   newy->type = map["type"];
+   newy->directory = map["directory"];
+   return newy;
+}
+class error_details create_error_details(mapping map) {
+   class error_details newy;
+   newy = new(class error_details);
+   newy->summary = create_error_summary(map);
+   newy->fix_date = map["fixdate"];
+   newy->fixer = map["fixer"];
+   newy->report = map["report"];
+   newy->runtime = map["runtime"];
+   return newy;
+}
+class error_complete create_error_complete(class error_details details) {
+   class error_complete newy;
+   newy = new(class error_complete);
+   newy->details = details;
+   newy->comments = ({ });
+   newy->forwards = ({ });
+   newy->replies = ({ });
+   return newy;
+}
+class error_replies create_error_replies(mapping map) {
+   class error_replies reply;
+   reply = new(class error_replies);
+   reply->id = map["id"];
+   reply->bug_id = map["bug_id"];
+   reply->sender = map["sender"];
+   reply->status = map["status"];
+   reply->recipient = map["recipient"];
+   reply->senddate = map["senddate"];
+   reply->subject = map["subject"];
+   reply->message = map["message"];
+   return reply;
+}
+void finish_summary(int type, mixed data, function finished, string query) {
+   class error_summary* errors;
+   mapping map;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data, query);
+   } else {
+      errors = ({ });
+      foreach (map in data) {
+         errors += ({ create_error_summary(map) });
+      }
+      evaluate(finished, type, errors, query);
    }
 }
-mixed *query_exit_type(string type, string dir) {
-  mixed s;
-   if (!(s = opposite[dir])) {
-      s = ({ 0, "elsewhere" });
+void finish_forwards(int type, mixed data, function finished,
+                     class error_complete* errors, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["id"]) {
+                 detail->forwards += ({ create_error_forward(map) });
+            }
+         }
+      }
+      evaluate(finished, type, errors, query);
    }
-   if (!exit_types[type]) {
-      return exit_types["standard"] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-   }
-   return exit_types[ type ] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 }
-int move_thing( object thing, string dir, string dest, mixed exit,
-                mixed enter, string move ) {
-  int ret;
-  string arrive, leave;
-  object dragging;
-  dragging = (object)thing->query_dragging();
-  if (dragging && environment(dragging) != environment(thing)) {
-    thing->reset_dragging();
-    dragging = 0;
-  }
-  if ( ( exit != "none" ) || objectp( dragging ) ) {
-    if ( stringp( enter ) )
-      enter = ({ 1, enter });
-    else if ( functionp(enter) )
-      enter = ({ 1, evaluate(enter, thing) });
-    else if ( !pointerp( enter ) )
-      enter = ({ 0, "somewhere" });
-    switch ( enter[ 0 ] ) {
-    case 0 :
-      arrive = replace( (string)thing->query_msgin(),
-                        ({"$F", enter[ 1 ],
-                          "$r", thing->query_pronoun() }) );
-      break;
-    default :
-      arrive = enter[ 1 ];
-    }
-    if ( stringp( exit) )
-      leave = exit;
-    else if ( functionp( exit ) )
-      leave = evaluate(exit, thing);
-    else if ( pointerp( exit ) )
-      leave = exit[ 0 ];
-    else
-      leave = (string)thing->query_msgout();
-    leave = replace( leave, ({"$T", "$R$-"+ dir +"$R$",
-                              "$r", thing->query_pronoun() }) );
-  }
-  thing->return_to_default_position(1);
-  if ( arrive || objectp( dragging ) ) {
-    thing->remove_hide_invis( "hiding" );
-    if ( stringp( arrive ) && objectp( dragging ) ) {
-      arrive += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
-        (string)dragging->a_short() +" in behind "+
-        (string)thing->query_objective() +".";
-    }
-    if ( stringp( leave ) && objectp( dragging ) ) {
-      leave += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
-        (string)dragging->the_short() +" away behind "+
-        (string)thing->query_objective() +".";
-    }
-    if ( stringp( move ) ) {
-      tell_object( thing, move );
-    }
-    ret = (int)thing->move( dest, arrive, leave );
-    if ( ( ret == MOVE_OK ) && objectp( dragging ) ) {
-      if(dragging->move(environment(thing)) == MOVE_OK) {
-        tell_object( thing, "You drag "+
-                     (string)dragging->the_short() +" behind you.\n" );
-        thing->adjust_time_left( -DEFAULT_TIME );
+void finish_details_error_replies(int type, mixed data, function finished,
+                     class error_complete* errors, string ids, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["bug_id"]) {
+               detail->replies += ({ create_error_replies(map) });
+            }
+         }
+      }
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select id,forwarddate,forwarder,olddirectory from "
+                     "forwards where id in " + ids +
+                     " order by forwarddate",
+                     (: finish_forwards($1, $2, $(finished), $(errors), $(query)) :));
+   }
+}
+void finish_comments(int type, mixed data, function finished,
+                     class error_complete* errors, string ids, string query) {
+   mapping map;
+   class error_complete detail;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, DB_SUCCESS, errors, query);
+   } else {
+      foreach (map in data) {
+         foreach (detail in errors) {
+            if (detail->details->summary->id == map["id"]) {
+                 detail->comments += ({ create_error_comment(map) });
+            }
+         }
+      }
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select * from "
+                     "error_replies where bug_id in " + ids +
+                     " order by senddate",
+                     (: finish_details_error_replies($1, $2, $(finished), $(errors), $(ids), $(query)) :));
+   }
+}
+void finish_details(int type, mixed data, function finished, string query) {
+   class error_complete* errors;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data, query);
+   } else {
+      errors = ({ });
+      str = "(";
+      foreach (map in data) {
+         errors += ({ create_error_complete(create_error_details(map)) });
+         str += map["id"] + ",";
+      }
+      str = str[0..<2] + ")";
+      DB_HANDLER->make_sql_request(_db, _user, _password,
+                     "select commentdate,commenter,comment,id "
+                     "from comments where id in " + str +
+                     " order by commentdate desc",
+                     (: finish_comments($1, $2, $(finished), $(errors), $(str), $(query)) :));
+   }
+}
+void finish_forward_query(int type, mixed data, function finished,
+                          string user, string newdir) {
+   class error_complete error;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
+   } else {
+      map = data[0];
+      error = create_error_complete(create_error_details(map));
+      if (error->details->summary->directory != newdir) {
+         str = "insert into forwards (id,forwarddate,forwarder,olddirectory) " +
+               "values (" + error->details->summary->id + ", " + time() + ", '" +
+               db_escape(user) + "', '" +
+               db_escape(error->details->summary->directory) +
+               "')";
+         DB_HANDLER->make_sql_request(_db, _user, _password,
+                     str, (: 1 :));
+         str = build_sql_update(error->details->summary->id, "directory", newdir);
+         DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                                 (: finish_update($1, $2, $(finished), $(str)) :));
       } else {
-        tell_object( thing, "You fail to drag "+
-                     (string)dragging->the_short() +" behind you.\n" );
+         evaluate(finished, type, data);
       }
-    }
-  } else {
-    if ( stringp( move ) ) {
-      tell_object( thing, move );
-    }
-    ret = (int)thing->move( dest );
-  }
-  if ( ret == MOVE_OK ) {
-    thing->adjust_time_left( -DEFAULT_TIME );
-    return 1;
-  }
-  return 0;
+   }
 }
-int exit_move_door_checks(object thing, mixed closed) {
-  closed->force_other();
-  if(closed->query_open())
-    return 1;
-  if(thing->query_property( "demon" ) || thing->query_property("dead")) {
-    tell_object(thing, "You ghost through "+(string)closed->the_short()+
-                ".\n");
-    return 1;
-  }
-  if(thing->query_weight() < 300)
-    return 0;
-  if(closed->query_locked() && !closed->moving_unlock(thing)) {
-    if(!closed->query_visible(thing)) {
-      return 0;
-    }
-    tell_object(thing, (string)closed->the_short() +
-                ({ " is ", " are " })[(int)closed->query_how_many()] +
-                "locked.\n");
-    return notify_fail("");
-  }
-  if(!closed->moving_open(thing)) {
-    return 0;
-  }
-  return 1;
+void finish_status_query(int type, mixed data, function finished,
+                         string status,
+                         int nomail, string user, string subject,
+                         string message) {
+   class error_complete error;
+   mapping map;
+   string str;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
+   } else {
+      map = data[0];
+      error = create_error_complete(create_error_details(map));
+      if (!nomail) {
+         str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
+               "values (" +
+               error->details->summary->id + ", 'NEW', '" + user + "', '" +
+               error->details->summary->reporter + "', " +
+               time() + ", '" +
+               "Change status from " + error->details->summary->status +
+               " to " + status +
+               "\n" + db_escape(message) + "', '" + db_escape(subject) + "')";
+         DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                 (: 1 :) );
+      }
+      str = build_sql_update(error->details->summary->id, "status", status);
+      if (!str) {
+         return 0;
+      }
+      DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                            (: finish_update($1, $2, $(finished), $(str)) :));
+   }
 }
-int exit_move_func_checks(string verb, string special, object thing,
-                          mixed func, object place) {
-  if(stringp(func))
-    return call_other(place, func, verb, thing, special);
-  if(functionp(func))
-    return evaluate(func, verb, thing, special);
-  if(pointerp(func) && sizeof(func) > 1 && func[0] && func[1])
-    return call_other(func[0], func[1], verb, thing, special);
-  return 1;
+void finish_update(int type, mixed data, function finished, string query) {
+   evaluate(finished, type, data, query);
 }
-int exit_move( string verb, string extra, mixed special, object thing ) {
-   string leave;
-   object place;
-   object follower;
-   object *okay;
-   mixed closed;
-   int locked;
-   mixed func;
-   mixed *dest_other;
-   object *all_followers;
-   object *tmp_followers;
-   object *more_followers;
-   place = environment( thing );
-   verb = (string)place->expand_alias( verb );
-   place->set_destination( verb );
-   dest_other = (mixed *)place->query_dest_other( verb );
-   if (!pointerp(dest_other))
+void finish_error_replies(int type, mixed data, function finished, string query) {
+   class error_replies* replies;
+   mapping map;
+   if (type != DB_SUCCESS) {
+      evaluate(finished, type, data);
+   } else {
+      replies = ({ });
+      foreach (map in data) {
+         replies += ({ create_error_replies(map) });
+      }
+      evaluate(finished, type, replies);
+   }
+}
+int do_query_bug_summary(class error_query query, function finished) {
+   string str;
+   str = build_sql_query(ERROR_SUMMARY_FIELDS,
+                         query);
+   if (!str) {
       return 0;
-   if(thing->cannot_walk( verb, dest_other ))
-      return notify_fail( "" );
-   closed = (object)place->query_door_control( verb );
-   if(objectp(closed)) {
-     closed->force_other();
-     if(!closed)
-       closed = (object)place->query_door_control( verb );
    }
-   if (!interactive(thing) && living(thing)
-         && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
-      return 0;
-   if (objectp(closed)) {
-      locked = closed->query_locked();
-   }
-   if(objectp(closed) && closed->query_open()) {
-     closed = 0;
-   }
-   if(objectp(closed) && !exit_move_door_checks(thing, closed)) {
-     return 0;
-   }
-   if ( place->block_exit_move( verb, thing ) ) {
-     return notify_fail( "" );
-   }
-   func = dest_other[ROOM_FUNC];
-   if(func && !thing->query_property( "demon" ) &&
-      !exit_move_func_checks(verb, special, thing, func, place))
-     return 0;
-   if ( place->query_relative( verb ) )
-     leave = (string)thing->find_rel( verb, 0 );
-   else
-     leave = verb;
-   if((int)thing->query_height() > dest_other[ ROOM_SIZE ] &&
-      !(thing->query_crawling() &&
-        (int)thing->query_height()/3 <= dest_other[ ROOM_SIZE ])) {
-     tell_object( thing, "You are too tall to go that way.\n" );
-     return notify_fail( "" );
-   }
-   if ( !stringp( special ) ) {
-      special = dest_other[ ROOM_EXIT ];
-   }
-   if ( !move_thing( thing, verb, dest_other[ ROOM_DEST ], special,
-                     dest_other[ ROOM_ENTER ], dest_other[ ROOM_MESS ] ) ) {
-     return 0;
-   }
-   thing->return_to_default_position(1);
-   okay = ({ });
-   if (place) {
-     all_followers = thing->query_followers();
-     more_followers = all_followers;
-     do {
-       tmp_followers = ({ });
-       foreach (follower in more_followers) {
-         if (follower &&
-             environment( follower ) == place ) {
-           tmp_followers |= follower->query_followers();
-         }
-       }
-       more_followers = tmp_followers - all_followers;
-       all_followers |= tmp_followers;
-     } while (sizeof(more_followers));
-     foreach ( follower in all_followers) {
-       if ( !objectp( follower ) ) {
-         thing->remove_follower( follower );
-         continue;
-       }
-       if(environment(follower) != place ||
-          (userp(follower) && !interactive(follower)) ||
-          (!thing->query_visible(follower) || (special == "none")) ||
-          follower->query_property( PASSED_OUT) ||
-          follower->cannot_walk( verb, dest_other ))
-         continue;
-       if(objectp(closed) && !exit_move_door_checks(follower, closed))
-         continue;
-       if ( func && !follower->query_property( "demon" ) &&
-            !exit_move_func_checks(verb, special, follower, func, place))
-         continue;
-       if (!interactive(follower) && living(follower)
-           && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
-         continue;
-       if ( place->query_relative( verb ) ) {
-         leave = (string)follower->find_rel( verb, 0 );
-         follower->reorient_rel( leave );
-       } else {
-         leave = verb;
-         follower->reorient_abs( leave );
-       }
-       if ( (int)follower->query_height() > dest_other[ ROOM_SIZE ] ) {
-         tell_object( follower, "You are too tall to follow "+
-                      (string)thing->the_short() +" "+ leave +".\n" );
-         continue;
-       }
-       if (function_exists("check_doing_follow", follower) &&
-           !follower->check_doing_follow(thing, verb, special)) {
-         continue;
-       }
-       if(move_thing( follower, verb, dest_other[ROOM_DEST], special,
-                      dest_other[ROOM_ENTER], dest_other[ROOM_MESS]) &&
-          living(follower)) {
-         tell_object(follower, "You follow "+ (string)thing->the_short() +
-                     " "+ leave +".\n");
-         if(follower->query_visible(thing))
-           okay += ({ follower });
-         follower->return_to_default_position(1);
-       } else {
-         tell_object( follower, "You fail to follow "+
-                      (string)thing->the_short() +" "+ leave +".\n" );
-       }
-     }
-   }
-   thing->room_look();
-   if(sizeof(okay)) {
-     okay->room_look();
-     tell_object(thing, query_multiple_short(okay) +
-                 " $V$0=follows,follow$V$ you.\n" );
-   }
-   if(objectp(closed)) {
-      closed->moving_close(thing);
-      if (locked)
-        closed->moving_lock(thing);
-   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                                   (: finish_summary($1, $2, $(finished), $(str)) :));
    return 1;
 }
-void housekeeping() {
-   call_out( "check_chatters", 1 );
-   call_out( "check_doors", 2 );
-   call_out( "housekeeping", 4 );
-}
-void add_chatter(object thing, int number) {
-   number /= 4;
-   if ( number > CHATSIZE - 1 )
-      number = CHATSIZE - 1;
-   if ( !pointerp( chatters[ number ] ) )
-      chatters[ number ] = ({ thing });
-   else
-      chatters[ number ] += ({ thing });
-}
-void check_chatters() {
-   object thing, *things;
-   things = chatters[ 0 ];
-   chatters[ 0 .. <2 ] = chatters[ 1 .. <1 ];
-   chatters[ <1 ] = 0;
-   if ( !pointerp( things ) )
-      return;
-   foreach ( thing in things ) {
-      if ( objectp( thing ) )
-         thing->make_chat();
+int do_query_bug_details(int bug_id, function finished) {
+   string str;
+   class error_query query;
+   query = new(class error_query);
+   query->id = bug_id;
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
    }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_details($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-void add_door( object thing ) {
-   int number;
-   number = random( DOORSIZE );
-   if ( !pointerp( doors[ number ] ) )
-      doors[ number ] = ({ thing });
-   else
-      doors[ number ] += ({ thing });
+int do_query_open_bugs_in_dir(string dir, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->dir = dir;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
 }
-void check_doors() {
-   int wind;
-   string dest, other, mess;
-   object mine, thing, *things;
-   things = doors[ 0 ];
-   doors[ 0 .. <2 ] = doors[ 1 .. <1 ];
-   doors[ <1 ] = 0;
-   if ( !pointerp( things ) )
-      return;
-   foreach ( thing in things ) {
-      if ( !objectp( thing ) )
-         continue;
-      if ( thing->query_closed() )
-         continue;
-      if(thing->query_stuck())
-         continue;
-      dest = (string)thing->query_dest();
-      other = (string)thing->query_other_id();
-      mine = (object)thing->query_my_room();
-      wind = (int)WEATHER->calc_actual( mine, WINDSP );
-      if ( random( 25 ) > wind ) {
-         add_door( thing );
-         return;
-      }
-      switch ( wind ) {
-       case -1000 .. 20 :
-         mess = "blow$s shut in the breeze.\n";
-         break;
-       case 21 .. 40 :
-         mess = "blow$s shut in the wind.\n";
-         break;
-       default :
-         mess = "slam$s shut in the wind.\n";
-      }
-      if ( find_object( dest ) ) {
-         dest->modify_exit( other, ({ "closed", 1 }) );
-         if(thing->query_autolock())
-           dest->modify_exit(other, ({ "locked", 1 }));
-         dest->tell_door( other, "The $D "+ mess, 0 );
-      }
-      thing->set_closed( 1 );
-      if(thing->query_autolock())
-        thing->set_locked();
-      thing->tell_door( "The $D "+ mess, 0 );
+int do_query_open_bugs_for_fname(string fname, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->file_name = fname;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
+}
+int do_query_open_bugs_by_reporter(string reporter, function finished) {
+   class error_query query;
+   query = new(class error_query);
+   query->reporter = reporter;
+   query->status = ({ "OPEN", "FIXING", "CONSIDERING" });
+   return do_query_bug_summary(query, finished);
+}
+int do_change_type(int id, string type, function finished) {
+   string str;
+   str = build_sql_update(id, "type", type);
+   if (!str) {
+      return 0;
    }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-mapping query_dynamic_auto_load() {
-   mapping tmp;
-   tmp = ([ "exit_types" : exit_types,
-            "door_types" : door_types,
-            "opposite" : opposite,
-            "chatters" : chatters,
-            "doors" : doors,
-          ]);
-   return tmp;
+int do_change_category(int id, string category, function finished) {
+   string str;
+   str = build_sql_update(id, "category", category);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-void init_dynamic_arg(mapping maps) {
-   if (maps["exit_types"])
-      exit_types = maps["exit_types"];
-   if (maps["door_types"])
-      door_types = maps["door_types"];
-   if (maps["opposite"])
-      opposite = maps["opposite"];
-   if (maps["chatters"])
-      chatters = maps["chatters"];
-   if (maps["doors"])
-      doors = maps["doors"];
+int do_assign_bug_to(int id, string assigned_to, function finished) {
+   string str;
+   str = build_sql_update(id, "assignedto", assigned_to);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                               (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
 }
-mixed *stats() {
-   int door_count, chatter_count;
-   mixed temp;
-   foreach (temp in chatters)
-      chatter_count += sizeof( temp );
-   foreach (temp in doors)
-      door_count += sizeof( temp );
-   return ({
-      ({ "exit types", sizeof( exit_types ) }),
-      ({ "door types", sizeof( door_types ) }),
-      ({ "opposites",  sizeof( opposite ) }),
-      ({ "chatters",  chatter_count }),
-      ({ "doors", door_count }),
-   });
+int do_change_status(int id, string status, int nomail, string subject,
+                     string user, string message, function finished) {
+   string str;
+   class error_query query;
+   query = new(class error_query, id : id);
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+             (: finish_status_query($1, $2, $(finished), $(status),
+                                    $(nomail), $(user), $(subject),
+                                     $(message)) :));
+   return 1;
+}
+int do_forward(int id, string user, string dir, function finished) {
+   string str;
+   class error_query query;
+   if (!strlen(dir)) {
+      return 0;
+   }
+   if (dir[0] != '/') {
+      dir = "/" + dir;
+   }
+   if (dir[<1] == '/') {
+      dir = dir[0..<2];
+   }
+   if (file_size(dir) != -2 || dir == "/") {
+      return 0;
+   }
+   query = new(class error_query, id : id);
+   str = build_sql_query(ERROR_DETAILS_FIELDS, query);
+   if (!str) {
+      return 0;
+   }
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+             (: finish_forward_query($1, $2, $(finished), $(user), $(dir)) :));
+   return 1;
+}
+int do_comment(int id, string user, string comment, function finished) {
+   string str;
+   str = "insert into comments (id,commentdate,commenter,comment) values (" +
+         id + ", " + time() + ", '" + user + "', '" + db_escape(comment) +
+         "')";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                             (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_error_replies(string recipient, int only_new, function finished) {
+   string str;
+   str = "select * from error_replies where recipient = '" + recipient +
+         "'";
+   if (only_new) {
+      str += " and status = 'NEW'";
+   } else {
+      str += " and status != 'DELETED'";
+   }
+   str += " order by senddate";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                      (: finish_error_replies($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_status_error_reply(int id, string status, function finished) {
+   string str;
+   str = "update error_replies set status = '" + status + "' where id = " +
+         id;
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+                      (: finish_update($1, $2, $(finished), $(str)) :));
+   return 1;
+}
+int do_add_error_reply(int bug_id, string from, string to, string subject, string message) {
+   string str;
+   str = "insert into error_replies (bug_id,status,sender,recipient,senddate,message,subject) "
+         "values (" + bug_id + ", 'NEW', '" + from + "', '" + to + "', " +
+         time() + ", '" +
+         db_escape(message) + "', '" + db_escape(subject) + "')";
+   DB_HANDLER->make_sql_request(_db, _user, _password, str,
+           (: 1 :) );
+   return 1;
 }
 
 ==================================================
-FILE: handlers/room_rental.c
+FILE: handlers/inherit/nomic_rules.c
 ==================================================
 
-#include <money.h>
-#include <room/room_rental.h>
-protected void do_load();
-protected void do_save();
-protected void evict_tenant( object room_ob );
-private nosave int loaded = 0;
-private mapping rented_rooms = ([]);
-private mapping rental = ([]);
-private mapping eviction_times = ([]);
-private mapping locations = ([]);
-private mapping paths = ([]);
+#include <nomic_system.h>
+private mapping _rules;
+void save_me();
+int query_can_change_rule(string area, class nomic_rule rule);
+class nomic_rule find_nomic_rule(string area, string creator, string text);
 void create() {
-  do_load();
+   _rules = ([ ]);
 }
-void reset() {
-   string room;
-   int now = time();
-   foreach( room in keys( rented_rooms ) ) {
-      if ( stringp( rented_rooms[ room ] ) ) {
-         if ( ( eviction_times[ room ] < now ) &&
-              ( eviction_times[ room ] > -1 ) ) {
-            evict_tenant( find_object( room ) );
-            tell_creator( "goldenthread", "RENTAL: %s no longer rents %s\n",
-                          rented_rooms[ room ], room );
-            rented_rooms[ room ] = 0;
-            eviction_times[ room ] = -1;
+int add_nomic_rule(string area, int type, string creator, string text) {
+   int bing;
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   if (find_nomic_rule(area, creator, text)) {
+      return NOMIC_ERROR;
+   }
+   nomic_rule = new(class nomic_rule);
+   bing = _rules[area]->new_type_num[type];
+   nomic_rule->id = bing;
+   nomic_rule->creator = creator;
+   nomic_rule->type = type;
+   nomic_rule->text = text;
+   nomic_rule->date_created = time();
+   nomic_rule->amendments = ({ });
+   _rules[area]->rules += ({ nomic_rule });
+   _rules[area]->new_type_num[type] = bing + 1;
+   save_me();
+   return bing;
+}
+protected int add_nomic_rule_class(string area,
+                                   class nomic_rule new_rule,
+                                   int type) {
+   int bing;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   if (find_nomic_rule(area, new_rule->creator, new_rule->text)) {
+      return NOMIC_ERROR;
+   }
+   bing = _rules[area]->new_type_num[type];
+   new_rule->id = bing;
+   new_rule->type = type;
+   _rules[area]->rules += ({ new_rule });
+   _rules[area]->new_type_num[type] = bing + 1;
+   save_me();
+   return bing;
+}
+protected int move_nomic_rule(string area, class nomic_rule rule,
+                              int type) {
+   int bing;
+   int i;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   if (type < 0 || type >= sizeof(_rules[area]->new_type_num)) {
+      return NOMIC_ERROR;
+   }
+   bing = _rules[area]->new_type_num[type];
+   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
+      if (_rules[area]->rules[i]->id == rule->id) {
+         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
+            return NOMIC_ERROR;
+         }
+         _rules[area]->rules[i]->id = bing;
+         ((class nomic_rule)_rules[area]->rules[i])->type = type;
+         _rules[area]->new_type_num[type] = bing + 1;
+         save_me();
+         return bing;
+      }
+   }
+   return NOMIC_ERROR;
+}
+int change_nomic_rule(string area, class nomic_rule rule) {
+   int i;
+   if (!_rules[area]) {
+      return 0;
+   }
+   for (i = 0; i < sizeof(_rules[area]->rules); i++) {
+      if (_rules[area]->rules[i]->id == rule->id) {
+         if (!query_can_change_rule(area, _rules[area]->rules[i])) {
+            return NOMIC_ERROR;
+         }
+         rule->type = ((class nomic_rule)_rules[area]->rules[i])->type;
+         rule->id = ((class nomic_rule)_rules[area]->rules[i])->id;
+         _rules[area]->rules[i] = rule;
+         save_me();
+         return 1;
+      }
+   }
+   return 0;
+}
+int remove_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         if (!query_can_change_rule(area, nomic_rule)) {
+            return NOMIC_ERROR;
+         }
+         _rules[area]->rules -= ({ nomic_rule });
+         save_me();
+         return 1;
+      }
+   }
+   return 0;
+}
+int int_remove_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return NOMIC_ERROR;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         _rules[area]->rules -= ({ nomic_rule });
+         save_me();
+         return 1;
+      }
+   }
+   return 0;
+}
+class nomic_rule query_nomic_rule(string area, int id) {
+   class nomic_rule nomic_rule;
+   if (!_rules[area]) {
+      return 0;
+   }
+   foreach (nomic_rule in _rules[area]->rules) {
+      if (nomic_rule->id == id) {
+         return copy(nomic_rule);
+      }
+   }
+   return 0;
+}
+class nomic_rule* query_all_nomic_rules(string area) {
+   if (!_rules[area]) {
+      return ({ });
+   }
+   return copy(_rules[area]->rules);
+}
+class nomic_rule find_nomic_rule(string area, string creator, string text) {
+   class nomic_rule rule;
+   if (!_rules[area]) {
+      return 0;
+   }
+   foreach (rule in _rules[area]->rules) {
+      if (rule->creator == creator && rule->text == text) {
+         return rule;
+      }
+   }
+   return 0;
+}
+int create_area(string area) {
+   class nomic_area new_area;
+   if (_rules[area]) {
+       return 0;
+   }
+   new_area = new(class nomic_area);
+   new_area->new_type_num = NOMIC_DEFAULT_TYPE_NUMS;
+   new_area->rules = ({ });
+   _rules[area] = new_area;
+   return 1;
+}
+int query_type_number(string name) {
+   switch (lower_case(name)) {
+   case "immutable" :
+      return NOMIC_TYPE_IMMUTABLE;
+   case "general" :
+      return NOMIC_TYPE_GENERAL;
+   case "citizen" :
+      return NOMIC_TYPE_CITIZEN;
+   default :
+      return NOMIC_ERROR;
+   }
+}
+string query_type_name(int type_no) {
+   switch (type_no) {
+   case NOMIC_TYPE_IMMUTABLE :
+      return "immutable";
+   case NOMIC_TYPE_GENERAL :
+      return "general";
+   case NOMIC_TYPE_CITIZEN :
+      return "citizen";
+   default :
+      return "error";
+   }
+}
+int query_can_change_rule(string area, class nomic_rule rule) {
+   return rule->type != NOMIC_TYPE_IMMUTABLE;
+}
+string rule_as_string(int indent, class nomic_rule rule) {
+   string ret;
+   class nomic_amendment amend;
+   ret = "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+          (rule->id?rule->id+"":"(" +
+          NOMIC_HANDLER->query_type_name(rule->type) + ")") + " by " +
+          capitalize(rule->creator) + " (" +
+          ctime(rule->date_created) + "):\n" + rule->text +
+          "\n";
+   foreach (amend in rule->amendments) {
+      ret += "$I$" + (indent + 10) + "=" + sprintf("%*s", indent + 3, "") +
+             capitalize(amend->amender) + " (" +
+             ctime(amend->date_amended) + "):\n" +
+             amend->text + "\n";
+   }
+   return ret;
+}
+
+==================================================
+FILE: handlers/inherit/player_council.c
+==================================================
+
+inherit "/obj/handlers/inherit/nomic_rules";
+inherit "/obj/handlers/inherit/case_control";
+inherit "/obj/handlers/inherit/citizen_elections";
+#define NOMIC_SYSTEM_NO_CLASSES
+#include <nomic_system.h>
+#include <player.h>
+private mapping _motions;
+private mapping _new_citizens;
+private int _completion_id;
+void save_me();
+class nomic_motion find_motion(string area, int rule_no, int type);
+void update_immutables(string area);
+void send_council_inform(string area, int only_magistrates,
+                         string mess);
+string motion_as_string(int indent, string area, class nomic_motion motion, int brief);
+void create() {
+   _motions = ([ ]);
+   _new_citizens = ([ ]);
+   citizen_elections::create();
+   nomic_rules::create();
+   case_control::create();
+   _completion_id = call_out("check_for_completions",
+       (time() - time() % (24 * 60 * 60) + (24 * 60 * 60) + (2 * 60)) - time());
+}
+void create_area(string area) {
+   citizen_elections::create_area(area);
+   nomic_rules::create_area(area);
+   case_control::create_area(area);
+   _motions[area] = ({ });
+   _new_citizens[area] = ({ });
+   update_immutables(area);
+}
+void update_immutables(string area) {
+   string tmp;
+   string type;
+   string file;
+   int int_type;
+   class nomic_rule rule;
+   foreach (rule in query_all_nomic_rules(area)) {
+      if (rule->type == NOMIC_TYPE_IMMUTABLE) {
+         remove_nomic_rule(area, rule->id);
+      }
+   }
+   foreach (file in get_dir(NOMIC_RULE_DEFAULT_DIR)) {
+      if (file_size(NOMIC_RULE_DEFAULT_DIR + "/" + file) > 0) {
+         tmp = read_file(NOMIC_RULE_DEFAULT_DIR + "/" + file);
+         type = explode(tmp, "\n")[0];
+         tmp = implode(explode(tmp, "\n")[1..], "\n");
+         switch (type) {
+         case "immutable" :
+            int_type = NOMIC_TYPE_IMMUTABLE;
+            break;
+         case "citizen" :
+            int_type = NOMIC_TYPE_CITIZEN;
+            break;
+         case "general" :
+            int_type = NOMIC_TYPE_GENERAL;
+            break;
+         default :
+            int_type = -1;
+            printf("Ignoring file " + file + "\n");
+            break;
+         }
+         if (int_type != -1) {
+            add_nomic_rule(area, int_type, area + " administrator", tmp);
          }
       }
    }
-   do_save();
+   save_me();
 }
-protected void do_load() {
-   if ( !loaded )
-      unguarded( (: restore_object( ROOM_RENTAL_SAVE_FILE, 1 ) :) );
-   loaded = 1;
+private int query_next_motion_id(string area) {
+   int num;
+   class nomic_motion fluff;
+   num = 1;
+   foreach (fluff in _motions[area]) {
+      if (num <= fluff->identifier) {
+         num = fluff->identifier + 1;
+      }
+   }
+   return num;
 }
-protected void do_save() {
-   unguarded( (: save_object( ROOM_RENTAL_SAVE_FILE , 0 ) :) );
-}
-void evict_tenant( object room_ob ) {
-   object *occupants;
-   occupants = filter( all_inventory( room_ob ), (: living :) );
-   room_ob->evict_tenant( occupants );
-}
-int add_room( string room, int cost, object office ) {
-   object room_ob;
-   if( !room_ob = load_object( room ) )
+int add_create_rule_motion(string area, int type, string text,
+                          string creator) {
+   class nomic_motion fluff;
+   if (!is_magistrate_of(area, creator)) {
       return 0;
-   rented_rooms[ room ] = 0;
-   rental[ room ] = cost;
-   eviction_times[ room ] = -1;
-   locations[ room ] = office->query_location();
-   paths[ room_ob->short() ] = room;
-   do_save();
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_ADD;
+   fluff->rule = new(class nomic_rule);
+   fluff->rule->creator = creator;
+   fluff->rule->text = text;
+   fluff->rule->type = type;
+   fluff->rule->amendments = ({ });
+   fluff->rule->date_created = time();
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a new rule motion");
+   post_magistrate_message(area, "New: Create rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
    return 1;
 }
-string query_who_rents( string room, object office ) {
-   if ( locations[room] == office->query_location() ) {
-      if ( stringp( rented_rooms[room] ) )
-         return rented_rooms[room];
-      else
-         return "nobody";
-   } else
-      return "no such room in this location";
+int add_move_rule_type_motion(string area, int rule_no, int type,
+                              string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
+   }
+   if (bing->type == type) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_MOVE);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_MOVE;
+   fluff->rule = bing;
+   fluff->new_rule_type = type;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a move rule motion");
+   post_magistrate_message(area, "New: Move rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
 }
-int check_tenant( object player_ob, object room_ob, object office ) {
-   string player = player_ob->short();
-   string room = room_ob->short();
-   if ( player == query_who_rents( room, office ) )
-      return RENTAL_SUCCESS;
-   else if ( player == "nobody" )
-      return RENTAL_AVAILABLE;
-   else if ( player == "no such room!" )
-      return RENTAL_NO_SUCH_ROOM;
-   else
-      return RENTAL_ALREADY_RENTED;
+int add_amend_rule_motion(string area, int rule_no, string amendment,
+                           string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   class nomic_amendment amend;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_AMEND);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_AMEND;
+   amend = new (class nomic_amendment);
+   amend->amender = creator;
+   amend->text = amendment;
+   amend->date_amended = time();
+   bing->amendments += ({ amend });
+   fluff->rule = bing;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added an add rule motion");
+   post_magistrate_message(area, "New: Ammend rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
 }
-int delete_room( string room, object office ) {
-  string room_short = load_object( room )->short();
-  if ( locations[room] == office->query_location() ) {
-    map_delete( rented_rooms, room );
-    map_delete( rental, room );
-    map_delete( eviction_times, room );
-    map_delete( locations, room );
-    map_delete( paths, room_short );
-    do_save();
-    return 1;
-  } else
-    return 0;
+int remove_rule_motion(string area, int rule_no, string creator) {
+   class nomic_motion fluff;
+   class nomic_rule bing;
+   bing = query_nomic_rule(area, rule_no);
+   if (!bing) {
+      return 0;
+   }
+   fluff = find_motion(area, rule_no, NOMIC_MOTION_TYPE_RULE_REMOVE);
+   if (fluff) {
+      return 0;
+   }
+   fluff = new(class nomic_motion);
+   fluff->motion_type = NOMIC_MOTION_TYPE_RULE_REMOVE;
+   fluff->rule = bing;
+   fluff->comments = ({ });
+   fluff->voted = ({ });
+   fluff->state = NOMIC_STATE_COUNCIL_REVIEW;
+   fluff->date_added = time();
+   fluff->date_event = time();
+   fluff->yes_votes = 0;
+   fluff->no_votes = 0;
+   fluff->added_by = creator;
+   fluff->identifier = query_next_motion_id(area);
+   _motions[area] += ({ fluff });
+   save_me();
+   send_council_inform(area, 1, creator + " added a remove rule motion");
+   post_magistrate_message(area, "New: Remove rule motion",
+              PLAYER_OB->convert_message(motion_as_string(0, area, fluff, 0)));
+   return 1;
 }
-int clear_rooms( object office ) {
-   object room_ob;
-   foreach( string room in keys( filter( locations,
-            (: $2 == $( office->query_location() ) :) ) ) ) {
-      room_ob = load_object( room );
-    map_delete( rented_rooms, room );
-    map_delete( rental, room );
-    map_delete( eviction_times, room );
-    map_delete( locations, room );
-    map_delete( paths, room_ob->query_short() );
-  }
-  do_save();
-  return 1;
+class nomic_motion query_motion(string area, int id) {
+   class nomic_motion fluff;
+   if (!_motions[area]) {
+      return 0;
+   }
+   foreach (fluff in _motions[area]) {
+      if (fluff->identifier == id) {
+         return fluff;
+      }
+   }
+   return 0;
 }
-string *query_rooms_to_rent( object office ) {
-  return keys( filter( locations,
-               (: $2 == $( office->query_location() ) :) ) );
+class nomic_motion* query_all_motions(string area) {
+   if (!_motions[area]) {
+      return ({ });
+   }
+   return copy(_motions[area]);
 }
-int do_rental( object player_ob, string room_short, object office ) {
-   int result;
-   string domain = office->query_domain();
-   string room = paths[ room_short ];
-   if ( locations[room] == office->query_location() ) {
-      if ( !rented_rooms[room] ||
-           ( rented_rooms[room] == player_ob->short()) ) {
-         if ( (int)player_ob->query_value_in( domain ) < rental[room] )
-            return RENTAL_NO_MONEY;
-         rented_rooms[room] = player_ob->short();
-         eviction_times[room] = time() + ONE_DAY;
-         result = RENTAL_SUCCESS;
-      } else
-         result = RENTAL_ALREADY_RENTED;
-   } else
-      result = RENTAL_NO_SUCH_ROOM;
-   do_save();
-   return result;
+class nomic_motion find_motion(string area, int rule_no, int type) {
+   class nomic_motion motion;
+   foreach (motion in _motions[area]) {
+      if (motion->rule->id == rule_no &&
+          motion->motion_type == type) {
+         return motion;
+      }
+   }
+   return 0;
 }
-int query_rental_value( string room ) {
-   return rental[ room ];
+int comment_on_motion(string area, int id, string comment_text,
+                            string commenter) {
+   class nomic_comment comment;
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW &&
+       bing->state != NOMIC_STATE_COUNCIL_VOTE) {
+      return 0;
+   }
+   comment = new(class nomic_comment);
+   comment->text = comment_text;
+   comment->commenter = commenter;
+   comment->date_commented = time();
+   bing->comments += ({ comment });
+   save_me();
+   return 1;
 }
-int remove_rental( object room_ob ) {
-   int result;
-   string room_short = room_ob->short();
-   string room = paths[ room_short ];
-   if ( !undefinedp( rented_rooms[room] ) ) {
-      rented_rooms[room] = 0;
-      result = RENTAL_SUCCESS;
-   } else
-      result = RENTAL_NO_SUCH_ROOM;
-   do_save();
-   return result;
+int amend_motion(string area, int id, string amend_text,
+                    string amender) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_REVIEW) {
+      return 0;
+   }
+   switch (bing->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      bing->rule->text = amend_text;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      return 0;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      bing->rule->amendments[<1]->text = amend_text;
+   }
+   save_me();
+   return 1;
+}
+int vote_for_motion(string area, int id, int vote_type, string voter) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   if (member_array(voter, bing->voted) != -1) {
+      return 0;
+   }
+   if (bing->state != NOMIC_STATE_COUNCIL_VOTE &&
+       bing->state != NOMIC_STATE_CITIZEN_VOTE) {
+      return 0;
+   }
+   switch (vote_type) {
+   case NOMIC_VOTE_YES :
+      bing->yes_votes++;
+      break;
+   case NOMIC_VOTE_NO :
+      bing->no_votes++;
+      break;
+   case NOMIC_VOTE_ABSTAIN :
+      bing->abstain_votes++;
+      break;
+   default :
+      return 0;
+   }
+   bing->voted += ({ voter });
+   save_me();
+   return 1;
+}
+int has_voted_for_motion(string area, int id, string voter) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   return member_array(voter, bing->voted) != -1;
+}
+int* query_votes_for_motion(string area, int id) {
+   class nomic_motion bing;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   return ({ bing->yes_votes, bing->no_votes, bing->abstain_votes });
+}
+private void remove_motion(string area, class nomic_motion motion) {
+   int i;
+   for (i = 0; i < sizeof(_motions[area]); i++) {
+      if (_motions[area][i] == motion) {
+         _motions[area] = _motions[area][0..i-1] + _motions[area][i+1..];
+      }
+   }
+}
+void send_council_inform(string area, int only_magistrates,
+                         string mess) {
+   object *obs;
+   if (only_magistrates) {
+      obs = filter(users(), (: is_magistrate_of($2, $1->query_name()) :), area);
+   } else {
+      obs = filter(users(), (: is_citizen_of($2, $1->query_name()) :), area);
+   }
+   call_other(obs, "event_inform", this_object(), mess, "council");
+}
+int query_completion_time(string area, class nomic_motion motion) {
+   return (motion->date_event - motion->date_event % (24 * 60 * 60) +
+           7 * (24 * 60 * 60));
+}
+int complete_motion(string area, int id) {
+   class nomic_motion bing;
+   class nomic_motion motion;
+   int passed;
+   int new_num;
+   string mess;
+   int only_magistrates;
+   string voting_result;
+   bing = query_motion(area, id);
+   if (!bing) {
+      return 0;
+   }
+   passed = bing->yes_votes > bing->no_votes;
+   voting_result = "Voting Results:\n"
+                   "    Yes: " + bing->yes_votes + "\n"
+                   "     No: " + bing->no_votes + "\n"
+                   "Abstain: " + bing->abstain_votes + "\n";
+   mess = "Motion added by " + bing->added_by + " to ";
+   switch (bing->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      mess += "add a new rule";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      mess += "remove rule " + bing->rule->id;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      mess += "move rule " + bing->rule->id;
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      mess += "amend rule " + bing->rule->id;
+      break;
+   }
+   if (passed || bing->state == NOMIC_STATE_COUNCIL_REVIEW) {
+      switch (bing->state) {
+      case NOMIC_STATE_COUNCIL_REVIEW :
+         bing->yes_votes = 0;
+         bing->no_votes = 0;
+         bing->abstain_votes = 0;
+         bing->voted = ({ });
+         bing->state = NOMIC_STATE_COUNCIL_VOTE;
+         mess += " is open for magistrates to vote";
+         only_magistrates = 1;
+         post_magistrate_message(area, "Motion now in voting phase",
+              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
+         break;
+      case NOMIC_STATE_COUNCIL_VOTE :
+         bing->yes_votes = 0;
+         bing->no_votes = 0;
+         bing->abstain_votes = 0;
+         bing->voted = ({ });
+         bing->state = NOMIC_STATE_CITIZEN_VOTE;
+         bing->comments = ({ });
+         mess += " is open for citizens to vote";
+         post_magistrate_message(area, "Law passed onto citizens",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
+                              "\n\n" + voting_result);
+         post_citizen_message(area, "New motion for voting on",
+              PLAYER_OB->convert_message(motion_as_string(0, area, bing, 0)));
+         break;
+      case NOMIC_STATE_CITIZEN_VOTE :
+         switch (bing->motion_type) {
+         case NOMIC_MOTION_TYPE_RULE_ADD :
+            add_nomic_rule_class(area, bing->rule, bing->motion_type);
+            break;
+         case NOMIC_MOTION_TYPE_RULE_AMEND :
+            change_nomic_rule(area, bing->rule);
+            break;
+         case NOMIC_MOTION_TYPE_RULE_MOVE :
+            new_num = move_nomic_rule(area, bing->rule, bing->new_rule_type);
+            foreach (motion in _motions[area]) {
+               if (motion->rule->id == bing->rule->id) {
+                  motion->rule->id = new_num;
+               }
+            }
+            break;
+         case NOMIC_MOTION_TYPE_RULE_REMOVE :
+            remove_nomic_rule(area, bing->rule->id);
+            break;
+         }
+         remove_motion(area, bing);
+         mess += " is now law";
+         post_citizen_message(area, "New Law!",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)));
+         post_magistrate_message(area, "New Law!",
+                    PLAYER_OB->convert_message(rule_as_string(0, bing->rule)) +
+                    "\n\n" + voting_result);
+         break;
+      }
+      bing->date_event = time();
+   } else {
+      if (bing->state == NOMIC_STATE_COUNCIL_VOTE) {
+         mess += " not passed by the magistrates";
+         only_magistrates = 1;
+         post_magistrate_message(area, "Law not passed onto citizens",
+                              rule_as_string(0, bing->rule) + "\n\n" +
+                              voting_result);
+      } else {
+         mess += " not ratified by the citizens";
+         only_magistrates = 0;
+         post_citizen_message(area, "Law not passed",
+                              rule_as_string(0, bing->rule));
+         post_magistrate_message(area, "Law not passed",
+                              rule_as_string(0, bing->rule) + "\n\n" +
+                              voting_result);
+      }
+      remove_motion(area, bing);
+   }
+   save_me();
+   send_council_inform(area, only_magistrates, mess);
+   return 1;
+}
+void check_for_completions() {
+   string area;
+   class nomic_motion* bits;
+   class nomic_motion motion;
+   foreach (area, bits in _motions) {
+      foreach (motion in bits) {
+         if (query_completion_time(area, motion) < time()) {
+            complete_motion(area, motion->identifier);
+         }
+      }
+   }
+   remove_call_out(_completion_id);
+   _completion_id = call_out("check_for_completions",
+            (time() - time() % (24 * 60 * 60) + (24 * 60 * 60)) - time());
+   update_recently_closed_cases();
+}
+string motion_as_string(int indent, string area, class nomic_motion motion,
+                        int brief) {
+   string ret;
+   class nomic_comment comment;
+   ret = "";
+   switch (motion->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Add new rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Remove rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Transmogrify rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      ret += "$I$" + (indent + 5) + "=" + sprintf("%*s", indent, "") +
+             motion->identifier + ") Amend rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "\n";
+      break;
+   }
+   ret += rule_as_string(5 + indent, motion->rule);
+   if (sizeof(motion->comments)) {
+      if (!brief) {
+         ret += "$I$" + (indent + 5) + "=     Comments:\n";
+         foreach (comment in motion->comments) {
+            ret += "$I$" + (indent + 11) + "=" + sprintf("%*s", indent + 3, "") +                capitalize(comment->commenter) + " (" +
+                   ctime(comment->date_commented) + "):\n" +
+                   comment->text + "\n";
+         }
+      } else {
+         ret += "$I$0=" + sprintf("%*s", indent, "") + "     " +
+                 sizeof(motion->comments) + " Comments.\n";
+      }
+   } else {
+      ret += "$I$0=" + sprintf("%*s", indent, "") + "     No Comments.\n";
+   }
+   switch (motion->state) {
+   case NOMIC_STATE_COUNCIL_REVIEW :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being reviewed by the magistrates.\n";
+      break;
+   case NOMIC_STATE_COUNCIL_VOTE :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being voted on by the magistrates.\n";
+      break;
+   case NOMIC_STATE_CITIZEN_VOTE :
+      ret += "$I$0=" + sprintf("%*s", indent, "") +
+             "The item is currently being ratified by the citizens.\n";
+      break;
+   }
+   ret += "$I$0=" + sprintf("%*s", indent, "") +
+          "The item will go onto the next stage at " +
+          ctime(query_completion_time(area, motion)) +
+          ".\n";
+   return ret;
+}
+string rule_as_html(class nomic_rule rule) {
+   string ret;
+   class nomic_amendment amend;
+   ret = "<i><b>" + (rule->id?rule->id+"":"(" +
+          NOMIC_HANDLER->query_type_name(rule->type) + ")") + "</b> by " +
+          capitalize(rule->creator) + " (" +
+          ctime(rule->date_created) + "):</i>\n"
+          "<p style=\"margin-left: 30pt;margin-top: 5pt\">\n" +
+          replace_string(rule->text, "\n", "<br>") +
+          "<br>\n";
+   foreach (amend in rule->amendments) {
+      ret += "<i><b>Ammendment</b> by " + capitalize(amend->amender) + " (" +
+             ctime(amend->date_amended) + "):</i>\n"
+             "<p style=\"margin-left: 60pt;margin-top: 5pt\">\n" +
+             replace_string(amend->text, "\n", "<br>") +
+             "\n</p>\n";
+   }
+   ret += "</p>\n";
+   return ret;
+}
+string motion_as_html(string area, class nomic_motion motion) {
+   string ret;
+   class nomic_comment comment;
+   ret = "";
+   switch (motion->motion_type) {
+   case NOMIC_MOTION_TYPE_RULE_ADD :
+      ret += "<b>" + motion->identifier + ") Add new rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_REMOVE :
+      ret += "<b>" + motion->identifier + ") Remove rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_MOVE :
+      ret += "<b>" + motion->identifier + ") Transmogrify rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   case NOMIC_MOTION_TYPE_RULE_AMEND :
+      ret += "<b>" + motion->identifier + ") Amend rule; added by " +
+             capitalize(motion->added_by) + " at " +
+             ctime(motion->date_added) + "</b>\n";
+      break;
+   }
+   ret += "<ul>" + rule_as_html(motion->rule) + "</ul>";
+   if (sizeof(motion->comments)) {
+      ret += "<b>Comments:</b><br>\n";
+      foreach (comment in motion->comments) {
+         ret += ctime(comment->date_commented) + "):<br>\n" +
+                comment->text + "<p>\n";
+      }
+   }
+   switch (motion->state) {
+   case NOMIC_STATE_COUNCIL_REVIEW :
+      ret += "The item is currently being reviewed by the magistrates.\n";
+      break;
+   case NOMIC_STATE_COUNCIL_VOTE :
+      ret += "The item is currently being voted on by the magistrates.\n";
+      break;
+   case NOMIC_STATE_CITIZEN_VOTE :
+      ret += "The item is currently being ratified by the citizens.\n";
+      break;
+   }
+   ret += "<br>The item will go onto the next stage at " +
+          ctime(query_completion_time(area, motion)) +
+          ".\n";
+   return ret;
 }
 
 ==================================================
-FILE: handlers/route_handler.c
+FILE: handlers/terrain_things/dungeon_maker.c
 ==================================================
 
-int use_count;
-varargs void get_route(string end, string start, function call_back, int count) {
-  string *result;
-  if(start == "/room/virtual"){
-    call_out((: evaluate($(call_back), ({ })) :), 1);
-    return;
-  }
-  if(!(stringp(start) && stringp(end)))
-    error("illegal argument 1 or 2 to get_route");
-  if(!function_owner(call_back))
-    return;
-  if ((end == start) || (count > 3)){
-    call_out((: evaluate($(call_back), ({ })) :), 1);
-    if(end != start)
-      log_file("ROUTEHANDLER","route for %s from %s to %s failed\n",
-               file_name(function_owner(call_back)), start, end);
-    return;
-  }
-  result = "/obj/handlers/clusters"->get_route(start, end);
-  if(!result){
-    call_out((:get_route($(end), $(start), $(call_back), $(count + 1)):), 10);
-    return;
-  }
-  use_count++;
-  call_out((: evaluate($(call_back), $(result)) :), 1);
-  return;
+#include <dirs.h>
+#include <terrain.h>
+#define END 0
+#define TWO 1
+#define FOUR 2
+#define ROOM 3
+#define HALF 0
+#define FULL 1
+#define DIRS ({ "north", "northeast", "east", "southeast", \
+      "south", "southwest", "west", "northwest" })
+inherit "/std/object";
+int max, size, *clear, *c_probs, *p_probs, *r_probs, *start;
+string terrain_name, *passage_files, *room_files;
+object easel;
+mixed *passages, *room_entries;
+void setup() {
+   set_name( "box" );
+   set_short( "green box" );
+   add_adjective( "green" );
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\n" );
+   reset_get();
+   start = allocate( 3 );
+   passages = ({ });
+   room_entries = ({ });
 }
 void dest_me() {
-  destruct(this_object());
+   if ( easel )
+      easel->dest_me();
+   ::dest_me();
 }
-mixed *stats() {
-  return  ({
-    ({ "routes done", use_count }),
-  });
+int query_max_locations() { return max; }
+void set_max_locations( mixed arg ) { max = to_int( arg ); }
+int *query_junction_clearance() { return clear; }
+void set_junction_clearance( mixed *args ) {
+   int i;
+   clear = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      clear[ i ] = to_int( args[ i ] );
 }
-
-==================================================
-FILE: handlers/script_processor.c
-==================================================
-
-#define RATIO 20
-inherit "/std/object";
-string stage;
-mapping actors;
-void setup() {
-   actors = ([ ]);
+int *query_continue_probabilities() { return c_probs; }
+void set_continue_probabilities( mixed *args ) {
+   int i;
+   c_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      c_probs[ i ] = to_int( args[ i ] );
 }
-string query_stage() { return stage; }
-void set_stage( string word ) { stage = word; }
-mapping query_actors() { return actors; }
-string query_actor( string word ) { return actors[ word ]; }
-void set_actor( string name, string path ) { actors[ name ] = path; }
-int perform_line( string script, int line ) {
-   int length;
-   string action, name, text;
-   object actor;
-   length = file_length( script );
-   if ( length < 1 ) {
-      write( "Length of file \""+ script +"\" is "+ length +".\n" );
-      return -1;
-   }
-   if ( length < line )
-      return -1;
-   if ( !stage || ( stage == "" ) )
-      return -2;
-   text = read_file( script, line, 1 );
-   if ( sscanf( text, "%s=%s\n", name, action ) == 2 ) {
-      if ( !actors[ name ] )
-         return -3;
-      actor = find_object( actors[ name ] );
-      if ( !actor )
-         return -4;
-      actor->do_command( action );
-   } else {
-      actor = find_object( stage );
-      if ( !actor )
-         return -4;
-      tell_room( actor, text );
-   }
-   if ( length == line )
-      return -5;
-   return strlen( text ) / RATIO;
+int *query_passage_probabilities() { return p_probs; }
+void set_passage_probabilities( mixed *args ) {
+   int i;
+   p_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      p_probs[ i ] = to_int( args[ i ] );
 }
-void perform_script( string script, int line ) {
-   int next;
-   next = perform_line( script, line );
-   if ( next < 0 ) {
-      if ( find_object( stage ) )
-         stage->script_ended( next );
+int *query_room_probabilities() { return r_probs; }
+void set_room_probabilities( mixed *args ) {
+   int i;
+   r_probs = allocate( sizeof( args ) );
+   for ( i = 0; i < sizeof( args ); i++ )
+      r_probs[ i ] = to_int( args[ i ] );
+}
+int *query_start_co_ord() { return start; }
+void set_start_co_ord( mixed *args ) {
+   int i;
+   if ( sizeof( args ) != 3 )
       return;
-   }
-   call_out( "perform_script", 2 + next, script, line + 1 );
+   for ( i = 0; i < sizeof( args ); i++ )
+      start[ i ] = to_int( args[ i ] );
 }
-int start_script( string script ) {
-   if ( find_call_out( "perform_script" ) != -1 )
-      return 0;
-   call_out( "perform_script", 3, script, 1 );
+string query_terrain_name() { return terrain_name; }
+void set_terrain_name( string word ) { terrain_name = word; }
+string *query_passage_files() { return passage_files; }
+void set_passage_files( string *words ) { passage_files = words; }
+string *query_room_files() { return room_files; }
+void set_room_files( string *words ) { room_files = words; }
+object query_easel() { return easel; }
+mixed *query_passages() { return passages; }
+mixed *query_room_entries() { return room_entries; }
+int do_generate(string);
+void init() {
+   add_command( "generate", "<word'terrainname'>", (:do_generate($4[0]):));
+}
+void mark_passage( int *co_ord ) {
+   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] ) / size,
+         ( start[ 0 ] - co_ord[ 0 ] ) / size }), ({ "#" }) );
+}
+void mark_room( int *co_ord, string room ) {
+   int width;
+   width = (int)room->query_room_size();
+   easel->add_shape( ({ ( co_ord[ 1 ] - start[ 1 ] - width - size / 2 ) / size,
+         ( start[ 0 ] - co_ord[ 0 ] - width - size / 2 ) / size }),
+         (string *)easel->make_block( ( 2 * width ) / size + 2 ) );
+}
+int do_generate( string word ) {
+   int i;
+   string data, direc, *lines;
+   mixed *parameters;
+   if ( easel )
+      return notify_fail( "The generator is working on "+
+            terrain_name +".\n" );
+   if ( file_size( word ) < 0 )
+      return notify_fail( "File "+ word +" does not exist.\n" );
+   lines = explode( read_file( word ), "\n" );
+   for ( i = 0; i < sizeof( lines ); i++ ) {
+      if ( lines[ i ] == "" )
+         continue;
+       if ( lines[ i ][ 0 .. 0 ] == "#" )
+         continue;
+      parameters = explode( lines[ i ], " " );
+      if ( !stringp( parameters[ 0 ] ) ) {
+         printf( "%s line %d: %O is not a string.\n", word, i,
+               parameters[ 0 ] );
+         continue;
+      }
+      if ( sizeof( parameters ) == 2 )
+         call_other( this_object(), "set_"+ parameters[ 0 ],
+               parameters[ 1 ] );
+      else
+         call_other( this_object(), "set_"+ parameters[ 0 ],
+               parameters[ 1 .. sizeof( parameters ) - 1 ] );
+      printf( "Set %s to %O.\n", parameters[ 0 ], call_other( this_object(),
+            "query_"+ parameters[ 0 ] ) );
+   }
+   if ( file_size( RESTORE_PATH + terrain_name +".o" ) > 0 )
+      return notify_fail( "Terrain "+ terrain_name +" already exists.\n" );
+   easel = clone_object( "/obj/misc/easel" );
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\nIt seems "+
+         "to be humming quietly but in a very powerful way.\n" );
+   write( "Working on "+ terrain_name +".\n" );
+   direc = DIRS[ random( 8 ) ];
+   for ( i = 0; i < 4; i++ )
+      passages += ({ ({ DIRS[ ( member_array( direc, DIRS ) + 2 * i ) % 8 ],
+            passage_files[ random( sizeof( passage_files ) ) ],
+            start, 0, 0, 1 + clear[ 0 ] + random( clear[ 1 ] ) }) });
+   size = 2 * (int)passage_files[ 0 ]->query_room_size();
+   TERRAIN_MAP->add_floating_location( terrain_name, passage_files[ 0 ],
+         start, 0 );
+   call_out( "process_passages", 2 );
    return 1;
 }
+void stop_working() {
+   tell_room( environment(), "The box stops humming as it extrudes an "+
+         "easel from a slot in one side.\n" );
+   easel->add_shape( ({ 0, 0 }), ({ "@" }) );
+   write_file( "/open/"+ terrain_name +".map",
+         implode( (string *)easel->query_lines(), "\n" ) );
+   easel->move( environment() );
+   easel = 0;
+   passages = ({ });
+   room_entries = ({ });
+   set_long( "This is a green box.  It's quite featureless but, strangely "+
+         "enough, something tells you it's a dungeon generator.\n" );
+}
+int *shift_in( int *co_ord, string direc, string from, string to ) {
+   int i, delta, *new_co_ord, *vector;
+   delta = (int)from->query_room_size() + (int)to->query_room_size();
+   new_co_ord = allocate( 3 );
+   vector = STD_ORDERS[ member_array( direc, STD_ORDERS ) + 1 ];
+   for ( i = 0; i < 3; i++ )
+      new_co_ord[ i ] = co_ord[ i ] - delta * vector[ i ];
+   return new_co_ord;
+}
+void process_passages() {
+   int i, j, k, prob, straight, *co_ord, *new_co_ord;
+   string direc, new_direc, type, new_type;
+   mixed *last;
+   if ( !sizeof( passages ) ) {
+      tell_room( environment(), "No passages to process.\n" );
+      return stop_working();
+   }
+   if ( max < 1 ) {
+      tell_room( environment(), "Reached maximum.\n" );
+      return stop_working();
+   }
+   max--;
+   direc = passages[ 0 ][ 0 ];
+   type = passages[ 0 ][ 1 ];
+   co_ord = passages[ 0 ][ 2 ];
+   last = passages[ 0 ][ 3 .. 4 ];
+   straight = passages[ 0 ][ 5 ];
+   passages = delete( passages, 0, 1 );
+   call_out( "process_passages", 2 );
+   for ( i = 0; i < 3; i++ ) {
+      new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 + i ) % 8 ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      if ( sizeof( (mixed *)TERRAIN_MAP->
+            member_floating_locations( new_co_ord ) ) ) {
+         tell_room( environment(), "Passage already at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
+               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         return;
+      }
+      for ( j = 0; j < sizeof( room_entries ); j++ ) {
+         for ( k = 0; k < 3; k++ )
+            if ( new_co_ord[ k ] != room_entries[ j ][ k ] )
+               break;
+         if ( k < 3 )
+            continue;
+         tell_room( environment(), "Room entry at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; "+
+               "joining passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         mark_passage( new_co_ord );
+         room_entries = delete( room_entries, j, 1 );
+         return;
+      }
+      if ( (int)easel->query_at( ({ ( new_co_ord[ 1 ] - start[ 1 ] ) / size,
+            ( start[ 0 ] - new_co_ord[ 0 ] ) / size }) ) != 32 ) {
+         tell_room( environment(), "Something at "+ new_co_ord[ 0 ] +
+               ", "+ new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +"; ending "+
+               "passage at "+ co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+
+               co_ord[ 2 ] +".\n" );
+         return;
+      }
+   }
+   prob = random( 100 );
+   if ( prob < p_probs[ END ] ) {
+      tell_room( environment(), "Passage going "+ direc +" ends at "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      return;
+   }
+   prob -= p_probs[ END ];
+   if ( ( prob < p_probs[ TWO ] ) && !straight ) {
+      if ( random( 100 ) >= c_probs[ HALF ] + c_probs[ FULL ] ) {
+         tell_room( environment(), "Passage branching "+ direc +" and " );
+         new_co_ord = shift_in( co_ord, direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type,
+               new_co_ord, 0 );
+         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+         if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+            direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
+                  6 * random( 2 ) ) % 8 ];
+         else
+            direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
+                  4 * random( 2 ) ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         new_co_ord = shift_in( co_ord, direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+         tell_room( environment(), direc +" from "+
+               co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+         return;
+      }
+      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 1 ) % 8 ];
+      else
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 2 ) % 8 ];
+      type = passage_files[ random( sizeof( passage_files ) ) ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+            clear[ 0 ] + random( clear[ 1 ] ) }) });
+      mark_passage( new_co_ord );
+      tell_room( environment(), "Passage branching "+ new_direc +" and " );
+      if ( random( c_probs[ HALF ] + c_probs[ FULL ] ) < c_probs[ HALF ] )
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 7 ) % 8 ];
+      else
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 ) % 8 ];
+      type = passage_files[ random( sizeof( passage_files ) ) ];
+      new_co_ord = shift_in( co_ord, new_direc, type, type );
+      TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+      passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+            clear[ 0 ] + random( clear[ 1 ] ) }) });
+      mark_passage( new_co_ord );
+      tell_room( environment(), new_direc +" from "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      return;
+   }
+   prob -= p_probs[ TWO ];
+   if ( ( prob < p_probs[ FOUR ] ) && !straight ) {
+      tell_room( environment(), "Crossroads from "+ direc +" at "+
+            co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+      for ( i = 0; i < 3; i++ ) {
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 6 + 2 * i ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         new_co_ord = shift_in( co_ord, new_direc, type, type );
+         TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord,
+               0 );
+         passages += ({ ({ new_direc, type, new_co_ord, co_ord, last[ 0 ],
+               clear[ 0 ] + random( clear[ 1 ] ) }) });
+         mark_passage( new_co_ord );
+      }
+      return;
+   }
+   prob -= p_probs[ FOUR ];
+   if ( ( prob < p_probs[ ROOM ] ) && !straight ) {
+      prob = random( 100 );
+      new_type = room_files[ 0 ];
+      for ( i = 1; i < sizeof( room_files ); i++ )
+         if ( prob < r_probs[ FULL + i ] ) {
+            new_type = room_files[ i ];
+            break;
+         } else
+            prob -= r_probs[ FULL + i ];
+      new_co_ord = shift_in( co_ord, direc, type, new_type );
+      tell_room( environment(), "Room at "+ new_co_ord[ 0 ] +", "+
+            new_co_ord[ 1 ] +", "+ new_co_ord[ 2 ] +".\n" );
+      TERRAIN_MAP->add_floating_location( terrain_name, new_type,
+            new_co_ord, 0 );
+      mark_room( new_co_ord, new_type );
+      mark_passage( co_ord );
+      for ( i = 1; i < 8; i++ ) {
+         new_direc = DIRS[ ( member_array( direc, DIRS ) + 4 + i ) % 8 ];
+         type = passage_files[ random( sizeof( passage_files ) ) ];
+         co_ord = shift_in( new_co_ord, new_direc, new_type, type );
+         if ( i % 2 ) {
+            if ( random( 100 ) < r_probs[ HALF ] ) {
+               tell_room( environment(), "Passage leaving room to "+
+                     new_direc +".\n" );
+               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
+                     0 );
+               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
+                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
+               mark_passage( co_ord );
+            } else
+               room_entries += ({ co_ord });
+         } else {
+            if ( random( 100 ) < r_probs[ FULL ] ) {
+               tell_room( environment(), "Passage leaving room to "+
+                     new_direc +".\n" );
+               TERRAIN_MAP->add_floating_location( terrain_name, type, co_ord,
+                     0 );
+               passages += ({ ({ new_direc, type, co_ord, new_co_ord,
+                     last[ 0 ], clear[ 0 ] + random( clear[ 1 ] ) }) });
+               mark_passage( co_ord );
+            } else
+               room_entries += ({ co_ord });
+         }
+      }
+      return;
+   }
+   prob = random( 100 );
+   if ( ( prob < c_probs[ HALF ] ) && !straight ) {
+      direc = DIRS[ ( member_array( direc, DIRS ) + 1 +
+             6 * random( 2 ) ) % 8 ];
+      straight = clear[ 0 ] + random( clear[ 1 ] );
+   } else {
+      prob -=  c_probs[ HALF ];
+      if ( ( prob < c_probs[ FULL ] ) && !straight ) {
+         direc = DIRS[ ( member_array( direc, DIRS ) + 2 +
+               4 * random( 2 ) ) % 8 ];
+         straight = clear[ 0 ] + random( clear[ 1 ] );
+      }
+   }
+   if ( straight > 0 )
+      straight--;
+   new_co_ord = shift_in( co_ord, direc, type, type );
+   tell_room( environment(), "Passage goes "+ direc +" from "+
+         co_ord[ 0 ] +", "+ co_ord[ 1 ] +", "+ co_ord[ 2 ] +".\n" );
+   TERRAIN_MAP->add_floating_location( terrain_name, type, new_co_ord, 0 );
+   passages += ({ ({ direc, type, new_co_ord, co_ord, last[ 0 ],
+         straight }) });
+   mark_passage( new_co_ord );
+}
 
 ==================================================
-FILE: handlers/snmp_handler.c
+FILE: handlers/terrain_things/logroom.c
 ==================================================
 
-#include "snmp.h"
-void create()
-{
+#include <terrain.h>
+#define SAVE_FILE RESTORE_PATH +"logroom"
+inherit "/std/room";
+mapping locations;
+void setup() {
+   set_short( "limbo" );
+   set_light( 50 );
+   set_long( "You are between worlds, surrounded by raw potentiality and "+
+         "not a lot else.\n" );
+   add_item( "potentiality", "Well, it's sort of potentially something and "+
+         "potentially nothing, and it can't quite decide at the moment.  "+
+         "With any luck, though, you won't be here long enough to find "+
+         "out...\n" );
+   add_exit( "drum", "/d/am/am/mendeddrum", "path" );
+   locations = ([ ]);
+   if ( file_size( SAVE_FILE +".o" ) )
+      unguarded((: restore_object, SAVE_FILE :));
 }
-buffer BufferiseInt(int p)
-{
-  buffer buf1;
-  buf1=allocate_buffer(4);
-  if(p<0)
-  {
-    buf1[0]=(4294967296+p)/16777216;
-  } else {
-    buf1[0]=p/16777216;
-  }
-  buf1[1]=p/65536;
-  buf1[2]=p/256;
-  buf1[3]=p%256;
-  return buf1;
+void save_this() {
+  unguarded((: save_object, SAVE_FILE :));
 }
-buffer GetData(buffer MIB)
-{
-  int i,j,k;
-  object *tmp;
-  buffer mibreply,mibdata,tmpbuf;
-  mibreply=allocate_buffer(4);
-  tmpbuf=allocate_buffer(1);
-  mibreply[0]=48;
-  mibreply[1]=0;
-  mibreply[2]=OBJECT_IDENT;
-  mibreply[3]=0;
-  mibreply+=MIB;
-  i=sizeof(mibreply);
-  switch(MIB[6])
-  {
-    case 101 :
-      j=sizeof(users());
-      tmpbuf[0]=2;
-      mibreply+=tmpbuf;
-      tmpbuf[0]=0;
-      mibreply+=tmpbuf;
-      tmpbuf=BufferiseInt(j);
-      mibreply+=tmpbuf;
-      mibreply[i+1]=sizeof(tmpbuf);
-      break;
-    case 102 :
-      j=0;
-      tmp=users();
-      for(k=0;k<sizeof(tmp);k++)
-        if(tmp[k] && (tmp[k])->query_creator())
-          j++;
-      tmpbuf[0]=2;
-      mibreply+=tmpbuf;
-      tmpbuf[0]=0;
-      mibreply+=tmpbuf;
-      tmpbuf=BufferiseInt(j);
-      mibreply+=tmpbuf;
-      mibreply[i+1]=sizeof(tmpbuf);
-      break;
-    case 100 :
-      tmpbuf[0]=2;
-      mibreply+=tmpbuf;
-      tmpbuf[0]=1;
-      mibreply+=tmpbuf;
-      tmpbuf[0]=0;
-      mibreply+=tmpbuf;
-      break;
-    default :
-      mibreply[0]=255;
-      break;
-  }
-  mibreply[1]=sizeof(mibreply)-2;
-  mibreply[3]=sizeof(MIB);
-  return mibreply;
+void player_quitting( object player, object place ) {
+   if ( player->query_property( "guest" ) )
+      return;
+   locations[ (string)player->query_name() ] =
+         ({ (string)place->query_property( "terrain name" ),
+         (int *)place->query_co_ord() });
+   save_this();
+   call_out( "check_quitted", 5, (string)player->query_name() );
 }
+void check_quitted( string word ) {
+   if ( !find_player( word ) )
+      return;
+   if ( locations[ word ] )
+      locations = m_delete( locations, word );
+   save_this();
+}
+void event_enter( object player, string words, object thing ) {
+   object location;
+   mixed *data;
+   data = locations[ (string)player->query_name() ];
+   if ( !data ) {
+      player->move( (string)player->query_start_pos(),
+            "$N enter$s the game." );
+      return;
+   }
+   location = (object)TERRAIN_MAP->find_location( data[ 0 ],
+         data[ 1 ] );
+   player->move( location );
+   locations = m_delete( locations, (string)player->query_name() );
+   save_this();
+}
+
+==================================================
+FILE: handlers/terrain_things/sample_passage.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "dusty corridor" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
+         "been deserted for a long time.\n" );
+   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
+         "the bottom of the walls." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_passage_1.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "dusty corridor" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are in a dry, dusty corridor.  It looks as though it has "+
+         "been deserted for a long time.\n" );
+   add_item( "dust", "There's quite a bit of dust in here, collecting along "+
+         "the bottom of the walls." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_passage_2.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "rock-walled tunnel" );
+   set_light( 20 );
+   set_room_size( 5 );
+   set_long( "You are tunnel with rough-hewn rock walls.  It looks as though "+
+         "it has been deserted for a long time.\n" );
+   add_item( ({ "rough-hewn rock wall", "rock" }), "The walls are rough, "+
+         "where the tunnel was hewn out of the rock." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_1.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "small room" );
+   set_light( 20 );
+   set_room_size( 15 );
+   set_long( "You are in a small room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_2.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "largish room" );
+   set_light( 20 );
+   set_room_size( 25 );
+   set_long( "You are in a largish room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }
+
+==================================================
+FILE: handlers/terrain_things/sample_room_3.c
+==================================================
+
+inherit "/std/room";
+void setup() {
+   set_short( "large room" );
+   set_light( 20 );
+   set_room_size( 35 );
+   set_long( "You are in a large room.  The walls, floor and ceiling are "+
+         "comprised of large stone blocks.  The room is quite bare.\n" );
+   add_item( ({ "wall", "floor", "ceiling" }), "The walls, floor and "+
+         "ceiling of the room are formed from large stone blocks." );
+   add_item( "large stone block", "The blocks of stone that make up the "+
+         "surfaces of this room are not too rough, but they were never "+
+         "polished smooth either." );
+}
+string query_exit_type( string word ) { return "corridor"; }

@@ -1,47 +1,1465 @@
-# Total Tokens: 12326
-# Total Files Merged: 11
-# Total Characters: 41120
+# Total Tokens: 21872
+# Total Files Merged: 16
+# Total Characters: 72953
 
-=============================================
+===============================================
+
+#define REACTION_HANDLER ("/obj/handlers/reaction")
+#define TASTE_AMT 200
+#include <tasks.h>
+#include <move_failures.h>
+#include <volumes.h>
+inherit "/obj/baggage";
+private int leak_rate;
+private int hb_count;
+private int sub_query_contents;
+private int volume;
+private int max_volume;
+private int cont_volume;
+private int is_liquid;
+private nosave int* _fraction;
+private nosave object* _liquids;
+int drink_amount(int drinking, object player);
+private int query_fighting(object player);
+void set_leak_rate(int i) { leak_rate = i; }
+int query_leak_rate() { return leak_rate; }
+void set_max_volume(int v) { max_volume = v; }
+int query_max_volume() { return max_volume; }
+string *leak_verb = ({ " drips slowly",
+                       " drips",
+                       " dribbles",
+                       " trickles slowly",
+                       " trickles",
+                       " trickles rapidly",
+                       " pours sluggishly",
+                       " pours",
+                       " streams",
+                       " gushes",
+                       " fountains"
+                     });
+string *drink_pat = ({ "[from] <direct:object>",
+                       "<fraction> {of|from} <direct:object>"
+                   });
+string *splash_pat = ({ "[from] <direct:object> {on|to|onto} <indirect:living>",
+                       "<fraction> {of|from} <direct:object> {on|to|onto} "
+                       "<indirect:living>"
+                   });
+string *apply_pat = ({ "[from] <direct:object> {on|to} <indirect:living>",
+                       "<fraction> {of|from} <direct:object> {on|to} "
+                       "<indirect:living>"
+                   });
+string *pour_pat = ({ "<direct:object> {from|into} <indirect:object>",
+                      "<fraction> of <direct:object> {from|into} <indirect:object>"
+                  });
+string *fill_pat = ({ "<indirect:object> <fraction> full {from|into} <direct:object>",
+                      "<indirect:object> <fraction> up {from|into} <direct:object>",
+                      "<indirect:object> {from|into} <direct:object>"
+                  });
+void create() {
+    do_setup++;
+    ::create();
+    do_setup--;
+    if ( !do_setup ) {
+      this_object()->setup();
+    }
+    add_help_file("vessel");
+}
+void init() {
+    ::init();
+    add_command("drink", drink_pat);
+    add_command("quaff", drink_pat);
+    add_command("splash", splash_pat);
+    add_command("rub", apply_pat);
+    add_command("apply", apply_pat);
+    add_command("pour", pour_pat);
+    add_command("taste", "<direct:object>");
+    add_command("sip", "<direct:object>");
+    add_command("fill", fill_pat);
+    add_command("empty", "<direct:object>");
+}
+string *fullness_adjectives() {
+   if (!max_volume) return ({ "totally", "empty" });
+   switch (100 * volume / max_volume) {
+   case 0..4: return ({ "totally", "empty" });
+   case 5..13: return ({ "empty" });
+   case 65..94: return ({ "full" });
+   case 95..100: return ({ "totally", "full" });
+   default: return ({ });
+   }
+}
+mixed stats() {
+  return ::stats() + ({
+      ({ "leak_rate", leak_rate }),
+      ({ "volume", volume }),
+      ({ "cont_volume", cont_volume }),
+      ({ "liquid", is_liquid }),
+      ({ "max_volume", max_volume })
+    });
+}
+int cmp_amount_r(object a, object b) {
+    return ((int)b->query_amount() - (int)a->query_amount());
+}
+int cmp_weight_r(object a, object b) {
+    if (a->query_weight() || b->query_weight())
+      return ((int)b->query_weight() - (int)a->query_weight());
+    return cmp_amount_r(a, b);
+}
+private void figure_out_liquids() {
+   _liquids = filter(all_inventory(this_object()), (: $1->query_liquid() :));
+   _liquids = sort_array(_liquids, "cmp_amount_r", this_object());
+}
+string query_liquid_desc() {
+    object *contents, *solids = ({});
+    int i;
+    string desc, *shorts;
+    mixed *others;
+    contents = all_inventory(this_object());
+    if( !sizeof( contents ) ) {
+       return (string) 0;
+    }
+    figure_out_liquids();
+    solids = contents - _liquids;
+    if (sizeof(_liquids)) {
+       _liquids = sort_array(_liquids, "cmp_amount_r", this_object());
+       others = unique_array(_liquids->a_short(),
+                          (: "/global/events"->convert_message($1) :));
+       shorts = ({ });
+       for (i = 0; i < sizeof(others); i++) {
+          shorts += ({ others[i][0] });
+       }
+       desc = shorts[0];
+       if (sizeof(shorts) > 1) {
+          desc += ", mixed with ";
+          if (sizeof(shorts) > 4) {
+             desc += "other liquids";
+          } else {
+             desc += query_multiple_short(shorts[1..]);
+          }
+       }
+    } else {
+       desc = "";
+    }
+    if (!sizeof(solids)) {
+        return desc;
+    }
+    solids = sort_array(solids, "cmp_weight_r", this_object());
+    others = unique_array(solids,
+                          (: $1->query_continuous()?
+                           this_player()->convert_message($1->a_short()) :
+                           $1 :) );
+    for (i = 0; i < sizeof(others); i++) {
+       if( arrayp( others ) ) {
+          others[i] = others[i][0];
+       } else {
+          tell_creator( "gruper", "others is %O.\n", others );
+       }
+    }
+    if (sizeof(_liquids)) {
+       desc += ", with ";
+    }
+    if (sizeof(others) > 10) {
+        desc += "various undissolved substances";
+    } else {
+        desc += query_multiple_short(others);
+    }
+    if (sizeof(_liquids)) {
+       desc += " floating in it";
+    }
+    return desc;
+}
+string query_fullness_desc() {
+   int full;
+   full = (100 * volume) / max_volume;
+   if( full < 1 && query_liquid_desc() ) {
+      full = 1;
+   }
+   switch (full) {
+      case 0:       return "";
+      case 1..12:   return "It is almost empty.";
+      case 13..37:  return "It is about one-quarter full.";
+      case 38..62:  return "It is about half full.";
+      case 63..87:  return "It is about three-quarters full.";
+      case 88..95:  return "It is almost full.";
+      case 96..100: return "It is completely full.";
+      default:      return "Its capacity defies the laws of physics.  "
+                           "Please submit a bug report.";
+    }
+}
+varargs string query_contents(string str, object *obs ) {
+    string s, c;
+    if ( query_liquid_desc() ) {
+        c = "\n"+ query_fullness_desc() +"\n";
+    } else {
+        c = "";
+    }
+    s = query_liquid_desc();
+    if (sub_query_contents) {
+        if (s) {
+            return str + capitalize(s) + "." + c;
+        }
+        return ::query_contents(str, obs) + c;
+    }
+    return ::query_contents(str, obs);
+}
+string short(int dark) {
+  object *inv;
+  if(query_opaque())
+    return ::short(dark);
+  inv = all_inventory(this_object());
+  if(!sizeof(inv))
+    return ::short(dark);
+  return ::short(dark) + " of " +
+    "/global/events"->convert_message(query_multiple_short(map(inv,
+    (: $1->query_short() :))));
+}
+string long(string str, int dark) {
+    string ret;
+    sub_query_contents = 1;
+    ret = ::long(str, dark);
+    sub_query_contents = 0;
+    return ret;
+}
+int query_cont_volume() { return cont_volume; }
+int query_liquid() { return is_liquid; }
+void calc_liquid() {
+    if (sizeof(filter(all_inventory(), (: $1->query_liquid() :)))) {
+      is_liquid = 1;
+    } else {
+      is_liquid = 0;
+    }
+}
+int query_volume() { return volume; }
+int query_volume_left() {
+  if (!query_max_weight()) {
+    return max_volume - volume;
+  }
+  return max_volume - volume - (max_volume*query_loc_weight())/query_max_weight();
+}
+int add_volume(int vol) {
+   if ((vol <= 0) || !max_volume || (vol + volume <= max_volume)) {
+      volume += vol;
+      if (previous_object()->query_continuous()) {
+          cont_volume += vol;
+      }
+      return 1;
+    }
+    return 0;
+}
+int add_weight(int n) {
+    int v;
+    if (this_player() && (this_player()->query_name() == "pinkfish")) {
+      tell_creator("pinkfish", "vessel::add_weight(%O)\n", n);
+    }
+    if (previous_object()->query_continuous()) {
+       return (::add_weight(n));
+    }
+      v = n*200;
+    if (max_volume && (v + volume > max_volume)) {
+       return 0;
+    }
+    if (::add_weight(n)) {
+        volume += v;
+        return 1;
+    }
+    return 0;
+}
+int remove_volume(int vol_lost)
+{
+    int amt_lost, i, orig_cv;
+    object *contents;
+    if (!cont_volume) {
+        return 0;
+    }
+    orig_cv = cont_volume;
+    contents = all_inventory(this_object());
+    for (i = 0; i < sizeof(contents); i++) {
+        if (contents[i]->query_continuous()) {
+            amt_lost = -to_int((int)contents[i]->query_amount()
+                               * (to_float(vol_lost) / orig_cv));
+            if (!amt_lost) {
+                amt_lost++;
+            }
+            contents[i]->adjust_amount(amt_lost);
+        }
+    }
+    return vol_lost;
+}
+int xfer_volume(int vol_xferred, object dest) {
+    int vol_to_go;
+    int i;
+    int amt_xferred;
+    int tmp;
+    int orig_cv;
+    object *contents;
+    object copy;
+    string file_path;
+    mapping map;
+    vol_to_go = vol_xferred;
+    if (!cont_volume) {
+        return 0;
+    }
+    orig_cv = cont_volume;
+    contents = filter(all_inventory(this_object()),
+                      (: $1->query_continuous() :));
+    for (i = 0; i < sizeof(contents) && vol_to_go > 0; i++) {
+        if (i == sizeof(contents) - 1) {
+            amt_xferred = vol_to_go;
+        } else {
+            amt_xferred = to_int((int)contents[i]->query_amount()
+                                 * (to_float(vol_xferred) / orig_cv));
+        }
+        if (!amt_xferred) {
+            amt_xferred++;
+        }
+        file_path = explode( file_name(contents[i]), "#" )[ 0 ];
+        copy = clone_object(file_path);
+        map = (mapping)contents[i]->query_dynamic_auto_load();
+        copy->init_dynamic_arg( map );
+        map = (mapping)contents[i]->query_static_auto_load();
+        if (map) {
+            copy->init_static_arg( map );
+        }
+        copy->set_amount(amt_xferred);
+        tmp = copy->move(dest);
+        if (tmp == MOVE_OK) {
+            vol_to_go -= amt_xferred;
+            contents[i]->adjust_amount(-amt_xferred);
+        } else {
+            copy->dest_me();
+        }
+    }
+    return vol_to_go;
+}
+void heart_beat() {
+    int lost, off;
+    if (leak_rate == 0 || !is_liquid) {
+        set_heart_beat(0);
+        return;
+    }
+    if (hb_count--) return ;
+    hb_count = 10;
+    lost = leak_rate;
+    if (lost > cont_volume)
+      lost = cont_volume;
+    off = lost/100;
+    if (off > 10)
+        off = 10;
+    if ( interactive( environment() ) )
+        tell_object( environment(), "$C$Some " + query_multiple_short( map( all_inventory(),
+        (: $1->query_short() :) ) ) + leak_verb[off] + " out of the "+ short(1) + ".\n" );
+    else
+      tell_room( environment(), "$C$Some " + query_multiple_short( map( all_inventory(),
+        (: $1->query_short() :) ) ) + leak_verb[off] + " out of the "+ short(1) + ".\n" );
+  (void)remove_volume(lost);
+  if (!cont_volume) {
+    set_heart_beat(0);
+  }
+}
+int do_pour(object *to, mixed *args_b, mixed *args_a, mixed *args) {
+    int m, n, volume_needed, their_volume, their_max, ovf, xfer_result;
+    if (query_fighting(this_player())) {
+       add_failed_mess("You cannot attempt to do this while in combat.\n");
+       return 0;
+    }
+    if (environment(this_object()) != this_player()) {
+        add_failed_mess("You aren't carrying $D.\n");
+        return 0;
+    }
+    if (sizeof(args) == 5) {
+        sscanf(args[0] + " " + args[1], "%d %d", m, n);
+        if ((m > n) || (m < 0) || (n <= 0)) {
+            add_failed_mess("Interesting fraction you have there!\n");
+            return 0;
+        }
+    } else {
+        m = 1;
+        n = 1;
+    }
+    if (query_locked()) {
+        add_failed_mess("$C$$D $V$0=is,are$V$ locked!\n");
+        return 0;
+    }
+    if (query_closed()) {
+        if (do_open()) {
+            write("You open the " + short(0) + ".\n");
+        } else {
+            add_failed_mess("You cannot open $D.\n");
+            return 0;
+        }
+    }
+    if (cont_volume <= 0) {
+        add_failed_mess("$C$$D has nothing to pour!\n");
+        return 0;
+    }
+    if (sizeof(to) > 1) {
+        add_failed_mess("You can only pour into one object at a time.\n");
+        return 0;
+    }
+    their_volume = (int)to[0]->query_volume();
+    their_max = (int)to[0]->query_max_volume();
+    if (their_max <= 0) {
+        add_failed_mess("$C$" + to[0]->the_short(0) +
+            " doesn't look like it can be filled!\n");
+        return 0;
+    }
+    if (their_volume >= their_max) {
+        add_failed_mess("The " + to[0]->short(0)
+              + " $V$0=is,are$V$ full to the brim already.\n");
+        their_volume = their_max;
+    }
+    if ((m == 1) && (n == 1)) {
+        volume_needed = volume;
+    } else {
+        volume_needed = max_volume * m / n;
+    }
+    if (volume < volume_needed) {
+        add_failed_mess("$C$$D $V$0=is,are$V$ less than " + m + "/" + n +
+              " full.\n");
+        return 0;
+    }
+    if (volume_needed > 120) {
+        volume_needed += random(240) - 120;
+    }
+    if (volume_needed > (their_max - their_volume)) {
+        volume_needed = their_max - their_volume;
+        ovf = 1;
+    }
+    if (volume_needed > cont_volume) {
+        add_failed_mess("You drain the " + short(0) + " into the "
+              + to[0]->short(0) + " but it $V$0=is,are$V$ not enough.\n");
+        volume_needed = cont_volume;
+        this_player()->add_succeeded(to[0]);
+    } else {
+        this_player()->add_succeeded(to[0]);
+    }
+    xfer_result = xfer_volume( volume_needed, to[0] );
+    if (xfer_result < volume_needed) {
+        this_player()->add_succeeded_mess(this_object(), "$N $V $D into $I.\n", ({to[0]}));
+    }
+    else {
+        add_failed_mess( "You were unable to $V $D into $I.\n", ({to[0]}));
+        return 0;
+    }
+    if (ovf) {
+        this_player()->add_succeeded_mess(this_object(), "$N $V $D into $I, " +
+            "spilling some in the process.\n", ({to[0]}));
+    }
+    return 1;
+}
+int do_fill(object *to, mixed *args_b, mixed *args_a, mixed *args) {
+    int m;
+    int n;
+    int i;
+    int run_out;
+    int volume_needed;
+    int their_volume;
+    int their_max;
+    int amount_not_poured;
+    int ok;
+    if (query_fighting(this_player())) {
+       add_failed_mess("You cannot attempt to do this while in combat.\n");
+       return 0;
+    }
+    if (sizeof(args) == 4) {
+        sscanf(args[1] + " " + args[2], "%d %d", m, n);
+        if ((m > n) || (m < 0) || (n <= 0)) {
+            add_failed_mess("Interesting fraction you have there!\n");
+            return 0;
+        }
+    } else {
+        m = 1;
+        n = 1;
+    }
+    if (query_closed() &&
+        query_locked()) {
+        add_failed_mess("$C$$D $V$0=is,are$V$ locked!\n");
+        return 0;
+    }
+    if (query_closed()) {
+        if (do_open()) {
+            write("You open the " + short(0) + ".\n");
+        } else {
+            add_failed_mess("You cannot open $D.\n");
+            return 0;
+        }
+    }
+    if (cont_volume <= 0) {
+        add_failed_mess("$C$$D has nothing to pour!\n");
+        return 0;
+    }
+    run_out = 0;
+    for (i = 0; i < sizeof(to) && !run_out; i++) {
+        if ((environment(this_object()) != this_player()) &&
+            (environment(to[i]) != this_player())) {
+            write("You're not carrying " + the_short() + " or " +
+                  to[i]->the_short() + ".\n");
+            continue;
+        }
+        if (to[i]->query_closed()) {
+            add_failed_mess("$I $V$0=is,are$V$ closed.\n", to[i..i]);
+            continue;
+        }
+        their_volume = (int)to[i]->query_volume();
+        their_max = (int)to[i]->query_max_volume();
+        if (their_max <= 0) {
+            add_failed_mess("$I doesn't look like it can be filled!\n",
+                            to[i..i]);
+            continue;
+        }
+        if (their_volume >= their_max) {
+            add_failed_mess("$I $V$0=is,are$V$ full to the brim already.\n", to[i..i]);
+            continue;
+        }
+        volume_needed = their_max * m / n;
+        if (their_volume >= volume_needed) {
+            add_failed_mess("$I $V$0=is,are$V$ more than " + m + "/" + n +
+                  " full already.\n", to[i..i]);
+            continue;
+        }
+        if (volume_needed > 120) {
+            volume_needed += random(240) - 120;
+        }
+        if (volume_needed > their_max) {
+            volume_needed = their_max;
+        }
+        ok++;
+        volume_needed -= their_volume;
+        if (volume_needed > cont_volume) {
+            add_failed_mess("You drain " + the_short() + " into "
+                  + to[i]->the_short() + " but it $V$0=is,are$V$ not enough.\n");
+            volume_needed = cont_volume;
+            run_out = 1;
+            this_player()->add_succeeded(to[i]);
+        } else {
+            this_player()->add_succeeded(to[i]);
+        }
+        amount_not_poured = xfer_volume(volume_needed, to[i]);
+        if (amount_not_poured) {
+           ok--;
+        }
+    }
+    if (!ok) {
+       add_failed_mess("You cannot seem to do anything useful with this "
+                       "container, it seems unwilling to accept what you "
+                       "offer.\n");
+    }
+    return ok;
+}
+private int query_fighting(object player) {
+   object ob;
+   if (!player || !environment(player)) {
+      return 0;
+   }
+   if (player->query_fighting()) {
+      return 1;
+   }
+   foreach (ob in all_inventory(environment(player))) {
+      if (living(ob)) {
+         if (ob->query_attacker_list() &&
+             member_array(this_player(), ob->query_attacker_list()) != -1) {
+            return 1;
+         }
+      }
+   }
+   if (environment(ob)->query_mirror_room()) {
+      foreach (ob in all_inventory(environment(player)->query_mirror_room())) {
+         if (living(ob)) {
+            if (member_array(this_player(), ob->query_attacker_list()) != -1) {
+               return 1;
+            }
+         }
+      }
+   }
+}
+int is_fighting_bottle_smashed(object player,
+                               object me) {
+   object* fighting;
+   object ob;
+   object weapon;
+   string skill;
+   string my_skill;
+   int bonus;
+   int stopped;
+   stopped = 0;
+   if (query_fighting(player)) {
+      fighting = filter(player->query_attacker_list(),
+                        (: environment($1) == $2 :), environment(player));
+      if (query_holder()) {
+         bonus = 0;
+         bonus += -10 * player->query_free_limbs();
+      } else {
+         bonus = 20;
+      }
+      if (sizeof(fighting)) {
+         bonus += (sizeof(fighting) - 1) * 20;
+      }
+      if (player->query_free_limbs() < 2 &&
+          !query_holder()) {
+         bonus += 50 - player->query_free_limbs() * 25;
+      }
+      foreach (ob in fighting) {
+         if (sizeof(ob->query_holding() - ({ 0 }))) {
+            weapon = (ob->query_holding() - ({ 0 }))[0];
+            skill = weapon->query_weapon_type();
+            if (skill == "mixed" ||
+                (skill != "sharp" && skill != "blunt" && skill != "pierce")) {
+               skill = ({ "sharp", "blunt", "pierce" })[random(3)];
+            }
+            skill = "fighting.combat.melee." + skill;
+         } else {
+            skill = "fighting.combat.melee.unarmed";
+         }
+         my_skill = "fighting.combat.special.unarmed";
+         switch (player->query_combat_response()) {
+         case "parry" :
+            my_skill = "fighting.combat.parry.melee";
+            break;
+         case "dodge" :
+            my_skill = "fighting.combat.dodging.melee";
+            break;
+         case "neutral" :
+            my_skill = "fighting.combat." +
+            (({ "parry", "dodging" })[random(2)]) + ".melee";
+         }
+         switch (TASKER->compare_skills(player,
+                                       my_skill,
+                                       ob,
+                                       skill,
+                                       -bonus,
+                                       TM_FREE,
+                                       TM_FREE)) {
+         case OFFAWARD :
+            if (player->query_combat_response() == "dodge") {
+               tell_object(player,
+                           "%^YELLOW%^You nimbly dodge an attack to avoid "
+                           "getting " +
+                           me->poss_short() +
+                           " smashed out of your hand and feel better about "
+                           "attempting it next time.\n%^RESET%^");
+            } else {
+               tell_object(player,
+                           "%^YELLOW%^You nimbly parry an attack to avoid "
+                           " getting " +
+                           me->poss_short() +
+                           " smashed out of your hand and feel better about "
+                           "attempting it next time.\n%^RESET%^");
+            }
+         case OFFWIN :
+            tell_room(environment(player),
+                      player->the_short() + " avoids getting " +
+                      me->poss_short() + " smashed by " +
+                      query_multiple_short(({ ob })) + ".\n",
+                               ({ player }));
+            tell_object(player,
+                        "You avoid getting " + me->poss_short() +
+                        " smashed by " + query_multiple_short(({ ob })) +
+                        ".\n");
+            do_damage("crush", 20 + random(50));
+            break;
+         case DEFAWARD :
+            tell_object(ob,
+                        "%^YELLOW%^You feel much more able to smash "
+                        "bottles out of peoples hands than "
+                        "before.\n%^RESET%^");
+         case DEFWIN :
+            if (!query_holder() &&
+                me->move(environment(player)) == MOVE_OK) {
+               tell_room(environment(player),
+                   ob->the_short() + " smashes " + the_short() + " out of " +
+                   player->the_short() + "'s hands onto the ground "
+                   "causing some of the liquid to splash out.\n",
+                   ({ player, me }));
+               tell_object(player,
+                   ob->the_short() + " smashes " + the_short() + " out of " +
+                   "your hands onto the ground "
+                   "causing some of the liquid to splash out.\n");
+               tell_object(me,
+                   ob->the_short() + " smash " + the_short() + " out of " +
+                   player->the_short() + "'s hands onto the ground "
+                   "causing some of the liquid to splash out.\n");
+            } else {
+               tell_room(environment(player),
+                   ob->the_short() + " smashes " + the_short() + " away "
+                   "from " + player->the_short() + "'s mouth causing "
+                   "some of the liquid to splash out.\n", ({ player, me }));
+               tell_object(player,
+                   ob->the_short() + " smashes " + the_short() + " away "
+                   "from " + "your mouth causing some of the liquid to "
+                   "splash out.\n");
+               tell_object(me,
+                   ob->the_short() + " smash " + the_short() + " out of " +
+                   player->the_short() + "'s hands onto the ground "
+                   "causing some of the liquid to splash out.\n");
+            }
+            stopped = 1;
+            break;
+         }
+         if (stopped) {
+            break;
+         }
+      }
+   }
+   return stopped;
+}
+private string consumed_desc( int consumed_amount ) {
+   string amount_desc;
+   object* contents;
+   string* contents_descs = ({ });
+   string contents_desc;
+   contents = all_inventory( this_object() );
+   if( !consumed_amount || !sizeof( contents ) )
+      return "nothing much";
+   switch( consumed_amount ) {
+   case 1..30:
+      amount_desc = "a teaspoon";
+      break;
+   case 31..80:
+      amount_desc = "a tablespoon";
+      break;
+   case 81..140:
+      amount_desc = "an ounce";
+      break;
+   case 141..800:
+      amount_desc = "a few ounces";
+      break;
+   case 801..1200:
+      amount_desc = "a cup";
+      break;
+   case 1201..2000:
+      amount_desc = "a couple of cups";
+      break;
+   case 2001..3500:
+      amount_desc = "a pint";
+      break;
+   case 3501..7000:
+      amount_desc = "a couple of pints";
+      break;
+   case 7001..15000:
+      amount_desc = "several pints";
+      break;
+   case 15001..25000:
+      amount_desc = "about a gallon";
+      break;
+   default:
+      amount_desc = "several gallons";
+   }
+   contents = filter( contents, (: $1->query_liquid() :) );
+   foreach( string* frog in unique_array( contents->short(), (: $1 :) ) ) {
+      if( sizeof( frog ) > 1 ) {
+         contents_descs += ({ pluralize( frog[0] ) });
+      } else {
+         contents_descs += ({ frog[0] });
+      }
+   }
+   contents_desc = query_multiple_short( contents_descs );
+   return amount_desc +" of "+ contents_desc;
+}
+int drink_amount(int drinking,
+                 object player) {
+   int cap_amount;
+   int amt_to_drink;
+   int amount_can_be_drunk;
+   object* contents;
+   object ob;
+   int orig_cv;
+   amt_to_drink = drinking;
+   if (amt_to_drink > cont_volume) {
+      amt_to_drink = cont_volume;
+   }
+   if (max_volume / 20 > VOLUME_WINE) {
+      cap_amount = max_volume / 20;
+   } else {
+      cap_amount = VOLUME_WINE;
+   }
+   if (amt_to_drink < cap_amount) {
+      if (query_fighting(player)) {
+         amt_to_drink += random(2 * (cap_amount - amt_to_drink)) -
+                         cap_amount - amt_to_drink;
+         if (amt_to_drink < VOLUME_MINIMUM_DRINKABLE * 2) {
+            amt_to_drink = VOLUME_MINIMUM_DRINKABLE * 2;
+         }
+      } else {
+         amt_to_drink += random((cap_amount - amt_to_drink) / 6) -
+                         (cap_amount - amt_to_drink) / 12;
+      }
+   }
+   if (amt_to_drink < VOLUME_MINIMUM_DRINKABLE) {
+      amt_to_drink = VOLUME_MINIMUM_DRINKABLE;
+   }
+   if (amt_to_drink < (max_volume / 100)) {
+      amt_to_drink = max_volume / 100;
+   }
+   if( amt_to_drink > cont_volume ) {
+      amt_to_drink = cont_volume;
+   }
+   amount_can_be_drunk = (8000 - (int)this_player()->query_volume(2)) *
+     (int)this_player()->query_con() / 12;
+   if (amt_to_drink > amount_can_be_drunk) {
+       write("You drink some of the liquid, "
+             "but simply cannot fit it all in.\n");
+       amt_to_drink = amount_can_be_drunk;
+   }
+   if (is_fighting_bottle_smashed(this_player(), this_object())) {
+      amt_to_drink *= (1 + random(15));
+      if (amt_to_drink > volume) {
+         amt_to_drink = volume;
+      }
+      orig_cv = cont_volume;
+      foreach (ob in all_inventory(this_object())) {
+         if (ob->query_continuous()) {
+            if (amt_to_drink == cont_volume) {
+               ob->adjust_amount(-ob->query_amount());
+            } else {
+               ob->adjust_amount(-(ob->query_amount() * amt_to_drink / orig_cv));
+            }
+         }
+      }
+      add_succeeded_mess("");
+      do_damage("crush", 50 + random(300));
+      return 1;
+   }
+   contents = all_inventory(this_object());
+   if( sizeof( contents[0]->query_eat_mess() ) ) {
+      add_succeeded_mess( contents[0]->query_eat_mess() );
+   } else {
+      add_succeeded_mess("$N $V "+ consumed_desc( amt_to_drink ) +
+                         " from $D.\n");
+   }
+   if (amt_to_drink - drinking > (max_volume / 40) &&
+       amt_to_drink - drinking > VOLUME_MINIMUM_DRINKABLE) {
+      add_succeeded_mess(({ "Whoops!  You seemed to have gulped "
+                            "too much down.\n",
+                            "" }));
+   }
+   orig_cv = cont_volume;
+   foreach (ob in contents) {
+       if (ob->query_continuous()) {
+           if (amt_to_drink == orig_cv) {
+               ob->consume(this_player(), ob->query_amount());
+           } else {
+               ob->consume(this_player(),
+                           ob->query_amount() * amt_to_drink / orig_cv);
+           }
+       }
+   }
+   return 1;
+}
+int do_drink(object *dest, mixed me, mixed him, mixed args, string pattern)
+{
+    int amt_to_drink;
+    int m;
+    int n;
+    if (sizeof(dest)) {
+        add_failed_mess("Drinking is a very simple operation "
+              "- please don't complicate matters.\n");
+        return 0;
+    }
+    if (environment(this_object()) != this_player()) {
+        add_failed_mess("You aren't carrying $D.\n");
+        return 0;
+    }
+    if (!ensure_open()) {
+       return 0;
+    }
+    if (!is_liquid) {
+        add_failed_mess("$C$$D $V$0=is,are$V$ bone dry!\n");
+        return 0;
+    }
+    if (pattern == drink_pat[1]) {
+        m = to_int(args[0]);
+        n = to_int(args[1]);
+        if ( n > 100 ) {
+          add_failed_mess( "You can't drink with that much precision!\n" );
+          return 0;
+        }
+        if ((m > n) || (m < 0) || (n <= 0)) {
+            add_failed_mess("Interesting fraction you have there!\n");
+            return 0;
+        }
+    } else {
+        m = 1;
+        n = 1;
+    }
+    if (_fraction) {
+        m = _fraction[0];
+        n = _fraction[1];
+    }
+    if ((m == 1) && (n == 1)) {
+        amt_to_drink = cont_volume;
+    } else {
+        amt_to_drink = (max_volume*m)/n;
+        if (amt_to_drink > volume) {
+            add_failed_mess("$C$$D $V$0=is,are$V$ less than " + m + "/" + n +
+                  " full.\n");
+            return 0;
+        }
+        if (amt_to_drink > cont_volume) {
+            amt_to_drink = cont_volume;
+        }
+    }
+    if (!drink_amount(amt_to_drink, this_player())) {
+       return 0;
+    }
+    switch ((this_player()->query_volume(2) + 100) / 200) {
+      case 0:
+      case 1:
+      case 2:
+      case 3:
+      case 4:
+        break;
+      case 5:
+        write("You feel mildly full of liquid.\n");
+        break;
+      case 6:
+        write("You feel very full of liquid.\n");
+        break;
+      case 7:
+        write("You feel all the liquid sloshing around inside you.\n");
+        break;
+      case 8:
+        write("You are awash with liquid.\n");
+        break;
+      case 9:
+        write("You are full to the brim with liquid.\n");
+        break;
+      default:
+        write("You feel you would burst if you drank any more.\n");
+        break;
+    }
+    return 1;
+}
+int do_quaff(object *dest, mixed me, mixed him, mixed args, string pattern) {
+   return do_drink(dest, me, him, args, pattern);
+}
+int do_empty(object *dest, string me, string him, string prep)
+{
+   if (environment(this_object()) != this_player()) {
+       add_failed_mess("You are not carrying $D.\n");
+       return 0;
+   }
+   if (sizeof(dest)) {
+       write("Passing on to pour ... bad move.\n");
+   }
+   if (!ensure_open()) {
+      add_failed_mess("$C$$D $V$0=is,are$V$ not open.\n");
+      return 0;
+   }
+   if (cont_volume == 0 &&
+       !sizeof(all_inventory())) {
+       add_failed_mess("$C$$D $V$0=is,are$V$ already empty.\n");
+       return 0;
+   }
+   (void)remove_volume(cont_volume);
+   all_inventory()->move(environment(this_player()));
+   return 1;
+}
+int check_splashable(object ob, object splasher, object splashee){
+  return ob->query_splashable(splasher, splashee);
+}
+int do_splash(object *dest, mixed me, mixed him, mixed args, string pattern) {
+    int amt_to_splash, i, m, n, orig_cv;
+    object *contents;
+    if (!sizeof(dest)) {
+        add_failed_mess("Splash it on who?\n");
+        return 0;
+    }
+    if(sizeof(dest) >1){
+        add_failed_mess("You may only splash one person at a time.\n");
+        return 0;
+    }
+    if (environment(this_object()) != this_player()) {
+        write("You aren't carrying the " + short(0) + ".\n");
+        return 0;
+    }
+    if (!ensure_open()) return 0;
+    if (!is_liquid) {
+        add_failed_mess("The " + short(0) + " $V$0=is,are$V$ bone dry!\n");
+        return 0;
+    }
+    if (pattern == splash_pat[1]) {
+        m = to_int(args[0]);
+        n = to_int(args[1]);
+        if ((m > n) || (m < 0) || (n <= 0)) {
+            notify_fail("Interesting fraction you have there!\n");
+            return 0;
+        }
+    } else {
+        m = 1;
+        n = 1;
+    }
+    contents = filter( all_inventory(this_object()), (:check_splashable:),
+          this_player(), dest[0]);
+    if( !sizeof(contents) ){
+       add_failed_mess("You can't splash anything in $D.\n");
+       return 0;
+    }
+    orig_cv = cont_volume;
+    if ( m == n ){
+        amt_to_splash = cont_volume;
+    } else {
+        amt_to_splash = (max_volume*m)/n;
+        if (amt_to_splash > volume) {
+            add_failed_mess("The " + short(0) + " $V$0=is,are$V$ less than "
+               + m + "/" + n + " full.\n");
+            return 0;
+        }
+        if (amt_to_splash > cont_volume) {
+            amt_to_splash = cont_volume;
+        }
+    }
+    if(this_player() == dest[0]){
+       this_player()->add_succeeded_mess(this_object(),
+                     "$N $V " + query_multiple_short(contents) +
+                     " from $D onto "+this_player()->query_objective() +
+                     "self.\n", ({}));
+    }else{
+       this_player()->add_succeeded_mess(this_object(),
+                     "$N $V " + query_multiple_short(contents) +
+                     " from $D onto $I.\n", dest);
+    }
+    for (i = 0; i < sizeof(contents); i++) {
+        if (amt_to_splash == cont_volume) {
+           contents[i]->consume(dest[0],
+           contents[i]->query_amount(), "splash");
+        } else {
+           contents[i]->consume(dest[0],
+              (int)contents[i]->query_amount()
+              * amt_to_splash / orig_cv, "splash");
+        }
+    }
+    return 1;
+}
+int check_applicable(object ob, object applier, object appliee){
+  return ob->query_applicable(applier, appliee);
+}
+int do_rub(object *dest, mixed me, mixed him, mixed args, string pattern) {
+    int amt_to_apply, i, m, n, orig_cv;
+    object *contents;
+    if (!sizeof(dest)) {
+        add_failed_mess("Rub it on who?\n");
+        return 0;
+    }
+    if(sizeof(dest) >1){
+        add_failed_mess("You may only rub stuff on one person at a time.\n");
+        return 0;
+    }
+    if (environment(this_object()) != this_player()) {
+        write("You aren't carrying the " + short(0) + ".\n");
+        return 0;
+    }
+    if (!ensure_open()) return 0;
+    if (!is_liquid) {
+        add_failed_mess("The " + short(0) + " $V$0=is,are$V$ bone dry!\n");
+        return 0;
+    }
+    if (pattern == apply_pat[1]) {
+        m = to_int(args[0]);
+        n = to_int(args[1]);
+        if ((m > n) || (m < 0) || (n <= 0)) {
+            notify_fail("Interesting fraction you have there!\n");
+            return 0;
+        }
+    } else {
+        m = 1;
+        n = 1;
+    }
+    contents = filter( all_inventory(this_object()), (:check_applicable:),
+        this_player(), dest[0]);
+    if( !sizeof(contents) ){
+       add_failed_mess("You can't rub anything in $D on $I.\n",dest);
+    }
+    orig_cv = cont_volume;
+    if ( m == n ){
+        amt_to_apply = cont_volume;
+    } else {
+        amt_to_apply = (max_volume*m)/n;
+        if (amt_to_apply > volume) {
+            add_failed_mess("The " + short(0) + " $V$0=is,are$V$ less than "
+               + m + "/" + n + " full.\n");
+            return 0;
+        }
+        if (amt_to_apply > cont_volume) {
+            amt_to_apply = cont_volume;
+        }
+    }
+    if (this_player() == dest[0]){
+       this_player()->add_succeeded_mess(this_object(),
+                     "$N $V " + query_multiple_short(contents) +
+                     " from $D onto "+this_player()->query_objective()+"self.\n", ({}));
+    } else {
+       this_player()->add_succeeded_mess(this_object(),
+                     "$N $V " + query_multiple_short(contents) +
+                     " from $D onto $I.\n", dest);
+    }
+    for (i = 0; i < sizeof(contents); i++) {
+        if (amt_to_apply == cont_volume) {
+           contents[i]->consume(dest[0],
+                          contents[i]->query_amount(),"apply");
+        } else {
+           contents[i]->consume(dest[0],
+              (int)contents[i]->query_amount()
+              * amt_to_apply / orig_cv, "apply");
+        }
+    }
+    return 1;
+}
+int do_apply(object *dest, mixed me, mixed him, mixed args, string pattern){
+   return do_rub(dest, me, him, args, pattern);
+}
+int do_taste() {
+    int amount_tasted;
+    if (environment(this_object()) != this_player()) {
+        write("You aren't carrying the " + short(0) + ".\n");
+        return 0;
+    }
+    if (!ensure_open()) {
+       return 0;
+    }
+    if (!cont_volume || !is_liquid) {
+        add_failed_mess("The " + short(0) + " $V$0=is,are$V$ bone dry!\n");
+        return 0;
+    }
+    amount_tasted = VOLUME_SHOT;
+    if (cont_volume < amount_tasted) {
+        amount_tasted = cont_volume;
+    }
+    if (amount_tasted < max_volume / 100) {
+       amount_tasted = max_volume / 100;
+    }
+    return drink_amount(amount_tasted, this_player());
+}
+int do_sip() {
+   int amount_tasted;
+   if (environment(this_object()) != this_player()) {
+      write("You aren't carrying the " + short(0) + ".\n");
+      return 0;
+   }
+   if (!ensure_open()) {
+      return 0;
+   }
+   if (!cont_volume || !is_liquid) {
+      add_failed_mess("The " + short(0) + " $V$0=is,are$V$ bone dry!\n");
+      return 0;
+   }
+   amount_tasted = VOLUME_SHOT * 2;
+   if (cont_volume < amount_tasted) {
+      amount_tasted = cont_volume;
+   }
+   if (amount_tasted < max_volume / 70) {
+      amount_tasted = max_volume / 70;
+   }
+   return drink_amount(amount_tasted, this_player());
+}
+int do_smell() {
+   if (!ensure_open()) {
+      return 0;
+   }
+   write("Smelling isn't implemented yet.  Sorry.\n");
+   return 1;
+}
+protected int handle_restore_inventory(object ob) {
+   int ret;
+   ret = ::handle_restore_inventory(ob);
+   if (ret == MOVE_OK) {
+      return MOVE_OK;
+   }
+   if (ob->query_liquid()) {
+      ob->set_amount( query_max_volume() - query_volume() );
+      ret = ::handle_restore_inventory(ob);
+      if (ret == MOVE_OK) {
+         return MOVE_OK;
+      }
+   }
+   return ret;
+}
+mapping int_query_static_auto_load() {
+  mapping tmp;
+  tmp = ::int_query_static_auto_load();
+  return ([ "::" : tmp, "leak rate" : leak_rate,
+           "max volume" : max_volume,
+          ]);
+}
+mapping query_static_auto_load() {
+  if ( !query_name() || ( query_name() == "object" ) ) {
+    return 0;
+  }
+  if ( explode( file_name( this_object() ), "#" )[ 0 ] == "/obj/vessel" ) {
+    return int_query_static_auto_load();
+  }
+  return ([ ]);
+}
+void init_static_arg(mapping args) {
+  if (args["::"])
+    ::init_static_arg(args["::"]);
+  if (!undefinedp(args["leak rate"]))
+    leak_rate = args["leak rate"];
+  if (!undefinedp(args["max volume"]))
+    max_volume = args["max volume"];
+}
+int test_add(object ob, int flag) {
+    int new_vol;
+    if ( !::test_add( ob, flag ) ) {
+        return 0;
+    }
+    if (ob->query_continuous()) {
+        new_vol = ob->query_amount();
+    } else if (ob->query_property("density")) {
+        new_vol = (int)ob->query_weight()*(int)ob->query_property("density");
+    } else {
+        new_vol = 0;
+    }
+    if ((new_vol + volume) > max_volume) {
+        return 0;
+    }
+    return 1;
+}
+void event_enter(object ob, string message, object from) {
+    int ob_vol, ob_cont;
+    if (environment(ob) == this_object()) {
+        if (ob->query_continuous() ) {
+            ob_vol = ob->query_amount();
+            ob_cont = 1;
+        } else if (ob->query_property("density")) {
+            ob_vol = (int)ob->query_weight()*
+              (int)ob->query_property("density");
+        } else {
+            ob_vol = 0;
+        }
+        if (ob->query_liquid()) {
+           is_liquid = 1;
+           _liquids = ({ });
+        }
+#ifdef DEBUG
+        debug_printf("Increasing volume by " + ob_vol + ".\n");
+#endif
+        volume += ob_vol;
+        if (ob_cont) cont_volume += ob_vol;
+        REACTION_HANDLER->check_reaction(ob);
+        if (leak_rate > 0) {
+            set_heart_beat(1);
+        }
+    }
+}
+void event_exit(object ob, string mess, object to) {
+    int ob_vol, ob_cont;
+    if (environment(ob) == this_object()) {
+        if (ob->query_continuous()) {
+            ob_vol = ob->query_amount();
+            ob_cont = 1;
+        } else if (ob->query_property("density")) {
+            ob_vol = (int)ob->query_weight()*
+              (int)ob->query_property("density");
+        } else {
+            ob_vol = 0;
+        }
+#ifdef DEBUG
+        debug_printf("Decreasing volume by " + ob_vol + ".\n");
+#endif
+        volume -= ob_vol;
+        if (ob_cont) cont_volume -= ob_vol;
+        if (volume <= 0) is_liquid = 0;
+    }
+}
+void break_me() {
+  object *liquid;
+   liquid = filter(all_inventory(), (: $1->query_liquid() :));
+   if (sizeof(liquid)) {
+      tell_room(environment(),
+         query_multiple_short(liquid) + " splashes all over the place "
+         "as " + the_short() + " breaks.\n");
+       liquid->move("/room/rubbish");
+   }
+   ::break_me();
+}
+mixed* parse_match_object(string* input, object player,
+                          class obj_match_context context) {
+   int result;
+   result = ::is_matching_object(input, player, context);
+   if (result) {
+      _fraction = context->fraction;
+      if (update_parse_match_context(context, 1, result)) {
+         return ({ result, ({ this_object() }) });
+      }
+   }
+   return 0;
+}
+string *parse_command_adjectiv_id_list() {
+   string *ret;
+   ret =  fullness_adjectives() + ::parse_command_adjectiv_id_list();
+   if (is_liquid && !query_opaque()) {
+      object liquid;
+      if (!sizeof(_liquids)) {
+         figure_out_liquids();
+      }
+      _liquids -= ({ 0 });
+      foreach (liquid in _liquids) {
+         ret += liquid->parse_command_adjectiv_id_list();
+      }
+      return ret;
+   }
+   return ret;
+}
+string* parse_command_id_list() {
+   if (is_liquid && !query_opaque()) {
+      string* ret;
+      object liquid;
+      if (!sizeof(_liquids)) {
+         figure_out_liquids();
+      }
+      _liquids -= ({ 0 });
+      ret = ::parse_command_id_list();
+      foreach (liquid in _liquids) {
+         ret += liquid->parse_command_id_list();
+      }
+      return ret;
+   }
+   return ::parse_command_id_list();
+}
+string* parse_command_plural_id_list() {
+   if (is_liquid && !query_opaque()) {
+      string* ret;
+      object liquid;
+      if (!sizeof(_liquids)) {
+         figure_out_liquids();
+      }
+      _liquids -= ({ 0 });
+      ret = ::parse_command_plural_id_list();
+      foreach (liquid in _liquids) {
+         ret += liquid->parse_command_plural_id_list();
+      }
+      return ret;
+   }
+   return ::parse_command_plural_id_list();
+}
+int query_vessel() { return 1; }
+
+==================================================
+FILE: virtual_room.c
+==================================================
+
+inherit "/std/room";
+#include <virtual_room.h>
+nosave mixed  *reset_definitions;
+nosave object *reset_objects;
+void add_cloned_object( int flag, int delay, mixed clone_info,
+                       string entry_mess ) {
+   if ( functionp( clone_info ) )
+      clone_info = bind( clone_info, this_object() );
+   if ( !sizeof( reset_definitions ) )
+      reset_definitions = ({ ({ flag, delay, clone_info, entry_mess }) });
+   else
+      reset_definitions += ({ ({ flag, delay, clone_info, entry_mess }) });
+}
+mixed *query_cloned_objects() {
+   return reset_objects + ({ });
+}
+mixed *query_cloned_definitions() {
+   return reset_definitions + ({ });
+}
+private object make_clone( mixed func ) {
+   if ( stringp( func ) ) {
+      return clone_object( func );
+   } else if ( functionp( func ) ) {
+      return evaluate( func );
+   } else
+      return 0;
+}
+protected void make_object( int i ) {
+   switch ( reset_definitions[ i ][ FLAG ] ) {
+    case REMOVABLE:
+    case FIXED:
+      reset_objects[ i ] = make_clone( reset_definitions[ i ][ CLONE ] );
+      reset_objects[ i ]->move( this_object(),
+            reset_definitions[ i ][ MESS ] );
+      break;
+    case UNIQUE:
+      if ( !stringp( reset_definitions[ i ][ CLONE ] ) )
+         return;
+      reset_definitions[ i ][ CLONE ]->move( this_object(),
+            reset_definitions[ i ][ MESS ] );
+      reset_objects[ i ] = find_object( reset_definitions[ i ][ CLONE ] );
+   }
+}
+void reset() {
+   int i;
+   if ( !sizeof( reset_definitions ) )
+      return;
+   if ( !sizeof( reset_objects ) )
+      reset_objects = allocate( sizeof( reset_definitions ) );
+   for ( i = sizeof( reset_definitions ); i--; ) {
+      switch ( reset_definitions[ i ][ FLAG ] ) {
+       case REMOVABLE:
+         if ( !reset_objects[ i ] ||
+             ( environment( reset_objects[ i ] ) != this_object() ) ) {
+            if ( reset_definitions[ i ][ DELAY ] >= 0 ) {
+               call_out( "make_object", reset_definitions[ i ][ DELAY ], i );
+            } else {
+               make_object( i );
+            }
+         }
+         break;
+       case FIXED:
+       case UNIQUE:
+         if ( !reset_objects[ i ] ) {
+            if ( reset_definitions[ i ][ DELAY ] >= 0 ) {
+               call_out( "make_object", reset_definitions[ i ][ DELAY ], i );
+            } else {
+               make_object( i );
+            }
+         }
+      }
+   }
+}
+
+==================================================
+FILE: wand.c
+==================================================
 
 #include <artifacts.h>
 #include <tasks.h>
-inherit "/obj/armour";
+inherit "/obj/weapon";
 inherit "/std/basic/artifact";
-int query_magic_ring() { return 1; }
+int query_magic_wand() { return 1; }
 void create() {
-   ::create();
-   set_type( "ring" );
-   set_damage_chance( 8 );
-   set_artifact_type( "ring" );
-   add_property( "shop type", "jewellers" );
-   add_alias( "jewellery" );
-   add_plural("jewellery");
+  weapon::create();
+  set_artifact_type( "wand" );
 }
 void set_weight( int number ) {
-   armour::set_weight( number );
-   setup_armour( 250 * number );
-   add_ac( "blunt", "blunt", 5 * weight );
-   add_ac( "sharp", "sharp", 2 * weight );
+  weapon::set_weight( number );
+  new_weapon( 80 * number );
+   add_attack( "prod", 90, ({ 0, 5, weight }), "blunt", "blunt", 0 );
 }
 string long( int word, int dark ) {
-  return artifact::long( word, dark ) + armour::long( word, dark );
+  return artifact::long( word, dark ) + weapon::long( word, dark );
 }
 void init() {
-  this_player()->add_command( "twist", this_object() );
+  this_player()->add_command( "zap", this_object(), "<direct:object> at <indirect:object>" );
+  this_player()->add_command( "zap", this_object(), "<indirect:object> with <direct:object>" );
 }
-int do_twist() {
+int do_zap( object *things ) {
   int outcome;
-  if ( query_worn_by() != this_player() ) {
-    this_player()->add_failed_mess( this_object(), "You must be "+
-        "wearing $D to $V it.\n", ({ }) );
+  if ( query_wielded() != this_player() ) {
+    this_player()->add_failed_mess( this_object(), "You must be holding "+
+        "$D to $V it.\n", ({ }) );
     return 0;
   }
-  outcome = (int)TASKER->perform_task(this_player(), RING_SKILL,
-                                      level, TM_FREE);
+  if( ( sizeof( things ) > 1 ) ||
+      ( sizeof( filter( things, (: $1->query_amount() > 1 :)) ) )
+    ){
+    this_player()->add_failed_mess( this_object(), "You can only zap $D "+
+        "at one object at a time.\n", ({ }) );
+    return 0;
+  }
+  if ( things[ 0 ] == this_object() ) {
+    this_player()->add_failed_mess( this_object(), "You cannot zap $D at "+
+        "itself!\n", ({ }) );
+    return 0;
+  }
+  outcome = (int)TASKER->perform_task(this_player(), WAND_SKILL, level,
+                                      TM_FREE);
   if ( outcome == FAIL ) {
     this_player()->add_failed_mess( this_object(), "You failed "+
-        "to use $D.\n", ({ }) );
+        "to $V $D.\n", ({ }) );
     return 0;
   }
   if ( !charges ) {
@@ -49,35 +1467,35 @@ int do_twist() {
         "are no charges in $D.\n", ({ }) );
     return 0;
   }
-  if ( outcome == AWARD ) {
-    write( "%^YELLOW%^" +
-          ({ "A piece of lore concerning rings becomes clearer for "+
-        "you.\n", "You manage to grasp one of the principles of magic "+
-        "rings more firmly.\n", "A sudden flash of insight allows you "+
-        "to understand the ring a little better.\n" })[ random( 3 ) ] +
-          "%^RESET%^");
-  }
+   if ( outcome == AWARD ) {
+      write( "%^YELLOW%^"+ ({ "A piece of lore concerning wands becomes "
+            "clearer for you", "You manage to grasp one of the principles "
+            "of magic wands more firmly", "A sudden flash of insight allows "
+            "you to understand the wand a little better" })[ random( 3 ) ] +
+            ".%^RESET%^\n" );
+   }
   charges--;
   if ( random( 100 ) < level / 10 ) {
-    if ( !zapper->failed_zap( 0, this_player(), this_object() ) )
-      this_player()->add_succeeded_mess( this_object(), "$N $V $D but "+
-          "nothing happens!\n", ({ }) );
+    if ( !zapper->failed_zap( things[ 0 ], this_player(), this_object() ) )
+      this_player()->add_succeeded_mess( this_object(), "$N $V $D at $I but "+
+          "nothing happens!\n", things );
     return 1;
   }
-  zapper->zap( 0, this_player(), this_object() );
+  zapper->zap( things[ 0 ], this_player(), this_object() );
+  this_player()->add_succeeded( things[ 0 ] );
   return 1;
 }
 mixed *stats() {
-  return armour::stats() + artifact::stats();
+  return weapon::stats() + artifact::stats();
 }
 mapping query_dynamic_auto_load() {
   return ([
-    "::" : armour::query_dynamic_auto_load(),
+    "::" : weapon::query_dynamic_auto_load(),
     "artifact" : artifact::query_dynamic_auto_load(),
   ]);
 }
 mapping query_static_auto_load() {
-  if ( explode( file_name( this_object() ), "#" )[ 0 ] != "/obj/ring" )
+  if ( explode( file_name( this_object() ), "#" )[ 0 ] != "/obj/wand" )
     return ([ ]);
   return ([
     "::" : int_query_static_auto_load(),
@@ -86,314 +1504,256 @@ mapping query_static_auto_load() {
 }
 void init_dynamic_arg( mapping map ) {
   if ( map[ "::" ] )
-    armour::init_dynamic_arg( map[ "::" ] );
+    weapon::init_dynamic_arg( map[ "::" ] );
   if ( map[ "artifact" ] )
     artifact::init_dynamic_arg( map[ "artifact" ] );
 }
 void init_static_arg( mapping map ) {
   if ( map[ "::" ] )
-    armour::init_static_arg( map[ "::" ] );
+    weapon::init_static_arg( map[ "::" ] );
   if ( map[ "artifact" ] )
     artifact::init_static_arg( map[ "artifact" ] );
 }
 
 ==================================================
-FILE: roommak.c
+FILE: weapon.c
 ==================================================
 
 inherit "/std/object";
-mixed *exits,
-      *items;
-string de_long,
-       de_short;
-int de_light;
-void setup() {
-  set_name("maker");
-  add_adjective("room");
-  set_short("Room maker");
-  set_long("It is a small wooden rod about 30 centimeters long with deep "+
-           "burn marks along the sides.  It has what looks like a small "+
-           "lens stuck in the end and three buttons along its length.\n");
-}
-void init() {
-  if (this_player()->query_creator()) {
-    add_action("do_new", "new");
-    add_action("do_set", "set");
-    add_action("do_add", "add");
-    add_action("do_setup", "setup");
-    add_action("do_modify", "modify");
-    add_action("do_map", "map");
-  }
-}
-int do_new(string str) {
-  if (!str) {
-    notify_fail("Syntax: new <name>\n");
-    return 0;
-  }
-}
-
-==================================================
-FILE: salve.c
-==================================================
-
-#include <drinks.h>
-inherit "/obj/food";
-mapping apply_effects;
-void create() {
-  do_setup++;
-  ::create();
-  do_setup--;
-  apply_effects = ([ ]);
-  if ( !do_setup )
-    this_object()->setup();
-}
-void init() {
-  this_player()->add_command( "apply", this_object(), "<direct:object> to <indirect:object>");
-}
-mapping query_apply_effects() { return apply_effects; }
-void set_apply_effects( mapping map ) { apply_effects = map; }
-int add_apply_effect( string word, int number ) {
-  if ( apply_effects[ word ] )
-    apply_effects[ word ] += number;
-  else
-    apply_effects[ word ] = number;
-  return apply_effects[ word ];
-}
-void remove_apply_effect( string word ) {
-  if ( !undefinedp( apply_effects[ word ] ) )
-    apply_effects = m_delete( apply_effects, word );
-}
-void being_joined_by( object thing ) {
-  int i, that, this;
-  string *words;
-  mapping new_effects;
-  that = (int)thing->query_amount();
-  this = query_amount();
-  if ( !( this + that ) )
-    return;
-  new_effects = (mapping)thing->query_apply_effects();
-  words = m_indices( apply_effects );
-  for ( i = 0; i < sizeof( words ); i++ )
-    if ( new_effects[ words[ i ] ] ) {
-      new_effects[ words[ i ] ] *= that;
-      new_effects[ words[ i ] ] += this * apply_effects[ words[ i ] ];
-    } else
-      new_effects[ words[ i ] ] = this * apply_effects[ words[ i ] ];
-  words = m_indices( new_effects );
-  for ( i = 0; i < sizeof( words ); i++ )
-    new_effects[ words[ i ] ] /= this + that;
-  apply_effects = new_effects;
-}
-int do_apply(object *indir, string dir_s, string indir_s, mixed *args) {
-    string *words;
-    int i;
-    if (environment(this_object()) != this_player()) {
-        write("You aren't holding the " + dir_s + ".\n");
-        return 0;
-    }
-    if (sizeof(indir) != 1) {
-        write("You can only " + query_verb() + " to one thing at a time.\n");
-        return 0;
-    }
-    if (living(indir[0])) {
-        words = m_indices( apply_effects );
-        for (i = 0; i < sizeof(words); i++) {
-            indir[0]->add_effect(words[i], apply_effects[words[i]] * query_amount());
-        }
-    }
-    this_player()->add_succeeded(indir[0]);
-    move("/room/rubbish");
-    return 1;
-}
-mapping query_static_auto_load() {
-  if ( ( explode( file_name( this_object() ), "#" )[ 0 ] != "/obj/salve" )
-      && !query_continuous() )
-    return 0;
-return int_query_static_auto_load();
-}
-mapping query_dynamic_auto_load() {
-  return ([
-    "::" : ::query_dynamic_auto_load(),
-    "apply_effects" : apply_effects + ([ ]),
-  ]);
-}
-void init_dynamic_arg( mapping map ) {
-  if ( map[ "::" ] )
-    ::init_dynamic_arg( map[ "::" ] );
-  apply_effects = map[ "apply_effects" ];
-}
-mixed *stats() {
-  int i;
-  string *words;
-  mixed *args;
-  args = ::stats();
-  words = m_indices( apply_effects );
-  for ( i = 0; i < sizeof( words ); i++ )
-    args += ({ ({ "apply effect#"+ i, words[ i ] +" ("+
-        apply_effects[ words[ i ] ] +")" }) });
-  return args;
-}
-
-==================================================
-FILE: scabbard.c
-==================================================
-
+inherit "/std/weapon_logic";
+inherit "/std/basic/condition";
+inherit "/std/basic/holdable";
+#include "weapon.h"
+#include "money.h"
 #include <move_failures.h>
 #include <virtual.h>
-inherit "/std/container";
-inherit "/std/basic/wearable";
-string sheath;
-string * types;
-int _no_types_in_long;
+string *un_modifyable;
+mixed *wield_func;
 void create() {
-   do_setup++;
-   container::create();
-   wearable::create();
-   do_setup--;
-   sheath = "";
-   types = ({ });
-   _no_types_in_long = 0;
-   add_alias( "scabbard" );
-   add_plural( "scabbards" );
-   if ( !query_property( "shop type" ) )
-      add_property( "shop type", "armoury" );
-   if ( !do_setup )
-      this_object()->setup();
+   set_damage_chance( 25 );
+   un_modifyable = ({ });
+   weapon_logic::create();
+   holdable::create();
+   condition::create();
+   object::create();
+   add_alias("weapon");
+   add_plural("weapons");
+   if (!query_property("shop type")) {
+      add_property("shop type", "armoury");
+   }
+   add_help_file("weapon");
 }
-int query_scabbard() { return 1; }
-string *query_types() { return types; }
-void set_types( string *words ) {
-   types = words;
-   switch ( sizeof( types ) ) {
-      case 0 :
-         sheath = "";
-         return;
-      case 1 :
-         sheath = "It could sheathe "+ add_a( types[ 0 ] ) +".\n";
-         return;
-      case 2 :
-         sheath = "It could sheathe "+ add_a( types[ 0 ] ) +" or "+
-               types[ 1 ] +".\n";
-         return;
-      default :
-         sheath = "It could sheathe "+ add_a( types[ 0 ] ) +", "+
-               implode( types[ 2 .. ], ", " ) +" or "+ types[ 1 ] +
-               ".\n";
+string short(int dark) {
+   string str;
+   str = "";
+   return ::short(dark)+str;
+}
+void set_wield_func(string func, mixed ob) {
+   if (!func) {
+      wield_func = 0;
+   } else {
+      wield_func = ({ func, ob });
    }
 }
-int test_type_ok( object thing, int flag ) {
-  foreach( string word in types ) {
-    if( thing->full_id( word ) )
-      return ::test_add( thing, flag );
+int query_weapon() { return 1; }
+string long(string s, int dark) {
+   return ::long(s, dark)+cond_string();
+}
+void new_weapon( int new_condition ) {
+   set_cond( new_condition );
+   set_max_cond( new_condition );
+   set_lowest_cond( new_condition );
+}
+int held_this_item(int held, object holder, mixed arg) {
+  int weight;
+  object weapon;
+  if(held == 1 && interactive(holder)) {
+    weight = this_object()->query_weight();
+    foreach(weapon in holder->query_weapons())
+      weight += weapon->query_weight();
+    weight -= holder->query_str();
+    switch(weight) {
+    case 76..10000:
+      tell_object(holder, "You struggle to hold " +
+                  query_multiple_short(holder->query_holding() +
+                                       ({ this_object() }) - ({ 0 })) +
+                  ".\n");
+      break;
+    case 50..75:
+      tell_object(holder, "You struggle slightly to hold " +
+                  query_multiple_short(holder->query_holding() +
+                                       ({ this_object() }) - ({ 0 })) +
+                  ".\n");
+      break;
+    default:
+    }
   }
-  return 0;
-}
-varargs int test_add( object thing, int flag, int noprint ) {
-   int foo;
-   if(flag)
-      return 0;
-   if( !environment( thing ) )
-      return ::test_add( thing, flag );
-   if( first_inventory( this_object() ) ) {
-      if( !noprint )
-         write( the_short() + " already holds " +
-           first_inventory( this_object() )->a_short() + ".\n" );
-      return 0;
-   }
-   foo = test_type_ok( thing, flag );
-   if(foo)
-      return foo;
-   if( !noprint )
-      write( thing->the_short() + " doesn't fit very well in "
-        + the_short() + ".  " + sheath );
-   return 0;
-}
-string long( string word, int dark ) {
-   string foo = _no_types_in_long ? "" : sheath;
-   if ( dark == 2 || dark == -2) {
-      return container::long( word, dark );
-   }
-   return container::long( word, dark ) + foo +
-         query_contents( "$C$"+ the_short() +" contains: " ) +
-         wearable::long( word, dark );
-}
-int query_ac( string type, int amount ) {
-   do_damage( type, amount );
-}
-void setup_scabbard( int number ) {
-   set_max_cond( number );
-   set_cond( number );
-   set_lowest_cond( number );
-}
-int query_value() {
-   return modify_value( container::query_value() );
-}
-int query_full_value() { return container::query_value(); }
-int drop(mixed dest) {
-   if ( worn_by )
-      if ( living( worn_by ) )
-         return 1;
-   return container::drop(dest);
+  if (wield_func) {
+    if (!held) {
+      return call_other(wield_func[1], wield_func[0], 0);
+    } else if (held == 1) {
+      return call_other(wield_func[1], wield_func[0], holder);
+    }
+  }
+  return 1;
 }
 varargs int move( mixed dest, string messin, string messout ) {
-   int flag;
-   flag = container::move( dest, messin, messout );
-   if ( ( flag == MOVE_OK ) && worn_by )
-      set_worn_by( 0 );
-   return flag;
+   int ret;
+   int limb;
+   object holder;
+   limb = query_my_limb();
+   holder = query_holder();
+   ret = holdable::move(dest);
+   if (ret != MOVE_OK) {
+      return ret;
+   }
+   ret = object::move( dest, messin, messout );
+   if (ret != MOVE_OK && holder) {
+      holder->set_hold(this_object(), limb);
+   }
+   return ret;
 }
 void dest_me() {
-   set_worn_by( 0 );
-   container::dest_me();
+  holdable::dest_me();
+  object::dest_me();
 }
-void break_me() {
-   if ( worn_by )
-      all_inventory()->move( environment( worn_by ), "$N fall$s from "+
-            a_short() +"." );
-   else
-      all_inventory()->move( environment(), "$N fall$s out of "+
-            a_short() +"." );
-   ::break_me();
+int modify_damage(int val, string name) {
+  int tmp;
+  tmp = val + (val * query_enchant()) /
+    (query_max_enchant() + query_enchant());
+  if(member_array(name, un_modifyable) != -1)
+    return tmp;
+  tmp = ( tmp * query_cond() ) / query_max_cond();
+  if(tmp < val / 10)
+    return val / 10;
+  return tmp;
+}
+void hit_weapon( int amount, string type ) {
+   if ( member_array( type, un_modifyable) != -1 )
+      return;
+   do_damage( type, amount );
+}
+int add_immune(string name) {
+   if (member_array(name, un_modifyable) != -1)
+      return 0;
+   un_modifyable += ({ name });
+   return 1;
+}
+int remove_immune(string name) {
+   int i;
+   if ((i = member_array(name, un_modifyable)) == -1)
+      return 0;
+   un_modifyable = delete(un_modifyable, i, 1);
+   return 1;
+}
+int query_value() {
+   return ( ::query_value() * ( 10 + ( 90 * query_cond() ) /
+                               query_max_cond() ) ) / 100;
+}
+int query_full_value() { return ::query_value(); }
+mixed *query_money_array() {
+   return (mixed *)MONEY_HAND->create_money_array(query_value());
+}
+int query_money(string type) {
+   int i;
+   mixed *m_a;
+   m_a = (mixed *)MONEY_HAND->create_money_array(query_value());
+   if ((i=member_array(type, m_a)) == -1)
+      return 0;
+   return m_a[i+1];
 }
 mixed *stats() {
-   return container::stats() + wearable::stats();
+   return
+      object::stats() +
+      condition::stats() +
+      weapon_logic::stats();
+}
+void break_me() {
+   if ( query_holder() ) {
+      tell_object( query_holder(), "%^RED%^$C$"+ the_short() +" breaks!%^RESET%^\n" );
+      tell_room( environment( query_holder() ), poss_short() +
+                 " breaks!\n", query_holder() );
+      query_holder()->set_unhold( this_object() );
+   }
+   ::break_me();
+}
+void player_wield(int pos) {
+  if (!environment()) {
+    return;
+  }
+  this_object()->hold_item( environment(), pos );
 }
 mapping query_static_auto_load() {
-   if ( explode( file_name( this_object() ), "#" )[ 0 ] != "/obj/scabbard" )
-      return ([ ]);
-   return ([
-      "::" : container::int_query_static_auto_load(),
-      "wear" : wearable::query_static_auto_load(),
-      "types" : types,
-      "_no_types_in_long" : _no_types_in_long,
-   ]);
+   if ( base_name( this_object() ) == "/obj/weapon" )
+      return int_query_static_auto_load();
+   return 0;
+}
+mapping int_query_static_auto_load() {
+   mapping tmp;
+   tmp = object::int_query_static_auto_load();
+   return ([ "::" : tmp,
+      "attack names" : attack_names,
+      "attack data" : attack_data,
+      "attack types" : attack_types,
+      "hold" : holdable::query_static_auto_load(),
+      "condition" : condition::query_static_auto_load()
+          ]);
 }
 mapping query_dynamic_auto_load() {
-   return ([
-      "::" : container::query_dynamic_auto_load(),
-      "wear" : wearable::query_dynamic_auto_load()
-   ]);
+   mapping map;
+   map = ([
+      "::" : object::query_dynamic_auto_load(),
+      "condition" : condition::query_dynamic_auto_load(),
+      "hold" : holdable::query_dynamic_auto_load(),
+           ]);
+   return map;
 }
 void init_static_arg( mapping map ) {
-   if ( !mapp( map ) )
-      return;
-   if ( map[ "::" ] )
-      container::init_static_arg( map[ "::" ] );
-   if ( map[ "wear" ] )
-      wearable::init_static_arg( map[ "wear" ] );
-   if ( pointerp( map[ "types" ] ) )
-      set_types( map[ "types" ] );
-   if ( map[ "_no_types_in_long" ] )
-      _no_types_in_long = map[ "_no_types_in_long" ];
+   if ( !mapp( map ) ) return ;
+   if ( map[ "::" ] ) {
+      object::init_static_arg( map[ "::" ] );
+   }
+   if ( map[ "attack names" ] ) {
+      attack_names = map[ "attack names" ];
+   }
+   if ( map[ "attack data" ] ) {
+      attack_data = map[ "attack data" ];
+   }
+   if ( map[ "attack types" ] ) {
+      attack_types = map[ "attack types" ];
+   }
+   if ( !undefinedp( map[ "condition" ] ) ) {
+      condition::init_static_arg( map[ "condition" ] );
+   }
+   if (map["no limbs"]) {
+      holdable::init_static_arg(map);
+   } else {
+      holdable::init_static_arg(map["hold"]);
+   }
 }
-void init_dynamic_arg( mapping map, object ob ) {
+void replace_me(){
+  object receipt;
+  receipt = clone_object( "/std/object" );
+  receipt->set_name( "receipt" );
+  receipt->set_short( "destructed item receipt" );
+  receipt->add_adjective( ({ "destructed", "item" }) );
+  receipt->set_long( "This seems to be a small piece of paper.\n" );
+  receipt->set_read_mess( "According to our sources, your "+query_short()+" was not "
+                          "allowed to exist.  Have a nice day." );
+  receipt->move( environment() );
+  receipt->set_weight( 1 );
+  destruct( this_object() );
+}
+void init_dynamic_arg( mapping map, object ) {
    mapping stat_temp;
    string virt_name, new_name;
    if ( map[ "::" ] )
-      container::init_dynamic_arg( map[ "::" ], ob );
-   if ( map[ "wear" ] )
-      wearable::init_dynamic_arg( map[ "wear" ], ob );
-   if( virt_name = query_property( VIRTUAL_NAME_PROP ) ) {
+      object::init_dynamic_arg( map[ "::" ] );
+   if ( !undefinedp( map[ "condition" ] ) ) {
+      condition::init_dynamic_arg( map[ "condition" ] );
+   }
+   holdable::init_dynamic_arg(map["hold"], 1);
+   if( virt_name = query_property( VIRTUAL_NAME_PROP) ) {
      if( file_size( virt_name ) == -1 ) {
        new_name = ( CLONER )->other_file( virt_name );
        if( stringp( new_name ) && ( new_name != virt_name ) ) {
@@ -417,976 +1777,604 @@ void init_dynamic_arg( mapping map, object ob ) {
      }
    }
 }
-int no_types_in_long() {
-   return _no_types_in_long;
-}
-int set_no_types_in_long( int val ) {
-   _no_types_in_long = val ? 1 : 0;
-   return _no_types_in_long;
-}
 
 ==================================================
-FILE: service_provider.c
+FILE: potions/potion.c
 ==================================================
 
-#include <armoury.h>
-#include <money.h>
-#include <move_failures.h>
-inherit "/obj/monster";
-#define SERVICE  0
-#define BROWSE   1
-#define FUNCTION 2
-#define COST     3
-#define ALIASES  4
-private int parsing_function( mixed *array , string words );
-int _busy;
-mixed *_service_array = ({ });
-void set_busy()   { _busy = 1; }
-void reset_busy() { _busy = 0; }
-varargs int check_busy( object player )
-{
-    if( _busy || sizeof( query_queued_commands() ) )
-    {
-        if( player ) {
-            tell_object( player, query_short() +" is busy at the moment."+
-            "  " + capitalize( query_pronoun() )+ " will be with you " +
-            "shortly.\n" );
+inherit "/std/object";
+#include <tasks.h>
+#define SKILL_WGT 0
+#define SKILL_MAX 1
+#define SKILL_LVL 2
+#define SKILL_ADV 3
+#define REAGENTS "/obj/reagents/"
+int min_level, max_level, advance_chance, backfire_chance, rel_strength;
+mapping skills = allocate_mapping(1);
+string *skill_str, reagent_alias, backfire_alias, potion_verb, recipe;
+string chant;
+void set_min_level(int l) { min_level = l; }
+void set_max_level(int l) { max_level = l; }
+int query_min_level() { return min_level; }
+int query_max_level() { return max_level; }
+void set_advance_chance(int c) { advance_chance = c; }
+int query_advance_chance() { return advance_chance; }
+void set_backfire_chance(int c) { backfire_chance = c; }
+int query_backfire_chance() { return backfire_chance; }
+void set_reagent_alias(string s) { reagent_alias = s; }
+string query_reagent_alias() { return reagent_alias; }
+void set_backfire_alias(string s) { backfire_alias = s; }
+string query_backfire_alias() { return backfire_alias; }
+void set_rel_strength(int s) { rel_strength = s; }
+int query_rel_strength() { return rel_strength; }
+void set_potion_verb(string s) { potion_verb = s; }
+string query_potion_verb() { return potion_verb; }
+void set_recipe(string s) { recipe = s; }
+string query_recipe() { return recipe; }
+void set_chant(string s) { chant = s; }
+string query_chant() { return chant; }
+void set_skills(mixed s) {
+    int i;
+    for (i = 0; i < (sizeof(s)); i++) {
+        skills[s[i][0]] = ({s[i][SKILL_WGT+1], s[i][SKILL_MAX+1],
+                            s[i][SKILL_LVL+1], 0});
+    }
+    skill_str = keys(skills);
+}
+mapping query_skills() { return skills; }
+object clone_reagent(string given_verb) {
+    int result, i, sum, x;
+    string s;
+    object ob;
+    if (potion_verb != given_verb) return 0;
+    for (i = 0; i < sizeof(skill_str); i++) {
+        s = skill_str[i];
+        skills[s][SKILL_ADV] = 0;
+        if (skills[s][SKILL_LVL]) {
+            if ((x = (int)this_player()->query_skill(s))
+                > skills[s][SKILL_MAX]) {
+                x = skills[s][SKILL_MAX];
+            } else {
+                skills[s][SKILL_ADV] = 1;
+            }
+        } else {
+            if ((x = (int)this_player()->query_skill_bonus(s))
+                > skills[s][SKILL_MAX]) {
+                x = skills[s][SKILL_MAX];
+            } else {
+                skills[s][SKILL_ADV] = 1;
+            }
         }
-    return 1;
-    } else
+        sum += x * skills[s][SKILL_WGT];
+    }
+    result = TASKER->attempt_task(min_level, sum, advance_chance,
+                          (max_level - min_level));
+    if ((result == FAIL) || (result == BARF)) {
+        if (random(100) < backfire_chance) {
+            ob = clone_object(REAGENTS+"brew_reagent.ob");
+            ob->set_medium_alias(backfire_alias);
+            ob->set_amount(sum*rel_strength/min_level);
+            return ob;
+        }
         return 0;
+    }
+    if (result == AWARD) {
+        for (i = 0; i < sizeof(skill_str); i++) {
+            s = skill_str[i];
+            if (skills[s][SKILL_ADV]) {
+                this_player()->add_skill_level(s, 1, 0);
+            }
+        }
+    }
+    ob = clone_object(REAGENTS+"brew_reagent.ob");
+    ob->set_medium_alias(reagent_alias);
+    ob->set_amount(sum*rel_strength/min_level);
+    return ob;
 }
+
+==================================================
+FILE: fungi/blue_nightcap.c
+==================================================
+
+inherit "/obj/fungus";
+void setup() {
+  set_adjs( "blue capped" );
+  set_type( "mushroom" );
+  set_extra( "The shape of it reminds you of someone wearing a nightcap." );
+}
+void next_stage() {
+  if ( stage == 8 )
+    add_eat_effect( "/std/effects/ingested/tranquil_sleep", 60 +
+        random( 60 ) );
+  ::next_stage();
+}
+
+==================================================
+FILE: fungi/fire_mushroom.c
+==================================================
+
+inherit "/obj/fungus";
+void setup() {
+  set_adjs( "red stalked" );
+  set_type( "mushroom" );
+  set_extra( "It seems to be gently smoking." );
+  set_messages( ({
+    "A small $type$ pushes up through the soil.\n",
+    "The $type$ seems to be a bit larger now.\n",
+    "The $type$ looks nice and large now.\n",
+    "The $type$ swells and suddenly releases a cloud of smoke.\n",
+    "There is a flash at the base of the $type$ and with a small roar, it "+
+        "rockets into the sky.\n"
+  }) );
+}
+void next_stage() {
+  if ( stage == 8 )
+    add_eat_effect( "/std/effects/ingested/basic_charging", 20 +
+        random( 11 ) );
+  ::next_stage();
+}
+int query_charging_power() {
+  int denominator, numerator, wholes;
+  mapping eat_effects;
+  eat_effects = query_eat_effects();
+  if ( !query_continuous() )
+    return eat_effects[ "/std/effects/ingested/basic_charging" ] *
+      (int)this_object()->query_weight();
+  denominator = query_weight_unit()[ 1 ];
+  numerator = eat_effects[ "/std/effects/ingested/basic_charging" ] *
+    query_amount() * query_weight_unit()[ 0 ];
+  wholes = numerator / denominator;
+  numerator %= denominator;
+  if ( random( denominator ) < numerator )
+    wholes++;
+  return wholes;
+}
+
+==================================================
+FILE: fungi/glow_toadstool.c
+==================================================
+
+inherit "/obj/fungus";
+void setup() {
+  set_adjs( "yellow spotted" );
+  set_type( "toadstool" );
+  set_extra( 0 );
+}
+void next_stage() {
+  if ( stage == 8 ) {
+    tell_room( environment(), "The yellow spots on the toadstool begin to "+
+        "glow.\n" );
+    set_light( 5 );
+    set_long( query_long() +"The yellow spots are glowing.\n" );
+  }
+  ::next_stage();
+}
+
+==================================================
+FILE: fungi/magic_mushroom.c
+==================================================
+
+inherit "/obj/fungus";
+void setup() {
+  set_adjs( "checkered" );
+  set_type( "mushroom" );
+  set_extra( "The checks are nice pastel shades of peach and mauve." );
+  set_messages( ({
+    "A small $type$ pushes up through the soil.\n",
+    "The $type$ seems to be a bit larger now.\n",
+    "The $type$ looks nice and large now.\n",
+    "The $type$ jumps up and down very quickly, and then burps.\n",
+    "You hear a small voice say: Goodbye, cruel world!\nThe $type$ "+
+        "falls over and disintegrates.\n"
+  }) );
+}
+void next_stage() {
+  if ( stage == 8 )
+    add_eat_effect( "/std/effects/ingested/hallucination", 150 +
+        random( 150 ) );
+  ::next_stage();
+}
+
+==================================================
+FILE: fungi/rust_fungus.c
+==================================================
+
+inherit "/obj/fungus";
+void setup() {
+  set_adjs( "rust" );
+  set_type( "fungus" );
+  set_extra( "It looks like a lump of rust, only soft and a bit squishy." );
+  set_messages( ({
+    "A small $type$ sprouts on the metal.\n",
+    "The $type$ seems to be a bit larger now.\n",
+    "The $type$ looks nice and large now.\n",
+    "The $type$ silently releases a red dust into the air.\n",
+    "The $type$ collapses in on itself and falls apart.\n"
+  }) );
+}
+void next_stage() {
+  if ( stage == 8 )
+    add_eat_effect( "/std/effects/ingested/strength_boost", 2000 +
+        random( 1000 ) );
+  ::next_stage();
+}
+
+==================================================
+FILE: reagents/.generic_liquid.ob_virtual_.c
+==================================================
+
+#include <virtual.h>
+void dest_me() { destruct( this_object() ); }
 void create()
 {
-    do_setup++;
-    ::create();
-    do_setup--;
-    if ( !do_setup ) this_object()->setup();
+  seteuid( (string)"/secure/master"->creator_file( file_name( this_object() ) ) );
+}
+object create_virtual_ob() {
+   object clone;
+  clone = (object)SERVER->create_virtual_object( "/obj/food.c", 1 );
+  clone->add_property( VIRTUAL_NAME_PROP, "/obj/reagents/generic_liquid.ob#1" );
+  call_other( clone, "add_adjective",  "some"  );
+  call_other( clone, "add_alias",  "liquid"  );
+  call_other( clone, "set_amount_types",  ([ "drop": ({ 1, "drops" }),              "teaspoon": ({ 20, "teaspoons" }),              "tablespoon": ({ 60, "tablespoons" }),              "ounce": ({ 120, "ounces" }),              "cup": ({ 960, "cups" }),              "pint": ({ 2400, "pints" }),                          "quart": ({ 4800, "quarts" }),                          "gallon": ({ 19200, "gallons" }) ])  );
+  call_other( clone, "add_adjective",  ({ "drop", "drops", "teaspoon", "teaspoons", "tablespoon",                "tablespoons", "ounce", "ounces", "cup", "cups", "pint",                "pints", "quart", "quarts", "gallon", "gallons", "of" })  );
+  call_other( clone, "set_pile_types",  ({ 50, "small", 100, "medium", "large" })  );
+  call_other( clone, "set_continuous",   );
+  call_other( clone, "set_liquid",   );
+  call_other( clone, "add_property",  "determinate", "" );
+   return clone;
+}
+
+==================================================
+FILE: b_day/card.c
+==================================================
+
+#define DEMON "/obj/b_day/demon"
+#include <player_handler.h>
+inherit "/std/object";
+int creator_status, is_open = 0;
+int opened_before = 0;
+string owner_name, owner_language;
+string* colour_array = ({
+  "%^RED%^", "%^BOLD%^%^RED%^",
+  "%^MAGENTA%^", "%^BOLD%^%^MAGENTA%^",
+  "%^ORANGE%^", "%^YELLOW%^",
+  "%^GREEN%^", "%^BOLD%^%^GREEN%^",
+  "%^WHITE%^", "%^BOLD%^%^WHITE%^",
+  "%^CYAN%^", "%^BOLD%^%^CYAN%^"
+  });
+void setup_card(string name, string language, int status);
+mapping init_query_static_auto_load() {
+  return ([ "::" : ::int_query_static_auto_load(),
+          "owner_name":owner_name,
+          "owner_language":owner_language,
+          "is_open":is_open,
+          "opened_before":opened_before]);
+}
+void init_static_arg( mapping map ) {
+  if ( map[ "::" ] ) {
+    ::init_static_arg( map[ "::" ] );
+  }
+  if ( !undefinedp( map[ "owner_name" ] ) ) {
+    owner_name = map[ "owner_name" ];
+  }
+  if ( !undefinedp( map[ "owner_language" ] ) ) {
+    owner_language = map[ "owner_language" ];
+  }
+  if ( !undefinedp( map[ "is_open" ] ) ) {
+    is_open = map[ "is_open" ];
+  }
+  if ( !undefinedp( map[ "opened_before" ] ) ) {
+    opened_before = map[ "opened_before" ];
+  }
+}
+mapping query_static_auto_load()
+{
+  if ( explode( file_name( this_object() ), "#" )[ 0 ] ==
+       "/obj/b_day/card" ) {
+    return init_query_static_auto_load();
+  }
+  return 0;
+}
+mixed *query_read_mess()
+{
+  if(!is_open) {
+    return ({ ({ "The card is addressed to " + owner_name +
+                   ".  Maybe you should open it?  Then again, if "
+                   "you're not " + owner_name + ", maybe you "
+                   "shouldn't.\n",
+                   0, owner_language, 1 }) });
+  }
+  return ::query_read_mess();
+}
+void set_closed_mesg()
+{
+    set_long("The closed card has been carefully handmade from pink "
+        "cardboard. There is a rather vague illustration of a "
+        "non-identifiable piece of flora on the front.\n");
+}
+void set_open_mesg()
+{
+    set_long("The open card has been carefully handmade from pink "
+        "cardboard.\n");
+}
+void setup_card(string own_name, string own_language, int cre_status)
+{
+  string *wizards, list;
+  int i;
+  owner_name = own_name;
+  owner_language = own_language;
+  creator_status = cre_status;
+  set_short(owner_name + "'s birthday card");
+  add_adjective( ({ owner_name, owner_name + "'s"}) );
+  wizards = get_dir("/w/");
+  if(creator_status) {
+    int start = member_array(lower_case(owner_name), wizards);
+    wizards = wizards[0..start-1] + wizards[start+1..];
+    list =
+      "\n    Have a wonderful birthday, " + owner_name + "!!!  \n"
+      "    LOVE AND KISSES FROM...                \n\n";
+    for(i=0;i<sizeof(wizards);i++) {
+      if(PLAYER_HANDLER->test_user(wizards[i])) {
+        list += colour_array[random(sizeof(colour_array))] +
+          capitalize(wizards[i]);
+        if(i == sizeof(wizards)-1) list += "%^RESET%^.\n\n";
+        else if(i == sizeof(wizards)-2) list += "%^RESET%^ and ";
+        else list += ",%^RESET%^ ";
+      }
+    }
+    list += "... and thanks for all your work and time, and let's hope "
+      "next year will be even more magical and fun, fun, fun!\n";
+  } else {
+    list =
+      "\n    Have a wonderful birthday, " + owner_name + "!!!  \n"
+        "    LOVE AND KISSES FROM...                \n\n";
+    for(i=0;i<sizeof(wizards);i++) {
+      if(PLAYER_HANDLER->test_user(wizards[i])) {
+        list += capitalize(wizards[i]);
+        if(i == sizeof(wizards)-1) list += ".\n";
+        else if(i == sizeof(wizards)-2) list += " and ";
+        else list += ", ";
+      }
+    }
+  }
+  add_read_mess(list, "various hands", owner_language, 1);
+}
+void setup()
+{
+  set_name("card");
+  set_short("birthday card");
+  add_adjective("birthday");
+  set_main_plural("birthday cards");
+  add_property("determinate", "");
+  add_property("no recycling", 1);
+  set_closed_mesg();
+  if(owner_name && owner_language) {
+    setup_card(owner_name, owner_language, creator_status);
+  }
 }
 void init()
 {
-    ::init();
-    this_player()->add_command( "inquire", this_object(),
-        "[a] <string> {from|of} <direct:living:here>", "do_browse" );
-    this_player()->add_command( "browse", this_object(),
-        "[a] <string> {from|of} <direct:living:here>" );
-    this_player()->add_command( "request", this_object(),
-        "[a] <string> from <direct:living:here>" );
-    this_player()->add_command( "list", this_object(),
-        "services [available] {from|of} <direct:living:here>" );
+    this_player()->add_command("open", this_object());
+    this_player()->add_command("close", this_object());
 }
-varargs int add_service( string service , string browse_info ,
-    string func, int cost, string *aliases )
+int do_open()
 {
-    string *alias_array;
-    if( !service || !browse_info || !func ||
-        !function_exists( func , this_object() , 1 ) )
-            return 0;
-    alias_array = !sizeof(aliases) ? ({ }) : aliases ;
-    _service_array += ({ ({ service , browse_info , func , cost ,
-        alias_array }) });
+    object demon;
+    if(is_open) {
+        write("It is already open.\n");
+        return 1;
+    }
+    if(lower_case(owner_name) != this_player()->query_name()) {
+      add_succeeded_mess( ({
+        "*** POP ***\n"
+          "An Origami Demon peers out from the card, sees you're not "
+          + owner_name + ", mutters about that not being very "
+          "low-temperature, and vanishes back into the card.\n",
+        "*** POP ***\n"
+          "An Origami Demon peers out from " + owner_name + "'s "
+          "birthday card at " + this_player()->query_cap_name() +
+          ", smirks and crawls back into the card.\n"
+      }) );
+      return 1;
+    }
+    is_open = 1;
+    set_open_mesg();
+    if(opened_before) return 1;
+    opened_before = 1;
+    demon = clone_object(DEMON);
+    demon->move(environment(this_player()));
+    demon->set_owner(owner_name);
+    demon->add_language(owner_language);
+    demon->set_language(owner_language);
+    add_succeeded_mess( ({
+      "*** POP ***\n"
+        "An Origami Demon explodes from your card as you open it!\n",
+      "*** POP ***\n"
+        "An Origami Demon explodes from " + owner_name + "'s birthday "
+        "card as " + owner_name +" opens it!\n"
+    }) );
+    call_out("start_demon", 2, demon);
     return 1;
 }
-int remove_service( string service )
-{
-    mixed *things;
-    things = filter( _service_array, (: $1[SERVICE]==$(service) :) );
-    switch( sizeof(things) ) {
-        case 1: _service_array -= things; return 0; break;
-        default: return 0; break;
-    }
-    return 0;
+void start_demon(object thing) {
+  thing->do_the_act(0);
 }
-int do_browse( mixed indirect_obs, string dir_match, string indir_match,
-    string *words )
+int do_close()
 {
-    string place;
-    mixed *things;
-    object player;
-    player = this_player();
-    if ( check_busy( player ) ) return 0;
-    place = query_property( "place" );
-    if ( !place || ( place == "" ) )
-        place = "default";
-    things =
-        filter( _service_array ,(:parsing_function( $1, $(words)[0]):) );
-    if( !sizeof( things ) ) {
-        init_command( "say I'm afraid I don't offer that service.", 2 );
-    } else {
-        init_command("say A " + things[0][SERVICE] + " costs " +
-            MONEY_HAND->money_value_string( things[0][COST], place ) +
-            ".  " + things[0][1], 2 );
+    if(!is_open) {
+        write("It is not open for you to close!\n");
+        return 1;
     }
-    player->add_succeeded_mess( this_object(), "$N ask$s $D "+
-          "about "+ words[ 0 ] +".\n", ({ }) );
+    is_open = 0;
+    set_closed_mesg();
     return 1;
 }
-int do_request( mixed indirect_obs, string dir_match, string indir_match,
-      string *words )
+mixed *stats()
 {
-    mixed *things;
-    object player;
-    int value;
-    string place;
-    player = this_player();
-    place = query_property("place");
-    if ( !place || place == "" )
-        place = "default";
-    if ( check_busy( player ) ) return 0;
-    things =
-        filter( _service_array , (: parsing_function($1,$(words)[0]) :));
-    if ( !sizeof( things ) )
-        init_command( "say I'm afraid I don't offer that service.", 2 );
-    else {
-        value = player->query_value_in("default") +
-            ( place == "default" ? 0 : player->query_value_in( place ) );
-        if( things[0][COST] > value )
-            init_command("say And just how do you propose to pay "+
-                "for a "+things[0][SERVICE]+"?" , 2 );
-        else {
-            init_command("say Certainly, "+
-                ( player->query_gender() == 1 ? "Sir" : "Ma'am" )+
-                "!");
-            tell_object( player , "You hand "+query_short()+" the "+
-                "necessary money.\n");
-            player->pay_money( MONEY_HAND->
-                create_money_array(things[0][COST], place ), place );
-            call_out( things[0][FUNCTION] , 4 , player, things[0] );
-        }
-    }
-    player->add_succeeded_mess( this_object(), "$N ask$s $D "+
-        "about having a "+ words[ 0 ] +".\n", ({ }) );
-   return 1;
-}
-int do_list()
-{
-    string place, list;
-    int i,number;
-    number = sizeof( _service_array );
-    place = query_property( "place" );
-    if ( !place || ( place == "" ) )
-        place = "default";
-    list = "I am currently offering the following: ";
-    if( number > 3 ) {
-        for( i=0 ; i < (number-2) ; i++ ) {
-            list += ( "a "+_service_array[i][SERVICE]+" for "+
-                MONEY_HAND->money_value_string(
-                    _service_array[i][COST], place )+", " );
-        }
-    }
-    if( number > 1 ) {
-        list += ( "a " + _service_array[<2][SERVICE] + " for " +
-            MONEY_HAND->money_value_string(
-                _service_array[<2][COST], place ) +" and " );
-    }
-    if( number > 0 ) {
-        list += ( _service_array[<1][SERVICE] + " for " +
-            MONEY_HAND->money_value_string(
-                _service_array[<1][COST], place ) +"." );
-    }
-    if( number == 0 )
-        list = "I am not currently offering any services.";
-    init_command("say "+ list, 2);
-    this_player()->add_succeeded_mess( this_object(), "$N ask$s $D what "+
-         "services "+ (string)this_object()->query_pronoun() +" has "+
-         "on offer.\n", ({ }) );
-   return 1;
-}
-private int parsing_function( mixed *array , string word )
-{
-    if ( array[SERVICE] == word ) return 1;
-    if ( member_array( word, array[ALIASES] ) != -1 ) return 1;
-    return 0;
+  return ::stats() + ({ ({ "owner name",owner_name }),
+                          ({ "owner language",owner_language }), });
 }
 
 ==================================================
-FILE: shield.c
+FILE: b_day/demon.c
 ==================================================
 
-#include <move_failures.h>
-#include <virtual.h>
-#define AC_LIMIT 100
-#undef INFORM
-inherit "/obj/armour";
-inherit "/std/basic/holdable";
-int no_limbs;
-nosave int held_in;
-void create() {
-   do_setup++;
-   armour::create();
-   add_alias( ({ "armour", "shield" }) );
-   add_plural( ({ "armours", "shields" }) );
-   add_help_file("armour");
-   if ( !query_property( "shop type" ) )
-      add_property( "shop type", "armoury" );
-   do_setup--;
-   if ( !do_setup )
-      this_object()->setup();
-}
-int query_no_limbs() { return no_limbs; }
-void set_no_limbs( int number ) { no_limbs = number; }
-mixed set_holder( object thing, int number ) {
-   if (!::set_holder(thing, number))  return 0;
-   if(!thing) {
-     worn_by = 0;
-     held_in = 0;
-   } else {
-     worn_by = thing;
-     held_in = number;
-   }
-   return 1;
-}
-int query_wearable() { return 0; }
-varargs int move( mixed dest, string messin, string messout ) {
-   int flag;
-   if ( worn_by && ( worn_by != dest ) )
-      if ( !sizeof( (int *)worn_by->set_unhold( this_object() ) ) )
-         return MOVE_NO_UNHOLD;
-   flag = armour::move( dest, messin, messout );
-   if ( ( flag == MOVE_OK ) && worn_by )
-      set_worn_by( 0 );
-   return flag;
-}
-void dest_me() {
-   set_worn_by( 0 );
-   armour::dest_me();
-}
-mixed *stats() {
-   return armour::stats() + ({ ({ "no_limbs", no_limbs }) });
-}
-mapping int_query_static_auto_load() {
-   return ([
-      "::" : armour::int_query_static_auto_load(),
-      "no limbs" : no_limbs,
-   ]);
-}
-mapping query_static_auto_load() {
-   if ( base_name(this_object()) != __FILE__[0..<3]) {
-      return ([ ]);
-   }
-   return int_query_static_auto_load();
-}
-mapping query_dynamic_auto_load() {
-   mapping map;
-   map = ([
-      "::" : armour::query_dynamic_auto_load(),
-   ]);
-   return map;
-}
-void init_static_arg( mapping map ) {
-   if ( !mapp( map ) )
-      return;
-   if ( map[ "::" ] )
-      armour::init_static_arg( map[ "::" ] );
-   if ( map[ "no limbs" ] )
-      no_limbs = map[ "no limbs" ];
-}
-void replace_me(){
-  object receipt;
-  receipt = clone_object( "/std/object" );
-  receipt->set_name( "receipt" );
-  receipt->set_short( "destructed item receipt" );
-  receipt->add_adjective( ({ "destructed", "item" }) );
-  receipt->set_long( "This seems to be a small piece of paper.\n" );
-  receipt->set_read_mess( "According to our sources, your "+query_short()+" was not "
-                          "allowed to exist.  Have a nice day." );
-  receipt->move( environment() );
-  receipt->set_weight( 1 );
-  destruct( this_object() );
-}
-void init_dynamic_arg( mapping map, object ) {
-   if ( map[ "::" ] )
-      armour::init_dynamic_arg( map[ "::" ] );
-}
-
-==================================================
-FILE: shovel.c
-==================================================
-
-inherit "/obj/weapon";
-string *patterns = ({
-  "with <direct:object> in <string>",
-  "with <direct:object> in <indirect:object>",
-  "with <direct:object>",
-  "[in] <string> with <direct:object>",
-  "[in] <indirect:object> with <direct:object>"
+#define SONG "/obj/b_day/happy"
+inherit "/obj/monster";
+int line;
+object owner;
+string owner_name;
+string* act_lines = ({
+  ":takes a deep breath...",
+  "sing \"Happy Birthday to you\"",
+  "sing \"Happy Birthday to you\"",
+  "sing \"Happy Birthday, dear $N\"",
+  ":pauses for breath...",
+  "sing \"Happy Birthday to yoooou.\"",
+  "sing \"The End!\"",
+  "hug $n in a way that only a tiny paper "
+    "demon could",
+  ":waves a minute pointed hand.",
+  ":frowns, then folds itself into nothingness..."
 });
-void init(){
-  this_player()->add_command("dig", this_object(), patterns);
+void setup()
+{
+  set_name("demon");
+  set_short("origami demon");
+  add_adjective("tiny");
+  add_adjective("pink");
+  add_adjective("paper");
+  add_adjective("origami");
+  set_main_plural("origami demons");
+  add_plural("demons");
+  set_long("This is a tiny, pink, paper demon. Looking closely you see "
+           "that it has been made by someone with a black belt in "
+           "Origami!\n");
+  set_race("demon");
+  set_level(1);
+  line = 1;
 }
-int do_dig( object *things, string dir_match, string
-            indir_match, mixed *args, string pattern) {
-  object *obj, indir;
-  string indir_s;
-  if (!objectp(environment(this_player()))) {
-    return 0;
-  }
-  obj=this_player()->query_holding();
-  if(member_array(this_object(), obj) == -1){
-    this_player()->add_failed_mess(this_object(), "You must hold the $D to "
-                                   "dig with it.\n", ({}));
-    return 0;
-  }
-  if (pattern == patterns[4]) {
-    if (!objectp(indir = things[0])) {
-      return 0;
-    }
-    indir_s = args[0];
-  } else if (pattern == patterns[3]) {
-    indir_s = args[0];
-    indir = 0;
-  } else if (pattern == patterns[2]) {
-    indir_s = 0;
-    indir = 0;
-  } else if (pattern == patterns[1]) {
-    if (!objectp(indir = things[0])) {
-      return 0;
-    }
-    indir_s = args[1];
-  } else if (pattern == patterns[0]) {
-    indir_s = args[1];
-    indir = 0;
-  } else {
-    return 0;
-  }
-  return environment(this_player())->dig(indir, indir_s);
+void set_owner(string person_name)
+{
+  owner = find_living(lower_case(person_name));
+  owner_name = person_name;
 }
-mapping query_static_auto_load() {
-   if ( explode( file_name( this_object() ), "#" )[ 0 ] == "/obj/shovel" )
-      return int_query_static_auto_load();
-   return ([ ]);
-}
-
-==================================================
-FILE: shut.c
-==================================================
-
-#include <network.h>
-#define OFFLER_SHADOW "/std/shadows/misc/offler_shadow"
-#undef CONVERTER
-#undef AUTO_RESURRECT
-inherit "/std/container";
-int time_of_crash, time_of_last_shout;
-void setup() {
-  if (file_name(this_object()) != "/obj/shut") {
-    write("This object can't be cloned.\n");
+void do_the_act(int i)
+{
+  string line_to_act;
+  if(i >= sizeof(act_lines)) {
     dest_me();
     return;
-    }
-  set_name("offler");
-  set_living_name("offler");
-  add_adjective( ({ "offler", "the", "crocodile" }));
-  add_alias("god");
-  enable_commands();
-  set_short( "Offler" );
-  add_property( "determinate", "" );
-  set_long("The Crocodile God.  He looks big, green, and, well "+
-           "like this really.\n");
-  add_alias("shut");
-  reset_get();
-}
-#define ishout(str) user_event("say", "%^BOLD%^%^RED%^Offler the Crocodile God shouts: "+str+"%^RESET%^\n", 0)
-void heart_beat() {
-   int time_to_crash;
-   if (!time_of_crash) return;
-   time_to_crash = time_of_crash - time();
-   if (time_to_crash < 1) {
-      call_out("end_it_all",0);
-      set_heart_beat(0);
-      return;
-   }
-   if (time_to_crash < 10)  {
-      ishout( "Game weboot in "+ time_to_crash +" thecondth." );
-      return;
-   }
-   if (time_to_crash < 60 && time_to_crash % 10 < 2) {
-      ishout( "Game ith webooting in "+ time_to_crash +
-            " thecondth.  Go away!" );
-      return;
-   }
-   if (time_to_crash % 60 > 5)
-      return;
-   time_to_crash /= 60;
-   if (time_to_crash == time_of_last_shout)
-      return;
-   time_of_last_shout = time_to_crash;
-   if (time_to_crash > 30) {
-      return ;
-   }
-   if(time_to_crash == 1) {
-      ishout( "Game ith webooting in one minute.  Quit now!" );
-      return;
-   }
-   if (time_to_crash < 10 || !(time_to_crash % 10)) {
-      ishout( "Game ith webooting in "+ time_to_crash +" minuteth." );
-      return;
-   }
-}
-void shut(int minutes, string reason) {
-   object *players;
-   int i;
-   string fname;
-   if (!intp(minutes)) {
-      write("Bad argument\n");
-      return;
-   }
-   fname = file_name(previous_object());
-   if (minutes <= 0) {
-      write("No time given\n");
-      return;
-   }
-#ifdef CONVERTER
-   if (!CONVERTER->ok_to_shut()) {
-      dest_me();
-      return;
-   }
-#endif
-   players = users();
-   for (i=0;i<sizeof(players);i++) {
-     if ( !players[ i ] )
-       continue;
-     if (players[i]->query_creator())
-     tell_object(players[i], "%^BOLD%^%^RED%^Offler the Crocodile God wishes "
-                 "you to know:  The mud is rebooting in "+
-                 number_as_string( minutes ) + " minutes.%^RESET%^\n" );
-   }
-   set_long("He is firmly concentrating on counting.\n");
-   if (time_of_crash)
-     write( "There was already a reboot scheduled, set for "+
-           (time_of_crash - time()) + " seconds.\n");
-   move("/d/am/buildings/drum/mendeddrum",
-      "Offler the Crocodile God appears in a puff of smoke.",
-      "Offler the Crocodile God appears in a puff of smoke.");
-   time_of_crash = time() + minutes*60;
-   time_of_last_shout = minutes;
-   set_heart_beat(1);
-#ifdef AUTO_RESURRECT
-   call_out( "check_ghosts", 60 );
-#endif
-   if(file_name(previous_object()) == "/obj/handlers/garbage")
-     log_file("REBOOT", "Shutdown requested automatically at "+ctime(time())+
-              "\n");
-   else if(this_player())
-     log_file("REBOOT", "Shutdown at "+ctime(time())+" requested by " +
-              this_player()->query_cap_name()+" for " + reason + "\n");
-   else
-     log_file("REBOOT", "Shutdown at "+ctime(time())+" requested by " +
-              file_name(previous_object()) + " for " + reason + "\n");
-}
-string long(string str, int dark) {
-  ::long(str, dark);
-  if ( time_of_crash && this_player() && this_player()->query_creator() )
-     return ::long(str,dark)+
-            "Game reboot will be in " + ( time_of_crash - time() ) +
-            " seconds.\n";
-  return ::long(str,dark);
-}
-void end_it_all() {
-   int i;
-   object *obs;
-   ishout( "Thutdown now!" );
-   obs = users();
-   for (i=0;i<sizeof(obs);i++) {
-      call_out("force_quit", i, obs[i]);
-   }
-   call_out("blue", 10);
-}
-void force_quit( object ob ) {
-   if ( !objectp( ob ) )
-      return;
-   ob->stop_all_fight();
-   if(ob->query_login_ob()) {
-     ob->dest_me();
-     return;
-   }
-   if ( !environment( ob ) )
-     ob->move( "/d/am/buildings/drum/mendeddrum" );
-   if(environment(ob) &&
-      file_name( environment( ob ) ) != "/room/departures" ) {
-     ob->quit_alt();
-   }
-   if (environment(ob) &&
-       file_name( environment( ob ) ) != "/room/departures" ) {
-     ob->quit();
-   }
-}
-void blue() {
-  if (sizeof(users()) > 0 &&
-      time() - time_of_crash < 240)
-    call_out("blue", 10);
-  else {
-    SERVICES_D->eventShutdown(1);
-    shutdown(0);
   }
-}
-int query_time_to_crash() {
-   if ( !time_of_crash ) {
-      call_out( "dest_me", 1 );
-      return 9999;
-   }
-   set_heart_beat( 1 );
-   return time_of_crash - time();
-}
-int query_unambushable() { return 1; }
-void do_ambushed() {
-   write( "Bad mistake...\n" );
-   this_player()->run_away();
-}
-#ifdef AUTO_RESURRECT
-void person_died( string word, int number ) {
-   object thing;
-   thing = find_player( word );
-   if ( !thing )
-      return;
-   switch ( number ) {
-      case 0 :
-         break;
-      case 1 :
-         tell_object( thing, "$I$5=Offler tells you exclaiming: Well, "+
-               "weally!  Thilly mortal, of all the timeth to die!\n" );
-         break;
-      case 2 :
-         tell_object( thing, "$I$5=Offler tells you: Don't wowwy, I'll "+
-               "welieve the chap with the thythe of you thith time.\n" );
-         break;
-      case 3 :
-         thing->remove_ghost();
-         clone_object( OFFLER_SHADOW )->setup_shadow( thing );
-         break;
-      default :
-         tell_object( thing, "$I$5=Offler tells you exclaiming: And behave "+
-               "yourthelf until I'm done, for goodneth' thake!\n" );
-         return;
-   }
-   call_out( "person_died", 3, word, number + 1 );
-}
-void person_dead( object thing, int number ) {
-   if ( !thing )
-      return;
-   if ( thing->query_property( "noregen" ) ) {
-      call_out( "person_dead", 3, thing, number );
-      return;
-   }
-   switch ( number ) {
-      case 0 :
-         tell_object( thing, "$I$5=Offler tells you exclaiming: Well, "+
-               "weally!  Can't have you wunning awound detheathed!\n" );
-         break;
-      case 1 :
-         thing->remove_ghost();
-         clone_object( OFFLER_SHADOW )->setup_shadow( thing );
-         break;
-      default :
-         tell_object( thing, "$I$5=Offler tells you exclaiming: Now behave "+
-               "yourthelf until I'm done, for goodneth' thake!\n" );
-         return;
-   }
-   call_out( "person_dead", 3, thing, number + 1 );
-}
-void check_ghosts() {
-   object thing;
-   foreach( thing in users() ) {
-      if ( !thing ) {
-          continue;
-      }
-      if ( !thing->query_property( "dead" ) ) {
-         continue;
-      }
-      if ( (int)thing->query_deaths() > (int)thing->query_max_deaths() ) {
-         continue;
-      }
-      call_out( "person_dead", 3, thing, 0 );
-   }
-}
-#endif
-
-==================================================
-FILE: staff.c
-==================================================
-
-#include <artifacts.h>
-#include <tasks.h>
-inherit "/obj/weapon";
-inherit "/std/basic/artifact";
-int query_magic_staff() { return 1; }
-void create() {
-  weapon::create();
-  set_artifact_type( "staff" );
-  set_no_limbs( 2 );
-}
-void set_weight( int number ) {
-  weapon::set_weight( number );
-  new_weapon( 80 * number );
-    add_attack( "thwack", 50, ({ weight / 3, 4, weight }), "blunt",
-         "blunt", 0 );
-    add_attack( "prod", 50, ({ weight / 2, 4, weight / 2 }), "blunt",
-         "blunt", 0 );
-}
-string long( int word, int dark ) {
-  return artifact::long( word, dark ) + weapon::long( word, dark );
-}
-void init() {
-  this_player()->add_command( "invoke", this_object() );
-}
-int do_invoke() {
-  int outcome;
-  if ( query_wielded() != this_player() ) {
-    this_player()->add_failed_mess( this_object(), "You must be holding "+
-        "$D to $V it.\n", ({ }) );
-    return 0;
+  if(environment(owner) != environment()) {
+    tell_room(environment(), "The origami demon rustles after "
+              + owner_name + ".\n");
+    move(environment(owner));
+    tell_room(environment(), "The origami demon rustles in.\n" );
+    do_command("'Hey "+owner_name+"! I hadn't finished!\n");
+    return;
   }
-  outcome = (int)TASKER->perform_task(this_player(), STAFF_SKILL, level,
-                                      TM_FREE);
-  if ( outcome == FAIL ) {
-    this_player()->add_failed_mess( this_object(), "You failed "+
-        "to $V $D.\n", ({ }) );
-    return 0;
+  line_to_act = act_lines[i];
+  line_to_act = replace(line_to_act, ({"$N", owner_name,
+                                       "$n", lower_case(owner_name) }));
+  if(!strlen(line_to_act)) {
+    set_heart_beat(0);
+    dest_me();
+    return;
   }
-  if ( !charges ) {
-    this_player()->add_failed_mess( this_object(), "It appears that there "+
-        "are no charges in $D.\n", ({ }) );
-    return 0;
+  do_command(line_to_act);
+  i++;
+  if(owner) {
+    call_out("do_the_act", 2, i);
   }
-  if ( outcome == AWARD ) {
-    write("%^YELLOW%^"+
-          ({ "A piece of lore concerning staves becomes clearer for "+
-             "you.\n", "You manage to grasp one of the principles of magic "+
-             "staves more firmly.\n", "A sudden flash of insight allows you "+
-             "to understand the staff a little better.\n" })[ random( 3 ) ] +
-          "%^RESET%^");
-  }
-  charges--;
-  if ( random( 100 ) < level / 10 ) {
-    if ( !zapper->failed_zap( environment( this_player() ), this_player(),
-        this_object() ) )
-      this_player()->add_succeeded_mess( this_object(), "$N $V $D but "+
-          "nothing happens!\n", ({ }) );
-    return 1;
-  }
-  zapper->zap( environment( this_player() ), this_player(), this_object() );
-  return 1;
+  return;
 }
-mixed *stats() {
-  return weapon::stats() + artifact::stats();
-}
-mapping query_dynamic_auto_load() {
-  return ([
-    "::" : weapon::query_dynamic_auto_load(),
-    "artifact" : artifact::query_dynamic_auto_load(),
-  ]);
-}
-mapping query_static_auto_load() {
-   if ( explode( file_name( this_object() ), "#" )[ 0 ] != "/obj/staff" )
-      return ([ ]);
-  return ([
-    "::" : int_query_static_auto_load(),
-    "artifact" : artifact::query_static_auto_load(),
-  ]);
-}
-void init_dynamic_arg( mapping map ) {
-  if ( map[ "::" ] )
-    weapon::init_dynamic_arg( map[ "::" ] );
-  if ( map[ "artifact" ] )
-    artifact::init_dynamic_arg( map[ "artifact" ] );
-}
-void init_static_arg( mapping map ) {
-   if ( !mapp( map ) )
-      return;
-  if ( map[ "::" ] )
-    weapon::init_static_arg( map[ "::" ] );
-  if ( map[ "artifact" ] )
-    artifact::init_static_arg( map[ "artifact" ] );
+void attack_by( object thing ){
+  if( !thing) return;
+  if( environment( thing ) != environment() ) return;
+  this_object()->stop_fight (thing);
+  thing->stop_fight (this_object());
+  init_command("say Meanie!  Shame on you!  I shall finish what I "
+               "started and then I shall be off.  You don't really "
+               "deserve this, you know.", 1);
+  return;
 }
 
 ==================================================
-FILE: state_changer.c
+FILE: examples/exa1.c
 ==================================================
 
-#include <tasks.h>
-#include <effect.h>
-#define STATE_CHANGE "/obj/handlers/state_change"
-inherit "/obj/vessel";
-object *add_list = ({ });
-int query_busy();
-int do_action( object *obs );
-string parse_message( string message );
-string query_classification();
-string command;
-string process;
-string start_mess;
-string interim_mess;
-string end_mess;
-int duration;
-int base_bonus;
-string skill;
-string fail_process;
-string end_mess_fail;
-string end_mess_abort;
-string command_mess;
-function start_func;
-function end_func;
-function fail_func;
-int gp_cost;
-string gp_type = "other";
-string running_inv_mess;
-void create() {
-    ::create();
-    set_stuck( 1 );
-    set_leak_rate( 0 );
-    set_weight( 100 );
-    set_max_weight( 5000 );
-    set_max_volume( 5000 );
-    set_hide_cond( 1 );
-    this_object()->add_extra_look(this_object());
+#include "path.h"
+inherit "/std/room";
+void setup()
+{
+  set_short("first simple room");
+  set_long("This is a simple room, have fun with it. To read the code " +
+           "simply type 'more here'. For help with more, type 'h' in it.\n");
+  set_light(90);
+  add_exit("east", ROOM + "exa2", "door");
+  set_zone("examples");
 }
-void set_command( string _command ) { command = _command; }
-void set_process( string _process ) { process = _process; }
-void set_fail_process( string _process ) { fail_process = _process; }
-void set_start_message( string message ) { start_mess = message; }
-void set_interim_message( string message ) { interim_mess = message; }
-void set_end_message( string message ) { end_mess = message; }
-void set_fail_message( string message ) { end_mess_fail = message; }
-void set_abort_message( string message ) { end_mess_abort = message; }
-void set_duration( int _duration ) { duration = _duration; }
-void set_command_mess( string message ) { command_mess = message; }
-void set_start_func( function f ) { start_func = f; }
-void set_end_func( function f ) { start_func = f; }
-void set_fail_func( function f) { fail_func = f; }
-void set_skill( string _skill, int _base_bonus ) {
-    skill = _skill;
-    base_bonus = _base_bonus;
-}
-void set_gp_cost( int gp ) { gp_cost = gp; }
-void set_gp_type( string type ) { gp_type = type; }
-void set_running_inv_mess( string mess ) { running_inv_mess = mess; }
-void init() {
-  ::init();
-  if ( command ) {
-    add_command( command, "all in <direct:object>", (: do_action( $1 ) :) );
-  }
-}
-int do_action( object *obs ) {
-int *tmp;
-  if ( gp_cost ) {
-      if ( this_player()->query_specific_gp( gp_type ) < gp_cost )
-          return notify_fail( "You are too tired to "+ command +" with the "+ this_object()->the_short() + ".\n" );
-      this_player()->adjust_gp( -gp_cost );
-  }
-  if ( sizeof( tmp = this_object()->effects_matching( query_classification() ) ) )
-    return notify_fail( this_object()->the_short() + " is already being used by "+
-      this_object()->arg_of( tmp[0] )->query_short() +"!\n" );
-  if ( !sizeof( all_inventory( this_object() ) ) )
-    return notify_fail( "There is nothing to "+ command + ".\n" );
-  if ( functionp( start_func ) ) {
-    if ( !evaluate( start_func ) ) {
-        debug_printf( "Stopped at start_func\n" );
-        return notify_fail( "" );
-    }
-  }
-  this_object()->add_effect( file_name( this_object() ), this_player() );
-  if ( stringp( start_mess ) )
-      tell_room( environment(), parse_message(start_mess) );
-  if ( stringp( command_mess ) ) {
-      this_player()->add_succeeded_mess( this_object(), parse_message( command_mess ),
-          all_inventory( this_object() ) );
-    debug_printf( "Setting asm to %s.\n", parse_message( command_mess ) );
-  }
-  else
-      this_player()->add_succeeded_mess( this_object(), "$N "+ command +"$s $I "
-        "in $D.\n", all_inventory( this_object() ) );
-  return 1;
-}
-object beginning(object apparatus, object tp, int id) {
-    apparatus->submit_ee(0, duration, EE_REMOVE);
-    apparatus->submit_ee("show_message", ({ 30, 30 }), EE_CONTINUOUS);
-    return tp;
-}
-object show_message(object apparatus, object tp, int id) {
-  if ( stringp( interim_mess ) )
-      tell_room(environment(), parse_message(interim_mess) );
-  if ( !sizeof( all_inventory() ) )
-    submit_ee( 0, 0, EE_REMOVE );
-  return tp;
-}
-object end(object apparatus, object tp, int id) {
- object ob;
- int temp;
- int l_bonus = base_bonus;
-  if ( functionp( end_func ) ) {
-    if ( !evaluate( end_func ) ) {
-        debug_printf( "Stopped at start_func\n" );
-        return tp;
-    }
-  }
-  if ( !sizeof( all_inventory() ) ) {
-    debug_printf( "Aborted due to lack of inventory!\n" );
-    if ( stringp( end_mess_abort ) )
-      tell_room( environment(), parse_message(end_mess_abort) );
-    return tp;
-  }
-  foreach( object i in all_inventory() ) {
-      if ( temp = i->query_property( process + " modifier" ) ) {
-          l_bonus += temp;
-          debug_printf( "%s difficulty will be modified by %d (%O).\n",
-             process, temp, ob );
-      }
-  }
-  if ( skill ) {
-      switch( TASKER->perform_task( tp, skill, l_bonus, TM_COMMAND ) ) {
-        case AWARD:
-          tell_object( tp, "%^YELLOW%^You learn something new about "+ process +"ing!%^RESET%^\n" );
-        case SUCCEED:
-          tell_room( environment(), parse_message(end_mess) );
-          foreach( object i in all_inventory() ) {
-            if (!i)
-              continue;
-              ob = STATE_CHANGE->transform( i, process, tp );
-              debug_printf( "Transforming: %O to %O.\n", i, ob );
-              if ( ob ) {
-                add_list += ({ ob });
-                i->move( "/room/rubbish" );
-                ob->move( this_object() );
-              }
-           }
-           break;
-        default:
-            if ( stringp( end_mess ) )
-                tell_room( environment(), parse_message(end_mess_fail) );
-            if ( functionp( fail_func ) )
-                evaluate( fail_func );
-            foreach( object i in all_inventory() ) {
-              if (!i)
-                continue;
-              ob = STATE_CHANGE->transform( i, fail_process, tp );
-              debug_printf( "Transforming: %O to %O.\n", i, ob );
-              if ( ob ) {
-                add_list += ({ ob });
-                i->move( "/room/rubbish" );
-                ob->move( this_object() );
-              }
-           }
-           break;
-      }
-  }
-  else {
-    if ( stringp( end_mess ) )
-        tell_room( environment(), parse_message(end_mess) );
-    foreach( object i in all_inventory() ) {
-      if (!i)
-        continue;
-      ob = STATE_CHANGE->transform( i, process, tp );
-      debug_printf( "Transforming: %O to %O.\n", i, ob );
-      if ( ob ) {
-        add_list += ({ ob });
-        i->move( "/room/rubbish" );
-      }
-      add_list->move( this_object() );
-      add_list = ({ });
-    }
-  }
-  return tp;
-}
-string query_classification() { return "state.changing."+ process; }
-string extra_look( object ob ) {
-  return "";
-}
-string parse_message( string message ) {
-  message = replace( message, "$inventory$", query_multiple_short( all_inventory() ) );
-  debug_printf( "message is: %s.\n" , message );
-  return message;
-}
-int test_add(object ob, int flag) {
-    debug_printf( "Testing add of: %O (%O) in state changer.\n", ob, environment( ob ) );
-    if ( member_array( ob, add_list ) != -1 ) {
-       return ::test_add( ob, flag );
-    }
-    if ( query_busy() ) {
-        tell_object( this_player(), "It might not be wise to add anything to "+
-            this_object()->the_short() + " while it is in use!\n" );
-        return 0;
-    }
-    return ::test_add( ob, flag );
-}
-int test_remove( object ob, int flag, mixed dest ) {
-    if ( dest && base_name( dest ) == "/room/rubbish" )
-        ::test_remove( ob, flag, dest );
-    debug_printf( "Testing remove of: %O (%O) in state changer.\n", ob, environment( ob ) );
-    if ( query_busy() ) {
-        tell_object( this_player(), "It might not be wise to take anything from "+
-            this_object()->the_short() + " while it is in use!\n" );
-        return 0;
-    }
-    return ::test_remove( ob, flag, dest );
-}
-string long( string word, int dark ) {
-  if ( query_busy() ) {
-    if ( stringp( running_inv_mess ) )
-      return query_long() + parse_message( running_inv_mess );
-    else
-      return ::long( word, dark );
-  }
-  return ::long( word, dark );
-}
-int do_empty(object *dest, string me, string him, string prep) {
-  if ( query_busy() ) {
-    add_failed_mess( "You can't empty "+ this_object()->short() +" while it is being used.\n" );
-    return 0;
-  }
-  return ::do_empty( dest, me, him, prep );
-}
-int do_fill(object *to, mixed *args_b, mixed *args_a, mixed *args) {
-  if ( query_busy() ) {
-    add_failed_mess( "You can't fill anything from "+ this_object()->short()
-      +" while it is being used.\n" );
-    return 0;
-  }
-  return  ::do_fill( to, args_b, args_a, args );
-}
-int query_busy() { return !!sizeof( this_object()->effects_matching( query_classification() ) ); }
 
 ==================================================
-FILE: surf_save.c
+FILE: examples/exa2.c
 ==================================================
 
-inherit "/std/surface";
-mapping details;
-nosave string save_file;
-void do_load() {
-   if ( save_file ) {
-      all_inventory( this_object() ) -> dest_me();
-      if ( file_size( save_file + ".o" ) > 0 ) {
-	 unguarded((: restore_object, save_file :));
-	 if ( sizeof( details ) ) init_dynamic_arg( details );
-      }
-   }
+#include "path.h"
+inherit "/std/room";
+void setup()
+{
+  set_short("second simple room");
+  set_long("This is the second example room. It introduces items, and " +
+           "aliasing - again use 'more here' to look at it. Over by the " +
+           "north wall you can see a table.\n");
+  set_light(90);
+ add_item("table",
+          "The table is one step away from being firewood. Upon it rests " +
+          "a blotter.\n");
+ add_item( ({ "north wall", "wall" }),
+          "It is very flat and is holding up rather a ricketty table.\n");
+ add_item("blotter",
+          "It is covered in random ink blots.\n");
+  add_exit("west", ROOM + "exa1", "door");
+  add_exit("east", ROOM + "exa3", "door");
+  set_zone("examples");
 }
-void create() {
-   save_file = "";
-   details = ([ ]);
-   ::create();
+
+==================================================
+FILE: examples/exa3.c
+==================================================
+
+#include "path.h"
+inherit "/std/room";
+void setup()
+{
+  set_short("third simple room");
+  set_long("This is the third example room. Will you ever get to the end? " +
+           "Directly above your head is a plaque, nailed to the wall.\n");
+  set_light(90);
+  add_sign("The plaque is made of bronze.\n",
+           "'Don't read me, I'm only an example sign you know!'\n",
+           0,
+           "plaque");
+  add_exit("west", ROOM + "exa2", "door");
+  add_exit("east", ROOM + "exa4", "door");
+  set_zone("examples");
 }
-int test_remove( object ob, int flag) {
-   if ( find_call_out( "do_save" ) == -1 )
-      call_out( "do_save", 0 );
-   return 1;
-}
-int test_add( object ob, int flag) {
-   if ( find_call_out( "do_save" ) == -1 )
-      call_out( "do_save", 0 );
-   return 1;
-}
-void do_save() {
-   if ( save_file ) {
-      details = ([ ]);
-      details = query_dynamic_auto_load();
-      unguarded((: save_object, save_file :));
-   }
-}
-void check_euid() {
-   if ( previous_object() )
-     seteuid( geteuid( previous_object() ) );
-}
-void set_save_file( string file ) {
-   save_file = file;
-   do_load();
+void reset()
+{
+  object bar;
+  if(sizeof(match_objects_for_existence("copper bar", ({ this_object() }) )))
+    return;
+  bar = clone_object("/std/object");
+  bar->set_name("bar");
+  bar->add_adjective("copper");
+  bar->set_main_plural("copper bars");
+  bar->add_plural("bars");
+  bar->set_short("copper bar");
+  bar->set_long("This is just a treasure thingie to show you how to use " +
+                  "such fun things.\n");
+  bar->set_weight(80);
+  bar->set_value(2000);
+  bar->move(this_object());
 }

@@ -1,1964 +1,2493 @@
-# Total Tokens: 17241
-# Total Files Merged: 10
-# Total Characters: 57508
+# Total Tokens: 21903
+# Total Files Merged: 7
+# Total Characters: 73035
 
-sters.c
+oup_handler.c
 ==================================================
 
-#if !efun_defined(db_exec)
-#define OLD
-#else
-#include <db.h>
-#endif
-#include <map.h>
-#define SIZE 7
-#define LEVEL(x) load(x)->level
-#include <config.h>
-nosave int maxnum = 0;
-nosave int lasttime = 0;
-nosave int count = 0;
-nosave mapping used = ([ ]);
-nosave mixed *todo= ({ });
-nosave mapping cache = ([ ]);
-nosave int setup_done = 1;
-nosave int db;
-nosave int setup_start_time;
-class cluster{
-  mixed *members;
-  int level;
-  int cluster_number;
-  int this_cluster;
-  mixed *contacts;
+#include <group_handler.h>
+#include <broadcaster.h>
+#include <login_handler.h>
+int _loaded;
+int _groups_formed;
+mapping _groups;
+class group
+{
+   int start_time;
+   string short;
+   string leader_name;
+   object leader;
+   object *members;
+   object *invited;
 }
-#ifndef OLD
-private int get_cluster(mixed);
-private mixed cdb_fetch(int fd, int row){
-  mixed stuff = db_fetch(fd, row);
-  if(arrayp(stuff)){
-    mixed tmp, ret = ({});
-    foreach(tmp in stuff){
-      if(stringp(tmp)){
-        int i;
-        sscanf(tmp, "%d", i);
-        if(i || tmp == "0")
-          tmp = i;
-      }
-      ret += ({tmp});
-    }
-    stuff = ret;
-  }
-  return stuff;
+int is_group( string group );
+int is_member( string name, object person );
+int is_invited( string name, object person );
+object *invitations_to( string name );
+string query_group_short( string name );
+object *members_of( string name );
+object leader_of( string name );
+string short_to_name( string short );
+int create_group( string name );
+int remove_group( string name );
+int add_invite( string name, object person, int flag );
+int remove_invite( string name, object person );
+int add_member( string name, object person );
+int remove_member( string name, object person );
+varargs int set_leader( string name, object person, object appointer );
+void notify_group( string name, object broadcaster, mixed message );
+varargs void disband_group( string name, mixed message );
+varargs object shuffle_new_leader( string group, int way, object *exclude );
+void leader_goes_linkdead( string player, string event_type );
+void handle_group_follow( string group, object who, object *what,
+   int unfollow, int silent );
+void broadcast_to_groups( string *name, string message );
+string *query_groups();
+int set_group_short( string, string);
+void create()
+{
+   _groups = ([ ]);
+   _loaded = time();
+   _groups_formed = 0;
 }
-#endif
-private class cluster load(int x){
-  mixed rows;
-  class cluster tmp = new(class cluster);
-  if(cache[x])
-    return cache[x];
-#ifdef OLD
-  cache[x] = restore_variable(unguarded((: read_file(sprintf("/save/clusters/%d",
-                                                           (int)$(x))) :)));
-#else
-  rows = db_exec(db, "select member from cluster_members where cluster_number = %d", x);
-  if(stringp(rows) || !rows)
-    return 0;
-  tmp->members = ({});
-  rows++;
-  while(--rows)
-    tmp->members += cdb_fetch(db, rows);
-  rows = db_exec(db, "select level, in_cluster from cluster_list where cluster_number = %d", x);
-  if(stringp(rows)){
-    db_close(db);
-    db = db_connect("localhost","discworld",CONFIG_DB_USER);
-    return 0;
-  }
-  rows = cdb_fetch(db, 1);
-  tmp->level = rows[0];
-  tmp->cluster_number = rows[1];
-  tmp->this_cluster = x;
-  rows = db_exec(db, "select contact from cluster_contacts where cluster_number = %d", x);
-  if(stringp(rows))
-    return 0;
-  tmp->contacts = ({});
-  rows++;
-  while(--rows)
-    tmp->contacts += cdb_fetch(db, rows);
-  cache[x] = tmp;
-#endif
-  return cache[x];
-}
-private void save(class cluster x){
-#ifdef OLD
-  unguarded((:write_file(sprintf("/save/clusters/%d", $(x->this_cluster)),
-                           save_variable($(x)), 1):));
-#else
-  db_exec(db, "insert into cluster_list values (%d, %d, %d)", x->this_cluster,
-          x->level, x->cluster_number);
-  map(x->members, (:db_exec(db, "insert into cluster_members values (%d, '%s')",
-                            $(x->this_cluster), db_escape(""+$1)):));
-  map(x->contacts, (:db_exec(db, "insert into cluster_contacts values (%d, '%s')",
-                            $(x->this_cluster), db_escape(""+$1)):));
-#endif
-  cache[x->this_cluster] = x;
-}
-private void make_clusters(mixed);
-nosave function fix_contacts;
-nosave function fix_room_contacts;
-private void create(){
-#ifndef OLD
-  db = db_connect("localhost","discworld",CONFIG_DB_USER);
-  map(({"cluster_members", "cluster_list", "cluster_contacts"}),
-      (:db_exec(db, "delete from %s;", $1):));
-#endif
-  fix_room_contacts = function(int i){
-    class cluster fixing = load(i);
-    if((sizeof(fixing->contacts)) && intp(fixing->contacts[0])){
-      error(sprintf("%d in two or more clusters", i));
-      return;
-    }
-    fixing->contacts = uniq_array(map(fixing->contacts,
-#ifdef OLD
-                                      (:MAP->query_cluster($1):)
-#else
-                                      (:cache[$1]:)
-#endif
-                                      ));
-  save(fixing);
-  };
-  fix_contacts = function (int i){
-    class cluster fixing = load(i);
-    reset_eval_cost();
-    if(fixing->level){
-      if((sizeof(fixing->contacts)) && (fixing->level ==
-                                        LEVEL(fixing->contacts[0]))){
-        error(sprintf("%d in two or more clusters", i));
-        return;
-      }
-      fixing->contacts = uniq_array(map(fixing->contacts,
-                                        (:load($1)->cluster_number:)));
-      save(fixing);
-      if(fixing->level > 1){
-        map(fixing->members, (:efun::call_out((fix_contacts), 0, $1):));
-        return;
-      }
-      map(fixing->members, fix_room_contacts);
-    }
-  };
-#ifdef OLD
-  unguarded(function(){
-    string file, *files=get_dir("/save/clusters/");
-    foreach(file in files)
-      rm(sprintf("/save/clusters/%s", file));
-  });
-#endif
-}
-private void make_clusters(mixed start){
-  int count = 0, depth = -1, oldmax = maxnum, level = (stringp(start)? 0 :
-                                                       load(start)->level + 1);
-  class cluster current;
-  mixed *list;
-  function qdd, real;
-  if(stringp(start)){
-    qdd = function(string room){
-      function f = function(string there, string room){
-        mixed tmp;
-        return member_array(room,
-                            (tmp = MAP->qdd(there), tmp? tmp : ({}))) + 1;
-      };
-      string *qdd = MAP->qdd(room);
-      return filter(allocate(sizeof(qdd) / 2, (:$(qdd)[$1 * 2 + 1]:)), f, room);
-    };
-    real = (:$1:);
-  } else {
-    qdd = (:load($1)->contacts:);
-    if(stringp(load(start)->contacts[0]))
-      real = (:cache[$1]:);
-    else
-      real = (:load($1)->cluster_number:);
-  }
-  current = new (class cluster, members:({start}),
-                 level:level,
-                 this_cluster:++maxnum,
-                 contacts:({}));
-  list = ({start});
-  if(used[start])
-    error(sprintf("%O already in a cluster", start));
-  used[start] = 1;
-  while(++depth < sizeof(list) || sizeof(todo)){
-    mixed *exits;
-    mixed exit;
-    if(depth < sizeof(list))
-      exits = (*qdd)(list[depth]);
-    else {
-      count = SIZE + 1;
-      exits = ({});
-    }
-    foreach(exit in exits) {
-      if(!used[exit = (*real)(exit)]) {
-        current->members += ({exit});
-        list += ({exit});
-        used[exit] = 1;
-        if(++count > SIZE)
-          break;
-      }
-    }
-    if(count > SIZE || !(((1 + depth) < sizeof(list)) || sizeof(todo))){
-      mixed tmp, *contacts = ({});
-      count = 0;
-      foreach(tmp in current->members){
-        reset_eval_cost();
-        if(stringp(tmp)){
-#ifdef OLD
-          MAP->set_cluster(tmp, current->this_cluster)
-#endif
-          ;
-          cache[tmp] = current->this_cluster;
-        }
-        else{
-          class cluster clust;
-          clust = load(tmp);
-          clust->cluster_number = current->this_cluster;
-          cache[tmp] = clust;
-        }
-        exits = (*qdd)(tmp);
-        if(exits){
-          function add_non_member, convert_and_add;
-          add_non_member = (: (member_array($2, $(current->members)) == -1)?
-                            ($1 | ({ $2 })) :
-                            $1
-                           :);
-          convert_and_add = (:evaluate($(add_non_member), $1,
-                                      evaluate($(real), $2)):);
-          contacts = implode(exits, convert_and_add, contacts);
-        }
-      }
-      current->contacts = contacts;
-      if(sizeof(contacts) || current->level > 1)
-        cache[current->this_cluster] = current;
-      else
-        maxnum--;
-      todo = filter(todo + list + contacts, (:!used[$1]:));
-      depth = -1;
-      if(sizeof(todo)){
-        list = ({todo[0]});
-        todo = todo[1..];
-        if(used[list[0]])
-          error("corrupt todo list");
-        used[list[0]] = 1;
-        current = new (class cluster, members:({list[0]}),
-                       level:level,
-                       this_cluster:++maxnum,
-                       contacts:({}));
-      } else
-        list = ({ });
-    }
-  }
-  if((maxnum - oldmax) > SIZE)
-    make_clusters(current->this_cluster - 1);
-  else {
-    int i;
-    for(i = oldmax + 1; i <= maxnum; i++)
-      if(LEVEL(i))
-        efun::call_out(fix_contacts, 0, i);
-      else
-        efun::call_out(fix_room_contacts, 0, i);
-  }
-  used = ([]);
-  efun::call_out((:cache = ([]), setup_done = 1:), 2);
-}
-#ifndef OLD
-private int get_cluster(mixed thing){
-  if(stringp(thing)){
-    mixed exret = db_exec(db, "select cluster_number from cluster_members where member = '%s'",
-                          db_escape(thing));
-    if(!stringp(exret) && exret){
-      return cdb_fetch(db, 1)[0];
-    }
-  } else if(intp(thing)){
-    mixed exret = db_exec(db, "select in_cluster from cluster_list where cluster_number = %d",
-                          thing);
-    if(!stringp(exret) && exret){
-      return cdb_fetch(db, 1)[0];
-    }
-  }
-  return 0;
-}
-#endif
-private int query_top_cluster(string room){
-  int ret;
-#ifdef OLD
-  ret = MAP->query_cluster(room);
-  if(ret && unguarded((:file_size(sprintf("/save/clusters/%d", $(ret))):)) > 0)
-    while(load(ret)->cluster_number){
-      int last = ret;
-      ret = load(ret)->cluster_number;
-      if(last == ret)
-        return ret;
-    }
-#else
-  ret = get_cluster(room);
-  if(ret){
-    int last = ret;
-    ret = get_cluster(ret);
-    while(ret){
-      last = ret;
-      ret = get_cluster(ret);
-    }
-    return last;
-  }
-#endif
-  else{
-    setup_start_time = time();
-    setup_done = 0;
-    make_clusters(room);
-  }
-  return ret;
-}
-#ifndef OLD
-private mixed *get_members(int clust){
-  mixed rows;
-  rows = db_exec(db, "select member from cluster_members where cluster_number = %d", clust);
-  if(stringp(rows))
-    return ({ });
-  return allocate(rows, (:cdb_fetch(db, $1 + 1)[0]:));
-}
-private mixed *get_contacts(int clust){
-  mixed rows;
-  rows = db_exec(db, "select contact from cluster_contacts where cluster_number = %d", clust);
-  if(stringp(rows))
-    return ({ });
-  return allocate(rows, (:cdb_fetch(db, $1 + 1)[0]:));
-}
-#endif
-private mixed *find_places(int start, int end, int *places){
-  int found = 0, depth = 0;
-  int *key;
-  int *exits, bing, *result, ob, exit;
-  mapping search = ([]);
-  if(start == end){
-#ifdef OLD
-    return load(start)->members;
-#else
-    return get_members(start);
-#endif
-  }
-  key = ({ start });
-  search[start] = "binglewop";
-  while (!found) {
-    reset_eval_cost();
-    ob = key[depth];
-    if (ob) {
-#ifdef OLD
-      exits = load(ob)->contacts;
-#else
-      exits = get_contacts(ob);
-#endif
-      foreach(exit in exits) {
-        if ((!search[exit]) && (member_array(exit, places) != -1 ||
-                               sizeof(places) == 0)) {
-          search[exit] = ob;
-          key += ({ exit });
-          if (exit == end)
-            found = 1;
-        }
-      }
-    }
-    if (!found && ++depth >= sizeof(key))
-      return 0;
-  }
-  exits = ({ });
-  bing = end;
-  result = ({ });
-  while (bing != start) {
-    reset_eval_cost();
-#ifdef OLD
-    result += load(bing)->members;
-#else
-    result += get_members(bing);
-#endif
-    bing = search[bing];
-  }
-#ifdef OLD
-  result += load(bing)->members;
-#else
-  result += get_members(bing);
-#endif
-  return result;
-}
-private mixed find_route(mixed start, mixed end, string *places){
-  int found = 0, i, depth = 0;
-  string *key;
-  string *exits, bing, *result, ob;
-  mapping route = ([]), search = ([]);
-  int t = real_time();
-  if(start == end)
-    return ({});
-  key = ({ start });
-  route[start] = "binglewop";
-  while (!found) {
-    reset_eval_cost();
-    ob = key[depth];
-    if (ob) {
-      exits = MAP->qdd(ob);
-      for (i = 1; i < sizeof(exits); i += 2) {
-        mixed exit = exits[i];
-        if ((!route[exit]) && (member_array(exit, places) != -1 ||
-                               sizeof(places) == 0)) {
-          route[exit] = exits[i - 1];
-          search[exit] = ob;
-          key += ({ exit });
-          if (exit == end)
-            found = 1;
-        }
-      }
-    }
-    if (!found && (++depth >= sizeof(key) || (real_time() - t) > 4))
-      return 0;
-  }
-  exits = ({ });
-  bing = end;
-  result = ({ });
-  while (bing != start) {
-    reset_eval_cost();
-    result = ({route[bing]}) + result;
-    bing = search[bing];
-  }
-  return result;
-}
-nosave int debugging = 0;
-private void debug(int *clusters){
-  int cluster;
-  if(debugging)
-    error("read the error trace");
-  debugging = 1;
-  reset_eval_cost();
-  while(intp(load(clusters[0])->members[0]))
-    clusters = implode(clusters, (:$1 + load($2)->members:), ({}));
-  foreach(cluster in clusters){
-    string *rooms = load(cluster)->members;
-    string room, room2;
-    reset_eval_cost();
-    foreach(room in rooms)
-      foreach(room2 in rooms)
-        if(!this_object()->get_route(room, room2))
-          error("cluster error");
-  }
-}
-string* get_route(string start, string end, function callback){
-  mixed *places = ({}), *oldplaces;
-  int sip = 0;
-  int from, to;
-  int level;
-  if(lasttime != time()){
-    lasttime = time();
-    count = 0;
-  } else {
-    if(count++ > 10) {
-      return ({});
-    }
-  }
-  if(!setup_done){
-    if((time()-setup_start_time) < 5)  {
-      return 0;
-    }
-#ifndef OLD
-#endif
-    catch(unguarded(function(){
-      cp("/log/runtime", "/w/wodan/clusterruntime");
-      cp("/log/catch", "/w/wodan/clustercatch");
-    }));
-    tell_creator("wodan", "would have dested");
-    setup_done = 1;
-    return 0;
-  }
-  if(!stringp(start)){
-    start = base_name(start);
-    if(!stringp(start))
-      error("illegal start point");
-  }
-  if(!stringp(end)){
-    end = base_name(end);
-    if(!stringp(end))
-      error("illegal end point");
-  }
-  if(catch(from = query_top_cluster(start))){
-#ifndef OLD
-    db_close(db);
-    db = db_connect("localhost","discworld", CONFIG_DB_USER);
-#endif
-    return 0;
-  }
-  if(!setup_done) {
-    return 0;
-  }
-  if(from) {
-    level = LEVEL(from);
-  }
-  to = query_top_cluster(end);
-  if(!to || (level != LEVEL(to))) {
-    return ({});
-  }
-  while (level) {
-#ifdef OLD
-    from = MAP->query_cluster(start);
-    to = MAP->query_cluster(end);
-#else
-    from = get_cluster(start);
-    to = get_cluster(end);
-#endif
-    while((from != to) && (LEVEL(from) < level)){
-      from = load(from)->cluster_number;
-      to = load(to)->cluster_number;
-    }
-    level = LEVEL(from);
-    if(!level){
-      if(!sip) {
-        break;
-      }
-      error("wrong level");
-    }
-    oldplaces = places;
-    places = find_places(from, to, places);
-    if(!places){
-      if(!sip) {
-        return ({});
-      }
-      debug(oldplaces);
-      error("this can't happen, honest!");
-    }
-    sip = 1;
-    level--;
-  }
-#ifdef OLD
-  from = MAP->query_cluster(start);
-  to = MAP->query_cluster(end);
-#else
-  from = get_cluster(start);
-  to = get_cluster(end);
-#endif
-  oldplaces = places;
-  places = find_places(from, to, places);
-  if(!places){
-    if(!sip) {
-      return ({});
-    }
-    debug(oldplaces);
-    error("this can't happen, honest!!");
-  }
-  cache = ([]);
-  return find_route(start, end, places);
-}
-#ifndef OLD
-void dest_me(){
-  db_close(db);
-  destruct(this_object());
-}
-#endif
-
-==================================================
-FILE: handlers/cmr_handler.c
-==================================================
-
-#include <cmr.h>
-#include <colour.h>
-#include <library.h>
-#define SAVE_FILE "/save/cmr_handler"
-inherit "/std/object";
-string *colour_names;
-mapping colour_details;
-string *material_names;
-mapping material_details;
-void load_cmr_handler();
-void save_cmr_handler();
-void create();
-string add_colour( string word, int fine, int crude, int qp_thresh,
-                int sp_thresh );
-int *query_colour_details( string word );
-int delete_colour( string word );
-string *query_colour_names();
-string identify_colour( string word, object player );
-string add_material( string word, int colour, int type, int skill_reqd,
-                  int skill_thresh );
-int *query_material_details( string word );
-int delete_material( string word );
-string *query_material_names();
-string identify_material( string word, object player, int article );
-string query_material_adjective( string word );
-void load_cmr_handler() {
-  if ( file_size( SAVE_FILE +".o" ) > 0 )
-    unguarded((: restore_object, SAVE_FILE :));
-}
-void save_cmr_handler() {
-  unguarded((: save_object, SAVE_FILE :));
-}
-void create() {
-  colour_names = ({ });
-  colour_details = ([ ]);
-  material_names = ({ });
-  material_details = ([ ]);
-  ::create();
-  load_cmr_handler();
-}
-string add_colour( string word, int fine, int crude, int qp_thresh,
-                int sp_thresh ) {
-  int temp;
-  temp = member_array( word, colour_names );
-  if ( temp != -1 ) return "colour already exists";
-  colour_names += ({ word });
-  colour_details += ([ word : ({ fine, crude, qp_thresh, sp_thresh }) ]);
-  save_cmr_handler();
-  return "the colour "+ word +", a shade of "+ ( ( fine == crude )?
-         "pure ":MODIFIERS[fine] ) + COLOURS[crude] +", with thresholds of "+
-         qp_thresh +" xp and "+ sp_thresh +" sp";
-}
-int *query_colour_details( string word ) {
-  int temp;
-  temp = member_array( word, colour_names );
-  if ( temp == -1 ) return ({ -1 });
-  return colour_details[word];
-}
-int delete_colour( string word ) {
-  int temp;
-  temp = member_array( word, colour_names );
-  if ( temp == -1 ) return 0;
-  colour_names -= ({ word });
-  colour_details = m_delete( colour_details, word );
-  save_cmr_handler();
-  return 1;
-}
-string *query_colour_names() { return colour_names + ({ }); }
-string identify_colour( string word, object player ) {
-  int temp, *args;
-  temp = member_array( word, colour_names );
-  if ( temp == -1 )
-    return "unknown colour";
-  args = allocate( 4 );
-  args = colour_details[word];
-  if ( !player )
-    return word;
-  switch ( ( ( LIBRARY->query_quest_points(player->query_name()) ) > args[2] )+
-           ( ( player->query_max_gp() ) > args[3] ) ) {
-  case 0:
-    return COLOURS[args[1]];
-  case 1:
-    return ( ( ( args[0] == args[1] )?"pure ":MODIFIERS[args[0]] ) +
-             COLOURS[args[1]] );
-  default:
-    return word;
-  }
-}
-string add_material( string word, int colour, int type, int skill_reqd,
-                  int skill_thresh ) {
-  int temp;
-  string text;
-  temp = member_array( word, material_names );
-  if ( temp != -1 ) return "material already exists";
-  material_names += ({ word });
-  material_details += ([ word : ({ colour, type, skill_reqd,
-                         skill_thresh }) ]);
-  save_cmr_handler();
-  if ( !skill_reqd )
-    text = " that is always recognised";
-  else
-    if ( skill_reqd == LEARNT )
-      text = " that is recognised through knowledge";
-    else
-      text = " that has a threshold of "+ skill_thresh +" in "+
-             SKILLS[skill_reqd];
-  return word +", a"+ ( ( colour == COL_ORANGE )?"n ":" " ) +
-         COLOURS[colour] +" "+ MATERIALS[type] + text;
-}
-int *query_material_details( string word ) {
-  int temp;
-  temp = member_array( word, material_names );
-  if ( temp == -1 ) return ({ -1 });
-  return material_details[word];
-}
-int delete_material( string word ) {
-  int temp;
-  temp = member_array( word, material_names );
-  if ( temp == -1 ) return 0;
-  material_names -= ({ word });
-  material_details = m_delete( material_details, word );
-  save_cmr_handler();
-  return 1;
-}
-string *query_material_names() { return material_names + ({ }); }
-string identify_material( string word, object player, int article ) {
-  int temp, *args;
-  string prefix;
-  temp = member_array( word, material_names );
-  if ( temp == -1 ) return "unknown material";
-  args = allocate( 4 );
-  args = material_details[word];
-  prefix = ( ( article )?"a"+ ( ( args[0] == COL_ORANGE )?"n ":" " ):"" );
-   if ( !args[ 2 ] || !player )
-      return word;
-  if ( args[2] == LEARNT )
-    if ( member_array( word,
-        (string *)CMR_LIBRARY->query_known_materials( player->query_name() ) )
-        == -1 )
-      return prefix + COLOURS[ args[ 0 ] ] +" "+
-          MATERIALS[ args[ 1 ] ];
-    else
-      return word;
-  if ( ( player->query_skill_bonus( SKILLS[args[2]] ) ) > args[3] )
-    return word;
-  else return prefix + COLOURS[args[0]] +" "+ MATERIALS[args[1]];
-}
-string query_material_adjective( string word ) {
-  int temp, *args;
-  temp = member_array( word, material_names );
-  if ( temp == -1 ) return "an unknown material";
-  args = allocate( 4 );
-  args = material_details[word];
-  return COLOURS[args[0]] +" "+ MATERIAL_ADJECTIVES[args[1]];
-}
-string query_material_ansi_colour( string word ) {
-  int temp, *args;
-  temp = member_array( word, material_names );
-  if ( temp == -1 ) return "";
-  args = allocate( 4 );
-  args = material_details[word];
-  return ANSI_COLOURS[args[0]];
-}
-
-==================================================
-FILE: handlers/cmr_library.c
-==================================================
-
-#define RESTORE_PATH "/save/cmr_library/"
-inherit "/std/object";
-string player_name, *materials;
-void init_data( string pname ) {
-  player_name = pname;
-  materials = ({ });
-}
-int get_data_file( string pname ) {
-  if ( player_name != pname ) {
-    if ( file_size( RESTORE_PATH + pname +".o" ) > 0 )
-      unguarded((: restore_object, RESTORE_PATH + pname :));
-    else {
-      init_data( pname );
-      return 0;
-    }
-  }
-  return 1;
-}
-void save_data_file( string word ) {
-  unguarded((: save_object, RESTORE_PATH + word :));
-}
-string *query_known_materials( string pname ) {
-  get_data_file( pname );
-  if ( !materials ) {
-    return ({ });
-  }
-  return materials + ({ });
-}
-int query_known_material( string pname, string material ) {
-  get_data_file( pname );
-  if ( !materials ) return 0;
-  return ( member_array( material, materials ) != -1 );
-}
-int add_known_material( string pname, string material ) {
-  get_data_file( pname );
-  if ( member_array( material, materials ) != -1 ) {
-    return 0;
-  }
-  materials += ({ material });
-  save_data_file( player_name );
-  return 1;
-}
-
-==================================================
-FILE: handlers/co_ordinate_handler.c
-==================================================
-
-#include <dirs.h>
-class room_data {
-   string other;
-   string direction;
-   int* coords;
-   int last_update;
-}
-private mapping _rooms = ([ ]);
-private nosave mapping _dirs;
-int setup_room(string path);
-void create() {
-   mixed* bits;
-   int i;
-   bits = STD_ORDERS;
-   _dirs = ([ ]);
-   for (i = 0; i < sizeof(bits); i += 2) {
-      _dirs[bits[i]] = bits[i + 1];
+void dest_me() {
+   string name;
+   broadcast_to_groups( 0, "%^BOLD%^WARNING%^RESET%^: The group handler is being destructed."
+      "  All active groups will be disbanded.  It should be possible to "
+      "recreate the group almost immediately afterwards.  If not, please "
+      "file a bug report for the \"group\" command." );
+   foreach( name in query_groups() ) {
+      disband_group( name, 0 );
    }
 }
-private void setup_specific_room(string path, string new_path, string dir) {
-   int* delta;
-   int* co_ord;
-   int k;
-   class room_data data;
-   delta = new_path->query_room_size_array() + path->query_room_size_array();
-   co_ord = copy( _rooms[new_path]->coords);
-   for ( k = 0; k < 3; k++ ) {
-     co_ord[ k ] += _dirs[dir][ k ] *
-                    ( delta[ k ] + delta[ k + 3 ] );
-   }
-   data = new(class room_data);
-   data->other = new_path;
-   data->coords = co_ord;
-   data->direction = dir;
-   data->last_update = _rooms[new_path]->last_update;
-   _rooms[path] = data;
+void stats_please() {
+   printf( "The handler was loaded on %s.  Since then, "
+      "%i groups have been formed.\n", ctime( _loaded ),
+      _groups_formed );
 }
-int* query_room_co_ords(string path) {
-   class room_data data;
-   data = _rooms[path];
-   if (data) {
-      if (!_rooms[data->other]) {
-         map_delete(_rooms, path);
-      } else {
-         if (data->last_update != _rooms[data->other]->last_update) {
-            setup_specific_room(path, data->other, data->direction);
-         }
-         return data->coords;
-      }
+string *query_groups() {
+   return keys( _groups );
+}
+int is_group( string group ) {
+   return !undefinedp( _groups[ group ] );
+}
+int is_member( string name, object person ) {
+   if( !is_group( name ) ) {
+      return 0;
    }
-   if (setup_room(path)) {
-      data = _rooms[path];
-      return data->coords;
+   if( member_array( person, _groups[ name ]->members ) == -1 ) {
+      return 0;
+   }
+   return 1;
+}
+int is_invited( string name, object person )
+{
+   if( member_array( person, _groups[ name ]->invited ) != -1 )
+   {
+      return 1;
    }
    return 0;
 }
-int setup_room(string path) {
-   string* bits;
-   int i;
-   string new_path;
-   if (path->query_property("location") != "outside" ||
-       !path->query_terrain_handler()) {
+object *invitations_to( string name )
+{
+   if( !is_group( name ) )
+   {
       return 0;
    }
-   bits = path->query_dest_dir();
-   for (i = 0; i < sizeof(bits); i += 2) {
-      if (find_object(bits[i+1])) {
-         new_path = file_name(find_object(bits[i+1]));
-      } else {
-         new_path = bits[i+1];
+   return _groups[ name ]->invited;
+}
+string query_group_short( string name )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   return _groups[ name ]->short;
+}
+object *members_of( string name )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   return _groups[ name ]->members;
+}
+object leader_of( string name )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   return _groups[ name ]->leader;
+}
+int query_start_time( string name )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   return _groups[ name ]->start_time;
+}
+string short_to_name( string short )
+{
+   string *words;
+   short = lower_case( short );
+   words = explode( short, " " );
+   words -= INVALID_WORDS;
+   if( !sizeof( words ) ) {
+      return "";
+   }
+   short = implode( words, " " );
+   if( BROADCASTER->query_channel_members( "group_" + short ) ) {
+      return "";
+   }
+   return short;
+}
+int create_group( string name )
+{
+   if( is_group( name ) ) {
+      return 0;
+   }
+   _groups += ([ name : new( class group ) ]);
+   _groups[ name ]->members = ({ });
+   _groups[ name ]->invited = ({ });
+   _groups[ name ]->start_time = time();
+   _groups_formed++;
+   return 1;
+}
+int rename_group(string group, string new_group) {
+   object member;
+   if (is_group(new_group) || new_group == group) {
+      return 0;
+   }
+   _groups[new_group] = _groups[group];
+   map_delete(_groups, group);
+   set_group_short(new_group, new_group);
+   foreach (member in _groups[new_group]->members) {
+      if (!member) {
+         continue;
       }
-      if (_rooms[new_path]) {
-         setup_specific_room(path, new_path, bits[i]);
+      BROADCASTER->remove_object_from_channel( "group_" + group, member );
+      member->group_membership_removed();
+      member->add_effect( EFFECT, new_group);
+      BROADCASTER->add_object_to_channel( "group_" + new_group, member );
+      member->set_title( GROUP_TITLE, "a member of " +
+      query_group_short( new_group ) );
+   }
+   notify_group( new_group, this_object(), ({ "", "The group has been renamed to " +
+      new_group + "." }) );
+   return 1;
+}
+int set_group_short( string name, string short_desc )
+{
+   if( !is_group( name ) ) {
+      return 0;
+   }
+   _groups[ name ]->short = short_desc;
+   return 1;
+}
+int remove_group( string name )
+{
+   if( !is_group( name ) ) {
+      return 0;
+   }
+   if( _groups[ name ]->leader_name ) {
+      LOGIN_HANDLER->remove_login_call(
+         _groups[ name ]->leader_name, "leader_goes_linkdead",
+         this_object() );
+   }
+   map_delete( _groups, name );
+   return 1;
+}
+int add_invite( string name, object person, int flag )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   if( is_member( name, person ) )
+   {
+      return 0;
+   }
+   if( member_array( person, _groups[ name ]->invited ) != -1 )
+   {
+      return 0;
+   }
+   _groups[ name ]->invited += ({ person });
+   if( !flag )
+   {
+      call_out( (: remove_invite, name, person :), INVITE_TIMEOUT );
+   }
+   return 1;
+}
+int remove_invite( string name, object person )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   if( !is_invited( name, person ) )
+   {
+      return 0;
+   }
+   _groups[ name ]->invited -= ({ person, 0 });
+   return 1;
+}
+int add_member( string name, object person )
+{
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   if( is_member( name, person ) )
+   {
+      return 0;
+   }
+   _groups[ name ]->members += ({ person });
+   _groups[ name ]->invited -= ({ person });
+   person->add_effect( EFFECT, name );
+   BROADCASTER->add_object_to_channel( "group_" + name, person );
+   notify_group( name, person, ({ "You have joined the group.",
+      person->query_cap_name() + " has joined the group." }) );
+   if( sizeof( _groups[ name ]->members ) > 1 )
+   {
+      handle_group_follow( name, person, ({ _groups[ name ]->leader }), 0, 0 );
+   }
+   person->set_title( GROUP_TITLE, "a member of " +
+      query_group_short( name ) );
+   return 1;
+}
+int remove_member( string name, object person )
+{
+   object member;
+   if( !is_group( name ) )
+   {
+      return 0;
+   }
+   if( !is_member( name, person ) )
+   {
+      return 0;
+   }
+   if( person )
+   {
+      notify_group( name, person, ({
+         "You have left the group.",
+      person->query_cap_name() + " has left the group." }) );
+      foreach( member in person->query_assisting() )
+      {
+         if( !member )
+         {
+            continue;
+         }
+         member->remove_assister( person );
+      }
+      foreach( member in person->query_assisters() )
+      {
+         if( !member )
+         {
+            continue;
+         }
+         member->remove_assisting( person );
+      }
+   }
+   _groups[ name ]->members -= ({ person });
+   BROADCASTER->remove_object_from_channel( "group_" + name, person );
+   if( person )
+   {
+      person->group_membership_removed();
+   }
+   if( person == leader_of( name ) && sizeof( members_of( name ) ) )
+   {
+      if (sizeof(members_of(name)) == 1) {
+         notify_group( name, this_object(), "The current leader has left "
+            "the group, you are now all alone.  Better start recruiting.");
+      } else {
+         notify_group( name, this_object(), "The current leader has left "
+            "the group.  A new leader will be chosen randomly." );
+      }
+      if( !shuffle_new_leader( name, 0 ) )
+      {
+         notify_group( name, this_object(), "The choosing of a new "
+            "leader has failed (oh dear).  The group is hereby "
+            "disbanded.\n" );
+         call_out( "disband_group", 0, name );
          return 1;
       }
    }
-   return 0;
+   handle_group_follow( name, person, _groups[ name ]->members, 1, 1 );
+   foreach( member in _groups[ name ]->members ) {
+      handle_group_follow( name, member, ({ person }), 1, 1 );
+   }
+   if (person && objectp(person)) {
+      person->remove_title( GROUP_TITLE );
+   }
+   if( !sizeof( members_of( name ) ) ) {
+      remove_group( name );
+   }
+   return 1;
 }
-void setup_fixed_room(string path, int* coords) {
-   class room_data data;
-tell_creator("pinkfish", "%O %O %O\n", path, path->query_property("location"),
-               path->query_terrain_handler());
-   if (path->query_property("location") != "outside" ||
-       !path->query_terrain_handler()) {
+varargs int set_leader( string name, object person, object appointer )
+{
+   object *followers, old_leader, member;
+   if( !is_group( name ) )
+   {
       return 0;
    }
-   if (_rooms[path]) {
-      data = _rooms[path];
-      if (data->coords[0] == coords[0] &&
-          data->coords[1] == coords[1] &&
-          data->coords[2] == coords[2]) {
-         return ;
-      }
-   } else {
-      data = new(class room_data);
+   if( !is_member( name, person ) )
+   {
+      return 0;
    }
-   data->coords = coords;
-   data->last_update = time();
-   _rooms[path] = data;
+   if( !person )
+   {
+      return 0;
+   }
+   if( _groups[ name ]->leader_name )
+   {
+      LOGIN_HANDLER->remove_dynamic_login_call(
+         _groups[ name ]->leader_name, "leader_goes_linkdead",
+         base_name( this_object() ) );
+   }
+   old_leader = _groups[ name ]->leader;
+   if( old_leader )
+   {
+      followers = ( old_leader->query_followers() & _groups[ name ]->members );
+      followers -= ({ 0 });
+      followers += ({ old_leader });
+      foreach( member in followers )
+      {
+         handle_group_follow( name, member, ({ old_leader }), 1, 1 );
+         handle_group_follow( name, member, ({ person }), 0, 1 );
+      }
+      old_leader->set_title( GROUP_TITLE, "a member of " +
+         query_group_short( name ) );
+   }
+   _groups[ name ]->leader = person;
+   if( userp( person ) ) {
+      _groups[ name ]->leader_name = person->query_name();
+      LOGIN_HANDLER->add_dynamic_login_call( person->query_name(),
+         "leader_goes_linkdead", base_name( this_object() ) );
+   }
+   else
+   {
+      _groups[ name ]->leader_name = 0;
+   }
+   if( !appointer )
+   {
+      notify_group( name, person, ({ "You are now the leader of "
+         "the group.", person->query_cap_name() + " is now the leader "
+         "of the group." }) );
+   }
+   else
+   {
+      notify_group( name, appointer, "By the power vested in " +
+         appointer->query_cap_name() + ", " + person->query_cap_name() +
+         " has been appointed as the new leader of the group." );
+   }
+   person->set_title( GROUP_TITLE, "the leader of " +
+      GROUP->query_group_short( name ) );
+   return 1;
 }
-mapping query_rooms() {
-   return _rooms;
+void notify_group( string name, object broadcaster, mixed message ) {
+   BROADCASTER->broadcast_to_channel( broadcaster, "group_" + name,
+      ({ message, time() }) );
+}
+varargs void disband_group( string name, mixed message ) {
+   object bugger, leader, *members;
+   if( !is_group( name ) ) {
+      return;
+   }
+   if( message ) {
+      notify_group( name, this_object(), message );
+   }
+   members = members_of( name );
+   leader = leader_of( name );
+   if( leader ) {
+      members -= ({ leader });
+   }
+   foreach( bugger in members ) {
+      remove_member( name, bugger );
+   }
+   remove_member( name, leader );
+   remove_group( name );
+}
+varargs object shuffle_new_leader( string group, int way, object *exclude ) {
+   object leader;
+   object *members;
+   if( !is_group( group ) ) {
+      return 0;
+   }
+   members = members_of( group );
+   if( !sizeof( members ) ) {
+      return 0;
+   }
+   if( exclude ) {
+      members -= exclude;
+   }
+   members = filter( members, (: $1 && interactive( $1 ) :) );
+   if( !sizeof( members ) ) {
+      return 0;
+   }
+   switch( way ) {
+      case 0:
+         leader = members[ random( sizeof( members ) ) ];
+         if( set_leader( group, leader ) ) {
+            return leader;
+         }
+         return 0;
+      default:
+         return 0;
+   }
+}
+void leader_goes_linkdead( string player, string event_type ) {
+   string group;
+   object player_ob, *members;
+   if( event_type != NETDEATH && event_type != RECONNECT ) {
+      LOGIN_HANDLER->remove_dynamic_login_call( player,
+         "leader_goes_linkdead", base_name( this_object() ) );
+      return;
+   }
+   if( !player_ob = find_player( player ) ) {
+      LOGIN_HANDLER->remove_dynamic_login_call( player,
+         "leader_goes_linkdead", base_name( this_object() ) );
+      return;
+   }
+   group = player_ob->query_group();
+   if( !group ) {
+      LOGIN_HANDLER->remove_dynamic_login_call( player,
+         "leader_goes_linkdead", base_name( this_object() ) );
+      return;
+   }
+   if( _groups[ group ]->leader_name != player ) {
+      LOGIN_HANDLER->remove_dynamic_login_call( player,
+         "leader_goes_linkdead", base_name( this_object() ) );
+      return;
+   }
+   members = members_of( group );
+   members -= ({ player_ob });
+   if( !sizeof( members ) ) {
+      return;
+   }
+   LOGIN_HANDLER->remove_dynamic_login_call( player,
+      "leader_goes_linkdead", base_name( this_object() ) );
+   notify_group( group, this_object(), "The current leader "
+      "has gone netdead.  A new leader will be selected at random." );
+   if( !shuffle_new_leader( group, 0, 0 ) ) {
+      notify_group( group, this_object(), "No eligible leaders "
+         "found.  The group is disbanded." );
+      disband_group( group );
+   }
+}
+void handle_group_follow( string group, object who, object *what,
+   int unfollow, int silent ) {
+   string short, mess_to_me, mess_to_others;
+   switch( unfollow ) {
+      case 0:
+         what = filter( what, (: $1->add_follower( $( who ) ) :) );
+         if( !sizeof( what ) ) {
+            mess_to_me = "You begin following noone.";
+            break;
+         }
+         short = query_multiple_short( what );
+         mess_to_me = "You begin following " + short + ".";
+         mess_to_others = who->query_cap_name() + " begins following " +
+            short + ".";
+         break;
+      case 1:
+         what = filter( what, (: $1->remove_follower( $( who ) ) :) );
+         if( !sizeof( what ) ) {
+            mess_to_me = "You stop following noone.";
+            mess_to_others = 0;
+            break;
+         }
+         short = query_multiple_short( what );
+         mess_to_me = "You stop following " + short + ".";
+         mess_to_others = who->query_cap_name() + " stops following " +
+            short + ".";
+         break;
+      default:
+         printf( "Barf.\n" );
+         return;
+   }
+   if( !silent ) {
+      notify_group( group, who, ({ mess_to_me, mess_to_others }) );
+   }
+}
+void broadcast_to_groups( string *name, string message ) {
+   string group;
+   string *groups;
+   if( name && sizeof( name ) ) {
+      groups = name;
+   }
+   else {
+      groups = keys( _groups );
+   }
+   foreach( group in groups ) {
+      notify_group( group, this_player(), message );
+   }
+}
+mapping query_dynamic_auto_load() {
+   return ([ "groups" : _groups,
+             "groups formed" : _groups_formed ]);
+}
+void init_dynamic_arg(mapping map) {
+   _groups = map["groups"];
+   _groups_formed = map["groups formed"];
 }
 
 ==================================================
-FILE: handlers/colour.c
+FILE: handlers/haggle_handler.c
 ==================================================
 
-#include <colour.h>
-string calc_colour( int red, int green, int blue, int whitener ) {
-   int main_hue;
-   string result;
-   result = "";
-   if ( whitener > -1 ) {
-      switch ( red + green + blue ) {
-         case 0 .. 4 :
-            return "colourless";
-         case 5 .. 29 :
-            result += "faint ";
-            break;
-         case 30 .. 154 :
-            break;
-         default :
-            result += "intense ";
-      }
+#include <money.h>
+mixed *accept_sayings, *bodged_sayings, *finalb_sayings,
+    *finals_sayings, *insult_sayings, *offerb_sayings,
+    *offers_sayings, *sodoff_sayings;
+void create() {
+  accept_sayings = ({
+      ({ "grin", "Done!" }),
+      "Accepted!",
+      "Fine...",
+      ({ "smile", "Agreed!" }),
+      ({ "mutter", "Okay..." }),
+      "Taken!",
+      "You drive a hard bargain, but taken...",
+      "You'll make me bankrupt, but it's a deal...",
+      ({ "sigh", "I'll take it..." }),
+      "My poor sick children will starve, but done!",
+      "Finally!  I accept...",
+      ({ "grimace", "Robbed again..." }),
+      "A pleasure to do business with you!",
+      ({ "scowl", "My spouse will have my hide, but accepted." }) });
+  bodged_sayings = ({
+      "I must have heard you wrong...",
+      "What was that?",
+      "I'm sorry, say that again...",
+      "What did you say?",
+      "Sorry, what was that again?" });
+  finalb_sayings = ({
+      "I'll pay no more than $offer$; take it or leave it.",
+      "You'll get no more than $offer$ from me.",
+      "$offer$ and that's final." });
+  finals_sayings = ({
+      "$asking$ is my lowest price; take it or leave it...",
+      "It'll cost you no less than $asking$.",
+      "My patience grows thin... $asking$ is final." });
+  insult_sayings = ({
+      "You will have to do better than that!",
+      "That's an insult!",
+      "Do you wish to do business or not?",
+      "Hah!  Try again...",
+      "Ridiculous!",
+      "You've got to be kidding!",
+      "You'd better be kidding!",
+      "You're trying my patience...",
+      "I didn't hear that.  Say it again?",
+      "Hmmm... Nice weather we're having..." });
+  offerb_sayings = ({
+      "$asking$ for that piece of junk?  No more than $offer$.",
+      "For $asking$ I could own ten of those.  Try $offer$.",
+      "$asking$?!?  Never!  $offer$ is more like it...",
+      "Let's be reasonable...  How about $offer$?",
+      ({ "cough", "$offer$ for that junk, no more..." }),
+      "$offer$ and be thankful for it!",
+      "$offer$ and not an iotum more...",
+      "$asking$?  Ha!  $offer$ is more like it...",
+      "Try $offer$...",
+      "I wouldn't pay $asking$ for your children!  Try $offer$.",
+      ({ "choke", "For that?!?  Let's say $offer$." }),
+      "How about $offer$?",
+      "That looks like army surplus!  Say $offer$.",
+      "I'll buy it as scrap for $offer$.",
+      "$asking is too much; let us say $offer$." });
+  offers_sayings = ({
+      "$offer$ for such a fine item?  Hah!  No less than $asking$.",
+      "$offer$ is an insult!  Try $asking$...",
+      "$offer$?!?  You would rob my poor starving children?  "+
+          "Even they would give $asking$ for this.",
+      "Why, I'll take no less than $asking$.",
+      ({ "cackle", "No less than $asking$." }),
+      "You swine!  No less than $asking$.",
+      "$offer$ is far too little;  how about $asking$?",
+      "I paid more than $offer$ for it myself!  Try $asking$.",
+      ({ "boggle", "$offer$?  Are you mad?!?  How about $asking$?" }),
+      "As scrap this would bring $offer$.  Try $asking$.",
+      "May the fleas of a thousand camels molest you.  "+
+          "I want $asking$.",
+      "My mother you can get for $offer$, "+
+          "this will cost you $asking$.",
+      "May your chickens grow lips!  I want $asking$!",
+      "Sell this for such a pittance?  Give me $asking$.",
+      "May the Grflx find you tasty!  $asking$?",
+      "Your mother was a troll!  $asking$ or I'll tell..." });
+  sodoff_sayings = ({
+      ({ "Enough!",
+          "You have abused my generosity once too often!",
+          "Out of my establishment!" }),
+      ({ "That does it!",
+          "You will waste my time no more!",
+          "Out...  Out...  OUT!!!" }),
+      ({ "This is getting nowhere!",
+          "Leave me alone!",
+          "Come back tomorrow..." }),
+      ({ "Bah!",
+          "No more will you insult me!",
+          "Leave my place!  Begone!" }),
+      ({ "Begone!",
+          "I have had enough abuse for one day.",
+          "Come back when you're richer..." }) });
+}
+int insult_factor( object keeper, object customer ) {
+  return 150;
+}
+int bargain_factor( object keeper, object customer ) {
+  return 50;
+}
+int *sell_haggle( int value, int offer, int asking, int insults,
+    string place, object keeper, object customer ) {
+  int adjustment, number;
+  string text;
+  if ( offer > asking ) {
+    keeper->do_command( "boggle" );
+    number = random( sizeof( bodged_sayings ) );
+    keeper->do_command( "'"+ bodged_sayings[ number ] );
+    return ({ 0, asking, insults });
+  }
+  if ( offer == asking ) {
+    number = random( sizeof( accept_sayings ) );
+    if ( sizeof( accept_sayings[ number ] ) == 2 ) {
+      keeper->do_command( accept_sayings[ number ][ 0 ] );
+      keeper->do_command( "'"+ accept_sayings[ number ][ 1 ] );
+    } else
+      keeper->do_command( "'"+ accept_sayings[ number ] );
+    return ({ 1, asking, insults });
+  }
+  if ( ( offer * insult_factor( keeper, customer ) ) >
+      ( asking * 100 ) ) {
+    adjustment = ( ( asking - offer ) *
+        bargain_factor( keeper, customer ) ) / 100;
+    if ( adjustment < 0 ) adjustment = 0;
+    asking -= adjustment;
+    number = random( sizeof( offers_sayings ) );
+    if ( sizeof( offers_sayings[ number ] ) == 2 ) {
+      keeper->do_command( offers_sayings[ number ][ 0 ] );
+      text = offers_sayings[ number ][ 1 ];
+    } else
+      text = offers_sayings[ number ];
+    text = replace( text, "$offer$",
+        (string)MONEY_HAND->money_value_string( offer, place ) );
+    text = replace( text, "$asking$",
+        (string)MONEY_HAND->money_value_string( asking, place ) );
+    keeper->do_command( "'"+ text );
+    return ({ 0, asking, insults });
+  }
+  insults++;
+  if ( insults < (int)keeper->query_property( "max insults" ) ) {
+    number = random( sizeof( insult_sayings ) );
+    keeper->do_command( "'"+ insult_sayings[ number ] );
+    return ({ 0, asking, insults });
+  }
+  number = random( sizeof( sodoff_sayings ) );
+  keeper->do_command( "lsay "+ sodoff_sayings[ 0 ] );
+  keeper->do_command( "'"+ sodoff_sayings[ 1 ] );
+  keeper->do_command( "'"+ sodoff_sayings[ 2 ] );
+  return ({ 0, 0, -1 });
+}
+
+==================================================
+FILE: handlers/hist_handler.c
+==================================================
+
+#define SAVE "/save/hist_handler.o"
+#define MAX_HIS 20
+#define HISTORY_TIME (3600*24*2)
+mapping history;
+mixed *query_lord_history();
+void add_lord_history( string start, string mess );
+void create() {
+  seteuid(master()->get_root_uid());
+  history = ([]);
+  if(!unguarded((: restore_object, SAVE+".gz" :)))
+    unguarded((: restore_object, SAVE :));
+  call_out("tidy_history", 2);
+}
+void save_me() {
+  unguarded((: save_object, SAVE, 2 :));
+}
+void add_cre_history(string start, string mess) {
+  mixed *cre_history = history["cre"];
+  if (undefinedp(history["cre"]))
+    cre_history = ({ ({ start, mess, time() }) });
+  else
+    cre_history += ({ ({ start, mess, time() }) });
+  if (sizeof(cre_history) > MAX_HIS)
+    cre_history = cre_history[1..];
+  history["cre"] = cre_history;
+}
+mixed *query_cre_history() {
+  return history["cre"];
+}
+void add_chat_history(string channel, string start, string mess) {
+  mixed *chat_history = history[channel];
+  if ( !chat_history ) {
+    chat_history = ({ });
+  }
+  if (channel == "lord")   {
+    add_lord_history( start, mess );
+    return;
+  } else {
+    chat_history += ({ ({ start, mess, time() }) });
+  }
+  if (sizeof(chat_history) > MAX_HIS) {
+    chat_history = chat_history[1..];
+  }
+  history[channel] = chat_history;
+}
+mixed *query_chat_history(string channel) {
+  if (channel == "lord")
+    return query_lord_history();
+  return history[channel];
+}
+void add_lord_history(string start, string mess) {
+  mixed *lord_history = history["lord"];
+  if (!master()->query_lord(previous_object(-1)))
+    return;
+  if (undefinedp(history["lord"]))
+    lord_history = ({ ({ start, mess, time() }) });
+  else
+    lord_history += ({ ({ start, mess, time() }) });
+  if (sizeof(lord_history) > MAX_HIS)
+    lord_history = lord_history[1..];
+  history["lord"] = lord_history;
+}
+mixed *query_lord_history() {
+  if (!master()->query_lord(previous_object(-1)))
+    return ({ });
+  return history["lord"];
+}
+void dest_me() {
+  save_me();
+  destruct(this_object());
+}
+void reset() {
+  save_me();
+}
+void tidy_history() {
+  string channel;
+  int i;
+  foreach(channel in keys(history)) {
+    for(i = 0; i<sizeof(history[channel]); i++)
+      if(history[channel][i][2] < time() - HISTORY_TIME) {
+  history[channel] = history[channel][1..];
+      } else
+  break;
+    if(!sizeof(history[channel]))
+      map_delete(history, channel);
+  }
+  save_object(SAVE, 2);
+}
+void reset_history() {
+  if (!master()->high_programmer(previous_object(-1)))
+    return;
+  history = ([]);
+  save_object(SAVE, 2);
+}
+
+==================================================
+FILE: handlers/hospital.c
+==================================================
+
+#include <armoury.h>
+#include <data.h>
+#include <weather.h>
+#define CREATE_NPCS 1
+#define REGEN_TIME 1 * 60 * 60
+#define DEFAULT_MAX_CACHE 10
+#define DEFAULT_LOG_DIRECTORY "/log"
+#define DEFAULT_POPULATION 3
+#define MINIMUM_DEATH_REGEN 3
+#define POPULATION_UPDATE_TIME 15 * 60
+#define TOTAL_CHANCE 150
+#define CENTRE 0
+#define LIMIT_ONE     35
+#define LIMIT_TWO     68
+#define LIMIT_THREE   95
+#define LIMIT_FOUR   115
+#define LIMIT_FIVE   130
+#define LIMIT_SIX    139
+#define LIMIT_SEVEN  145
+#define LIMIT_EIGHT  147
+#define LIMIT_NINE   149
+inherit "/std/room";
+class regenerated_npc {
+    string type;
+    string load_position;
+}
+class zone_info {
+   int wealth;
+   int busy;
+   int npc_chance;
+   mapping npcs;
+   int group_chance;
+   mapping groups;
+   int zone_chance;
+   mapping zones;
+}
+class unique_npc {
+   int next_regen_time;
+}
+class npc_info {
+   string path;
+   int unique;
+   int delay;
+   int transient;
+   int nocturnal;
+   int diurnal;
+   string* seasonal;
+   int max_population;
+   string* move_zones;
+   string* commands;
+   object* population;
+   int no_deaths;
+   int no_created;
+   int no_reused;
+   int next_update;
+}
+class group_info {
+   string* move_zones;
+   mapping npcs;
+   mapping npc_commands;
+   int protect;
+   int defend;
+   int transient;
+   int max_population;
+   mixed* storage;
+   int no_creates;
+   int next_update;
+}
+object* load_random_npc(string zone, int wealth, int busy);
+protected void load_file();
+protected void save_file();
+protected void set_save_file(string new_save);
+public void hospital_log_file(string file, string format, mixed *args ...);
+public int get_item(object destination, string *items);
+public string query_save_file();
+public int *query_npcs();
+public mapping query_hospital_npcs();
+public void add_npc_type(string type, string *data);
+public void regen_after_death( object dead_npc );
+private nosave string _save_file;
+private nosave string _hospital_type;
+private nosave mixed *_regenerated_npcs;
+private nosave int _hospital_call_id;
+private nosave mapping _log_file_info;
+private nosave string _hospital_log_directory;
+private nosave string _data_directory;
+private nosave string _npc_path;
+private nosave string _domain;
+private nosave int _max_cache;
+private nosave int _disable_npc_generation;
+private mapping _unique_npcs;
+private mapping _hospital_npcs;
+private mapping _cache_inventory;
+private int _last_npc_check;
+private int _zone_npcs;
+private mapping _group_info;
+private mapping _npc_info;
+private mapping _zone_info;
+private mapping _path_to_npc;
+private mapping _file_modified_time;
+void create() {
+    seteuid(master()->creator_file(file_name(this_object())));
+    do_setup++;
+    ::create();
+    do_setup--;
+    if (!_group_info) {
+        _group_info = ([ ]);
+    }
+    if (!_npc_info) {
+        _npc_info = ([ ]);
+    }
+    if (!_zone_info) {
+        _zone_info = ([ ]);
+    }
+    if (!_path_to_npc) {
+        _path_to_npc = ([ ]);
+    }
+    if (!_file_modified_time) {
+        _file_modified_time = ([ ]);
+    }
+    if (!_unique_npcs) {
+        _unique_npcs = ([ ]);
+    }
+    if (!_cache_inventory) {
+      _cache_inventory = ([ ]);
+    }
+    _regenerated_npcs = ({ });
+    _log_file_info = ([ ]);
+    if(!_max_cache)
+      _max_cache = DEFAULT_MAX_CACHE;
+    if (!do_setup) {
+        set_short( "Un-configured Hospital" );
+        set_long("This is an unconfigured hospital.  Find the right one.\n");
+        add_property("determinate", "the ");
+        set_light(60);
+        this_object()->setup();
+    }
+}
+int ok_to_clone() {
+   return 1;
+}
+int pick_al( int average, int range ) {
+   int choice, section, section_width, result;
+   if( range < 0 ) {
+      range = -range;
    }
+   if( range < 10 ) {
+      range = 10;
+   }
+   section_width = floor( range / 10 );
+   choice = random( TOTAL_CHANCE );
+   switch( choice ) {
+      case CENTRE..LIMIT_ONE:
+         section = 0;
+         break;
+      case ( LIMIT_ONE + 1 )..LIMIT_TWO:
+         section = 1;
+         break;
+      case ( LIMIT_TWO + 1 )..LIMIT_THREE:
+         section = 2;
+         break;
+      case ( LIMIT_THREE + 1 )..LIMIT_FOUR:
+         section = 3;
+         break;
+      case ( LIMIT_FOUR + 1 )..LIMIT_FIVE:
+         section = 4;
+         break;
+      case ( LIMIT_FIVE + 1 )..LIMIT_SIX:
+         section = 5;
+         break;
+      case ( LIMIT_SIX + 1 )..LIMIT_SEVEN:
+         section = 6;
+         break;
+      case ( LIMIT_SEVEN + 1 )..LIMIT_EIGHT:
+         section = 7;
+         break;
+      case ( LIMIT_EIGHT + 1 )..LIMIT_NINE:
+         section = 8;
+         break;
+      default:
+         section = 9;
+         break;
+   }
+   result = section * section_width;
+   result = result + random( section_width );
+   switch( random( 2 ) ) {
+      case( 0 ):
+         result = average + result;
+         break;
+      default:
+         result = average - result;
+         break;
+   }
+   result = result + average;
    return result;
 }
-
-==================================================
-FILE: handlers/complaints_handler.c
-==================================================
-
-#include <board.h>
-#define SAVEFILE "/save/complaints/complaints_handler.o"
-#define BOARD "complaints"
-int _complaintNumber;
-void save_file() {
-    unguarded( (: save_object( SAVEFILE ) :) );
+public string *query_deities() {
+   return ({ "fish", "pishe", "sek", "hat", "gapp",
+      "gufnork", "sandelfon" });
 }
-void load_file() {
-    unguarded( (: restore_object( SAVEFILE ) :) );
+public int get_item(object destination, string *items) {
+    int i;
+    object item;
+    if (!objectp(destination)) {
+        return 0;
+    }
+    while (!item) {
+        i = random(sizeof(items));
+        item = ARMOURY->request_item(items[i], 80 + random(21), _domain);
+        if (!item) {
+            item = ARMOURY->request_item(items[i], 80 + random(21) );
+            if ( !item ) {
+                items = items[0..i-1] + items[i+1..];
+                continue;
+            }
+        }
+        if (!sizeof(items)) {
+            hospital_log_file("BROKEN_ITEMS", "Unable to select any items "
+                "for %s in the Ankh-Morpork hospital.\n",
+                previous_object()->short());
+            break;
+        }
+    }
+    if (objectp(item)) {
+        item->move(destination);
+        return 1;
+    }
+    return 0;
 }
-void create() {
-    seteuid( getuid() );
-    _complaintNumber = 1;
+protected void load_file() {
+    class npc_info npc;
+    class group_info group;
+    string name;
+    if (file_size(_save_file + ".o") > -1) {
+        unguarded((: restore_object, _save_file :));
+        if (!_group_info) {
+            _group_info = ([ ]);
+        } else {
+            foreach (name, group in _group_info) {
+                group->storage = 0;
+            }
+        }
+        if (!_npc_info) {
+            _npc_info = ([ ]);
+        } else {
+            foreach (name, npc in _npc_info) {
+                npc->population = ({ });
+            }
+        }
+        if (!_zone_info) {
+            _zone_info = ([ ]);
+        }
+        if (!_path_to_npc) {
+            _path_to_npc = ([ ]);
+        }
+        if (!_file_modified_time) {
+            _file_modified_time = ([ ]);
+        }
+        if (!_unique_npcs) {
+            _unique_npcs = ([ ]);
+        }
+    }
+}
+protected void save_file() {
+    unguarded((: save_object, _save_file :));
+}
+protected void set_save_file(string new_save) {
+    _save_file = new_save;
     load_file();
 }
-int do_submit_complaint( string str ) {
-    int ret = 0;
-    if ( str ) {
-        ret = BOARD_HAND->
-            add_message( BOARD, "Anonymous",
-                         "Anonymous complaint #" + _complaintNumber,
-                         sprintf( "%-=78s\n", str ) );
-        _complaintNumber++;
-        save_file();
-    }
-    return ret;
+public string query_save_file() {
+    return _save_file;
 }
-int board_access_check( int type, string, object previous, string name ) {
-    switch ( type ) {
-    case B_ACCESS_READ:
-        return ( "/secure/master"->query_lord( name ) );
-    case B_ACCESS_WRITE:
-        return ( ( previous == this_object() ) ||
-                 ( "/secure/master"->query_lord( name ) ) );
-    case B_ACCESS_DELETE :
+void set_data_directory(string dir) {
+   _data_directory = dir;
+   call_out("scan_for_new_data", 2);
+}
+string query_data_directory() {
+   return _data_directory;
+}
+void set_npc_path(string path) {
+  _npc_path = path;
+}
+void set_domain(string domain) {
+  _domain = domain;
+}
+void set_max_cache(int num) {
+  _max_cache = num;
+}
+void set_disable_npc_generation(int value) {
+   _disable_npc_generation = value;
+}
+int query_disable_npc_generation() {
+   return _disable_npc_generation;
+}
+public int make_unique(mixed who) {
+    int delay;
+    if (!_unique_npcs) {
         return 0;
     }
+    if (objectp(who)) {
+        who = who->query_name();
+    }
+    if (!_unique_npcs[who]) {
+        _unique_npcs[who] = new(class unique_npc);
+    }
+    if ( _unique_npcs[who]->next_regen_time > time() ) {
+        return 0;
+    }
+    if (_npc_info[who] && _npc_info[who]->delay) {
+        delay = _npc_info[who]->delay;
+    } else {
+        delay = REGEN_TIME;
+    }
+    _unique_npcs[who]->next_regen_time = time() + delay;
+    save_file();
+    return 1;
 }
-
-==================================================
-FILE: handlers/converter.c
-==================================================
-
-mixed *mail;
-nosave string *names;
-nosave int no_more;
-int query_busy(string name);
-void create() {
-  seteuid("mailer");
-  names = ({ });
-  no_more = 0;
+public void reset_unique(string who) {
+    if (!_unique_npcs[who]) {
+        return ;
+    }
+    _unique_npcs[who]->next_regen_time = 0;
 }
-int ok_to_shut() {
-  no_more = 1;
-  return (sizeof(names) == 0);
+#ifdef REGENERATE_AFTER_DEATH
+public void regen_after_death( object dead_npc ) {
+    object *monsters, destination;
+    class regenerated_npc new_npc;
+    int i, max;
+    if ( !dead_npc )
+        return;
+    _regenerated_npcs += ({ new( class regenerated_npc,
+        type : dead_npc->query_property("monster_type"),
+        load_position : previous_object()->query_property("start location") ) });
+    if ( !ok_to_clone(_hospital_type) || sizeof(_regenerated_npcs) < MINIMUM_DEATH_REGEN )
+        return;
+    new_npc = _regenerated_npcs[0];
+    if ( !classp( new_npc ) )
+        return;
+    _regenerated_npcs = _regenerated_npcs[1..];
+    if (!new_npc->load_position || !new_npc->type );
+        return;
+    max = random(5);
+    for ( i = 0; i < max; i++ ){
+        destination = find_object( new_npc->load_position );
+        if ( !objectp( destination ) )
+            return;
+        monsters = get_monster(new_npc->type);
+        destination->replace_monster(previous_object(), monsters);
+        call_out((: $1->announce_entry($2) :), 8 + random(6), destination,
+            monsters);
+    }
 }
-void convert_it(string pname) {
-  int i, bing;
-  if (no_more) {
-    write("Can't start converting mail, try again after the reboot.\n");
-    return;
-  }
-  if (query_busy(pname)) {
-    write("Argh ! Already busy converting mail for "+pname+".\n");
-    return;
-  }
-  mail = ({ });
-  if (file_size("/save/post/"+pname+".o") == -1)
-    return;
-  unguarded((: restore_object, "/save/post/"+pname :));
-  bing = sizeof(mail);
-  if (!bing) {
-    unguarded((: rm, "/save/post/"+pname+".o" :));
-    return;
-  }
-  write("Converting mail for "+pname+".\n");
-  names += ({ pname });
-  for (i = 0; i < bing; i++) {
-    reset_eval_cost();
-    call_out("do_it", (i+1)*3, (mail[i] + ({ pname })));
-  }
-  call_out("reset_busy", (i+1)*3, pname);
-  unguarded((: rm, "/save/post/"+pname+".o" :));
+#endif
+string npc_path(string str) {
+   return _npc_path + "/" + str;
 }
-void do_it(mixed *arg) {
-  object handler = clone_object("/obj/handlers/folder_handler");
-  handler->add_it((["to" : ({ arg[6] }),
-    "cc" : ({ }), "from" : arg[1], "subject" : arg[3], "body" :
-    "From "+arg[1]+" "+ctime(arg[0])+
-    "\nDate: "+ctime(arg[0])+
-    "\nFrom: "+arg[1]+
-    "\nTo: "+arg[2]+
-    "\nSubject: "+arg[3]+
-    "\nCc: "+(arg[4]?arg[4]:"")+"\n\n"+
-    arg[5] ]), 1);
+public void hospital_log_file(string file, string format, mixed *args ...) {
+    string filename;
+    filename = _hospital_log_directory;
+    if (file[0] == '/') {
+        file = file[ strsrch( file, "/", -1 ) + 1 .. ];
+    }
+    log_file( _hospital_log_directory + "/" + file, ctime(time()) + ": " + format, args ...);
 }
-int query_busy(string name) {
-  return (member_array(name, names) != -1);
+protected void set_log_directory(string new_dir) {
+    if (file_size(new_dir) != -2) {
+        tell_creator( previous_object( 1 ), "%s: Invalid "
+            "log directory -- defaulting to %s.\n",
+            file_name( this_object() ), DEFAULT_LOG_DIRECTORY );
+        new_dir = DEFAULT_LOG_DIRECTORY;
+    }
+    _hospital_log_directory = new_dir;
 }
-void reset_busy(string name) {
-  names -= ({ name });
-  if (no_more && !sizeof(names)) {
-    "/obj/shut"->shut(2);
-  }
-}
-
-==================================================
-FILE: handlers/corpse_handler.c
-==================================================
-
-#include <player_handler.h>
-#define CORPSE_SAVE_DIR "/save/corpses/"
-#define CORPSE_RAM_DIR "/save/ramdisk/corpses/"
-#define CORPSE_SAVE_FILE "/save/corpses/main"
-#define CORPSE_OBJECT "/obj/corpse"
-private mapping _corpses;
-private nosave mapping _to_save;
-private nosave int _save_things_id;
-private int _corpse_id;
-class corpse_data {
-   int id;
-}
-void create() {
-   seteuid(getuid());
-   _corpses = ([ ]);
-   _corpse_id = 1;
-   _to_save = ([ ]);
-   unguarded( (: restore_object(CORPSE_SAVE_FILE,  1) :));
-   call_out("check_corpses", 10);
-}
-private void save_me() {
-   unguarded( (: save_object(CORPSE_SAVE_FILE,  3) :));
-}
-private class corpse_data find_corpse_data(string name, int id) {
-   class corpse_data corpse;
-   if (!_corpses[name]) {
+private void parse_zone(string fname, mapping data) {
+   string name;
+   class zone_info info;
+   mapping bing;
+   int chance;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for zone %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for zone %O\n", data);
       return 0;
    }
-   foreach (corpse in _corpses[name]) {
-      if (corpse->id == id) {
-         return corpse;
+   name = data["name"];
+   if (data["group"] && !arrayp(data["group"])) {
+      data["group"] = ({ data["group"] });
+   } else if (!arrayp(data["groups"])) {
+      data["group"] = ({ });
+   }
+   if (data["npc"] && !arrayp(data["npc"])) {
+      data["npc"] = ({ data["npc"] });
+   } else if (!arrayp(data["npc"])) {
+      data["npc"] = ({ });
+   }
+   if (data["zone"] && !arrayp(data["zone"])) {
+      data["zone"] = ({ data["zone"] });
+   } else if (!arrayp(data["zone"])) {
+      data["zone"] = ({ });
+   }
+   info = new(class zone_info, npcs : ([ ]), groups : ([ ]), zones : ([ ]));
+   chance = 0;
+   foreach (bing in data["npc"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->npcs[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
       }
    }
-   return 0;
+   info->npc_chance = chance;
+   chance = 0;
+   foreach (bing in data["group"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->groups[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
+      }
+   }
+   info->group_chance = chance;
+   chance = 0;
+   foreach (bing in data["zone"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->zones[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
+      }
+   }
+   info->zone_chance = chance;
+   info->busy = data["busy"];
+   bits = keys(data) - ({ "zone", "group", "npc", "name", "busy" });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in zone %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in %s\n",
+                         query_multiple_short(bits), name);
+   }
+   _zone_info[name] = info;
+   save_file();
 }
-private class corpse_data find_corpse_ob_data(object ob) {
+private void parse_npc(string fname, mapping data) {
    string name;
-   int id;
-   name = ob->query_ownership();
-   id = ob->query_corpse_id();
-   return find_corpse_data(name, id);
-}
-object* find_player_corpses(string player) {
-   object* corpses;
-   corpses = filter( children( "/obj/corpse" ),
-             (: $1 && $1->query_property( "player" ) &&
-                $1->query_ownership() == $2 :), player );
-   return corpses;
-}
-private void really_save_corpses() {
-  object ob, player;
-  class corpse_data corpse;
-  string data;
-  string fname;
-  foreach (ob, corpse in _to_save) {
-    if(!ob)
-      continue;
-    data = ob->query_save_data();
-    if (stringp(data)) {
-#ifdef USE_RAMDISK
-      fname = CORPSE_RAM_DIR + corpse->id;
-#else
-      fname = CORPSE_SAVE_DIR + corpse->id;
-#endif
-      unguarded((: write_file($(fname), $(data), 1) :));
-    } else {
-      tell_creator("pinkfish", "Bad corpse save %O %O\n", ob, data);
-    }
-    player = find_player(ob->query_owner());
-    if(player)
-      player->save_me();
-  }
-  _to_save = ([ ]);
-}
-void save_corpse(object ob) {
-   class corpse_data corpse;
-   if (!ob->query_property("player") || !ob->query_ownership()) {
-      return ;
+   class npc_info info;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for npc %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
    }
-   corpse = find_corpse_ob_data(ob);
-   if (!corpse) {
-      tell_creator("pinkfish", "Cannot find the corpse to save %O [%O].\n",
-                   ob, ob->query_ownership());
-      return ;
+   name = data["name"];
+   if (!data["path"]) {
+      hospital_log_file("COMPILE_ERROR", "Required path field not present for npc %s\n", name);
+      return 0;
    }
-   _to_save[ob] = corpse;
-   if (_save_things_id) {
-      remove_call_out(_save_things_id);
+   if (file_size(npc_path(data["path"]) + ".c") < 0) {
+      hospital_log_file("BAD_NPC_PATH", "Bad path for npc %s (%s)\n", name, data["path"]);
    }
-   _save_things_id = call_out((: really_save_corpses :), 2);
+   if (data["command"] && !arrayp(data["command"])) {
+      data["command"] = ({ data["command"] });
+   }
+   if (data["move_zone"] && !arrayp(data["move_zone"])) {
+      data["move_zone"] = ({ data["move_zone"] });
+   }
+   info = new(class npc_info, move_zones : ({ }), commands : ({ }));
+   info->unique = data["unique"];
+   info->path = data["path"];
+   info->delay = data["delay"];
+   info->max_population = data["population"];
+   if(data["transient"])
+     info->transient = 1;
+   if(data["nocturnal"])
+     info->nocturnal = 1;
+   if(data["diurnal"])
+     info->diurnal = 1;
+   if(data["seasonal"]) {
+     if(!arrayp(data["group"]))
+       info->seasonal = ({ data["seasonal"] });
+     else
+       info->seasonal = data["seasonal"];
+   }
+   if (data["move_zone"]) {
+      info->move_zones = data["move_zone"];
+   }
+   if (data["command"]) {
+      info->commands = data["commands"];
+   }
+   bits = keys(data) - ({ "unique", "path", "move_zone", "population", "name", "delay", "transient", "nocturnal" });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in npc %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in npc %s\n",
+                         query_multiple_short(bits), name);
+   }
+   if (_path_to_npc[info->path] && _path_to_npc[info->path] != name) {
+      hospital_log_file("NPC_NAME_CLASH", "NPC path %s is used by %s and %s.\n",
+                         info->path, name, _path_to_npc[info->path]);
+   }
+   _path_to_npc[info->path] = name;
+   if (_npc_info[name]) {
+      info->population = _npc_info[name]->population;
+      info->no_created = _npc_info[name]->no_created;
+      info->no_reused = _npc_info[name]->no_reused;
+      info->no_deaths = _npc_info[name]->no_deaths;
+   }
+   _npc_info[name] = info;
+   save_file();
 }
-object create_corpse(string name, int id) {
-   class corpse_data corpse;
-   string data, fname;
-   object ob;
-   corpse = find_corpse_data(name, id);
-#ifdef USE_RAMDISK
-   if(unguarded( (: file_size(CORPSE_RAM_DIR + $(corpse->id)) :)) > 0)
-     fname = CORPSE_RAM_DIR + corpse->id;
-#endif
-   if(!fname)
-     fname = CORPSE_SAVE_DIR + corpse->id;
-   data = unguarded( (: read_file($(fname)) :));
-   if (data) {
-     ob = clone_object(CORPSE_OBJECT);
-     ob->setup_corpse_from_save(data, name, id);
-     return ob;
-   }
-   return 0;
-}
-void check_corpses() {
-   class corpse_data* corpses;
+private void parse_group(string fname, mapping data) {
    string name;
-   object* obs;
-   int i;
-   int j;
-   foreach (name, corpses in _corpses) {
-      obs = find_player_corpses(name);
-      for (i = 0; i < sizeof(corpses); i++) {
-         for (j = 0; j < sizeof(obs); j++) {
-            if (obs[j]->query_corpse_id() == corpses[i]->id) {
-               corpses = corpses[0..i -1] + corpses[i+1..];
-               i--;
+   class group_info info;
+   mapping bing;
+   int chance;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for group %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for group %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (data["npc"] && !arrayp(data["npc"])) {
+      data["npc"] = ({ data["npc"] });
+   } else if (!arrayp(data["npc"])) {
+      data["npc"] = ({ });
+   }
+   info = new(class group_info, npcs : ([ ]), move_zones : ({ }),
+                                npc_commands : ([ ]));
+   chance = 0;
+   foreach (bing in data["npc"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) ||
+          (!intp(bing["quantity"]) && !classp(bing["quantity"]))) {
+         debug_printf("Invalid data for group (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for group (%s) %O\n", name,  bing);
+      } else {
+         info->npcs[bing["name"]] = bing["quantity"];
+         if (bing["command"]) {
+            if (arrayp(bing["command"])) {
+               info->npc_commands[bing["name"]] = bing["command"];
+            } else {
+               info->npc_commands[bing["name"]] = ({ bing["command"] });
             }
          }
       }
-      if (sizeof(corpses)) {
-         for (i = 0; i < sizeof(corpses); i++) {
-            create_corpse(name, corpses[i]->id);
+   }
+   if (data["move_zone"]) {
+      info->move_zones = data["move_zone"];
+   }
+   info->max_population = data["population"];
+   info->protect = data["protect"];
+   info->defend = data["defend"];
+   info->transient = data["transient"];
+   bits = keys(data) - ({ "npc", "name", "population", "move_zone", "protect", "defend", "transient", });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in group %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in group %s\n",
+                         query_multiple_short(bits), name);
+   }
+   if (_group_info[name]) {
+     info->storage = _group_info[name]->storage;
+   }
+   _group_info[name] = info;
+}
+protected void finish_compiling(string fname, mapping data) {
+   mixed* bits;
+   mapping thing;
+   string name;
+   foreach (name, bits in data) {
+      switch (name) {
+      case "zone" :
+         foreach (thing in bits) {
+            parse_zone(fname, thing);
+         }
+         break;
+      case "npc" :
+         foreach (thing in bits) {
+            parse_npc(fname, thing);
+         }
+         break;
+      case "group" :
+         foreach (thing in bits) {
+            parse_group(fname, thing);
+         }
+         break;
+      default :
+         debug_printf("Unknown data area %s in %s\n", name, fname);
+         hospital_log_file("COMPILE_ERROR", "Unknown data area %s in %s\n", name, fname);
+         break;
+      }
+   }
+   _file_modified_time[fname] = unguarded( (: stat($(fname)) :))[1];
+   save_file();
+}
+void scan_for_new_data() {
+   string *files;
+   string fname;
+   string *bits;
+   debug_printf("Scan for new data.");
+   if (unguarded( (: stat(__FILE__)[1] :)) !=
+       _file_modified_time[__FILE__]) {
+      _file_modified_time = ([ ]);
+   }
+   files = ({ _data_directory });
+   while (sizeof(files)) {
+      fname = files[0];
+      files = files[1..];
+      if (unguarded( (: file_size($(fname)) :)) == -2) {
+         bits = get_dir(fname + "/");
+         if (bits) {
+            bits -= ({ "RCS", ".", ".." });
+            bits = filter(bits, (: $1[0] != '.' :));
+            files += map(bits, (: $2 + "/" + $1 :), fname);
+         }
+      } else {
+         if (unguarded( (: stat($(fname)) :))[1] != _file_modified_time[fname]) {
+           debug_printf("Compiling %s", fname);
+            DATA_HANDLER->compile_file(fname,
+                     (: finish_compiling :));
          }
       }
    }
+   _file_modified_time[__FILE__] =
+                unguarded( (: stat(__FILE__)[1] :));
 }
-int query_next_corpse_id() {
-   int id;
-   id = _corpse_id++;
-   save_me();
-   return id;
-}
-void register_corpse(object ob) {
-   string name;
-   int id;
-   class corpse_data corpse;
-   tell_creator("Registering %O (%O)\n", ob, ob->query_ownership());
-   name = ob->query_ownership();
-   if(PLAYER_HANDLER->test_creator(name)) {
-     tell_creator("pinkfish", "Not registering creator corpse %O (%O)\n",
-                  ob, ob->query_ownership());
-     return;
-   }
-   id = ob->query_corpse_id();
-   corpse = find_corpse_ob_data(ob);
-   if (corpse) {
-      save_corpse(ob);
-      return ;
-   }
-   corpse = new(class corpse_data);
-   corpse->id = id;
-   if (!_corpses[name]) {
-      _corpses[name] = ({ corpse });
-   } else {
-      _corpses[name] += ({ corpse });
-   }
-   save_me();
-   save_corpse(ob);
-}
-void deregister_corpse(object ob) {
-   string name;
-   int id;
-   class corpse_data corpse;
+int roll_dice(mixed die) {
+   int result;
    int i;
-   if (!ob->query_property("player")) {
+   if (intp(die)) {
+      return die;
+   }
+   if (classp(die)) {
+      for (i = 0; i < die->number; i++) {
+         result += random(die->die) + 1;
+      }
+      result += die->modifier;
+      return result;
+   }
+   return 0;
+}
+int query_npc_max_population( string npc) {
+   if (!_npc_info[npc]) {
+      return -1;
+   }
+   return ((class npc_info)_npc_info[npc])->max_population;
+}
+int query_npc_current_population( string npc, int clean) {
+   class npc_info data;
+   if (!_npc_info[npc]) {
+      return -1;
+   }
+   data = _npc_info[npc];
+   if (!data->population) {
+      data->population = children(npc_path(data->path));
+      data->next_update = time() + POPULATION_UPDATE_TIME;
+   }
+   if (clean || data->next_update < time()) {
+      data->population = filter(data->population, (: objectp($1) :));
+      data->next_update = time() + POPULATION_UPDATE_TIME;
+   }
+   return sizeof(data->population);
+}
+int is_npc_under_max_population(string name) {
+    class npc_info info;
+    info = _npc_info[name];
+    if (!info) {
+       return 0;
+    }
+    if(info->transient)
+      return 1;
+    if (info->max_population) {
+       return query_npc_current_population(name, 1) < info->max_population;
+    }
+    return 1;
+}
+int is_group_under_max_population(string name) {
+    class group_info group;
+    group = _group_info[name];
+    if (!group) {
+       return 0;
+    }
+    if (!group->max_population || group->transient) {
+       return 1;
+    }
+    if (!group->storage) {
+        group->storage = ({ });
+    } else if (group->next_update < time()) {
+        group->storage = map(group->storage, (: filter($1, (: objectp($1) :)) :));
+        group->storage = filter(group->storage, (: sizeof($1) :));
+        group->next_update = time() + POPULATION_UPDATE_TIME;
+    }
+    if (sizeof(group->storage) >= group->max_population) {
+        return 0;
+    }
+    return 1;
+}
+public object load_npc_object(string npc_name) {
+    class npc_info info;
+    object npc;
+    string zone;
+    string cmd;
+    if ( undefinedp(_npc_info[npc_name])) {
+        debug_printf("Unable to find npc %O", npc_name);
+        return 0;
+    }
+    info = _npc_info[npc_name];
+    if(info->diurnal && !WEATHER->query_day(previous_object()))
+      return 0;
+    if(info->nocturnal && !WEATHER->query_day(previous_object()))
+      return 0;
+    if(info->seasonal &&
+       member_array(WEATHER->query_season(), info->seasonal) == -1)
+      return 0;
+    if (stringp(info->path)) {
+        if ( info->unique ) {
+            npc = find_object( npc_path(info->path) );
+            if ((!npc || !environment(npc)) && make_unique(npc_name)) {
+               debug_printf("Unique npc %O", info);
+               if (catch(npc = load_object( npc_path(info->path) ))) {
+                   hospital_log_file("BAD_NPC_PATH", "Error loading %s (%s)\n", npc_name, info->path);
+                   return 0;
+               }
+               if (!objectp(npc) || npc == 0) {
+                   hospital_log_file("BAD_NPC_PATH", "Failed to load %s (%s)\n", npc_name, info->path);
+                   return 0;
+               }
+               if ( environment( npc ) ) {
+                   debug_printf("NPC unique and already exists %O", npc_name);
+                   return 0;
+               }
+            }
+        } else if(info->transient) {
+          if(!_cache_inventory)
+            _cache_inventory = ([ ]);
+          else if(_cache_inventory[npc_name])
+            _cache_inventory[npc_name] -= ({ 0 });
+          if(sizeof(_cache_inventory[npc_name])) {
+            npc = _cache_inventory[npc_name][0];
+            _cache_inventory[npc_name] -= ({ npc });
+            info->no_reused++;
+          } else {
+            npc = clone_object( npc_path(info->path) );
+            if(npc) {
+              npc->add_property("transient", 1);
+              npc->add_property("npc_id", npc_name);
+              npc->add_property("hospital", base_name(this_object()));
+              info->no_created++;
+            } else
+              debug_printf("Failed to clone %s", npc_path(info->path));
+          }
+        } else {
+            if (is_npc_under_max_population(npc_name)) {
+               npc = clone_object( npc_path(info->path) );
+               info->no_created++;
+               if (!npc) {
+                  debug_printf("Npc path does not exist %O (%O)", npc, npc_path(info->path));
+               }
+            } else {
+               debug_printf("NPC over max population %O", npc_name);
+            }
+        }
+    } else {
+        debug_printf("Broken npc data %O", info->path);
+        return 0;
+    }
+    if (npc && !info->transient) {
+        if( info->population == 0 )
+            info->population = ({ });
+        info->population += ({ npc });
+        npc->add_property("npc_id", npc_name);
+        foreach (zone in info->move_zones) {
+            npc->add_move_zone(zone);
+        }
+        foreach (cmd in info->commands) {
+            npc->init_command(cmd, 2);
+        }
+    }
+    return npc;
+}
+object *load_group_npcs(string group_name) {
+    class group_info group;
+    int quantity;
+    int i;
+    object *npcs;
+    string npc_name;
+    object ob;
+    object ob_bing;
+    string cmd;
+    if ( undefinedp(_group_info[group_name]) ||
+         !is_group_under_max_population(group_name)) {
+        return 0;
+    }
+    group = _group_info[group_name];
+    npcs = ({ });
+    foreach (npc_name, quantity in group->npcs) {
+        quantity = roll_dice(quantity);
+        for (i = 0; i < quantity; i++) {
+            ob = load_npc_object(npc_name);
+            if (!ob) {
+               npcs->move("/room/rubbish");
+               return ({ });
+            }
+            npcs += ({ ob });
+            if (group->npc_commands[npc_name]) {
+               foreach (cmd in group->npc_commands[npc_name]) {
+                  ob->init_command(cmd, 2);
+               }
+            }
+        }
+    }
+    if (!group->storage) {
+        group->storage = ({ });
+    }
+    group->storage += ({ npcs });
+    npcs->add_property("group_id", group_name);
+    foreach (ob in npcs) {
+       foreach (ob_bing in npcs) {
+          if (ob != ob_bing) {
+             ob->add_follower(ob_bing);
+             if (group->defend) {
+               ob->add_defender(ob_bing);
+             }
+             if (group->protect) {
+                ob->add_protector(ob_bing);
+             }
+          }
+       }
+    }
+    return npcs;
+}
+public class npc_info query_npc_info( string npc ) {
+    if ( !_npc_info ) {
+        return 0;
+    }
+    return _npc_info[ npc ];
+}
+mapping query_debug_npc_info() {
+   return _npc_info;
+}
+public class group_info query_group_info( string group ) {
+    if ( !_group_info ) {
+        return 0;
+    }
+    return _group_info[ group ];
+}
+void npc_died(object ob) {
+   string npc_id;
+   class npc_info info;
+   int i;
+   mixed* stuff;
+   npc_id = ob->query_property("npc_id");
+   info = _npc_info[npc_id];
+   if (!info || !npc_id) {
       return ;
    }
-   name = ob->query_ownership();
-   id = ob->query_corpse_id();
-   for (i = 0; i < sizeof(_corpses[name]); i++) {
-      corpse = _corpses[name][i];
-      if (corpse->id == id) {
-         _corpses[name] = _corpses[name][0..i-1] + _corpses[name][i+1..];
-         if (!sizeof(_corpses[name])) {
-            map_delete(_corpses, name);
-         }
-         save_me();
-         unguarded( (: rm(CORPSE_SAVE_DIR + $(id)) :));
-#ifdef USE_RAMDISK
-         unguarded( (: rm(CORPSE_RAM_DIR + $(id)) :));
-#endif
-         return ;
+   info->population -= ({ ob });
+   info->no_deaths++;
+   npc_id = ob->query_property("group_id");
+   stuff = _group_info[npc_id]->storage;
+   if (sizeof(stuff)) {
+      for (i = 0; i < sizeof(stuff); i++) {
+         stuff[i] -= ({ ob, 0 });
       }
+      _group_info[npc_id]->storage = filter(_group_info[npc_id]->storage,
+                                             (: sizeof($1) :));
    }
 }
-mixed *stats() {
-  return ({ ({ "corpses", keys(_corpses) }) });
+mapping query_all_npc_info() {
+   return _npc_info;
 }
-
-==================================================
-FILE: handlers/cpi_handler.c
-==================================================
-
-#define RESTORE_PATH "/save/cpi_indices/"
-#define STOCK_EXCHANGE find_object( "/d/am/am/gomerchants" )
-inherit "/std/object";
-string material_name;
-mapping prices;
-void setup() {
-  set_name( "board" );
-  set_short( "price board" );
-  set_long( "This is a large board with many small, wooden flaps attached "+
-            "to it.  Painted onto the flaps are numbers and letters, and "+
-            "the display is occasionally changed by means of a small imp "+
-            "that seems to live inside somewhere.  The board lists the "+
-            "purchasing prices of almost everything from gold and silk "+
-            "to beef and chicken livers at various places where the "+
-            "Merchants' Guild does business.\n" );
-  add_adjective( "price" );
-  set_main_plural( "price boards" );
-  add_plural( "boards" );
-  reset_get();
+mapping query_all_group_info() {
+   return _group_info;
 }
-int look_up(string);
+mapping query_all_zone_info() {
+   return _zone_info;
+}
+private int count_chances_in_zone(string zone) {
+    class zone_info info;
+    int chance;
+    info = _zone_info[zone];
+    if (!zone) {
+       return 0;
+    }
+    chance = info->npc_chance + info->group_chance + info->zone_chance;
+    return chance;
+}
+private object* create_npcs_in_zone(string zone, int pos) {
+    class zone_info info;
+    string extra;
+    string npc;
+    object ob;
+    object* obs;
+    int chance;
+    info = _zone_info[zone];
+    if (!zone) {
+       return ({ });
+    }
+    if(_zone_info[zone]->busy &&
+       _zone_info[zone]->busy < random(random(100)))
+      return ({ });
+    if (pos < info->npc_chance) {
+       foreach (npc, chance in info->npcs) {
+          if (pos < chance) {
+             ob = load_npc_object(npc);
+             if (ob) {
+                return ({ ob });
+             }
+          }
+          pos -= chance;
+       }
+    }
+    pos -= info->npc_chance;
+    if (pos < info->group_chance) {
+       foreach (npc, chance in info->groups) {
+          if (pos < chance) {
+             obs = load_group_npcs(npc);
+             if (sizeof(obs)) {
+                return obs;
+             }
+          }
+          pos -= chance;
+       }
+    }
+    pos -= info->group_chance;
+    foreach (extra, chance in info->zones) {
+        if (pos < chance) {
+           return load_random_npc(extra, -1, -1);
+        }
+    }
+    return ({ });
+}
+object* load_random_npc(string zone, int wealth, int busy) {
+    int chance;
+    int pos;
+    if (_disable_npc_generation) {
+        return ({ });
+    }
+    if (_zone_info[zone + "-w" + wealth + "-b" + busy]) {
+       zone = zone + "-w" + wealth + "-b" + busy;
+    } else if (_zone_info[zone + "-w" + wealth]) {
+       zone = zone + "-w" + wealth;
+    } else if (_zone_info[zone + "-b" + busy]) {
+       zone = zone + "-b" + busy;
+    }
+    if (!_zone_info[zone]) {
+        return ({ });
+    }
+    chance = count_chances_in_zone(zone);
+    if (!chance) {
+       return ({ });
+    }
+    pos = random(chance);
+    return create_npcs_in_zone(zone, pos);
+}
+int do_report() {
+    string name;
+    class group_info group;
+    class npc_info npc;
+    string txt;
+    int total;
+    int max;
+    int pop;
+    txt = "";
+    total = 0;
+    txt += "%^WHITE%^NPCs%^RESET%^\n";
+    foreach( name, npc in _npc_info ) {
+      if(stringp(npc->path) && file_size(npc_path(npc->path) + ".c") > 0) {
+        pop = query_npc_current_population(name, 0);
+      } else {
+        pop = 0;
+      }
+      if(npc->transient)
+        txt += sprintf( "$I$5=Name: %s. (%s) (Transient) Reused %d Created %d Died %d\n", name + "",
+                        (stringp(npc->path)?npc->path:"Broken!"),
+                        npc->no_reused, npc->no_created, npc->no_deaths);
+      else
+        txt += sprintf( "$I$5=Name: %s. (%s) Population: (%d/%d) Created %d Died %d\n", name + "",
+                        (stringp(npc->path)?npc->path:"Broken!"),
+            pop, npc->max_population, npc->no_created, npc->no_deaths );
+        total += pop;
+        max += npc->max_population;
+    }
+    txt += "$I$0=%^WHITE%^Groups%^RESET%^\n";
+    foreach( name, group in _group_info ) {
+      if(group->transient)
+        txt += sprintf( "$I$5=Name: %s. (%s) (Transient)\n", name,
+            query_multiple_short(keys(group->npcs)));
+      else
+        txt += sprintf( "$I$5=Name: %s. (%s) Population: (%d/%d)\n", name,
+            query_multiple_short(keys(group->npcs)),
+            sizeof( group->storage ), group->max_population );
+    }
+    txt += "$I$0=%^WHITE%^Cache%^RESET%^\n";
+    foreach(name in keys(_cache_inventory))
+      _cache_inventory[name] -= ({ 0 });
+    foreach(name, group in _cache_inventory)
+      txt += sprintf("$I$5=Name: %s %d\n", name, sizeof(group));
+    txt += "\nTotal NPCs in hospital: " + total + "/" +
+            max + ".\n";
+    write("$P$Report$P$" + txt );
+    return 1;
+}
 void init() {
-  add_command("find", "<word'thing'>", (:look_up($4[0]):));
+  object ob;
+  ob = this_player();
+  add_command("report", "", (: do_report :));
+  if(ob->query_property("npc_id") && ob->query_property("hospital") &&
+     ob->query_property("hospital") == base_name(this_object())) {
+    if(!_cache_inventory[ob->query_property("npc_id")])
+      _cache_inventory[ob->query_property("npc_id")] = ({ ob });
+    else if(sizeof(_cache_inventory[ob->query_property("npc_id")]) >
+            _max_cache)
+      ob->move("/room/rubbish");
+    else
+      _cache_inventory[ob->query_property("npc_id")] += ({ ob });
+  } else if(base_name(ob) == "/obj/corpse")
+    ob->move("/room/rubbish");
 }
-void imp_effect( string phrase ) {
-  tell_room( STOCK_EXCHANGE, "A tiny door opens in the board, a warty imp "+
-            "climbs out, clambers across the surface and "+ phrase +
-            ".  The imp scowls a bit for the look of the thing, and then "+
-            "disappears back inside the board.\n" );
+int no_attack() { return 1; }
+mapping query_dynamic_auto_load() {
+    string group_name;
+    string npc;
+    class group_info data;
+    class npc_info npc_data;
+    mapping tmp;
+    mapping tmp2;
+    tmp = allocate_mapping( sizeof( _group_info ) );
+    foreach( group_name, data in _group_info ) {
+        tmp[ group_name ] = data->storage;
+    }
+    tmp2 = allocate_mapping( sizeof( _npc_info) );
+    foreach( npc, npc_data in _npc_info ) {
+        tmp2[ npc ] = npc_data->population;
+    }
+    return ([ file_name( this_object() ) : tmp, "npcs" : tmp2 ]);
 }
-void init_data( string word ) {
-  material_name = word;
-  prices = ([ ]);
+void init_dynamic_arg( mapping tmp ) {
+    string group_name;
+    object *npcs;
+    if ( tmp[ file_name( this_object() ) ] ) {
+        foreach( group_name, npcs in tmp[ file_name( this_object() ) ] ) {
+            if (_group_info[group_name]) {
+               _group_info[ group_name ]->storage = npcs;
+            }
+        }
+        foreach( group_name, npcs in tmp[ "npcs" ]) {
+            if (_npc_info[group_name]) {
+               _npc_info[ group_name ]->population = npcs;
+            }
+        }
+    }
 }
-int get_data_file( string word ) {
-  if ( material_name != word ) {
-    if ( file_size( RESTORE_PATH + word +".o" ) > 0 )
-      unguarded((: restore_object, RESTORE_PATH + word :));
-    else {
-      init_data( word );
-      return 0;
+mixed query_all_npcs() {
+    return values( map( _group_info, (: $2->storage :) ) );
+}
+mapping query_inventory_cache() {
+  return copy(_cache_inventory);
+}
+string* query_registered_npcs() {
+    return keys( _npc_info );
+}
+
+==================================================
+FILE: handlers/housing.c
+==================================================
+
+#include <housing.h>
+#include <login_handler.h>
+#include <am_time.h>
+#include <nomic_system.h>
+#define BANK "/obj/handlers/bank_handler"
+#define DEFAULT_BANK "Bing's First"
+#define DEFAULT_PLACE "Ankh-Morpork"
+#define MAIL_HANDLER "/obj/handlers/mailer"
+#define SAVE_FILE "/save/player_housing/housing"
+class housing {
+  string *other_rooms;
+  string owner;
+  string address;
+  string region;
+  int type;
+  int value;
+  string bank;
+}
+void load_file();
+string query_housing_area_bank(string area);
+private nosave string *_tmp_houses;
+private nosave string *_tmp_rentals;
+private mapping houses;
+private int last_paid;
+private mapping _housing_area;
+private mapping _area_money;
+void create() {
+  houses = ([ ]);
+  _housing_area = ([ ]);
+  _area_money = ([ ]);
+  seteuid("Root");
+  load_file();
+  if (!_housing_area) {
+    _housing_area = ([ ]);
+  }
+  if (!_area_money) {
+    _area_money = ([ ]);
+  }
+  call_out("check_owners", 900 + random(1800), 0);
+  call_out("check_rent", 900 + random(1800));
+}
+void save_file() {
+  unguarded((: cp, SAVE_FILE + ".o", SAVE_FILE + ".o.bak" :));
+  unguarded((: save_object, SAVE_FILE :));
+}
+void load_file() {
+  if (file_size(SAVE_FILE+".o") > 0)
+    unguarded((: restore_object, SAVE_FILE :));
+}
+#ifdef 0
+int change() {
+  class housing nhouse;
+  string house;
+  foreach(house in keys(houses)) {
+    write(sizeof(houses[house]) + "\n");
+    if(sizeof(houses[house]) == 6) {
+      nhouse = new(class housing,
+                   other_rooms: houses[house]->other_rooms,
+                   owner: houses[house]->owner,
+                   address: houses[house]->address,
+                   region: houses[house]->region,
+                   type: houses[house]->type,
+                   bank: houses[house]->region
+               );
+      houses[house] = nhouse;
     }
   }
+  save_file();
   return 1;
 }
-void save_data_file( string word ) {
-  unguarded((: save_object, RESTORE_PATH + word :));
-}
-int query_price( string word1, string word2 ) {
-   if ( !stringp( word1 ) )
-      return 0;
-   get_data_file( word1 );
-   if ( !prices )
-      return 0;
-   return prices[ word2 ];
-}
-int add_price( string word1, string word2, int number ) {
-  get_data_file( word1 );
-  if ( prices[word2] != 0 ) return 0;
-  prices += ([ word2 : number ]);
-  imp_effect( "adds the price of "+ word1 +" in "+ word2 +" to the lists" );
-  save_data_file( material_name );
+#endif
+int add_house(string house, string *other_rooms, string address,
+              string region, int type) {
+  if(!houses)
+    houses = ([ ]);
+  if(houses[house])
+    return 0;
+  houses[house] = new(class housing,
+                      other_rooms: uniq_array(other_rooms),
+                      address: address,
+                      region: region,
+                      type: type,
+                      bank: query_housing_area_bank(region)
+                  );
+  save_file();
   return 1;
 }
-int modify_price( string word1, string word2, int number ) {
-  get_data_file( word1 );
-  if ( prices[word2] == 0 ) return 0;
-  prices[word2] = number;
-  imp_effect( "updates the price of "+ word1 +" in "+ word2 );
-  save_data_file( material_name );
+int modify_house(string house, string *other_rooms, string address,
+              string region, int type) {
+  if(!houses)
+    houses = ([ ]);
+  if(!houses[house])
+    return 0;
+  houses[house] = new(class housing,
+                      other_rooms: uniq_array(other_rooms),
+                      address: address,
+                      region: region,
+                      type: type,
+                      bank: query_housing_area_bank(region));
+  save_file();
   return 1;
 }
-int remove_price( string word1, string word2 ) {
-  get_data_file( word1 );
-  if ( prices[word2] == 0 ) return 0;
-  prices = m_delete( prices, word2 );
-  imp_effect( "removes the price of "+ word1 +" in "+ word2 +
-              " from the lists" );
-  save_data_file( material_name );
+int rename_house(string house, string newhouse) {
+  if(!houses[house])
+    return 0;
+  if(houses[newhouse])
+    return 0;
+  houses[newhouse] = houses[house];
+  if(member_array(newhouse, houses[newhouse]->other_rooms) != -1)
+    houses[newhouse]->other_rooms -= ({ newhouse });
+  map_delete(houses, house);
+  save_file();
   return 1;
 }
-int look_up( string word ) {
-  int i;
-  get_data_file( word );
-  if ( !m_sizeof( prices ) ) {
-    notify_fail( "You can't find any prices for "+ word +" on the board.\n" );
+int remove_house( string house ) {
+  if(!houses[house])
+    return 0;
+  map_delete( houses, house );
+  return 1;
+}
+int add_rooms(string house, string *rooms) {
+  if(!houses[house])
+    return 0;
+  houses[house]->other_rooms = uniq_array(houses[house]->other_rooms + rooms);
+  save_file();
+  return 1;
+}
+int remove_rooms(string house, string *rooms) {
+  if(!houses[house])
+    return 0;
+  houses[house]->other_rooms -= rooms;
+  save_file();
+  return 1;
+}
+int set_owner(string house, string owner) {
+  string room;
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(!owner)
+    return 0;
+  owner = lower_case(owner);
+  house->ownership_change(houses[house]->owner, owner);
+  foreach(room in houses[house]->other_rooms)
+    room->ownership_change(houses[house]->owner, owner);
+  log_file("HOUSING", "%s Owner for %s set to %s from %s.\n",
+           ctime(time())[4..15], house, owner, houses[house]->owner);
+  houses[house]->owner = owner;
+  save_file();
+  return 1;
+}
+int set_region(string house, string region) {
+  if(!houses) {
     return 0;
   }
-  if ( m_sizeof( prices ) == 1 ) {
-    write( "The only price on the board for "+ word +" is "+
-              m_values( prices )[0] +" in "+ m_indices( prices )[0] +".\n" );
-  } else {
-    write( "You find the following price list for "+ word +":\n\n" );
-    for ( i = 1; i < m_sizeof( prices ); i++ ) {
-      printf( "%6-s %7d %4|s %40-s \n", "", m_values( prices )[i], "in",
-                m_indices( prices )[i] +"," );
-    }
-    printf( "%6-s %7d %4|s %40-s \n", "  and ", m_values( prices )[0], "in",
-              m_indices( prices )[0] +"." );
+  if(!houses[house]) {
+    return 0;
   }
+  if(!stringp(region)) {
+    return 0;
+  }
+  houses[house]->region = region;
+  save_file();
+  log_file("HOUSING", "%s Region for %s set to %s\n",
+           ctime(time())[4..15], house, region);
   return 1;
 }
-string *query_available_datatypes()
-{
-  return get_dir(RESTORE_PATH);
+int set_address(string house, string address) {
+  if(!houses) {
+    return 0;
+  }
+  if(!houses[house]) {
+    return 0;
+  }
+  if(!stringp(address)) {
+    return 0;
+  }
+  houses[house]->address = address;
+  save_file();
+  log_file("HOUSING", "%s Address for %s set to %s\n",
+           ctime(time())[4..15], house, address);
+  return 1;
+}
+string query_owner(string house) {
+  string tmp;
+  if(!houses)
+    return 0;
+  if(houses[house])
+    return replace(houses[house]->owner, " (In Arrears)", "");
+  foreach(tmp in keys(houses))
+    if(member_array(house, houses[tmp]->other_rooms) != -1)
+      return replace(houses[tmp]->owner, " (In Arrears)", "");
+}
+int query_house(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return 1;
+}
+int set_bank(string house, string bank) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(!bank)
+    return 0;
+  if(((class housing)houses[house])->type != RENT)
+    return 0;
+  houses[house]->bank = bank;
+  save_file();
+  return 1;
+}
+string query_bank(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->bank;
+}
+string *query_rooms(string house) {
+  string *tmp;
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(sizeof(houses[house]->other_rooms)) {
+    tmp = houses[house]->other_rooms;
+    tmp += ({ house });
+  } else
+    tmp = ({ house });
+  return tmp;
+}
+string query_address(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->address;
+}
+string query_region(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->region;
+}
+int set_type(string house, int type) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  if(type < 0 || type > 1)
+    return 0;
+  ((class housing)houses[house])->type = type;
+  save_file();
+  return 1;
+}
+int query_type(string house) {
+  if(!houses)
+    return -1;
+  if(!houses[house])
+    return -1;
+  return ((class housing)houses[house])->type;
+}
+int query_value(string house) {
+  if(!houses)
+    return 0;
+  if(!houses[house])
+    return 0;
+  return houses[house]->value;
+}
+string *query_vacant(string region) {
+  string house, *sale_list;
+  sale_list = ({ });
+  foreach(house in keys(houses)) {
+    if(stringp(houses[house]->owner)) {
+      if (lower_case(houses[house]->owner) == "for sale" &&
+          houses[house]->region == region) {
+        sale_list += ({ house });
+      }
+    } else {
+      debug_printf("Bad owner for house %O\n", house);
+    }
+  }
+  return sale_list;
+}
+int set_for_sale(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to For Sale from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = "For Sale";
+  houses[house]->bank = DEFAULT_BANK;
+  save_file();
+  return 1;
+}
+int set_under_offer(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to Under Offer from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = "Under Offer";
+  houses[house]->value = 0;
+  save_file();
+  return 1;
+}
+int set_in_arrears(string house) {
+  if(!houses || !houses[house])
+    return 0;
+  log_file("HOUSING", "%s %s set to In Arrears from %s\n",
+           ctime(time())[4..15], house, houses[house]->owner);
+  houses[house]->owner = houses[house]->owner + " (In Arrears)";
+  save_file();
+  return 1;
+}
+int set_value(string house, int value) {
+  if(!houses || !houses[house])
+    return 0;
+  houses[house]->value = value;
+  save_file();
+  return 1;
+}
+int player_refreshed(mixed name, int refresh_type) {
+  class housing house;
+  string hname;
+  if(objectp(name))
+    name = name->query_name();
+  foreach(hname, house in houses)
+    if(house->owner == name) {
+      log_file("HOUSING", "%s %s refreshed or deleted.\n", ctime(time())[4..15],
+               house->owner);
+      set_for_sale(hname);
+    }
+  return 1;
+}
+void set_housing_area_citizenship(string area, string citizenship) {
+   _housing_area[area] = citizenship;
+   save_file();
+}
+void remove_housing_area_citizenship(string area) {
+   map_delete(_housing_area, area);
+   save_file();
+}
+string query_housing_area_citizenship(string area) {
+   return _housing_area[area];
+}
+mapping query_all_housing_area_citizenships() {
+   return copy(_housing_area);
+}
+void set_housing_area_money( string area, string bank, string place ) {
+    if( !_area_money[area] ) {
+        _area_money[area] = ([ ]);
+    }
+    if( bank ) {
+        _area_money[area]["bank"] = bank;
+    }
+    if( place ) {
+        _area_money[area]["place"] = place;
+    }
+    save_file();
+}
+string query_housing_area_bank(string area) {
+    if( _area_money[area] && _area_money[area]["bank"] ) {
+        return _area_money[area]["bank"];
+    }
+    else {
+        return DEFAULT_BANK;
+    }
+}
+string query_housing_area_place(string area) {
+    if( _area_money[area] && _area_money[area]["place"] ) {
+        return _area_money[area]["place"];
+    }
+    else {
+        return DEFAULT_PLACE;
+    }
+}
+void check_owners(int i) {
+  class housing tmp;
+  if(!_tmp_houses)
+    _tmp_houses = keys(houses);
+  if(i == sizeof(_tmp_houses))
+    return;
+  tmp = houses[_tmp_houses[i]];
+  if(!tmp->owner ||
+     lower_case(tmp->owner) == "for sale" ||
+     lower_case(tmp->owner) == "under offer" ||
+     strsrch(lower_case(tmp->owner), "(in arrears)") != -1) {
+    call_out("check_owners", 1, ++i);
+    return;
+  }
+  if(!PLAYER_HANDLER->test_user(lower_case(tmp->owner))) {
+    log_file("HOUSING", "%s %s doesn't exist.\n", ctime(time())[4..15],
+             tmp->owner);
+    set_for_sale(_tmp_houses[i]);
+  } else if(!PLAYER_HANDLER->test_creator(tmp->owner)) {
+    switch(tmp->type) {
+    case SALE:
+      if(PLAYER_HANDLER->test_last(tmp->owner) < time() - OWNER_TIMEOUT) {
+        log_file("HOUSING", "%s %s is idle last login %s ago [%s].\n",
+                 ctime(time())[4..15], tmp->owner,
+                 ctime_elapsed(time() - PLAYER_HANDLER->test_last(tmp->owner)),
+                 _tmp_houses[i]);
+        set_for_sale(_tmp_houses[i]);
+      }
+      break;
+    case RENT:
+      if(PLAYER_HANDLER->test_last(tmp->owner) < time() - RENTER_TIMEOUT) {
+        log_file("HOUSING", "%s %s is idle last login %s [%s].\n",
+                 ctime(time())[4..15], tmp->owner,
+                 ctime_elapsed(time() - PLAYER_HANDLER->test_last(tmp->owner)),
+                 _tmp_houses[i]);
+        set_for_sale(_tmp_houses[i]);
+      }
+      if (_housing_area[tmp->region] &&
+          !NOMIC_HANDLER->is_citizen_of(_housing_area[tmp->region],
+                                        tmp->owner)) {
+        log_file("HOUSING", "Property %s has an owner %s, who is not "
+                 "a citizen of %s [rent %d].\n", _tmp_rentals[i],
+                 tmp->owner, _housing_area[tmp->region], tmp->value);
+        MAIL_HANDLER->do_mail_message(tmp->owner,
+                                      "Housing Rental Office",
+                                      "Reposession", "",
+                                      "Due to not being a citizen of " +
+                                      _housing_area[tmp->region] +
+                                      " when your rent was due, your property "
+                                      "at " +tmp->address + " has been "
+                                      "reposessed and put up for sale.\n\n"
+                                      "The rental office.\n");
+        set_for_sale(_tmp_rentals[i]);
+      }
+      break;
+    }
+  }
+  call_out("check_owners", 1, ++i);
+}
+void check_rent() {
+  int *now, daysleft;
+  now = AM_TIME_HANDLER->query_am_time_array(time());
+  if(now[AM_TIME_MONTH] != last_paid) {
+    log_file("HOUSING", "Processing rent for " +
+             AM_TIME_HANDLER->query_month(now[AM_TIME_MONTH]) + "\n");
+    call_out("charge_rent", 0);
+    last_paid = now[AM_TIME_MONTH];
+    save_file();
+  }
+  daysleft = AM_TIME_HANDLER->query_days_per_month()[now[AM_TIME_MONTH]-1] -
+    now[AM_TIME_DAY_OF_MONTH];
+  call_out("check_rent", (daysleft * AM_SECONDS_PER_DAY) + 1);
+}
+void charge_rent(int i) {
+  class housing tmp;
+  string owner;
+  if(!_tmp_rentals)
+    _tmp_rentals = keys(houses);
+  if(i >= sizeof(_tmp_rentals))
+    return;
+  tmp = houses[_tmp_rentals[i]];
+  while(i < sizeof(_tmp_rentals) &&
+        (tmp->type != RENT || !tmp->owner ||
+         lower_case(tmp->owner) == "for sale" ||
+         lower_case(tmp->owner) == "under offer")) {
+    if(++i < sizeof(_tmp_rentals))
+      tmp = houses[_tmp_rentals[i]];
+  }
+  if(i >= sizeof(_tmp_rentals)) {
+    return;
+  }
+  call_out("charge_rent", 1, (i+1));
+  if(!tmp->bank) {
+    set_bank( _tmp_rentals[i], query_housing_area_bank( tmp->region ) );
+    log_file("HOUSING", "Property %s had no bank, setting it to %s.\n",
+             _tmp_rentals[i], tmp->bank);
+  }
+  if(!tmp->value) {
+    log_file("HOUSING", "Property %s has a rent of zero.\n",
+             _tmp_rentals[i]);
+  } else if(strsrch(tmp->owner, "(In Arrears)") != -1) {
+    owner = replace(tmp->owner, " (In Arrears)", "");
+    if(BANK->query_account(owner, tmp->bank) < tmp->value * 3) {
+      log_file("HOUSING", "%s %s failed to pay %d (%d) for %s [%s] "
+               "property repossessed.\n",
+               ctime(time())[4..15], owner, tmp->value * 3,
+               BANK->query_account(owner, tmp->bank), _tmp_rentals[i],
+               tmp->bank);
+      MAIL_HANDLER->do_mail_message(owner,
+                                    "Housing Rental Office",
+                                    "Reposession", "",
+                                    "Due to insufficient funds in your "
+                                    "account at " + tmp->bank + " bank your "
+                                    "property\n"
+                                    "at " +tmp->address + " has been "
+                                    "reposessed.\n\n"
+                                    "The rental office.\n");
+      BANK->adjust_account(owner, tmp->bank,
+                           -(BANK->query_account(owner, tmp->bank)));
+      set_for_sale(_tmp_rentals[i]);
+    } else {
+      BANK->adjust_account(owner, tmp->bank, - (tmp->value * 3));
+      log_file("HOUSING", "%s %s paid arrears of %d for %s [%s]\n",
+               ctime(time())[4..15], tmp->owner, tmp->value * 3,
+               BANK->query_account(owner, tmp->bank), _tmp_rentals[i],
+               tmp->bank);
+      set_owner(_tmp_rentals[i], owner);
+    }
+  } else if(BANK->query_account(tmp->owner, tmp->bank) < tmp->value) {
+    log_file("HOUSING", "%s %s failed to pay %d (%d) for %s [%s] "
+             "property set in arrears.\n", ctime(time())[4..15], tmp->owner,
+             tmp->value, BANK->query_account(tmp->owner, tmp->bank),
+             _tmp_rentals[i], tmp->bank);
+    MAIL_HANDLER->do_mail_message(tmp->owner,
+                                  "Housing Rental Office",
+                                  "In Arrears", "",
+                                  "Due to insufficient funds in your account "
+                                  "at " + tmp->bank + " bank your property\n"
+                                  "at " +tmp->address + " is now in arrears."
+                                  "\n\n"
+                                  "Next month you will be charged three times "
+                                  "the normal rent (this months rent, a one "
+                                  "month late fee and next months rent).\n\n"
+                                  "Failure to pay will result in repossession "
+                                  "of your property.\n\n"
+                                  "The rental office.\n");
+    set_in_arrears(_tmp_rentals[i]);
+  } else {
+    BANK->adjust_account(tmp->owner, tmp->bank, -tmp->value);
+    log_file("HOUSING", "%s %d rental paid by %s for %s\n",
+             ctime(time())[4..15], tmp->value, tmp->owner, _tmp_rentals[i]);
+  }
+  if(tmp->owner != "For Sale" &&
+     BANK->query_account(tmp->owner, tmp->bank) < (tmp->value * 3)) {
+    MAIL_HANDLER->do_mail_message(tmp->owner,
+                                  "Housing Rental Office",
+                                  "Shortage of funds", "",
+                                  "Your bank account currently has funds for "
+                                  "less than three months rent.\n\n"
+                                  "The rental office.\n");
+  }
+  debug_printf("Doing callout %d.", (i+1));
+}
+mapping query_houses() {
+  return copy(houses);
+}
+mixed stats() {
+  return ({
+    ({ "total houses", sizeof(keys(houses)) }),
+      ({ "paid for" , AM_TIME_HANDLER->query_month(last_paid) }),
+      });
 }
 
 ==================================================
-FILE: handlers/data.c
+FILE: handlers/image.c
 ==================================================
 
-#include <data.h>
-#include <function.h>
-#define CALLOUT_DELAY 0
-#define DEBUG !
-#define DC_DELIM 0
-#define DC_ARRAY 1
-#define DC_MAPPING 2
-#define DC_OF 3
-#define DC_CLASS 4
-#define DC_STRING 5
-#define DC_ITEM 6
-#define DC_NUMBER 7
-#define DC_GREY 8
-#define MAX_SUBF_SIZE 16000
-#define WHITESPACE(c) (c == 10 || c == 32 || c == '\n')
-#ifdef DEBUG
-#  define Error(s) write(s); log_file( "DATA_COMPILER", s);
-#else
-#  define Error(s) ;
-#endif
-string std_euid;
+#include <image.h>
+varargs class IMAGE_INFO load_image(string image_file, int rle) {
+  int i, j, n, size_x, size_y;
+  string image_type, l;
+  mixed vals;
+  class IMAGE_INFO ret;
+  image_type = read_file(image_file, 1, 1);
+  image_type = replace_string(image_type, " ", "");
+  image_type = replace_string(image_type, "\n", "");
+  if (image_type != "RAW") {
+    error("Only image type RAW is currently supported.\n");
+  }
+  l = read_file(image_file, 2, 1);
+  if (sscanf(l, "%d%d", size_x, size_y) != 2) {
+    error("Image size(s) not found.\n");
+  }
+  ret = new(class IMAGE_INFO);
+  ret->size = ({ size_x, size_y });
+  vals = read_file(image_file, 3);
+  vals = reg_assoc(vals, ({ "[0-9]+" }), ({ 1 }));
+  n = 0;
+  while (vals[1][n] != 1) n++;
+  ret->image = allocate(size_x);
+  for (i = 0; i < size_x; i++) {
+    ret->image[i] = allocate(size_y);
+    for (j = 0; j < size_y; j++) {
+      if (n >= sizeof(vals[0])) {
+        error("Ran out of values for image at " + i + ", " + j + ".\n");
+      }
+      ret->image[i][j] = to_int(vals[0][n++]);
+      while ((n < sizeof(vals[0])) && (vals[1][n] != 1))
+        n++;
+    }
+  }
+  return ret;
+}
+void print_image(class IMAGE_INFO im) {
+  int i, j;
+  printf("size: %d x %d, %s, ", im->size[0], im->size[1],
+         (im->rle?"rle":"no rle"));
+  if (arrayp(im->nw_coord))
+    printf("@ ({ %d, %d, %d })\n", im->nw_coord[0], im->nw_coord[1],
+           im->nw_coord[2]);
+  else
+    printf("(not placed)\n");
+  printf("Image:\n    ");
+  for (i = 0; i < sizeof(im->image); i++) {
+    for (j = 0; j < sizeof(im->image[i]); j++) {
+      printf("% 4d", im->image[i][j]);
+    }
+    printf("\n    ");
+  }
+  printf("\n");
+}
+
+==================================================
+FILE: handlers/inhume.c
+==================================================
+
+#include <inhume.h>
 void create() {
-    std_euid = "/secure/master"->creator_file(file_name(this_object()));
-    seteuid(std_euid);
-}
-int tmp_file_no;
-private string strip_string( string str ) {
-    int     i, j;
-    if (!str || str == "") return "";
-    j = strlen( str ) - 1;
-    for( ; WHITESPACE( str[ i ] ) && i <= j; i++ ) ;
-    for( ; WHITESPACE( str[ j ] ) && j > i; j-- ) ;
-    return str[ i..j ];
-}
-private mixed cleanup_assoc( mixed parse ) {
-    int j;
-    for (j = 0; j < sizeof(parse[0]); j++) {
-        if ((parse[1][j] == DC_DELIM) || (parse[1][j] == DC_OF)) {
-            parse[0][j] = 0;
-            parse[1][j] = 0;
-        }
-    }
-    parse[0] -= ({ 0 });
-    parse[1] -= ({ 0 });
-    return parse;
-}
-mixed compile_data( string *path ) {
-    string tmp_name, data = "", file_data = "", s1, tmp_val, base, keyword;
-    string *segments, *ind, *val, cur_index;
-    int i, j, t, debug_file, class_pending, stat, subfunc_cnt,
-        subfunc_char_cnt, data_keyword_found, allocated_data;
-    int *index_types;
-    mixed parse, index_max;
-    if (!sizeof(path))
-      return 0;
-    tmp_name = path[0] + "_dc.c";
-    if( find_object( tmp_name ) )
-        tmp_name->dest_me();
-    if (file_size(tmp_name) > 0) {
-        if ((stat = seteuid("Root")) == 0) {
-        }
-        stat = unguarded((: rm, tmp_name :));
-        if (!stat) {
-            Error("Error: couldn't remove old .c file (" +
-                  geteuid(this_object()) + ", " +
-                  "secure/master"->valid_seteuid(this_object(), "Root") +
-                  ")\n");
-            seteuid(std_euid);
-            return 0;
-        }
-    }
-    seteuid(std_euid);
-    for (i = 0; i < sizeof(path); i++) {
-        if (file_size(path[i]) <= 0)
-          continue;
-        data += read_file( path[i] );
-    }
-    if (!data) {
-        Error("Error: file(s) not found.\n");
-        return 0;
-    }
-    segments = explode( "$\n" + data, "\n#" );
-    if( !segments ) {
-        Error( "prop_to_fun() : Nothing but comments?\n" );
-        return 0;
-    }
-    segments[ 0 ] = segments[ 0 ][ 1..(sizeof(segments[ 0 ]) - 1) ];
-    for( i = 1; i < sizeof( segments ); i++ ) {
-        if( sscanf( segments[ i ], "%s\n%s", s1, segments[ i ] ) != 2 ) {
-            segments[ i ] = "";
-        }
-    }
-    data = implode( segments, "\n" );
-    segments = explode( strip_string( data ), "::" );
-    if (sizeof( segments ) % 2) {
-      segments += ({""});
-    }
-    ind = allocate( sizeof( segments ) / 2 );
-    val = allocate( sizeof( segments ) / 2 );
-    allocated_data = 0;
-    for( i = 0; i < sizeof( ind ); i++ ) {
-        ind[ i ] = segments[ i * 2 ];
-        val[ i ] = strip_string( segments[ i * 2 + 1 ] );
-        if( ind[ i ][ 0..0 ] == "#" ) {
-            ind[ i ] = lower_case( ind[ i ] );
-            if( ind[ i ] == "#debug" ) {
-                sscanf( val[ i ], "%d", debug_file );
-            } else if( ind[ i ] == "#include" ) {
-                tmp_val = val[i];
-                file_data += "#include " + replace( tmp_val, " ", "" ) + "\n";
-            }
-        }
-    }
-    for( i = 0; i < sizeof( ind ); i++ ) {
-        keyword = lower_case( ind[ i ] );
-        if( keyword[ 0..0 ] == "#" ) {
-            continue;
-        }
-        subfunc_char_cnt += sizeof(ind[i]) + sizeof(val[i]);
-        if (keyword == "data") {
-            if (data_keyword_found) {
-                Error("Error: more than one data keyword found.\n");
-                return 0;
-            }
-            data_keyword_found = 1;
-            file_data += "void dest_me() { destruct( this_object() ); }\n\n";
-            parse = reg_assoc(val[i],
-                              ({ "array", "mapping", "of", "class +[^\t ]+",
-                                 "[^\t ]+" }),
-                              ({ DC_ARRAY, DC_MAPPING, DC_OF, DC_CLASS,
-                                 DC_GREY }),
-                              DC_DELIM);
-            parse = cleanup_assoc( parse );
-            for (j = 0; (j < sizeof(parse[0])) && !index_max; j++) {
-                switch (parse[1][j]) {
-                  case DC_ARRAY:
-                    break;
-                  case DC_MAPPING:
-                    break;
-                  case DC_CLASS:
-                    base = implode(parse[0][j..], " ");
-                    file_data += base + " item;\n";
-                  case DC_GREY:
-                    index_types = parse[1][0..j-1];
-                    index_max = allocate(sizeof(index_types));
-                    break;
-                  default:
-                    Error("Error: data parse error 1 (" + parse[0][j] + ")\n");
-                    return 0;
-                }
-            }
-            if (index_types[0] == DC_MAPPING)
-              file_data += "mapping data = ([ ]);\n\n";
-            else
-              file_data += "mixed data;\n\n";
-            for (j = 0; j < sizeof(index_types); j++) {
-                switch (index_types[j]) {
-                  case DC_ARRAY:
-                    index_max[j] = -1;
-                    break;
-                  case DC_MAPPING:
-                    break;
-                  default:
-                    Error("Error: illegal index type found ("
-                          + index_types[j] + ")\n");
-                    return 0;
-                }
-            }
-            file_data += "mixed data_return_" + subfunc_cnt + "() {\n";
-            subfunc_cnt++;
-            continue;
-        }
-        if (keyword[0..3] == "item") {
-            if (class_pending) {
-                file_data += "  data" + cur_index + " = item;\n";
-                class_pending = 0;
-            }
-            if (subfunc_char_cnt > MAX_SUBF_SIZE) {
-                file_data += "}\n\n";
-                file_data += "mixed data_return_" + subfunc_cnt + "() {\n";
-                subfunc_cnt++;
-                subfunc_char_cnt = 0;
-            }
-            parse = reg_assoc( ind[i], ({ "\"[^\"]*\"", "item", "[0-9]+",
-                                      "[^,\t ]+"}),
-                              ({ DC_STRING, DC_ITEM, DC_NUMBER, DC_GREY }));
-            parse = cleanup_assoc( parse );
-            cur_index = "";
-            for (j = 0; j < sizeof(index_types); j++) {
-                switch (index_types[j]) {
-                  case DC_ARRAY:
-                    if (parse[1][j+1] != DC_NUMBER) {
-                        if (parse[0][j+1] == "i") {
-                            parse[0][j+1] = index_max[j] + "";
-                        } else if (parse[0][j+1] == "i++") {
-                            parse[0][j+1] = index_max[j] + "";
-                            index_max[j]++;
-                        } else if (parse[0][j+1] == "++i") {
-                            index_max[j]++;
-                            parse[0][j+1] = index_max[j] + "";
-                        } else {
-                          Error("Error: illegal index for array (" +
-                                  parse[0][j+1] + ")\n");
-                            return 0;
-                        }
-                    }
-                    if ((t = to_int(parse[0][j+1])) > index_max[j]) {
-                        file_data += "  data" + cur_index
-                          + " = allocate(" + (t-index_max[j]) + ");\n";
-                        index_max[j] = t;
-                        allocated_data = 1;
-                    }
-                    break;
-                  case DC_MAPPING:
-                    if (j) {
-                        file_data += "  if (!mapp(data" + cur_index + "))"
-                          + " data" + cur_index + " = ([]);\n";
-                    }
-                    break;
-                  default:
-                    Error("Error: illegal index type found (" + index_types[j]
-                          + ")\n");
-                    return 0;
-                }
-                cur_index += "[" + parse[0][j+1] + "]";
-            }
-            if (strip_string(val[i]) != "") {
-                file_data += "  data" + cur_index + " = " + val[i] + ";\n";
-            }
-            continue;
-        }
-        if (keyword[0..1] == "->") {
-            if (!class_pending) {
-                file_data += "  item = new( " + base + " );\n";
-                class_pending = 1;
-            }
-            file_data += "  item->" + ind[i][2..] + " = " + val[i] + ";\n";
-            continue;
-        }
-        if (keyword == "quote") {
-            file_data += val[i] + "\n";
-            continue;
-        }
-    }
-    if (class_pending) {
-        file_data += "  data" + cur_index + " = item;\n";
-    }
-    file_data += "}\n\n";
-    file_data += "mixed data_return() {\n";
-    if ( !allocated_data ) {
-        for (j = 0; j < sizeof(index_types); j++) {
-            switch (index_types[j]) {
-                case DC_ARRAY:
-                    file_data += "  data = allocate(" + (to_int(index_max[j]) + 1) + ");\n";
-                break;
-            }
-        }
-    }
-    for (i = 0; i < subfunc_cnt; i++) {
-        file_data += "  data_return_" + i + "();\n";
-    }
-    file_data += "  return data;\n}\n";
-    seteuid("Root");
-    unguarded((: write_file, tmp_name, file_data, 1 :));
-    seteuid(std_euid);
-    return tmp_name->data_return();
-}
-class data_node {
-   int type;
-   mixed value;
-}
-class queue_node {
-   string name;
-   class data_node data;
-}
-class compile_data {
-   string file_name;
-   function call_back;
-   int current_line;
-   int look_for;
-   int last_chunk_compile;
-   int file_len;
-   class queue_node* depths;
-}
-private nosave class compile_data* _to_compile = ({ });
-void start_compile();
-void parse_chunk(class compile_data data, string chunk);
-#define DATA_UNKNOWN 0
-#define DATA_CHILDREN 1
-#define DATA_NUMBER 2
-#define DATA_STRING 3
-#define DATA_LIST 4
-#define OPEN_BRACKET 1
-#define START_ARGUMENT 2
-#define END_BRACKET 3
-#define END_STRING 4
-#define START_LIST 5
-#define END_NUMBER 6
-#define ARGUMENT_VALUE 7
-#define ARGUMENT_NAME 8
-#define REST_OF_ARGUMENT 9
-#define END_STRING_LIST 10
-#define END_NUMBER_LIST 11
-#define END_LIST 12
-#define CHUNK_SIZE 10
-void compile_file(string fname, function call_back) {
-   class compile_data data;
-   if (file_size(fname) == -1) {
-      tell_object(this_player(), "The file "+
-                         fname+" does not exist.\n");
-      return ;
-   }
-   if (file_size(fname) == -2) {
-      tell_object(this_player(), "The file "+
-                         fname+" is a directory exist.\n");
-      return ;
-   }
-   data = new(class compile_data);
-   data->file_name = fname;
-   data->call_back = call_back;
-   data->look_for = OPEN_BRACKET;
-   _to_compile += ({ data });
-   start_compile();
-}
-void start_compile() {
-   class compile_data data;
-   if (!sizeof(_to_compile) || _to_compile[0]->last_chunk_compile) {
-      return ;
-   }
-   data = _to_compile[0];
-   data->last_chunk_compile = time();
-   data->current_line = 1;
-   data->look_for = OPEN_BRACKET;
-   data->file_len = file_length(data->file_name);
-   data->depths = ({ new(class queue_node,
-                  data : new(class data_node, type : 0, value : ([ ]) )) });
-   call_out("compile_chunk", CALLOUT_DELAY);
-}
-void compile_chunk() {
-   string chunk;
-   int end;
-   class compile_data data;
-   data = _to_compile[0];
-   data->last_chunk_compile = time();
-   if (data->current_line > data->file_len ||
-       functionp(data->call_back) & FP_OWNER_DESTED) {
-      call_out("start_compile", CALLOUT_DELAY);
-      _to_compile = _to_compile[1..];
-      if (!(functionp(data->call_back) & FP_OWNER_DESTED)) {
-         evaluate(data->call_back, data->file_name, data->depths[0]->data->value);
-      }
-      return ;
-   }
-   if (data->current_line+CHUNK_SIZE > data->file_len) {
-      end = data->file_len+1;
-   } else {
-      end = data->current_line+CHUNK_SIZE;
-   }
-   chunk = unguarded((: read_file, data->file_name, data->current_line,
-                               end-data->current_line :));
-   data->current_line = end;
-   call_out("compile_chunk", CALLOUT_DELAY);
-   parse_chunk(data, chunk);
-}
-mixed to_diceint(string str) {
-   class data_dice dice;
-   string s1;
-   if (strsrch(str, "d") != -1) {
-      dice = new(class data_dice);
-      if (sscanf(str, "%dd%s", dice->number, s1) == 2) {
-         if (strsrch(s1, "+")) {
-            if (sscanf(s1, "%d+%d", dice->die, dice->modifier) != 2) {
-               dice->die = to_int(s1);
-            }
-         } else if (strsrch(s1, "-")) {
-            if (sscanf(s1, "%d-%d", dice->die, dice->modifier) != 2) {
-               dice->die = to_int(s1);
-            } else {
-               dice->modifier = - dice->modifier;
-            }
-         } else {
-            dice->die = to_int(s1);
-         }
-      }
-      return dice;
-   }
-   return to_int(str);
-}
-void parse_chunk(class compile_data data, string chunk) {
-   string *bits;
-   string s1;
-   string s2;
-   string s3;
-   int pos;
-   int chunk_size;
-   int start;
-   class data_node node;
-   while (sscanf(chunk, "%s#%s\n%s", s1, s2, s3) == 3) {
-      chunk = s1 + s3;
-   }
-   chunk_size = strlen(chunk);
-   pos = 0;
-   bits = explode(chunk, "(");
-   while (pos < chunk_size) {
-      switch (data->look_for) {
-         case OPEN_BRACKET :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos == chunk_size) {
-               break;
-            }
-            if (chunk[pos] == ')') {
-               data->look_for = END_BRACKET;
-               break;
-            }
-            if (chunk[pos] == '(') {
-               chunk = chunk[pos+1..];
-               chunk_size = strlen(chunk);
-               pos = 0;
-               node = new(class data_node, type : 0);
-               data->depths += ({ new(class queue_node, data : node) });
-               data->look_for = ARGUMENT_NAME;
-            } else {
-               pos = chunk_size;
-            }
-            break;
-         case ARGUMENT_NAME :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos == chunk_size) {
-               break;
-            }
-            start = pos;
-            while (pos < chunk_size && chunk[pos] != ' ' &&
-                      chunk[pos] != '\t' && chunk[pos] != '\n') {
-               pos++;
-            }
-            data->depths[<1]->name = chunk[start..pos-1];
-            data->look_for = ARGUMENT_VALUE;
-            break;
-         case ARGUMENT_VALUE :
-         case START_LIST :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos >= chunk_size) {
-               break;
-            }
-            switch (chunk[pos]) {
-               case '(' :
-                  if (data->look_for == START_LIST) {
-                     debug_printf("Error, found a bracket inside a list.\n");
-                     pos = chunk_size;
-                     break;
-                  }
-                  data->look_for = OPEN_BRACKET;
-                  data->depths[<1]->data->type = DATA_CHILDREN;
-                  data->depths[<1]->data->value = ([ ]);
-                  break;
-               case '"' :
-                  if (data->look_for == START_LIST) {
-                     data->look_for = END_STRING_LIST;
-                     data->depths[<1]->data->value += ({ "" });
-                  } else {
-                     data->look_for = END_STRING;
-                     data->depths[<1]->data->value = "";
-                  }
-                  pos++;
-                  data->depths[<1]->data->type = DATA_STRING;
-                  break;
-               case '0'..'9' :
-                  if (data->look_for == START_LIST) {
-                     data->look_for = END_NUMBER_LIST;
-                     data->depths[<1]->data->value += ({ "" });
-                  } else {
-                     data->look_for = END_NUMBER;
-                     data->depths[<1]->data->value = "";
-                  }
-                  data->depths[<1]->data->type = DATA_NUMBER;
-                  break;
-               case '}' :
-                  if (data->look_for == START_LIST) {
-                     data->look_for = END_BRACKET;
-                     pos++;
-                     data->depths[<1]->data->type = DATA_LIST;
-                  } else {
-                     debug_printf("End of list without a start of list.\n");
-                     pos = chunk_size;
-                  }
-                  break;
-               case '{' :
-                  if (data->look_for == START_LIST) {
-                     debug_printf("Cannot have nested lists.\n");
-                     pos = chunk_size;
-                  } else {
-                     data->look_for = START_LIST;
-                  }
-                  data->depths[<1]->data->value = ({ });
-                  data->depths[<1]->data->type = DATA_LIST;
-                  pos++;
-                  break;
-               default :
-                 if(chunk[pos] = 't')
-                  if(chunk[pos..pos+3] == "true" || chunk[pos..pos+2] == "yes") {
-                    if(chunk[pos..pos+3] == "true")
-                      pos += 3;
-                    else
-                      pos += 2;
-                    data->depths[<1]->data->value = 1;
-                    data->depths[<1]->data->type = DATA_NUMBER;
-                    data->look_for = END_BRACKET;
-                    break;
-                  }
-                  debug_printf("Unknown data type %s in %s\n",
-                               chunk[pos..pos+5], chunk);
-                  pos = chunk_size;
-                  break;
-            }
-            break;
-         case END_LIST :
-            while (pos < chunk_size && (chunk[pos] == ' ' ||
-                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
-               pos++;
-            }
-            if (pos >= chunk_size) {
-               break;
-            }
-            switch (chunk[pos]) {
-               case ',' :
-                  pos++;
-                  data->look_for = START_LIST;
-                  break;
-               case '}' :
-                  data->look_for = START_LIST;
-                  break;
-               default :
-                  debug_printf("Expected , or } not %s\n", chunk[pos..pos+5]);
-                  pos = chunk_size;
-                  break;
-            }
-            break;
-         case END_BRACKET :
-            if (sscanf(chunk[pos..], "%s)%s", s1, s2)) {
-               if (arrayp(data->depths[<2]->data->value[data->depths[<1]->name])) {
-                  data->depths[<2]->data->value[data->depths[<1]->name] += ({
-                       data->depths[<1]->data->value });
-               } else if (sizeof(data->depths) == 2) {
-                  data->depths[<2]->data->value[data->depths[<1]->name] = ({
-                       data->depths[<1]->data->value });
-               } else if (!undefinedp(data->depths[<2]->data->value[data->depths[<1]->name])) {
-                  data->depths[<2]->data->value[data->depths[<1]->name] = ({
-                       data->depths[<2]->data->value[data->depths[<1]->name],
-                       data->depths[<1]->data->value });
-               } else {
-                  data->depths[<2]->data->value[data->depths[<1]->name] = data->depths[<1]->data->value;
-               }
-               data->depths = data->depths[0..<2];
-               chunk = s2;
-               chunk_size = strlen(s2);
-               pos = 0;
-               data->look_for = OPEN_BRACKET;
-            }
-            break;
-         case END_NUMBER_LIST :
-         case END_NUMBER :
-            start = pos;
-            while (pos < chunk_size && ((chunk[pos] >= '0' &&
-                      chunk[pos] <= '9') ||
-                      chunk[pos] == 'd' || chunk[pos] == '+' ||
-                      chunk[pos] == '-')) {
-               pos++;
-            }
-            if (data->look_for == END_NUMBER) {
-               data->depths[<1]->data->value += chunk[start..pos - 1];
-            } else {
-               data->depths[<1]->data->value[<1] += chunk[start..pos - 1];
-            }
-            if (pos < chunk_size) {
-               if (data->look_for == END_NUMBER) {
-                  data->depths[<1]->data->value = to_diceint(data->depths[<1]->data->value);
-                  data->look_for = END_BRACKET;
-               } else {
-                  data->depths[<1]->data->value[<1] = to_diceint(data->depths[<1]->data->value[<1]);
-                  data->look_for = END_LIST;
-               }
-            }
-            break;
-         case END_STRING_LIST :
-         case END_STRING :
-            if (sscanf(chunk[pos..], "%s\"%s", s1, s2)) {
-               if (strlen(s1) > 0 && s1[strlen(s1)-1] == '\\') {
-                  if (data->look_for == END_STRING) {
-                     data->depths[<1]->data->value += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
-                  } else {
-                     data->depths[<1]->data->value[<1] += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
-                  }
-                  chunk = s2;
-                  pos = 0;
-                  chunk_size = strlen(s2);
-               } else {
-                  if (data->look_for == END_STRING) {
-                     data->depths[<1]->data->value += replace(s1, "\n", "");
-                     data->look_for = END_BRACKET;
-                  } else {
-                     data->depths[<1]->data->value[<1] += replace(s1, "\n", "")+"\"";
-                     data->look_for = END_LIST;
-                  }
-                  chunk = s2;
-                  pos = 0;
-                  chunk_size = strlen(s2);
-               }
-            } else {
-               if (data->look_for == END_STRING) {
-                  data->depths[<1]->data->value += replace(chunk, "\n", "");
-               } else {
-                  data->depths[<1]->data->value[<1] += chunk;
-               }
-               pos = chunk_size;
-            }
-            break;
-         default :
-            debug_printf("Horrible error "+data->look_for+" (" +
-                         data->file_name + ") " + data->current_line + " " +
-                         chunk[pos..] + "\n");
-            pos = chunk_size;
-            break;
-      }
-   }
+   string * prev;
+   string msg;
+   prev = map( previous_object(-1), (: file_name($1) :) );
+   msg = sprintf( "%s: /obj/handlers/inhume loaded: previous_object(-1) = %O",
+     ctime( time() ), prev );
+   tell_creator( "shrike", msg );
+   log_file( LOG, msg );
 }

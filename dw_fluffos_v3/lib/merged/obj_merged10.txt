@@ -1,1687 +1,2446 @@
-# Total Tokens: 16620
-# Total Files Merged: 6
-# Total Characters: 55416
+# Total Tokens: 22440
+# Total Files Merged: 12
+# Total Characters: 74832
 
-unty.c
+a.c
 ==================================================
 
-#include <money.h>
-#define SAVE_FILE "/save/bounty"
-#define EXPIRY 60 * 60 * 8 * 60
-#define BASE 40000
-#define TAXES 60
-#define LOGIN "/secure/login"
-class bounty {
-   string short;
-   string *victims;
-   int value;
-   int active;
-   int time;
-}
-mapping bounty, collect;
+#include <data.h>
+#include <function.h>
+#define CALLOUT_DELAY 0
+#define DEBUG !
+#define DC_DELIM 0
+#define DC_ARRAY 1
+#define DC_MAPPING 2
+#define DC_OF 3
+#define DC_CLASS 4
+#define DC_STRING 5
+#define DC_ITEM 6
+#define DC_NUMBER 7
+#define DC_GREY 8
+#define MAX_SUBF_SIZE 16000
+#define WHITESPACE(c) (c == 10 || c == 32 || c == '\n')
+#ifdef DEBUG
+#  define Error(s) write(s); log_file( "DATA_COMPILER", s);
+#else
+#  define Error(s) ;
+#endif
+string std_euid;
 void create() {
-   bounty  = ([ ]);
-   collect = ([ ]);
-   seteuid( "Room" );
-   if ( file_size( SAVE_FILE +".o" ) > 0 )
-      unguarded( (: restore_object, SAVE_FILE :) );
-   call_out( "tidy_bounties", 120 );
+    std_euid = "/secure/master"->creator_file(file_name(this_object()));
+    seteuid(std_euid);
 }
-void save_file() { unguarded( (: save_object, SAVE_FILE :) ); }
-void delete_bounty( string word ) {
-   map_delete( bounty, word );
-   save_file();
+int tmp_file_no;
+private string strip_string( string str ) {
+    int     i, j;
+    if (!str || str == "") return "";
+    j = strlen( str ) - 1;
+    for( ; WHITESPACE( str[ i ] ) && i <= j; i++ ) ;
+    for( ; WHITESPACE( str[ j ] ) && j > i; j-- ) ;
+    return str[ i..j ];
 }
-void tidy_bounties() {
-   int now = time();
-   string word;
-   object thing;
-   class bounty record;
-   foreach ( word, record in bounty ) {
-      if ( LOGIN->test_creator( word ) ) {
-         log_file( "BOUNTY", "%s: bounty removed from %s (creator)\n",
-               ctime( now ), word );
-         map_delete( bounty, word );
-         continue;
-      }
-      if (record && record->time + EXPIRY < now ) {
-         if (record->active )
-            log_file( "BOUNTY", "%s: bounty on %s of %d expired\n",
-                  ctime( now ), word, record->value );
-         else
-            log_file( "BOUNTY", "%s: inactive bounty on %s cancelled\n",
-                  ctime( now ), word );
-         thing = find_player( word );
-         if ( objectp( thing ) )
-            tell_object( thing, "You feel that there is no longer "
-                  "a price on your head.\n" );
-         map_delete( bounty, word );
-         continue;
-      }
-   }
-   foreach ( word, record in collect )
-      if ( !LOGIN->test_user( word ) ) {
-         map_delete( collect, word );
-         continue;
-      }
-      if (record && record->time + EXPIRY < now ) {
-         log_file( "BOUNTY", "%s: bounty of %d owed to %s expired\n",
-               ctime( now ), record->value, word );
-         thing = find_player( word );
-         if ( objectp( thing ) )
-            tell_object( thing, "You have the funniest feeling that "
-                  "you just let a lot of money get away.\n" );
-         map_delete( collect, word );
-      }
-   save_file();
+private mixed cleanup_assoc( mixed parse ) {
+    int j;
+    for (j = 0; j < sizeof(parse[0]); j++) {
+        if ((parse[1][j] == DC_DELIM) || (parse[1][j] == DC_OF)) {
+            parse[0][j] = 0;
+            parse[1][j] = 0;
+        }
+    }
+    parse[0] -= ({ 0 });
+    parse[1] -= ({ 0 });
+    return parse;
 }
-void clear_bounties() {
-   if ( !master()->high_programmer( geteuid( this_player( 1 ) ) ) )
+mixed compile_data( string *path ) {
+    string tmp_name, data = "", file_data = "", s1, tmp_val, base, keyword;
+    string *segments, *ind, *val, cur_index;
+    int i, j, t, debug_file, class_pending, stat, subfunc_cnt,
+        subfunc_char_cnt, data_keyword_found, allocated_data;
+    int *index_types;
+    mixed parse, index_max;
+    if (!sizeof(path))
       return 0;
-   bounty  = ([ ]);
-   collect = ([ ]);
-   save_file();
-}
-void dest_me() { destruct( this_object() ); }
-void register_kill( object victim, object *attackers ) {
-   int now, reward;
-   string killed, killer, *killers;
-   object thing;
-   class bounty record;
-   if ( member_array( victim, attackers ) != -1 )
-      return;
-   if ( victim->query_creator() || victim->query_property( "no bounties" ) )
-      return;
-   if ( !environment( victim ) )
-      return;
-   if ( environment( victim )->query_property( "bar brawling" ) )
-      return;
-   now = time();
-   killed = (string)victim->query_short();
-   if ( undefinedp( bounty[ lower_case( killed ) ] ) ) {
-      return;
-      foreach ( thing in attackers ) {
-         if ( !objectp( thing ) )
-            continue;
-         if ( thing->query_creator() )
-            continue;
-         if ( !userp( thing ) && !thing->query_property( "unique" ) )
-            continue;
-         if ( ( (object)thing->query_property( "inhumer" ) == victim ) &&
-               ( (object)victim->query_property( "inhumee" ) == thing ) )
-            continue;
-         killer = (string)thing->query_short();
-         if ( undefinedp( bounty[ lower_case( killer ) ] ) ) {
-            record = new( class bounty );
-            bounty[ lower_case( killer ) ] = record;
-            record->short = killer;
-            record->victims = ({ killed });
-         } else {
-            record = (class bounty)bounty[ lower_case( killer ) ];
-            if ( strsrch( lower_case( killed ),
-                  lower_case( implode( record->victims, ", " ) ) ) == -1 )
-               record->victims += ({ killed });
-         }
-         record->time = now;
-         if ( record->active ) {
-            record->value = sizeof( record->victims ) * BASE;
-            if ( sizeof( record->victims ) > 1 )
-               call_out( "inform_bounty", 30, thing );
-         }
-      }
-      save_file();
-      return;
-   }
-   if ( !( ( (class bounty)bounty[ lower_case( killed ) ] )->active ) )
-      return;
-   killers = ({ });
-   foreach ( thing in attackers ) {
-      if ( !objectp( thing ) )
-         continue;
-      if ( thing->query_creator() )
-         continue;
-      if ( !userp( thing ) && !thing->query_property( "unique" ) &&
-            !thing->query_property( "bounty hunter" ) )
-         continue;
-      killer = (string)thing->query_short();
-      killers += ({ killer });
-      call_out( "well_done", 30, thing, (string)victim->query_gender() );
-   }
-   if ( sizeof( killers ) ) {
-      reward = ( (class bounty)bounty[ lower_case( killed ) ] )->value /
-            sizeof( killers );
-      foreach ( killer in killers ) {
-         if ( !undefinedp( bounty[ lower_case( killer ) ] ) )
-            continue;
-         if ( undefinedp( collect[ lower_case( killer ) ] ) ) {
-            record = new( class bounty );
-            collect[ lower_case( killer ) ] = record;
-            record->short = killer;
-            record->victims = ({ killed });
-         } else {
-            record = (class bounty)collect[ lower_case( killer ) ];
-            record->victims += ({ killed });
-         }
-         record->time = now;
-         record->value += reward;
-      }
-      log_file( "BOUNTY", "%s: bounty on %s fulfilled by %s\n",
-            ctime( now ), lower_case( killed ),
-            query_multiple_short( map_array( killers,
-            (: lower_case( $1 ) :) ) ) );
-      map_delete( bounty, lower_case( killed ) );
-   }
-   save_file();
-}
-void inform_bounty( object thing ) {
-   if ( !thing )
-      return;
-   if ( !userp( thing ) )
-      return;
-   tell_object( thing, "You feel the price on your head rise.\n" );
-}
-void well_done( object thing, int gender ) {
-   if ( !thing )
-      return;
-   if ( !userp( thing ) )
-      return;
-   tell_object( thing, "You feel good about killing a wanted "+
-         ({ "creature", "man", "woman" })[gender] +".\n" );
-}
-string report_murder( string killer ) {
-   string place;
-   class bounty record;
-   if ( undefinedp( bounty[ lower_case( killer ) ] ) )
-      return "According to the records, \""+ killer +
-            "\" has never killed anyone.";
-   killer = lower_case( killer );
-   record = (class bounty)bounty[ killer ];
-   if ( record->active ) {
-      place = (string)environment( this_player() )->query_property( "place" );
-      if ( !place || ( place == "" ) )
-         place = "default";
-      return "There is already a bounty of "+
-            (string)MONEY_HAND->money_value_string( record->value, place ) +
-            " offered for the death of "+ record->short +".";
-   }
-   record->active = 1;
-   record->value = sizeof( record->victims ) * BASE;
-   call_out( "issue_warrant", 30, killer );
-   save_file();
-   if ( strsrch( lower_case( (string)this_player()->query_short() ),
-         lower_case( implode( record->victims, ", " ) ) ) == -1 )
-      return "Ah, a concerned citizen reporting a murder.  I'll issue "
-            "a bounty notice for "+ record->short +" right away.";
-   return "I'm sorry to hear that "+ record->short +" caused you "
-         "harm.  I'll issue a bounty notice right away.";
-}
-void issue_warrant( string killer ) {
-   object thing;
-   thing = find_player( killer );
-   if ( !thing )
-      return;
-   if ( !userp( thing ) )
-      return;
-   thing->remove_hide_invis( "hide" );
-   tell_room( environment( thing ), "There is a small unspectacular flash "
-         "of light and a small orange imp appears.  It promptly informs "+
-         (string)thing->the_short() +" that a bounty has been placed on "+
-         (string)thing->query_possessive() +" head.  The imp bows deeply, "
-         " smiles evilly, and vanishes in an equally unspectacular flash "
-         "of light.\n", thing );
-   tell_object( thing, "There is a small unspectacular flash of light and "
-         "a small orange imp appears.  It promptly informs you that a bounty "
-         "has been placed on your head.  The imp bows deeply, smiles evilly, "
-         "and vanishes in an equally unspectacular flash of light.\n" );
-}
-string collect_bounty() {
-   int money;
-   string collector, place;
-   class bounty record;
-   collector = lower_case( (string)this_player()->query_short() );
-   if ( undefinedp( collect[ collector ] ) )
-      return "According to the records, you've done nothing "
-            "to deserve a bounty.";
-   record = (class bounty)collect[ collector ];
-   money = ( record->value * ( 100 - TAXES ) ) / 100;
-   place = (string)environment( this_player() )->query_property( "place" );
-   if ( !place || ( place == "" ) )
-      place = "default";
-   this_player()->adjust_money( (mixed *)MONEY_HAND->create_money_array( money,
-         place ) );
-   this_player()->set_title( "bounty", "Bounty Hunter" );
-   map_delete( collect, collector );
-   save_file();
-   return "Ah yes, let's see.  Monies owed to you total "+
-         (string)MONEY_HAND->money_value_string( record->value, place ) +
-         ", minus death tax, inheritance tax, income tax, pension fund "
-         "contribution, union dues, VAT, Save the Womble donations and "
-         "administrative charges, which leaves you with the grand sum of "+
-         (string)MONEY_HAND->money_value_string( money, place ) +
-         ".  Nice doing business with you.";
-}
-int query_bounty( string word ) { return !undefinedp( bounty[ word ] ); }
-int query_bounty_value( string word ) {
-   if ( undefinedp( bounty[ word ] ) )
-      return 0;
-   return ( (class bounty)bounty[ word ] )->value;
-}
-string query_all_bounties() {
-   int cre;
-   string list, word, place;
-   class bounty record;
-   cre = (int)this_player( 1 )->query_creator();
-   if ( !sizeof( bounty ) )
-      return "There are no bounties currently offered.\n";
-   place = (string)environment( this_player() )->query_property( "place" );
-   if ( !place || ( place == "" ) )
-      place = "default";
-   list = "";
-   foreach ( word, record in bounty )
-      if ( record->active ) {
-         list += sprintf( " -   %-15s for %s\n", record->short,
-               (string)MONEY_HAND->money_value_string( record->value,
-               place ) );
-         if ( cre )
-            list += sprintf( "               %-#60s\n               %s\n",
-                  implode( record->victims, "\n" ),
-                  ctime( record->time + EXPIRY ) );
-      } else
-         if ( cre )
-            list += sprintf( " -   %-15s (inactive)\n"
-                  "               %-#60s\n               %s\n",
-                  record->short, implode( record->victims, "\n" ),
-                  ctime( record->time + EXPIRY ) );
-   if ( list == "" )
-      return "There are no bounties currently offered.\n";
-   return "The following bounters are currently offered:\n"+ list;
-}
-string query_all_collectors() {
-   string list, word, place;
-   class bounty record;
-   if ( !sizeof( collect ) )
-      return "There are no bounties awaiting collection.\n";
-   place = (string)environment( this_player() )->query_property( "place" );
-   if ( !place || ( place == "" ) )
-      place = "default";
-   list = "";
-   foreach ( word, record in collect )
-         list += sprintf( " -   %-15s owed %s\n               %s\n",
-               record->short,
-               (string)MONEY_HAND->money_value_string( record->value, place ),
-               ctime( record->time + EXPIRY ) );
-   return "The following bounties are awaiting collection:\n"+ list;
-}
-string query_bounty_info( string word ) {
-   string place;
-   class bounty record;
-   place = (string)environment( this_player() )->query_property( "place" );
-   if ( !place || ( place == "" ) )
-      place = "default";
-   if ( undefinedp( bounty[ word ] ) )
-      return 0;
-   record = (class bounty)bounty[ word ];
-   if ( !record->active )
-      return 0;
-   return "A bounty of "+
-         (string)MONEY_HAND->money_value_string( record->value, place ) +
-         " is offered for the death of "+ record->short +" for the murder of "+
-         query_multiple_short( record->victims ) +".\n";
-}
-
-==================================================
-FILE: handlers/broadcaster.c
-==================================================
-
-#define DIR_ARRAY ({ "east", "northeast", "north", "northwest", \
-                     "west", "southwest", "south", "southeast", "east" })
-#define SAVE_FILE "/save/broadcaster"
-#define BROADCAST_HISTORY_LENGTH 10
-void broadcast_event( object *things,
-                      int *centre,
-                      string message,
-                      int range,
-                      int inside,
-                      int underwater );
-void npc_hear_shouts(object newlistener);
-int npc_unhear_shouts(object oldlistener);
-void npc_shout_event( object shouter,
-                      string start,
-                      string message,
-                      string lang,
-                      int *coord,
-                      int range );
-private void load_me();
-private void save_me();
-private nosave object *_listeners;
-private nosave mapping _channels;
-private nosave mapping _channel_history;
-private mapping _channel_ids;
-void create() {
-   _listeners = ({ });
-   _channels = ([ ]);
-   _channel_ids = ([ ]);
-   _channel_history = ([ ]);
-   load_me();
-}
-mixed *get_direc_dist( int *co_ord1, int *co_ord2 ) {
-   int dx, dy, dz, sector;
-   if (!pointerp(co_ord1) ||
-       !pointerp(co_ord2)) {
-      return ({ 0, DIR_ARRAY[0], 0 });
-   }
-   dx = co_ord1[ 0 ] - co_ord2[ 0 ];
-   dy = co_ord1[ 1 ] - co_ord2[ 1 ];
-   dz = co_ord1[ 2 ] - co_ord2[ 2 ];
-   if ( dx > 0 ) {
-      if ( ( 1000 * dy ) > ( 2414 * dx ) ) {
-         sector = 0;
-      } else {
-         if ( ( 1000 * dy ) > ( 414 * dx ) ) {
-            sector = 1;
-         } else {
-            if ( ( 1000 * dy ) > ( -414 * dx ) ) {
-               sector = 2;
-            } else {
-               if ( ( 1000 * dy ) > ( -2414 * dx ) ) {
-                  sector = 3;
-               } else {
-                  sector = 4;
-               }
+    tmp_name = path[0] + "_dc.c";
+    if( find_object( tmp_name ) )
+        tmp_name->dest_me();
+    if (file_size(tmp_name) > 0) {
+        if ((stat = seteuid("Root")) == 0) {
+        }
+        stat = unguarded((: rm, tmp_name :));
+        if (!stat) {
+            Error("Error: couldn't remove old .c file (" +
+                  geteuid(this_object()) + ", " +
+                  "secure/master"->valid_seteuid(this_object(), "Root") +
+                  ")\n");
+            seteuid(std_euid);
+            return 0;
+        }
+    }
+    seteuid(std_euid);
+    for (i = 0; i < sizeof(path); i++) {
+        if (file_size(path[i]) <= 0)
+          continue;
+        data += read_file( path[i] );
+    }
+    if (!data) {
+        Error("Error: file(s) not found.\n");
+        return 0;
+    }
+    segments = explode( "$\n" + data, "\n#" );
+    if( !segments ) {
+        Error( "prop_to_fun() : Nothing but comments?\n" );
+        return 0;
+    }
+    segments[ 0 ] = segments[ 0 ][ 1..(sizeof(segments[ 0 ]) - 1) ];
+    for( i = 1; i < sizeof( segments ); i++ ) {
+        if( sscanf( segments[ i ], "%s\n%s", s1, segments[ i ] ) != 2 ) {
+            segments[ i ] = "";
+        }
+    }
+    data = implode( segments, "\n" );
+    segments = explode( strip_string( data ), "::" );
+    if (sizeof( segments ) % 2) {
+      segments += ({""});
+    }
+    ind = allocate( sizeof( segments ) / 2 );
+    val = allocate( sizeof( segments ) / 2 );
+    allocated_data = 0;
+    for( i = 0; i < sizeof( ind ); i++ ) {
+        ind[ i ] = segments[ i * 2 ];
+        val[ i ] = strip_string( segments[ i * 2 + 1 ] );
+        if( ind[ i ][ 0..0 ] == "#" ) {
+            ind[ i ] = lower_case( ind[ i ] );
+            if( ind[ i ] == "#debug" ) {
+                sscanf( val[ i ], "%d", debug_file );
+            } else if( ind[ i ] == "#include" ) {
+                tmp_val = val[i];
+                file_data += "#include " + replace( tmp_val, " ", "" ) + "\n";
             }
-         }
+        }
+    }
+    for( i = 0; i < sizeof( ind ); i++ ) {
+        keyword = lower_case( ind[ i ] );
+        if( keyword[ 0..0 ] == "#" ) {
+            continue;
+        }
+        subfunc_char_cnt += sizeof(ind[i]) + sizeof(val[i]);
+        if (keyword == "data") {
+            if (data_keyword_found) {
+                Error("Error: more than one data keyword found.\n");
+                return 0;
+            }
+            data_keyword_found = 1;
+            file_data += "void dest_me() { destruct( this_object() ); }\n\n";
+            parse = reg_assoc(val[i],
+                              ({ "array", "mapping", "of", "class +[^\t ]+",
+                                 "[^\t ]+" }),
+                              ({ DC_ARRAY, DC_MAPPING, DC_OF, DC_CLASS,
+                                 DC_GREY }),
+                              DC_DELIM);
+            parse = cleanup_assoc( parse );
+            for (j = 0; (j < sizeof(parse[0])) && !index_max; j++) {
+                switch (parse[1][j]) {
+                  case DC_ARRAY:
+                    break;
+                  case DC_MAPPING:
+                    break;
+                  case DC_CLASS:
+                    base = implode(parse[0][j..], " ");
+                    file_data += base + " item;\n";
+                  case DC_GREY:
+                    index_types = parse[1][0..j-1];
+                    index_max = allocate(sizeof(index_types));
+                    break;
+                  default:
+                    Error("Error: data parse error 1 (" + parse[0][j] + ")\n");
+                    return 0;
+                }
+            }
+            if (index_types[0] == DC_MAPPING)
+              file_data += "mapping data = ([ ]);\n\n";
+            else
+              file_data += "mixed data;\n\n";
+            for (j = 0; j < sizeof(index_types); j++) {
+                switch (index_types[j]) {
+                  case DC_ARRAY:
+                    index_max[j] = -1;
+                    break;
+                  case DC_MAPPING:
+                    break;
+                  default:
+                    Error("Error: illegal index type found ("
+                          + index_types[j] + ")\n");
+                    return 0;
+                }
+            }
+            file_data += "mixed data_return_" + subfunc_cnt + "() {\n";
+            subfunc_cnt++;
+            continue;
+        }
+        if (keyword[0..3] == "item") {
+            if (class_pending) {
+                file_data += "  data" + cur_index + " = item;\n";
+                class_pending = 0;
+            }
+            if (subfunc_char_cnt > MAX_SUBF_SIZE) {
+                file_data += "}\n\n";
+                file_data += "mixed data_return_" + subfunc_cnt + "() {\n";
+                subfunc_cnt++;
+                subfunc_char_cnt = 0;
+            }
+            parse = reg_assoc( ind[i], ({ "\"[^\"]*\"", "item", "[0-9]+",
+                                      "[^,\t ]+"}),
+                              ({ DC_STRING, DC_ITEM, DC_NUMBER, DC_GREY }));
+            parse = cleanup_assoc( parse );
+            cur_index = "";
+            for (j = 0; j < sizeof(index_types); j++) {
+                switch (index_types[j]) {
+                  case DC_ARRAY:
+                    if (parse[1][j+1] != DC_NUMBER) {
+                        if (parse[0][j+1] == "i") {
+                            parse[0][j+1] = index_max[j] + "";
+                        } else if (parse[0][j+1] == "i++") {
+                            parse[0][j+1] = index_max[j] + "";
+                            index_max[j]++;
+                        } else if (parse[0][j+1] == "++i") {
+                            index_max[j]++;
+                            parse[0][j+1] = index_max[j] + "";
+                        } else {
+                          Error("Error: illegal index for array (" +
+                                  parse[0][j+1] + ")\n");
+                            return 0;
+                        }
+                    }
+                    if ((t = to_int(parse[0][j+1])) > index_max[j]) {
+                        file_data += "  data" + cur_index
+                          + " = allocate(" + (t-index_max[j]) + ");\n";
+                        index_max[j] = t;
+                        allocated_data = 1;
+                    }
+                    break;
+                  case DC_MAPPING:
+                    if (j) {
+                        file_data += "  if (!mapp(data" + cur_index + "))"
+                          + " data" + cur_index + " = ([]);\n";
+                    }
+                    break;
+                  default:
+                    Error("Error: illegal index type found (" + index_types[j]
+                          + ")\n");
+                    return 0;
+                }
+                cur_index += "[" + parse[0][j+1] + "]";
+            }
+            if (strip_string(val[i]) != "") {
+                file_data += "  data" + cur_index + " = " + val[i] + ";\n";
+            }
+            continue;
+        }
+        if (keyword[0..1] == "->") {
+            if (!class_pending) {
+                file_data += "  item = new( " + base + " );\n";
+                class_pending = 1;
+            }
+            file_data += "  item->" + ind[i][2..] + " = " + val[i] + ";\n";
+            continue;
+        }
+        if (keyword == "quote") {
+            file_data += val[i] + "\n";
+            continue;
+        }
+    }
+    if (class_pending) {
+        file_data += "  data" + cur_index + " = item;\n";
+    }
+    file_data += "}\n\n";
+    file_data += "mixed data_return() {\n";
+    if ( !allocated_data ) {
+        for (j = 0; j < sizeof(index_types); j++) {
+            switch (index_types[j]) {
+                case DC_ARRAY:
+                    file_data += "  data = allocate(" + (to_int(index_max[j]) + 1) + ");\n";
+                break;
+            }
+        }
+    }
+    for (i = 0; i < subfunc_cnt; i++) {
+        file_data += "  data_return_" + i + "();\n";
+    }
+    file_data += "  return data;\n}\n";
+    seteuid("Root");
+    unguarded((: write_file, tmp_name, file_data, 1 :));
+    seteuid(std_euid);
+    return tmp_name->data_return();
+}
+class data_node {
+   int type;
+   mixed value;
+}
+class queue_node {
+   string name;
+   class data_node data;
+}
+class compile_data {
+   string file_name;
+   function call_back;
+   int current_line;
+   int look_for;
+   int last_chunk_compile;
+   int file_len;
+   class queue_node* depths;
+}
+private nosave class compile_data* _to_compile = ({ });
+void start_compile();
+void parse_chunk(class compile_data data, string chunk);
+#define DATA_UNKNOWN 0
+#define DATA_CHILDREN 1
+#define DATA_NUMBER 2
+#define DATA_STRING 3
+#define DATA_LIST 4
+#define OPEN_BRACKET 1
+#define START_ARGUMENT 2
+#define END_BRACKET 3
+#define END_STRING 4
+#define START_LIST 5
+#define END_NUMBER 6
+#define ARGUMENT_VALUE 7
+#define ARGUMENT_NAME 8
+#define REST_OF_ARGUMENT 9
+#define END_STRING_LIST 10
+#define END_NUMBER_LIST 11
+#define END_LIST 12
+#define CHUNK_SIZE 10
+void compile_file(string fname, function call_back) {
+   class compile_data data;
+   if (file_size(fname) == -1) {
+      tell_object(this_player(), "The file "+
+                         fname+" does not exist.\n");
+      return ;
+   }
+   if (file_size(fname) == -2) {
+      tell_object(this_player(), "The file "+
+                         fname+" is a directory exist.\n");
+      return ;
+   }
+   data = new(class compile_data);
+   data->file_name = fname;
+   data->call_back = call_back;
+   data->look_for = OPEN_BRACKET;
+   _to_compile += ({ data });
+   start_compile();
+}
+void start_compile() {
+   class compile_data data;
+   if (!sizeof(_to_compile) || _to_compile[0]->last_chunk_compile) {
+      return ;
+   }
+   data = _to_compile[0];
+   data->last_chunk_compile = time();
+   data->current_line = 1;
+   data->look_for = OPEN_BRACKET;
+   data->file_len = file_length(data->file_name);
+   data->depths = ({ new(class queue_node,
+                  data : new(class data_node, type : 0, value : ([ ]) )) });
+   call_out("compile_chunk", CALLOUT_DELAY);
+}
+void compile_chunk() {
+   string chunk;
+   int end;
+   class compile_data data;
+   data = _to_compile[0];
+   data->last_chunk_compile = time();
+   if (data->current_line > data->file_len ||
+       functionp(data->call_back) & FP_OWNER_DESTED) {
+      call_out("start_compile", CALLOUT_DELAY);
+      _to_compile = _to_compile[1..];
+      if (!(functionp(data->call_back) & FP_OWNER_DESTED)) {
+         evaluate(data->call_back, data->file_name, data->depths[0]->data->value);
       }
+      return ;
+   }
+   if (data->current_line+CHUNK_SIZE > data->file_len) {
+      end = data->file_len+1;
    } else {
-      if ( ( 1000 * dy ) < ( 2414 * dx ) ) {
-         sector = 4;
-      } else {
-         if ( ( 1000 * dy ) < ( 414 * dx ) ) {
-            sector = 5;
-         } else {
-            if ( ( 1000 * dy ) < ( -414 * dx ) ) {
-               sector = 6;
-            } else {
-               if ( ( 1000 * dy ) < ( -2414 * dx ) ) {
-                  sector = 7;
-               } else {
-                  sector = 8;
-               }
+      end = data->current_line+CHUNK_SIZE;
+   }
+   chunk = unguarded((: read_file, data->file_name, data->current_line,
+                               end-data->current_line :));
+   data->current_line = end;
+   call_out("compile_chunk", CALLOUT_DELAY);
+   parse_chunk(data, chunk);
+}
+mixed to_diceint(string str) {
+   class data_dice dice;
+   string s1;
+   if (strsrch(str, "d") != -1) {
+      dice = new(class data_dice);
+      if (sscanf(str, "%dd%s", dice->number, s1) == 2) {
+         if (strsrch(s1, "+")) {
+            if (sscanf(s1, "%d+%d", dice->die, dice->modifier) != 2) {
+               dice->die = to_int(s1);
             }
+         } else if (strsrch(s1, "-")) {
+            if (sscanf(s1, "%d-%d", dice->die, dice->modifier) != 2) {
+               dice->die = to_int(s1);
+            } else {
+               dice->modifier = - dice->modifier;
+            }
+         } else {
+            dice->die = to_int(s1);
          }
       }
+      return dice;
    }
-   return ({ dx * dx + dy * dy + dz * dz, DIR_ARRAY[ sector ], dz });
+   return to_int(str);
 }
-void broadcast_event( object *things, int *centre, string message,
-      int range, int inside, int underwater ) {
-   int *to;
-   string text;
-   object thing, place;
-   mixed *dir_direc;
-   if ( !pointerp( things ) ||
-        !pointerp( centre ) ||
-        sizeof( centre ) != 3 ) {
-      return;
+void parse_chunk(class compile_data data, string chunk) {
+   string *bits;
+   string s1;
+   string s2;
+   string s3;
+   int pos;
+   int chunk_size;
+   int start;
+   class data_node node;
+   while (sscanf(chunk, "%s#%s\n%s", s1, s2, s3) == 3) {
+      chunk = s1 + s3;
    }
-   foreach ( thing in things ) {
-      if ( !living( thing ) ) {
-         continue;
-      }
-      place = environment( thing );
-      if ( !place ) {
-         continue;
-      }
-      to = (int *)place->query_co_ord();
-      if ( !pointerp( to ) || sizeof( to ) != 3 ) {
-         continue;
-      }
-      switch ( (string)place->query_property( "location" ) ) {
-         case "inside" :
-            if ( !inside ) {
-               continue;
+   chunk_size = strlen(chunk);
+   pos = 0;
+   bits = explode(chunk, "(");
+   while (pos < chunk_size) {
+      switch (data->look_for) {
+         case OPEN_BRACKET :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos == chunk_size) {
+               break;
+            }
+            if (chunk[pos] == ')') {
+               data->look_for = END_BRACKET;
+               break;
+            }
+            if (chunk[pos] == '(') {
+               chunk = chunk[pos+1..];
+               chunk_size = strlen(chunk);
+               pos = 0;
+               node = new(class data_node, type : 0);
+               data->depths += ({ new(class queue_node, data : node) });
+               data->look_for = ARGUMENT_NAME;
+            } else {
+               pos = chunk_size;
             }
             break;
-         case "underwater" :
-            if ( !underwater ) {
-               continue;
+         case ARGUMENT_NAME :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos == chunk_size) {
+               break;
+            }
+            start = pos;
+            while (pos < chunk_size && chunk[pos] != ' ' &&
+                      chunk[pos] != '\t' && chunk[pos] != '\n') {
+               pos++;
+            }
+            data->depths[<1]->name = chunk[start..pos-1];
+            data->look_for = ARGUMENT_VALUE;
+            break;
+         case ARGUMENT_VALUE :
+         case START_LIST :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos >= chunk_size) {
+               break;
+            }
+            switch (chunk[pos]) {
+               case '(' :
+                  if (data->look_for == START_LIST) {
+                     debug_printf("Error, found a bracket inside a list.\n");
+                     pos = chunk_size;
+                     break;
+                  }
+                  data->look_for = OPEN_BRACKET;
+                  data->depths[<1]->data->type = DATA_CHILDREN;
+                  data->depths[<1]->data->value = ([ ]);
+                  break;
+               case '"' :
+                  if (data->look_for == START_LIST) {
+                     data->look_for = END_STRING_LIST;
+                     data->depths[<1]->data->value += ({ "" });
+                  } else {
+                     data->look_for = END_STRING;
+                     data->depths[<1]->data->value = "";
+                  }
+                  pos++;
+                  data->depths[<1]->data->type = DATA_STRING;
+                  break;
+               case '0'..'9' :
+                  if (data->look_for == START_LIST) {
+                     data->look_for = END_NUMBER_LIST;
+                     data->depths[<1]->data->value += ({ "" });
+                  } else {
+                     data->look_for = END_NUMBER;
+                     data->depths[<1]->data->value = "";
+                  }
+                  data->depths[<1]->data->type = DATA_NUMBER;
+                  break;
+               case '}' :
+                  if (data->look_for == START_LIST) {
+                     data->look_for = END_BRACKET;
+                     pos++;
+                     data->depths[<1]->data->type = DATA_LIST;
+                  } else {
+                     debug_printf("End of list without a start of list.\n");
+                     pos = chunk_size;
+                  }
+                  break;
+               case '{' :
+                  if (data->look_for == START_LIST) {
+                     debug_printf("Cannot have nested lists.\n");
+                     pos = chunk_size;
+                  } else {
+                     data->look_for = START_LIST;
+                  }
+                  data->depths[<1]->data->value = ({ });
+                  data->depths[<1]->data->type = DATA_LIST;
+                  pos++;
+                  break;
+               default :
+                 if(chunk[pos] = 't')
+                  if(chunk[pos..pos+3] == "true" || chunk[pos..pos+2] == "yes") {
+                    if(chunk[pos..pos+3] == "true")
+                      pos += 3;
+                    else
+                      pos += 2;
+                    data->depths[<1]->data->value = 1;
+                    data->depths[<1]->data->type = DATA_NUMBER;
+                    data->look_for = END_BRACKET;
+                    break;
+                  }
+                  debug_printf("Unknown data type %s in %s\n",
+                               chunk[pos..pos+5], chunk);
+                  pos = chunk_size;
+                  break;
+            }
+            break;
+         case END_LIST :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos >= chunk_size) {
+               break;
+            }
+            switch (chunk[pos]) {
+               case ',' :
+                  pos++;
+                  data->look_for = START_LIST;
+                  break;
+               case '}' :
+                  data->look_for = START_LIST;
+                  break;
+               default :
+                  debug_printf("Expected , or } not %s\n", chunk[pos..pos+5]);
+                  pos = chunk_size;
+                  break;
+            }
+            break;
+         case END_BRACKET :
+            if (sscanf(chunk[pos..], "%s)%s", s1, s2)) {
+               if (arrayp(data->depths[<2]->data->value[data->depths[<1]->name])) {
+                  data->depths[<2]->data->value[data->depths[<1]->name] += ({
+                       data->depths[<1]->data->value });
+               } else if (sizeof(data->depths) == 2) {
+                  data->depths[<2]->data->value[data->depths[<1]->name] = ({
+                       data->depths[<1]->data->value });
+               } else if (!undefinedp(data->depths[<2]->data->value[data->depths[<1]->name])) {
+                  data->depths[<2]->data->value[data->depths[<1]->name] = ({
+                       data->depths[<2]->data->value[data->depths[<1]->name],
+                       data->depths[<1]->data->value });
+               } else {
+                  data->depths[<2]->data->value[data->depths[<1]->name] = data->depths[<1]->data->value;
+               }
+               data->depths = data->depths[0..<2];
+               chunk = s2;
+               chunk_size = strlen(s2);
+               pos = 0;
+               data->look_for = OPEN_BRACKET;
+            }
+            break;
+         case END_NUMBER_LIST :
+         case END_NUMBER :
+            start = pos;
+            while (pos < chunk_size && ((chunk[pos] >= '0' &&
+                      chunk[pos] <= '9') ||
+                      chunk[pos] == 'd' || chunk[pos] == '+' ||
+                      chunk[pos] == '-')) {
+               pos++;
+            }
+            if (data->look_for == END_NUMBER) {
+               data->depths[<1]->data->value += chunk[start..pos - 1];
+            } else {
+               data->depths[<1]->data->value[<1] += chunk[start..pos - 1];
+            }
+            if (pos < chunk_size) {
+               if (data->look_for == END_NUMBER) {
+                  data->depths[<1]->data->value = to_diceint(data->depths[<1]->data->value);
+                  data->look_for = END_BRACKET;
+               } else {
+                  data->depths[<1]->data->value[<1] = to_diceint(data->depths[<1]->data->value[<1]);
+                  data->look_for = END_LIST;
+               }
+            }
+            break;
+         case END_STRING_LIST :
+         case END_STRING :
+            if (sscanf(chunk[pos..], "%s\"%s", s1, s2)) {
+               if (strlen(s1) > 0 && s1[strlen(s1)-1] == '\\') {
+                  if (data->look_for == END_STRING) {
+                     data->depths[<1]->data->value += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
+                  } else {
+                     data->depths[<1]->data->value[<1] += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
+                  }
+                  chunk = s2;
+                  pos = 0;
+                  chunk_size = strlen(s2);
+               } else {
+                  if (data->look_for == END_STRING) {
+                     data->depths[<1]->data->value += replace(s1, "\n", "");
+                     data->look_for = END_BRACKET;
+                  } else {
+                     data->depths[<1]->data->value[<1] += replace(s1, "\n", "")+"\"";
+                     data->look_for = END_LIST;
+                  }
+                  chunk = s2;
+                  pos = 0;
+                  chunk_size = strlen(s2);
+               }
+            } else {
+               if (data->look_for == END_STRING) {
+                  data->depths[<1]->data->value += replace(chunk, "\n", "");
+               } else {
+                  data->depths[<1]->data->value[<1] += chunk;
+               }
+               pos = chunk_size;
             }
             break;
          default :
-      }
-      dir_direc = get_direc_dist( centre, to );
-      if ( dir_direc[ 0 ] < 0 ) {
-         continue;
-      }
-      if ( dir_direc[ 0 ] > range * range ) {
-         continue;
-      }
-      switch ( dir_direc[ 0 ] ) {
-         case 0 :
-            continue;
-         case 1 .. 2500 :
-            if ( ( dir_direc[ 2 ] * dir_direc[ 2 ] ) > ( dir_direc[ 0 ] / 2 ) ) {
-               if ( dir_direc[ 2 ] > 0 ) {
-                  text = "Right above you, "+ message +"\n";
-               } else {
-                  text = "Right below you, "+ message +"\n";
-               }
-            } else {
-               text = "Very close to the "+ dir_direc[ 1 ] + ", "+
-                     message +"\n";
-            }
+            debug_printf("Horrible error "+data->look_for+" (" +
+                         data->file_name + ") " + data->current_line + " " +
+                         chunk[pos..] + "\n");
+            pos = chunk_size;
             break;
-         case 2501 .. 40000 :
-            text = "Nearby to the "+ dir_direc[ 1 ] + ", "+ message +"\n";
-            break;
-         case 40001 .. 640000 :
-            text = "To the "+ dir_direc[ 1 ] + ", "+ message +"\n";
-            break;
-         case 640001 .. 10240000 :
-            text = "In the distance to the "+ dir_direc[ 1 ] + ", "+
-                  message +"\n";
-            break;
-         default:
-            continue;
       }
-      if(interactive(thing) && query_verb() == "shout") {
-        text = thing->colour_event("shout", "") + text + "%^RESET%^";
-      }
-      thing->add_message( "$I$5="+ text, ({ }) );
-   }
-}
-void npc_hear_shouts(object newlistener) {
-  int i;
-  if (member_array(newlistener,_listeners)!=-1) {
-     return;
-  }
-  i = member_array(0,_listeners);
-  if (i != -1) {
-    _listeners[i]=newlistener;
-  } else {
-    _listeners=_listeners+({newlistener});
-  }
-}
-int npc_unhear_shouts(object oldlistener) {
-  int i;
-  if (sizeof(_listeners)==0) {
-    return 0;
-  }
-  i = member_array(oldlistener,_listeners);
-  if (i == -1) {
-    return 0;
-  }
-  _listeners = _listeners[0..i] + _listeners[i+1..];
-  return 1;
-}
-void npc_shout_event( object shouter, string start, string message,
-      string lang, int *coord, int range ) {
-  if (_listeners) {
-    _listeners -= ({ 0 });
-    _listeners->event_person_shout(shouter, start, message,
-                                  lang, coord, range );
-  }
-}
-void add_object_to_channel(string channel_name,
-                           object ob) {
-   if (!_channels[channel_name]) {
-      _channels[channel_name] = ({ });
-   }
-   _channels[channel_name] += ({ ob });
-}
-int remove_object_from_channel(string channel_name,
-                               object ob) {
-   if (_channels[channel_name]) {
-      if (member_array(ob, _channels[channel_name]) != -1) {
-         _channels[channel_name] -= ({ ob });
-         if (!sizeof(_channels[channel_name])) {
-           map_delete(_channels, channel_name);
-         }
-         return 1;
-      }
-   }
-   return 0;
-}
-void broadcast_to_channel(mixed ob,
-                          string channel,
-                          mixed message) {
-   string str;
-   if (!ob) {
-      return ;
-   }
-   if (objectp(ob)) {
-      str = ob->query_cap_name();
-   }
-   if (_channels[channel]) {
-      _channels[channel] -= ({ 0 });
-      _channels[channel]->event_channel_message(ob, channel, message);
-      if (!_channel_history[channel]) {
-         _channel_history[channel] = ({ });
-      }
-      _channel_history[channel] += ({ ({ str, message, time() }) });
-      if (sizeof(_channel_history[channel]) > BROADCAST_HISTORY_LENGTH) {
-         _channel_history[channel] = _channel_history[channel][1..];
-      }
-   }
-}
-mixed *query_channel_history(string channel) {
-   return _channel_history[channel];
-}
-object *query_channel_members(string channel) {
-   return _channels[channel];
-}
-int is_channel(string channel) {
-  return !undefinedp(_channels[channel]);
-}
-mapping query_all_channels() {
-   return _channels;
-}
-int query_next_channel_number(string channel) {
-   int next_num;
-   next_num = ++_channel_ids[channel];
-   save_me();
-   return next_num;
-}
-private void save_me() {
-   unguarded( (: save_object(SAVE_FILE) :) );
-}
-private void load_me() {
-   unguarded( (: restore_object(SAVE_FILE, 1) :) );
-}
-mapping query_dynamic_auto_load() {
-   return ([ "channels" : _channels,
-       "history" : _channel_history ]);
-}
-void init_dynamic_arg(mapping arg) {
-   _channels = arg["channels"];
-   if (!_channels) {
-      _channels = ([ ]);
-   }
-   _channel_history = arg["history"];
-   if (!_channel_history) {
-      _channel_history = ([ ]);
    }
 }
 
 ==================================================
-FILE: handlers/change_skills.c
+FILE: handlers/english_handler.c
 ==================================================
 
-#include <login_handler.h>
-#include <language.h>
-#include <tune.h>
-#include <skills.h>
-#include <combat.h>
-#define ORIGINAL "alpha"
-#define VERSION "beta"
-#define VERSION_2 "gamma"
-#define VERSION_3 "delta"
-#define VERSION_4 "epsilon"
-#define VERSION_5 "zeta"
-#define VERSION_6 "eta"
-#define OLD_SKILLS ({ \
-      "magic.spells.offensive.area", \
-      "magic.spells.offensive.target", \
-      "magic.spells.defensive.area", \
-      "magic.spells.defensive.self", \
-      "magic.spells.defensive.target", \
-      "magic.spells.misc.area", \
-      "magic.spells.misc.self", \
-      "magic.spells.misc.target", \
-      "magic.spells.special", \
-      "magic.items.held.wand", \
-      "magic.items.held.rod", \
-      "magic.items.held.staff", \
-      "magic.items.held.broom", \
-      "magic.items.worn.amulet", \
-      "magic.items.worn.ring", \
-      "magic.items.scroll", \
-      "magic.points", \
-      "occult.methods.brewing", \
-      "occult.methods.dancing", \
-      "occult.methods.chanting", \
-      "occult.methods.flying", \
-      "occult.spells.cursing", \
-      "occult.spells.summoning", \
-      "occult.spells.enchanting", \
-      "occult.spells.charming", \
-      "occult.spells.healing", \
-   })
-#define OTHER_SKILLS ({ \
-      "magic", \
-      "magic.spells", \
-      "magic.spells.offensive", \
-      "magic.spells.defensive", \
-      "magic.spells.misc", \
-      "magic.items", \
-      "magic.items.held", \
-      "magic.items.worn", \
-      "occult", \
-      "occult.methods", \
-      "occult.spells", \
-   })
-#define ETA_CHANGES (["other.tracking" : "crafts.hunting.tracking", \
-                      "other.swimming" : "other.movement.swimming", \
-                      "other.riding" : "other.movement.riding", \
-                      "other.riding.horse" : "other.movement.riding.horse", \
-                      "other.riding.camel" : "other.movement.riding.camel", \
-                      "other.climbing" : "other.movement.climbing", \
-                      "other.climbing.tree" : "other.movement.climbing.tree", \
-                      "other.climbing.rock" : "other.movement.climbing.rock", \
-                      "other.climbing.rope" : "other.movement.climbing.rope", \
-                      "other.valueing" : "other.trading.valueing", \
-                      "other.valueing.gems" : "other.trading.valueing.gems", \
-                      "other.valueing.jewellery" : "other.trading.valueing.jewellery", \
-                      "other.valueing.weapons" : "other.trading.valueing.weapons", \
-                      "other.valueing.armour" : "other.trading.valueing.armour"])
-#define EFFECTS ({"magic.defensive.floating", "magic.shield.impact", \
-                  "magic.defensive.skin.troll", "priest.shield" })
-int query_level_in( mapping skills, string skill ) {
-   string *bits;
-   if ( !undefinedp( skills[ skill ] ) )
-      return skills[ skill ];
-   bits = explode( skill, "." );
-   if ( sizeof( bits ) == 1 )
-      return 0;
-   bits = delete( bits, sizeof( bits ) - 1, 1 );
-   skill = implode( bits, "." );
-   return query_level_in( skills, skill );
-}
-void change_skills( object thing ) {
-   int i, total;
-   mapping skills;
-   skills = (mapping)thing->query_skills();
-   if ( !m_sizeof( skills ) )
-      return;
-   for ( i = 0; i < sizeof( OLD_SKILLS ); i++ ) {
-      total += query_level_in( skills, OLD_SKILLS[ i ] );
-      if ( !undefinedp( skills[ OLD_SKILLS[ i ] ] ) )
-         skills = m_delete( skills, OLD_SKILLS[ i ] );
-   }
-   for ( i = 0; i < sizeof( OTHER_SKILLS ); i++ )
-      if ( !undefinedp( skills[ OTHER_SKILLS[ i ] ] ) )
-         skills = m_delete( skills, OTHER_SKILLS[ i ] );
-   if ( !total )
-      return;
-   thing->add_property( "magic levels", total );
-   thing->set_skills( skills );
-   tell_object( thing, "\n\nAn imp that only you can see flashes into "+
-         "existence.\n" );
-   tell_object( thing, "The imp tells you: The magic and occult skill "+
-         "categories are being amalgamated and restructured.\n" );
-   tell_object( thing, "The imp tells you: You have a total of "+ total +
-         " levels that you can spend on the new magic skills.\n" );
-   tell_object( thing, "The imp tells you: Go and find the black "+
-         "monolith in the middle of Sator Square which you can use to "+
-         "to spend them.\n" );
-   tell_object( thing, "The imp flashes back to wherever it came from.\n\n" );
-}
-int query_minimum_skill_xp(int lvl) {
-   int i;
-   int xp;
-   xp = 0;
-   for (i = 0; i < lvl; i++) {
-      xp += ( DEFAULT_COST * STD_COST * 100 ) / (( LEVEL_DIV + 1) * 500);
-   }
-   return xp;
-}
-void change_language_skills( object thing, int lev ) {
-   int i;
-   int total_xp;
-   mapping skills;
-   string *bits;
-   string start;
-   string *langs;
-   string health;
-   skills = thing->query_skills();
-   if (!sizeof(skills))
-      return ;
-   bits = keys(skills);
-   health = skills["other.health"];
-   start = "other.language.";
-   total_xp = 0;
-   for (i = 0; i < sizeof(bits); i++) {
-      if (bits[i][0..strlen(start)-1] == start) {
-         total_xp += query_minimum_skill_xp(skills[bits[i]]);
-         map_delete(skills, bits[i]);
-      }
-   }
-   langs = thing->query_languages();
-   for (i = 0; i < sizeof(langs); i++) {
-      thing->add_language(langs[i]);
-      thing->remove_language( langs[i] );
-   }
-   if (skills["other.language"]) {
-      total_xp += query_minimum_skill_xp(skills["other.language"]);
-      map_delete(skills, "other.language");
-   }
-   thing->add_language("common");
-   if(thing->query_guild_ob() == "/std/guilds/wizard") {
-     thing->add_language("wizard spells");
-   }
-   if(thing->query_guild_ob() == "/std/guilds/thief") {
-     thing->add_language("thieves' cant");
-   }
-   if(skills["other.health"] != health) {
-     tell_object(thing, "A fluffy cabbage tells you: Something has gone wrong "
-                 "with your language adjustment, please tell Ceres or "
-                 "Pinkfish\n");
-     return;
-   }
-   thing->adjust_xp( total_xp );
-   tell_object(thing,
-"A fluffy cabbage turns up and stares straight into your eyes.\n"
-"You feel that the fluffy cabbage has shuffled around some bits of your mind.\n"
-               );
-   if (total_xp > 0 && lev < 2) {
-      tell_object(thing,
-"Your languages have been shifted, you appear to have gained "+total_xp+" xp.\n"
-                 );
-   }
-}
-mapping recalc_parents(mapping skills, string skill) {
-  int i, j, lvl;
-  string *tree, *bits, this_skill;
-  bits = explode(skill, ".");
-  for(i=sizeof(bits)-1; i>=0; i--) {
-    this_skill = implode(bits[0..i], ".");
-    tree = (string *)SKILL_OB->query_immediate_children(this_skill);
-    lvl = 0;
-    for(j=0; j<sizeof(tree); j++) {
-      lvl += skills[tree[j]];
-    }
-    if(sizeof(tree))
-      skills[this_skill] = lvl / sizeof(tree);
+float *freq=({ 0.070012, 15.782218, 0.011949, 43.328090, 0.021800, 31.780955,
+                 0.041222, 22.534301, 0.081093, 11.110506, 0.016799, 34.952377,
+                 0.019235, 35.094824, 0.031751, 21.939816, 0.055348, 15.959625,
+                 0.001028, 116.456628, 0.007624, 57.669862, 0.029144,
+                 22.558570, 0.028764, 31.148966, 0.047194, 18.490345, 0.054178,
+                 15.319177, 0.014415, 36.228697, 0.001335, 116.456628,
+                 0.047561, 18.817823, 0.050139, 17.975454, 0.058789, 13.617099,
+                 0.020638, 32.978418, 0.005222, 63.346619, 0.011713, 42.180909,
+                 0.001264, 116.456628, 0.014661, 40.185678, 0.000530,
+                 116.456628, 0.171614, 40.0, 0.000666, 116.456628,
+                 0.084311, 10.304674
+});
+int FreqTest( string line ) {
+  int len,i,ch;
+  float badness,term;
+  int *let;
+  let=allocate(29);
+  i = len = strlen(line);
+  while (i--) {
+    ch = line[i];
+    if ((ch>=65 && ch<65+26) || (ch>=97 && ch<97+26)) let[(ch&31)-1]++;
+    else if (ch==' ') let[26]++;
+    else if (ch>='0' && ch<='9') let[27]++;
+    else let[28]++;
   }
-  return skills;
-}
-void change_skills_epsilon( object thing ) {
-  int lvl, rest;
-   mapping skills;
-   string *bits;
-   skills = thing->query_skills();
-   if (!sizeof(skills))
-      return ;
-   bits = keys(skills);
-   tell_object(thing, "A squirrel appears and says: I'm just updating your "
-               "skill tree, will be just a jiffy.\n");
-   lvl = skills["covert.sleight-of-hand"];
-   if(lvl > 0) {
-     m_delete(skills, "covert.sleight-of-hand");
-     if(lvl > 300) {
-       rest = lvl - 300;
-       lvl = 300;
-       if(rest > 600) {
-         lvl += 300;
-         rest -= 600;
-         lvl += rest / 5;
-       } else
-         lvl += rest / 2;
-     }
-     skills["covert.manipulation.stealing"] = lvl;
-     skills["covert.manipulation.palming"] = lvl;
-     skills["covert.manipulation.passing"] = lvl;
-     skills["covert.manipulation.sleight-of-hand"] = lvl;
-     skills["covert.manipulation"] = lvl;
-     recalc_parents(skills, "covert");
-   }
-   lvl = skills["fighting.combat.melee.sharp"];
-   if(lvl > 0) {
-     if(lvl > 300) {
-       rest = lvl - 300;
-       lvl = 300;
-       if(rest > 600) {
-         lvl += 300;
-         rest -= 600;
-         lvl += rest / 5;
-       } else
-         lvl += rest / 2;
-     }
-     skills["fighting.combat.melee.sharp"] = lvl;
-     skills["fighting.combat.melee.pierce"] = lvl;
-     skills = recalc_parents(skills, "fighting.combat.melee");
-   }
-   lvl = skills["fighting.combat.parry.thrown"];
-   rest = skills["fighting.combat.parry.fired"];
-   if(lvl > 0 || rest > 0) {
-     if(rest > lvl)
-       lvl = rest + (lvl / 5);
-     else
-       lvl += (rest / 5);
-     m_delete(skills, "fighting.combat.parry.thrown");
-     m_delete(skills, "fighting.combat.parry.fired");
-     skills["fighting.combat.parry.range"] = lvl;
-     lvl = skills["fighting.combat.parry.held"];
-     m_delete(skills, "fighting.combat.parry.held");
-     skills["fighting.combat.parry.melee"] = lvl;
-     skills = recalc_parents(skills, "fighting.combat.parry");
-   }
-   lvl = skills["fighting.combat.special"];
-   if(lvl > 0) {
-     if(lvl > 300) {
-       rest = lvl - 300;
-       lvl = 300;
-       if(rest > 600) {
-         lvl += 300;
-         rest -= 600;
-         lvl += rest / 5;
-       } else
-         lvl += rest / 2;
-     }
-     skills["fighting.combat.special.weapon"] = lvl;
-     skills["fighting.combat.special.unarmed"] = lvl;
-     skills["fighting.combat.special.tactics"] = lvl - lvl / 4;
-     skills = recalc_parents(skills, "fighting.combat.special");
-   }
-   lvl = skills["other.tracking.woodland"];
-   m_delete(skills, "other.tracking.woodland");
-   lvl += skills["other.tracking.desert"];
-   m_delete(skills, "other.tracking.desert");
-   lvl += skills["other.tracking.mountain"];
-   m_delete(skills, "other.tracking.mountain");
-   lvl += skills["other.tracking.road"];
-   m_delete(skills, "other.tracking.road");
-   lvl += skills["other.tracking.field"];
-   m_delete(skills, "other.tracking.field");
-   if(lvl > 0)
-     skills["other.tracking"] = lvl;
-   thing->set_skills( skills );
-   tell_object(thing, "The squirrel says: Ok, all done now.\n");
-}
-int new_skill_value(int sk) {
-  float f = 1000.0;
-  float k = 0.3;
-  if(sk == 0)
-    return 0;
-  return to_int(f * log( 1.0 + sk/(f + sk * k) ) + 0.5);
-}
-void change_skills_zeta( object thing ) {
-   mapping skills;
-   string *bits, bit;
-   skills = thing->query_skills();
-   if (!sizeof(skills))
-      return ;
-   bits = keys(skills);
-   tell_object(thing, "A small blue frog appears and says: I'm just updating "
-         "your skill levels, this won't take a second.\n");
-   foreach(bit in bits) {
-     if(bit[0..13] != "other.language" &&
-        SKILL_OB->query_immediate_children(bit) == ({ })) {
-       skills[bit] = new_skill_value(skills[bit]);
-       skills = recalc_parents(skills, bit);
-     }
-   }
-   thing->set_skills( skills );
-   tell_object(thing, "The frog says: Ok, all done now.\n");
-}
-void fixup_stats(object thing) {
-  mapping values;
-  mapping changes;
-  int stat_total;
-  string str;
-  changes = ([ ]);
-  values = ([
-    "con" : thing->query_real_con(),
-    "dex" : thing->query_real_dex(),
-    "int" : thing->query_real_int(),
-    "wis" : thing->query_real_wis(),
-    "str" : thing->query_real_str()
-            ]);
-  stat_total = values["con"] + values["dex"] + values["wis"] + values["str"] +
-               values["int"];
-  if (stat_total > 65) {
-     if (thing->query_real_con() > 8) {
-        thing->adjust_con(-1);
-        stat_total--;
-        values["con"]--;
-        changes["con"]++;
-     }
-     if (stat_total > 65 && thing->query_real_dex() > 8) {
-        thing->adjust_dex(-1);
-        stat_total--;
-        values["dex"]--;
-        changes["dex"]++;
-     }
-     while (stat_total > 65) {
-        string highest;
-        int value;
-        string stat;
-        int v;
-        value = 0;
-        foreach (stat, v in values) {
-           if (v > value) {
-              value = v;
-              highest = stat;
-           }
-        }
-        call_other(thing, "adjust_" + highest, -1);
-        values[highest]--;
-        changes[highest]++;
-        stat_total--;
-     }
+  badness = 0.0;
+  for (i=0;i<29;i++) {
+    term = to_float((to_float(let[i]) - freq[i<<1] * len) * freq[(i<<1)+1]);
+    badness += (term>0 ? term : -term);
   }
-  str = query_multiple_short(map(keys(changes), (: $1 + " changed by " + $2[$1] :), changes));
-  tell_object(thing, "The armadillo says: Stats changed: " + str + "\n");
+  badness /= (29.0*len);
+  i = 100 - 50*badness*badness;
+  if (i<1) i=1;
+  return i;
 }
-void change_skills_eta(object thing) {
-  mapping skills;
-  string bit, effect;
-  class tactics tactics;
-  int eff;
-  tactics = new(class tactics,
-                attitude : "neutral",
-                response : "neutral",
-                parry : "both",
-                parry_unarmed : 0,
-                mercy : "ask",
-                focus_zone : 0,
-                ideal_distance : 0);
-  thing->set_tactics(tactics);
-  skills = thing->query_skills();
-  if(!sizeof(skills))
-    return;
-  tell_object(thing, "An armadillo appears out of nowhere and says: "
-              "I'm just updating your skills, this won't take a second.\n");
-  foreach(bit in keys(ETA_CHANGES)) {
-    tell_object(thing, "Mapping " + bit + " to " + ETA_CHANGES[bit] + ".\n");
-    skills[ETA_CHANGES[bit]] = skills[bit];
-    map_delete(skills, bit);
+int ProfaneTest( string strin ) {
+  int i,profane=0;
+  string str,s;
+  if (sizeof(strin)<1) return 0;
+  strin=lower_case(strin)+" ";
+  str="";
+  for (i=0;i<sizeof(strin);i++) {
+    if (strin[i]>='a' && strin[i]<='z') str+=strin[i..i];
   }
-  tell_object(thing, "Adding new skills.\n");
-  foreach(bit in
-          "/std/skills"->query_immediate_children("crafts")) {
-    if(!skills[bit]) {
-      skills[bit] = 0;
-    }
+  if (sizeof(str)<2) return 0;
+  s=str[0..0];
+  for (i=1;i<sizeof(str);i++) {
+    if (s[<1]!=str[i]) s+=str[i..i];
   }
-  recalc_parents(skills, "crafts.hunting");
-  recalc_parents(skills, "crafts");
-  recalc_parents(skills, "other.movement.riding");
-  recalc_parents(skills, "other.movement.climbing");
-  recalc_parents(skills, "other.movement");
-  recalc_parents(skills, "other.trading.valueing");
-  recalc_parents(skills, "other.trading");
-  recalc_parents(skills, "other");
-  thing->set_skills( skills );
-  foreach(effect in EFFECTS)
-    foreach(eff in thing->effects_matching(effect))
-      catch(thing->delete_effect(eff));
-  tell_object(thing, "Fixing stats.\n");
-  fixup_stats(thing);
-  tell_object(thing, "Granting rearrange.\n");
-   thing->add_known_command("rearrange");
-  if ((thing->query_guild_ob() == "/std/guilds/assassin" &&
-       thing->query_property("assassin") > 1) ||
-      (thing->query_guild_ob() == "/std/guilds/wizard" &&
-       "/obj/handlers/guild_things/wizard_orders"->query_order() == "last")) {
-    tell_object(thing, "Returning PK flag.\n");
-    thing->set_player_killer(1);
-  }
-  thing->remove_property(PKER);
-  thing->remove_property(PKER_MISSPELL);
-  thing->add_property("not real newbie", 1);
-  tell_object(thing, "Removing old combat commands.\n");
-  if(thing->query_known_command("strike"))
-    thing->remove_known_command("strike");
-  if(thing->query_guild_ob() != "/std/guilds/warrior") {
-    thing->remove_known_command("impale");
-    thing->remove_known_command("crush");
-    thing->remove_known_command("behead");
-  }
-  thing->remove_known_command("punch");
-  thing->remove_known_command("kick");
-  tell_object(thing, "The armadillo says: Ok, all done now.\n");
-  "/d/liaison/NEWBIE/choose_land"->fixup_player(this_player());
+  if (regexp(s,"bastard|tit|shaft|viag")
+     || regexp(str,"poo|ass|butt")) profane+=25;
+  if (regexp(s,"arse|sex|sux|crap|testic|fart|orgasm|orgy|turd|porn|niple|nazi|jesus|christ|satan|sperm|smeg|toilet|genital")
+     || regexp(str,"piss|root|buttw|assho")
+     || regexp(strin,"butt |ass ")) profane+=50;
+  if (regexp(s,"netsex|arse|shit|screw|urine|rectum|tampon|vibrator|rectal|scatol|semen|suck|lick|dyke|dike|wank|mutha|prost|fag|feck|gay|homo|fuq|horny|blowjob|cuni")
+     || regexp(str,"phall|hooter|poof")) profane+=100;
+  if (regexp(s,"anal|rape|rapist|fuck|fuk|fuch|kuck|cunt|kunt|whor|slut|clit|masturb|masterb|penis|cock|dick|pusy|bitch|vagina")) profane+=200;
+  return profane;
 }
-void entering( string name, string type ) {
-   object thing;
-   int lvl;
-   if ( type != LOGIN )
-      return;
-   if ( !( thing = find_player( name ) ) )
-      return;
-   switch((string)thing->query_property( "skills version" )) {
-   case VERSION:
-     change_skills( thing );
-   case VERSION_2:
-     change_language_skills( thing, lvl );
-   case VERSION_3:
-     change_skills_epsilon( thing );
-   case VERSION_4:
-     change_skills_zeta(thing);
-   case VERSION_5:
-     change_skills_eta(thing);
-   default:
-     thing->add_property("skills version", VERSION_6);
-     return;
-   }
-}
-string query_version() { return VERSION_5; }
 
 ==================================================
-FILE: handlers/chime_handler.c
+FILE: handlers/error_handler.c
 ==================================================
 
-#define CREATOR "Ceres"
-#include <am_time.h>
-#include <chime.h>
-#define FIFTEEN_MINS (AM_SECONDS_PER_MINUTE * 15)
-class chime {
-  object ob;
-  int type;
-  string mess;
-}
-void do_chime(class chime record, int type);
-class chime *chime_list;
-int last_strike;
+inherit "/obj/handlers/inherit/error_handler";
 void create() {
-  int next_chime;
-  chime_list = ({ });
-  next_chime = 301 - (time() % 300);
-  remove_call_out("check_time");
-  call_out("check_time", next_chime);
-}
-int register_for_chimes(object ob, int num, string mess) {
-  class chime record;
-  foreach(record in chime_list) {
-    if(record->ob == ob && record->type == num && record->mess == mess) {
-      record->type = num;
-      record->mess = mess;
-      return 1;
-    }
-  }
-  record = new(class chime);
-  record->ob = ob;
-  record->type = num;
-  record->mess = mess;
-  chime_list += ({ record });
-  return 1;
-}
-void check_time() {
-  int next_chime, minute;
-  class chime record;
-  minute = AM_TIME_HANDLER->query_am_minute(time());
-  foreach(record in chime_list) {
-    catch{
-      if(minute % 60 < 5)
-        do_chime(record, CHIME_HOUR);
-      else if(minute % 30 < 5 && record->type > CHIME_HOUR)
-        do_chime(record, CHIME_HALF_HOUR);
-      else if(minute % 15 < 5 && record->type == CHIME_QUARTER_HOUR)
-        do_chime(record, CHIME_QUARTER_HOUR);
-    };
-  }
-  next_chime = (FIFTEEN_MINS + 1) - (time() % FIFTEEN_MINS);
-  remove_call_out("check_time");
-  call_out("check_time", next_chime);
-}
-void do_chime(class chime record, int type) {
-  if(!record || !record->ob)
-    return;
-  (record->ob)->chime(record->mess, type);
-}
-void reset() {
-  int next_chime;
-  class chime record;
-  next_chime = (FIFTEEN_MINS + 1) - (time() % FIFTEEN_MINS);
-  remove_call_out("check_time");
-  call_out("check_time", next_chime);
-  foreach(record in chime_list) {
-    if(!record->ob)
-      chime_list -= ({ record });
-  }
-}
-mapping query_dynamic_auto_load() {
-   mapping tmp;
-   tmp = ([ "chime_list" : chime_list ]);
-   return tmp;
-}
-void init_dynamic_arg(mapping maps) {
-   if (maps["chime_list"])
-      chime_list = maps["chime_list"];
-}
-mixed stats() {
-  return ({ ({ "chime count", sizeof(chime_list) }) });
-}
-
-==================================================
-FILE: handlers/clothing_handler.c
-==================================================
-
-#include <clothing.h>
-mapping _types;
-mapping _equivilants;
-mapping _zones;
-string *_zone_level;
-protected void add_clothing_type(string name,
-                                 string *not_remove,
-                                 string *hiding);
-protected void add_clothing_zone(string zone, string *types);
-private int fixup_types(string type, string *types);
-protected void add_equivilant_type(string name, string equiv);
-private void check_clothing_types();
-string *query_clothing_zone(string zone);
-string *query_clothing_cannot_remove(string type);
-string can_wear_or_remove(object thing, object player);
-void create() {
-   _types = ([ ]);
-   _equivilants = ([ ]);
-   _zones = ([ ]);
-   _zone_level = ({ });
-   add_clothing_type("bandaid", ({ }), ({ }));
-   add_clothing_type("wig",
-       ({ "hood", "helmet", "coif", "hat", "all covering" }),
-       ({ "hood", "helmet", "coif", "hat", "all covering" }));
-   add_clothing_type("hat",
-       ({ "hood", "helmet", "all covering" }),
-       ({ "hood", "helmet", "all covering" }));
-   add_clothing_type("helmet",
-       ({ "hood", "all covering" }),
-       ({ "hood", "all covering" }));
-   add_clothing_type("hood",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("earring",
-       ({ "coif", "all covering" }),
-       ({ "hood", "coif", "all covering" }));
-   add_clothing_type("moustache",
-       ({ "coif", "mask", "all covering" }),
-       ({ "coif", "mask", "all covering" }));
-   add_clothing_type("glasses",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("nosering",
-       ({ "mask", "coif", "all covering" }),
-       ({ "mask", "coif", "all covering" }));
-   add_clothing_type("mask",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("headband",
-       ({ "hat", "hood", "helmet", "coif", "all covering" }),
-       ({ "hat", "hood", "helmet", "coif", "all covering" }));
-   add_clothing_type("scarf",
-       ({ "hood", "all covering" }),
-       ({ "hood", "all covering"}));
-   add_clothing_type("necklace",
-       ({ "coif", "all covering" }),
-       ({ "cloak", "coif", "all covering" }));
-   add_clothing_type("collar",
-       ({ "hood", "all covering" }),
-       ({ "hood", "all covering"}));
-   add_clothing_type( "shoulder",
-       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
-          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
-          "shirt", "undershirt", "all covering" }),
-       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
-          "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
-          "all covering" }));
-   add_clothing_type( "bra",
-       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
-          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
-          "shirt", "undershirt", "all covering", "long dress", "mini dress" }),
-       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
-           "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
-           "all covering", "long dress", "mini dress" }));
-   add_clothing_type("undershirt",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "waistcoat",
-          "shirt", "harness", "all covering" }),
-       ({ "cloak", "robe", "tabard", "breastplate", "haubergon", "hauberk",
-          "byrnie", "jacket", "jumper", "shirt", "long dress", "mini dress",
-          "all covering" }));
-   add_clothing_type("shirt",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "waistcoat",
-          "harness", "all covering" }),
-       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
-          "jumper", "all covering" }));
-   add_clothing_type("waistcoat",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "harness",
-          "all covering" }),
-       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
-          "jumper", "all covering" }));
-   add_clothing_type("harness",
-       ({ "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("jumper",
-       ({ "cloak", "cape", "sash", "robe", "breastplate", "haubergon",
-          "hauberk", "byrnie", "tabard", "jacket",  "all covering" }),
-       ({ "cloak", "robe", "haubergon", "hauberk", "jacket",
-          "all covering" }));
-   add_clothing_type("jacket",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "all covering" }),
-       ({ "cloak", "robe", "hauberk", "all covering" }));
-   add_clothing_type("tabard",
-       ({ "cloak", "cape", "sash", "robe", "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("robe",
-       ({ "cloak", "cape", "sash", "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("cloak",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("sash",
-       ({ "cloak", "cape", "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("cape",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("armband",
-       ({ "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("glove",
-       ({ "all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("bracelet",
-       ({ "glove", "all covering" }),
-       ({ "cloak", "glove", "all covering" }));
-   add_clothing_type("ring",
-       ({ "glove", "all covering" }),
-       ({ "glove", "all covering" }));
-   add_clothing_type("box",
-       ({ "cloak", "robe", "all covering" }),
-       ({ "cloak", "robe", "skirt", "all covering" }));
-   add_clothing_type("apron",
-       ({ "cloak", "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("underwear",
-       ({ "harness", "trousers", "greave", "hauberk", "haubergon",
-          "byrnie", "belt", "trousers", "all covering" }),
-       ({ "cloak", "robe", "skirt", "trousers", "all covering",
-          "long dress", "mini dress" }));
-   add_clothing_type("garter",
-       ({ "greave", "hauberk", "trousers", "all covering"}),
-       ({ "cloak", "robe", "greave", "hauberk", "trousers", "skirt",
-          "all covering", "long dress", "mini dress"}));
-   add_clothing_type("skirt",
-       ({ "belt", "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("trousers",
-       ({ "greave", "hauberk", "belt" }),
-       ({ "cloak", "hauberk", "robe", "all covering" }));
-   add_clothing_type("belt",
-       ({"hauberk", "haubergon", "byrnie", "all covering" }),
-       ({ "cloak", "robe", "hauberk", "haubergon", "byrnie", "all covering" }));
-   add_clothing_type("sock",
-       ({ "overshoe", "boot", "chausse", "all covering" }),
-       ({ "cloak", "overshoe", "boot", "chausse", "all covering",
-          "long dress", "trousers" }));
-   add_clothing_type("anklet",
-       ({ }),
-       ({ "cloak", "overshoe", "chausse", "all covering" }));
-   add_clothing_type("boot",
-       ({ "overshoe" }),
-       ({ "overshoe", "all covering" }));
-   add_clothing_type("overshoe",
-       ({ }),
-       ({ "all covering" }));
-   add_clothing_type("long dress",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
-          "all covering","belt" }),
-       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
-          "jumper", "all covering" }));
-   add_clothing_type("mini dress",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
-          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
-          "all covering","belt" }),
-       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
-          "jumper", "all covering" }));
-   add_clothing_type("small shield",
-       ({"all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("shield",
-       ({"all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("large shield",
-       ({"all covering" }),
-       ({ "all covering" }));
-   add_clothing_type("badge",
-       ({ "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("scabbard",
-       ({ "all covering" }),
-       ({ "cloak", "all covering" }));
-   add_clothing_type("small scabbard",
-       ({ "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("belt scabbard",
-       ({ "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("coif",
-       ({ "hood", "scarf", "mask", "helmet", "hat", "all covering"}),
-       ({ "hood", "all covering"}));
-   add_clothing_type("byrnie",
-       ({ "cloak", "breastplate", "backplate", "tabard", "small scabbard",
-          "belt scabbard", "robe", "cape", "sash", "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("haubergon",
-       ({ "cloak", "breastplate", "backplate", "tabard", "vambrace",
-          "small scabbard", "belt scabbard", "robe", "cape", "sash",
-          "all covering"}),
-       ({ "cloak", "robe", "all covering"}));
-   add_clothing_type("hauberk",
-       ({ "cloak", "tabard", "vambrace", "greave", "breastplate", "backplate",
-          "small scabbard", "belt scabbard", "robe", "cape", "sash",
-          "all covering"}),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("chausse",
-       ({ "boot", "overshoe", "all covering"}),
-       ({ "boot", "overshoe", "all covering"}));
-   add_clothing_type("breastplate",
-       ({ "cloak", "small scabbard", "belt scabbard", "robe", "tabard",
-          "cape", "sash", "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("backplate",
-       ({ "cloak", "cape", "sash", "robe", "tabard", "all covering"}),
-       ({ "cloak", "cape", "sash", "robe", "all covering"}));
-   add_clothing_type("vambrace",
-       ({ "glove", "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("greave",
-       ({ "all covering" }),
-       ({ "cloak", "robe", "all covering" }));
-   add_clothing_type("all covering", ({}), ({}));
-   add_clothing_zone("head",
-       ({ "hood", "helmet", "coif", "hat", "wig", "headband", "moustache",
-          "glasses", "mask" }));
-   add_clothing_zone("neck",
-       ({ "cloak", "hood", "coif", "cape", "scarf", "collar" }));
-   add_clothing_zone("chest",
-       ({ "cloak", "sash", "robe", "breastplate", "haubergon", "hauberk",
-          "byrnie", "tabard", "jacket","jumper", "shirt", "undershirt",
-          "shoulder", "bra","shield", "large shield", "long dress",
-          "mini dress", "apron", "waistcoat" }));
-   add_clothing_zone("back",
-       ({ "cloak", "cape", "sash", "robe", "hauberk", "haubergon", "byrnie",
-          "jacket", "jumper", "shirt", "undershirt", "backplate",
-          "long dress", "mini dress", "waistcoat" }));
-   add_clothing_zone("abdomen",
-       ({ "large shield", "robe", "breastplate", "byrnie", "hauberk",
-          "skirt", "box", "trousers", "underwear", "long dress",
-          "mini dress", "apron", "waistcoat" }));
-   add_clothing_zone("arms",
-       ({ "cloak", "small shield", "shield", "large shield", "robe",
-          "vambrace", "hauberk", "haubergon", "jacket", "armband",
-          "jumper", "shirt", "long dress" }));
-   add_clothing_zone("hands",
-       ({ "glove", "small shield", "shield", "large shield" }));
-   add_clothing_zone("legs",
-       ({ "cloak", "robe", "greave", "hauberk", "skirt", "trousers",
-          "long dress" }));
-   add_clothing_zone("feet",
-       ({ "overshoe", "boot", "chausse", "sock", "anklet" }));
-   add_equivilant_type("shoe", "boot");
-   add_equivilant_type("sandal", "boot");
-   add_equivilant_type("clog", "boot");
-   add_equivilant_type("sabaton", "boot");
-   add_equivilant_type("turban", "helmet");
-   add_equivilant_type("gorget", "collar");
-   add_equivilant_type("stocking", "sock");
-   add_equivilant_type("coat", "cloak");
-   add_equivilant_type("overall", "long dress");
-   call_out((: check_clothing_types() :), 2);
-}
-object* query_items_blocking(object thing, object player) {
-   int i;
-   int j;
-   int k;
-   string *stuff;
-   object *blocking;
-   mixed junk;
-   mixed main_types;
-   object *wearing;
-   main_types = thing->query_type();
-   if (stringp(main_types)) {
-      main_types = ({ main_types });
-   }
-   wearing = player->query_wearing() - ({ thing });
-   blocking = ({ });
-   for (k=0;k<sizeof(main_types);k++) {
-      stuff = query_clothing_cannot_remove(main_types[k]);
-      if (!sizeof(wearing) || !stuff) {
-         return ({ });
-      }
-      for (i = 0; i < sizeof(wearing); i++) {
-         junk = wearing[i]->query_type();
-         if (stringp(junk)) {
-            junk = ({ junk });
-         }
-         for (j = 0; j < sizeof(junk); j++) {
-            if (member_array(junk[j], stuff) != -1 &&
-                 member_array(wearing[i], blocking) == -1) {
-               blocking += ({ wearing[i] });
-               break;
-            }
-         }
-      }
-   }
-   return blocking;
-}
-string can_wear_or_remove( object thing, object player ) {
-   object *blocking;
-   blocking = query_items_blocking(thing, player);
-   if (sizeof(blocking)) {
-     return "when you are wearing "+ query_multiple_short(blocking);
-   }
-   return 0;
-}
-protected void add_clothing_type(string name,
-                                 string *not_remove,
-                                 string *hiding) {
-   _types[name] = new (class clothing_type, _hiding : hiding,
-                                           _not_remove : not_remove);
-}
-class clothing_type query_clothing_type(string name) {
-   return _types[name];
-}
-string *query_clothing_cannot_remove(string type) {
-   class clothing_type bing;
-   bing = _types[type];
-   if (bing) {
-      return bing->_not_remove;
-   }
-   return 0;
-}
-string *query_clothing_hiding(string type) {
-   class clothing_type bing;
-   bing = _types[type];
-   if (bing) {
-      return bing->_hiding;
-   }
-   return ({ });
-}
-int query_clothing_depth(mixed type) {
-   class clothing_type bing;
-   int depth;
-   string str;
-   int min_depth;
-   if (stringp(type)) {
-      bing = _types[type];
-      if (bing) {
-         return bing->_depth;
-      }
-   } else if (pointerp(type)) {
-      min_depth = 100000;
-      foreach (str in type) {
-         depth = query_clothing_depth(str);
-         if (depth < min_depth && depth > 0) {
-            min_depth = depth;
-         }
-      }
-      return min_depth;
-   }
-   return 0;
-}
-int query_clothing_maximum_depth(mixed type) {
-   class clothing_type bing;
-   int depth;
-   string str;
-   int max_depth;
-   if (stringp(type)) {
-      bing = _types[type];
-      if (bing) {
-         return bing->_depth;
-      }
-   } else if (pointerp(type)) {
-      max_depth = 0;
-      foreach (str in type) {
-         depth = query_clothing_depth(str);
-         if (depth > max_depth) {
-            max_depth = depth;
-         }
-      }
-      return max_depth;
-   }
-   return 0;
-}
-mapping query_all_clothing_types() {
-   return _types;
-}
-private void check_clothing_types() {
-   string ty;
-   class clothing_type bits;
-   string *stuff;
-   string bing;
-   string type;
-   int rank;
-tell_creator("presto", "called check_clothing_types\n");
-   foreach (ty, bits in _types) {
-      foreach (bing in bits->_not_remove) {
-         if (!query_clothing_type(bing)) {
-            write("Unknown clothing type " + bing + " in the not remove "
-                  " for " + ty + ".\n");
-         }
-      }
-      foreach (bing in bits->_hiding) {
-         if (!query_clothing_type(bing)) {
-            write("Unknown clothing type " + bing + " in the hiding "
-                  " for " + ty + ".\n");
-         }
-      }
-   }
-   rank = 1;
-   foreach (bing in _zone_level) {
-      stuff = query_clothing_zone(bing);
-      foreach (type in stuff) {
-         bits = _types[type];
-         if (!bits->_depth &&
-             (sizeof(bits->_not_remove) == 0  ||
-             bits->_not_remove[0] == "all covering")) {
-            bits->_depth = rank;
-            rank = fixup_types(type, stuff);
-         }
-      }
-      foreach (type in stuff) {
-         bits = _types[type];
-         if (!bits->_depth) {
-tell_creator("presto", "setting depth of %O to %d\n", type, rank + 1);
-            bits->_depth = rank++;
-         }
-      }
-   }
-}
-private int fixup_types(string type, string *types) {
-   string bing;
-   class clothing_type base;
-   class clothing_type bits;
-   int depth;
-   base = _types[type];
-   depth = base->_depth + 1;
-   foreach (bing in types) {
-      bits = _types[bing];
-      if (!bits->_depth &&
-          member_array(type, bits->_not_remove) != -1) {
-         bits->_depth = depth;
-         depth = fixup_types(bing, types);
-      }
-   }
-   return depth;
-}
-protected void add_clothing_zone(string zone, string *types) {
-   string ty;
-   foreach (ty in types) {
-      if (!query_clothing_type(ty)) {
-         write("Incorrect clothing type " + ty + " in zone " + zone + ".\n");
-      }
-   }
-   _zones[zone] = types;
-   _zone_level += ({ zone });
-}
-protected void add_zone_coverage(string type, string *zones) {
-  string zone;
-  if(!query_clothing_type(type))
-    write("Incorrect clothing type " + type + "\n");
-  foreach(zone in zones)
-    if(member_array(type, zones) != -1)
-      _zones[zone] += ({ type });
-}
-mapping query_all_clothing_zones() {
-   return _zones;
-}
-string *query_clothing_zone(string zone) {
-   return _zones[zone];
-}
-string query_zone_name(string type) {
-   string zone;
-   string *stuff;
-   foreach (zone, stuff in _zones) {
-      if (member_array(type, stuff) != -1) {
-         return zone;
-      }
-   }
-   return 0;
-}
-string *query_zone_names(string type) {
-   string zone;
-   string *stuff;
-   string *zones;
-   if(_equivilants[type])
-     type = _equivilants[type];
-   zones = ({ });
-   foreach (zone, stuff in _zones) {
-     if (member_array(type, stuff) != -1 && zone) {
-       zones += ({ zone });
-     }
-   }
-   return zones;
-}
-int query_zone_level(string zone) {
-   int i;
-   i = member_array(zone, _zone_level);
-   return i * 100;
-}
-protected void add_equivilant_type(string name, string equiv) {
-   if (!query_clothing_type(equiv)) {
-      write("Incorrect clothing type " + equiv + " in equivilant listing.\n");
-   }
-   _equivilants[name] = equiv;
-}
-mapping query_all_equivilant_types() {
-   return _equivilants;
-}
-string query_equivilant_type(string type) {
-   return _equivilants[type];
-}
-int query_valid_type(string type) {
-   if (query_clothing_type(type) ||
-       query_equivilant_type(type)) {
-      return 1;
-   }
-   return 0;
-}
-
-==================================================
-FILE: handlers/club_handler.c
-==================================================
-
-inherit "/obj/handlers/inherit/club_inherit";
-void create() {
+  seteuid("Root");
    ::create();
-   setup_call_check_clubs(0, 1);
+}
+void setup_error_handler(string user, string db, string password) {
+   ::setup_error_handler(user, db, password);
+}
+
+==================================================
+FILE: handlers/error_tracker.c
+==================================================
+
+inherit "/std/dom/error_tracker_master";
+void create() {
+    set_domain( "mudlib" );
+    set_name( "The Mudlib's Lord of the Whinge" );
+    set_other_dirs( ({
+        "/std%",
+        "/obj%",
+        "/global%",
+        "/cmds%",
+        "/mudlib%",
+        "/include%",
+        "/net%",
+        "/soul%",
+        "/room%",
+        "/www%",
+      }) );
+    set_period( 604800 );
+    ::create();
+}
+
+==================================================
+FILE: handlers/fairy_godmothers.c
+==================================================
+
+#include <panic.h>
+#include <config.h>
+#include <playerinfo.h>
+#include <cwc.h>
+#define HARRY_SHADOW "/std/shadows/misc/harry_shadow"
+object* _panicers;
+object* _godmothers;
+object* _queue;
+#define FREE_NAME "free trip"
+#define THRESHOLD 50
+#define DAY (60*60*24)
+public  void   continue_panicing(string str, object panicer);
+private object startup_godmother(object ob);
+private void   finish_with_person(object ob, int ok);
+void create() {
+  _panicers = ({ });
+  _godmothers = allocate(NUM_GODMOTHERS);
+  _queue = ({ });
+}
+object *query_godmothers() { return copy(_godmothers); }
+int free_godmothers() {
+  int i;
+  for (i=0;i<sizeof(_godmothers);i++) {
+    if (!_godmothers[i]) {
+      return 1;
+    }
+  }
+  return 0;
+}
+int do_startup(object panicer) {
+  if (environment(panicer) &&
+      environment(panicer)->query_property("no godmother")) {
+    notify_fail(environment(panicer)->query_property("no godmother"));
+    return 0;
+  }
+  if (panicer->query_property("attacked godmother") &&
+      (panicer->query_property("attacked godmother") + DAY * 10) > time())
+  {
+    notify_fail("You attacked a godmother!  No help for you!\n");
+    return 0;
+  }
+  if (sizeof(panicer->query_attacker_list())) {
+    notify_fail("You cannot use a godmother whilst you are in a fight.\n");
+    return 0;
+  }
+  panicer->remove_property("attacked godmother");
+  _panicers -= ({ 0 });
+  if (member_array(panicer, _panicers) != -1  ||
+      member_array(panicer, _queue) != -1)
+  {
+    notify_fail("You are already requesting assistance.  Be patient.\n");
+    return 0;
+  }
+  if (!panicer) {
+    panicer = this_player();
+  }
+  if (panicer->query_level() < 10 ||
+      !arrayp(environment(panicer)->query_exits()) ||
+      !sizeof(environment(panicer)->query_exits()) ||
+      !environment(panicer))
+  {
+    write("You feel help is on its way.\n");
+    panicer->add_property("godmother", FREE_NAME);
+    continue_panicing("y", panicer);
+  }
+  else {
+    panicer->remove_property("godmother");
+    if (panicer->query_level() < 50) {
+      int max_gp;
+      max_gp = panicer->query_max_gp();
+      if (panicer->query_gp() < max_gp / 3) {
+        notify_fail("You do not have enough guild points to summon "
+                    "a godmother.  You need at least " +
+                    (max_gp / 3) + ".\n");
+        return 0;
+      }
+      write("This will cost you all of your current guild points and "
+            "social points, and leave you feeling a little weak.  "
+            "Do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+    }
+    else {
+      if (panicer->query_max_deaths() <= panicer->query_deaths()) {
+        notify_fail("You do not have a life to spend on a godmother.\n");
+        return 0;
+      }
+      write("This will cost you a life, do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+    }
+  }
+  return 1;
+}
+private void do_check_queue() {
+   _queue -= ({ 0 });
+   if (sizeof(_queue)) {
+      if (startup_godmother(_queue[0])) {
+         _queue = _queue[1..];
+      }
+   }
+}
+private void setup_harrass_callout() {
+  int i;
+  int check_queue;
+  int waiting;
+  int max_wait;
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      waiting = _godmothers[i]->query_waiting();
+      if (waiting > FIRST_WAIT_TIME && environment(_godmothers[i])) {
+        _godmothers[i]->hurry_up();
+      }
+      if (!environment(_godmothers[i])) {
+         _godmothers[i]->dest_me();
+         check_queue = 1;
+      }
+      if (waiting > max_wait) {
+        max_wait = waiting;
+      }
+    }
+  }
+  if (max_wait < FIRST_WAIT_TIME) {
+    call_out("do_hurry_up", FIRST_WAIT_TIME-max_wait+2);
+  }
+  if (check_queue) {
+    do_check_queue();
+  }
+}
+void continue_panicing(string str, object panicer) {
+  str = lower_case(str);
+  if (!str || str == "" || (str[0] != 'y' && str[0] != 'n')) {
+    if (panicer->query_level() < 100) {
+      write("This will cost you all of your current guild points and "
+            "social points and leave you feeling a little weak.  "
+            "Do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+      return ;
+    }
+    else {
+      write("This will cost you a life, do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+      return ;
+    }
+  }
+  if (str[0] == 'n') {
+    write("Ok.  They do not show up to help you.  Good luck.\n");
+    return ;
+  }
+  if (!startup_godmother(panicer)) {
+    write("You hope a godmother will turn up sometime soon.\n");
+    _queue += ({ panicer });
+    setup_harrass_callout();
+  }
+}
+void do_panic_callout(object godmother, object ob) {
+  godmother->do_panic(ob);
+}
+private object startup_godmother(object ob) {
+  object godmother;
+  int    i, num;
+  i = random(NUM_GODMOTHERS);
+  if (_godmothers[i]) {
+    for (num = 1; num < NUM_GODMOTHERS; num++)  {
+      i = (i + 1) % NUM_GODMOTHERS;
+      if (!_godmothers[i])  break;
+    }
+  }
+  if (num == NUM_GODMOTHERS)
+     return 0;
+  switch (i) {
+    case 0:
+      godmother = clone_object(GODMOTHER_DIR + "granny");
+      break;
+    case 1:
+      godmother = clone_object(GODMOTHER_DIR + "magrat");
+      break;
+    default:
+      write("Something is hosed.  Please file a bug report.\n");
+      break;
+  }
+  _godmothers[i] = godmother;
+  godmother->move(environment(ob), "As if by magic $N appears.", "");
+  call_out("do_panic_callout", 1, godmother, ob);
+  _panicers += ({ ob });
+  return godmother;
+}
+void finish_panic(object person, int ok) {
+  int i;
+  if (person)  {
+     finish_with_person(person, ok);
+  }
+  _panicers -= ({ person });
+  for (i = 0; i < sizeof(_godmothers); i++)  {
+    if (_godmothers[i] == previous_object()) {
+      call_out("do_move", 10, _godmothers[i] );
+      break;
+    }
+  }
+  do_check_queue();
+  if (!sizeof(_queue)) {
+     remove_call_out("do_hurry_up");
+  }
+}
+void do_move (object fairy) {
+      fairy->move("/room/rubbish", "",
+          "With a quick flick of her wand, the fairy godmother is gone.");
+      fairy = 0;
+}
+private void finish_with_person(object person, int ok)  {
+  if (member_array(person, _panicers) == -1) {
+    log_file("GODMOTHER_ERROR", "person == %O, godmother == %s\n", person, previous_object()->query_short());
+    write("Consistancy error, they never paniced.\n");
+    return ;
+  }
+  if (ok) {
+    if (person->query_property("godmother") == FREE_NAME) {
+    }
+    else if (person->query_level() < THRESHOLD) {
+      person->adjust_tmp_con(-2);
+      person->set_gp(0);
+      person->set_sp(0);
+    }
+    else if (person->query_level() >= THRESHOLD &&
+             person->query_max_deaths() > person->query_deaths()) {
+      PLAYERINFO_HANDLER->add_entry(person,
+        person->query_name(), "misc", "Lost a life to the Godmother");
+      log_file("GODMOTHER_DEATH", "%s: %s lost a life to the Godmother\n",
+        ctime(time()), person->query_name());
+      person->adjust_deaths(1);
+    }
+    call_out(function(object person) {
+      string destination;
+      destination = person->query_nationality()->query_default_start_location();
+      person->move_with_look(destination,
+                             "$N appears out of nowhere.",
+                             "$N disappears with a pop.");
+      if (person->query_ghost()) {
+        person->remove_ghost();
+        clone_object(HARRY_SHADOW)->setup_shadow(person,
+                                                 "a fairy godmother" );
+      }
+    }, 2, person);
+  }
+  person->remove_property("godmother");
+}
+void do_hurry_up() {
+  int i;
+  int waiting;
+  int max_wait;
+  if (!sizeof(_queue)) {
+    return ;
+  }
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      if (!environment(_godmothers[i])) {
+        _godmothers[i]->dest_me();
+        _godmothers[i] = 0;
+      }
+      else {
+        waiting = _godmothers[i]->query_waiting();
+        if (waiting > FIRST_WAIT_TIME) {
+          if (waiting > FINISH_WAIT_TIME) {
+            _godmothers[i]->finish_up();
+          } else {
+            _godmothers[i]->hurry_up();
+          }
+        }
+        if (waiting > max_wait) {
+          max_wait = waiting;
+        }
+      }
+    }
+  }
+  if (max_wait > 0) {
+    if (FINISH_WAIT_TIME - max_wait < 10) {
+      call_out("do_hurry_up", 10);
+    } else {
+      call_out("do_hurry_up", FINISH_WAIT_TIME-max_wait);
+    }
+  }
 }
 void dest_me() {
-   save_cache();
-   destruct(this_object());
+  int i;
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      _godmothers[i]->dest_me();
+    }
+  }
+  destruct(this_object());
+}
+
+==================================================
+FILE: handlers/finderror_helper.c
+==================================================
+
+#include <log.h>
+#include <config.h>
+#include <db.h>
+nosave inherit "/std/object";
+private void recursive_add_directory( string word, string dir );
+class error_data {
+    string name;
+    string *dirs;
+    int no_calls;
+}
+nosave mapping _error_cache;
+string name, *dirs;
+void create() {
+    ::create();
+    set_name( "finderror_helper" );
+    set_short( "finderror helper" );
+    _error_cache = ([ ]);
+}
+private string strip_extension( string file ) {
+    if ( file[<1] == '/' ) {
+        return file[0..<2];
+    }
+    return file;
+}
+private class error_data get_data_file( string word ) {
+    string file;
+    if ( _error_cache[ word ] ) {
+        return _error_cache[ word ];
+    }
+    seteuid( word );
+    file = "/w/" + word + "/finderror.o";
+    if ( file_size( file ) > 0 ) {
+        unguarded( (: restore_object, file :) );
+        _error_cache[ word ] = new( class error_data,
+            name : name,
+            dirs : map( dirs, (: strip_extension :) ),
+            no_calls : 0 );
+    }
+    else {
+        _error_cache[ word ] = new( class error_data,
+            name : word,
+            dirs : ({ }),
+            no_calls : 0 );
+    }
+    return _error_cache[ word ];
+}
+private int save_data_file( string word ) {
+    seteuid( word );
+    if ( _error_cache[ word ] ) {
+        name = _error_cache[ word ]->name;
+        dirs = _error_cache[ word ]->dirs;
+        unguarded( (: save_object, "/w/" + word + "/finderror" :) );
+        return 1;
+    }
+    return 0;
+}
+string escape( string txt ) {
+    return replace( txt, ({ "'", "\\'" }) );
+}
+private string assemble_dirs_sql( string *dirs ) {
+    dirs = map( dirs, (: escape :) );
+    return "(" + implode( map( dirs,
+            (: "Directory" + ( strsrch( $1, "%" ) > -1 ? " LIKE " : " = " )
+            +  "'" + $1 + "'" :) ), " OR " ) + ")";
+}
+void finished_query( int status, mixed data, function func, object player ) {
+    evaluate( func, player, status, data );
+}
+public int query_dirs_count(mixed player, function finish_func ) {
+  class error_data info;
+  string query;
+  string txt;
+  string word;
+    if ( objectp( player ) ) {
+  word = player->query_name();
+    }
+    else {
+        word = player;
+        player = this_object();
+    }
+  info = get_data_file( word );
+  if ( sizeof( info->dirs ) ) {
+        txt = assemble_dirs_sql( info->dirs );
+        query = "SELECT Directory, Type, COUNT(Id) FROM errors WHERE " + txt + " AND "
+            "Status = 'OPEN' GROUP BY Directory, Type;";
+        DB_HANDLER->make_sql_request("errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(player) ) :) );
+        return 1;
+  }
+  return 0;
+}
+public int query_errors_in_dirs(string *directories, function finish_func ) {
+    string query;
+    string txt;
+    if ( directories ) {
+        directories = map( directories , (: escape :) );
+        txt = "(" + implode( map( directories,
+            (: "Directory" + ( strsrch( $1, "%" ) > -1 ? " LIKE " : " = " )
+            +  "'" + $1 + "'" :) ), " OR " ) + ")";
+        query = "SELECT Directory, Type, COUNT(Id) AS C FROM errors WHERE " + txt + " AND "
+            "Status = 'OPEN' GROUP BY Directory, Type";
+        DB_HANDLER->make_sql_request("errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(this_player()) ) :) );
+        return 1;
+    }
+    return 0;
+}
+public void query_next_dir( object player, function finish_func ) {
+    string query;
+    string txt;
+    string word;
+    class error_data info;
+    word = player->query_name();
+    info = get_data_file( word );
+    if ( sizeof( info->dirs ) ) {
+        txt = assemble_dirs_sql( info->dirs );
+        query = "SELECT Directory, COUNT(Id) AS C FROM errors WHERE " + txt +
+            " AND Status = 'OPEN' GROUP BY Directory HAVING C > 0 LIMIT 1;";
+        DB_HANDLER->make_sql_request( "errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(player) ) :) );
+    }
+    else {
+        tell_object( player, "You have no finderrors directories defined.  Add "
+            "them with 'finderrors add'\n" );
+    }
+}
+public string *query_directories( string player ) {
+    class error_data data;
+    data = get_data_file( player );
+    return copy( data->dirs );
+}
+public int add_directory( object player, string dir, int recursive ) {
+    int res;
+    class error_data info;
+    string word;
+    word = player->query_name();
+    info = get_data_file( word );
+    res = member_array( dir, info->dirs );
+    if ( recursive )  {
+        dir += "%";
+    }
+    if ( res == -1 ) {
+        if ( dir[ <1 ] == '/') {
+            dir = dir[ 0 .. <2 ];
+        }
+        info->dirs = ({ dir }) + info->dirs;
+        tell_object( player, "Added " + dir +
+            (recursive ? " (recursive)" : "") + "\n" );
+        save_data_file( word );
+    }
+    return 1;
+}
+private void recursive_add_directory( object player, string dir ) {
+    mixed *directories, *file;
+    class error_data info;
+    string word;
+    word = player->query_name();
+    info = get_data_file( word );
+    info->no_calls--;
+    directories = get_dir( dir, -1 );
+    if ( directories ) {
+        foreach ( file in directories ) {
+            if ( file[ 1 ] == -2 && file[ 0 ] != "Maps") {
+                add_directory( player, dir + file[ 0 ] +"/", 1 );
+            }
+        }
+    }
+    if ( info->no_calls == 0 ) {
+        tell_object( player,
+            "All subdirectories have been added to the list.\n" );
+        save_data_file( word );
+    }
+}
+public int remove_directory( object player, string directory, int recursive ) {
+    class error_data info;
+    string word;
+    int pos;
+    word = player->query_name();
+    info = get_data_file( word );
+    if ( recursive ) {
+        pos = sizeof( directory ) - 1;
+        info->dirs = filter( info->dirs,
+            (: $1[ 0..$(pos) ] != $(directory) :));
+    }
+    else {
+        pos = member_array( directory, info->dirs );
+        if ( pos == -1 ) {
+            return 0;
+        }
+       info->dirs = info->dirs[ 0..pos - 1 ] + info->dirs[ pos+1.. ];
+    }
+    save_data_file( word );
+    return 1;
+}
+
+==================================================
+FILE: handlers/firework.c
+==================================================
+
+#define BROADCASTER "/obj/handlers/broadcaster"
+#define MAX_RANGE 1600
+#define SHIFT 30
+#define TIME 15
+class firework_running {
+   string *messages;
+   int index;
+   string caster;
+   string text;
+   int *co_ord;
+}
+mixed *_effects;
+class firework_running *_fireworks;
+protected void do_effects();
+void create() {
+  _effects = ({
+    ({
+      "A small dot flashes up high into the sky.",
+      "The dot suddenly bursts open revealing bright multicoloured streams "
+          "of flame that pour down towards the ground.",
+      "Just as you thought the streams had faded to nothing, they shoot back "
+          "up into the air giving a final brilliant yellow colour before "
+          "vanishing entirely.",
+      "As it fades you think you see the letters \"$arg$\" in the gradually "
+          "disappearing smoke.",
+    }),
+    ({
+      "A brilliant trail of yellow sparks follows a small dot up into the "
+          "sky.",
+      "The dot slowly slows down until it has stopped moving, and hovers for "
+          "a few seconds.",
+      "Suddenly the dot explodes, sending out bright red streamers of light "
+          "in all directions and lighting up the sky for a few seconds.",
+      "The red light fades to nothingness, and the last colour left in the "
+          "sky shows the letters \"$arg$\" which slowly disappear.",
+    }),
+    ({
+      "A light flashes up high into the sky trailing grey smoke behind it.",
+      "The light wizzes around in circles making a high pitched whizzing "
+          "noise.",
+      "The dot bursts open sending brilliant green streamers of light to "
+          "all the corners of the sky.",
+      "With a sudden resounding bang, the streamers rush back together to form "
+          "\"$arg$\" which hangs in the sky before slowly vanishing."
+    }),
+  });
+  _fireworks = ({ });
+}
+varargs void random_firework( object caster, string text ) {
+  mixed *co_ord;
+  class firework_running new_firework;
+  co_ord = (mixed *)environment( caster )->query_co_ord();
+  if ( sizeof( co_ord ) < 3 ) {
+    co_ord = ({ 0, 0, 0 });
+  }
+  if ( !text || ( text == "" ) ) {
+    text = (string)caster->query_name();
+  }
+  new_firework = new(class firework_running);
+  new_firework->messages = _effects[random(sizeof(_effects))];
+  new_firework->index = 0;
+  new_firework->text = capitalize(text);
+  new_firework->co_ord = ({ co_ord[ 0 ], co_ord[ 1 ], co_ord[ 2 ] + SHIFT });
+  if ( !sizeof(_fireworks)) {
+    call_out( (: do_effects :), TIME );
+  }
+  _fireworks += ({ new_firework });
+}
+protected void do_effects() {
+  class firework_running firework;
+  foreach (firework in _fireworks) {
+    BROADCASTER->broadcast_event( users(), firework->co_ord, "you see:\n"+
+        replace( firework->messages[firework->index] , "$arg$",
+        firework->text ), MAX_RANGE, 0, 0 );
+    firework->index++;
+    if ( firework->index >= sizeof( firework->messages ) ) {
+      _fireworks -= ({ firework });
+    }
+  }
+  if ( sizeof( _fireworks ) ) {
+    call_out( (: do_effects :), TIME );
+  }
+}
+mixed *query_effects() {
+   return _effects;
+}
+
+==================================================
+FILE: handlers/folder_handler.c
+==================================================
+
+#pragma strict_types
+#include <board.h>
+#include <comms.h>
+#include <mail.h>
+#include <network.h>
+#include <mime.h>
+#include <player_handler.h>
+#define MAIL_PATH "/save/mail/"
+int *mesg_numbers;
+class mail_header *info;
+int new_thingy;
+nosave int link;
+class mail_header *get_messages(string pname, string fname);
+string load_message(string pname, string fname, int number);
+void delete_it(string pname, string fname, int *deleted);
+string check_local(string arg);
+private int load_counter();
+private void save_counter(int counter);
+void dest_me();
+void delete_account(string player);
+void create() {
+  seteuid("Mailer");
+}
+private string folder_filename(string name) {
+  if(file_size(MAIL_PATH + name) != -1) {
+    unguarded((: rename, MAIL_PATH + name,
+         MAIL_PATH + name[0..0] + "/" + name :));
+  } else if(file_size(MAIL_PATH + name + ".o") != -1) {
+    unguarded((: rename, MAIL_PATH + name + ".o",
+         MAIL_PATH + name[0..0] + "/" + name + ".o" :));
+  }
+  return MAIL_PATH+name[0..0] + "/"  + name;
+}
+private string message_filename(int num, string prefix) {
+  if(file_size(MAIL_PATH+"new_mesg/" + (num % 50)) == -1) {
+    unguarded((: mkdir, MAIL_PATH+"new_mesg/" + (num % 50) :));
+  }
+  if(file_size(MAIL_PATH+"new_mesg/"+(num % 50)+"/"+((num / 50) % 50)) == -1) {
+    unguarded((: mkdir, MAIL_PATH+"new_mesg/" + (num %50) + "/" +
+         ((num / 50) % 50) :));
+  }
+#ifdef 0
+  if(file_size(MAIL_PATH + "mesg/" + prefix + num) != -1) {
+    unguarded((: rename, MAIL_PATH + "mesg/" + prefix + num,
+     MAIL_PATH+"new_mesg/"+ (num % 50) + "/" + ((num / 50) % 50) +
+     "/" + prefix + num :));
+  }
+#endif
+  return MAIL_PATH+"new_mesg/"+  (num % 50) + "/" + ((num / 50) % 50) +
+    "/" + prefix + num;
+}
+nomask int can_create_folder(string player, string folder) {
+    return file_size(folder_filename(player) + folder + ".o") == -1;
+}
+private void convert_links(int number) {
+  string message;
+  int tmplink;
+  message = unguarded((: read_file, message_filename(number, "l"), 1, 1 :));
+  if (!message || sscanf(message, "%d", tmplink) != 1) {
+    return;
+  }
+  sscanf(message, "%d", tmplink);
+  message = unguarded((: read_file, message_filename(number, "") :));
+  unguarded((: rm, message_filename(number, "") :));
+  unguarded((: rm, message_filename(number, "l") :));
+  unguarded((: write_file, message_filename(number, ""),
+               "" + tmplink + "\n" + message :));
+}
+private string query_message_data(int number) {
+   string data;
+   convert_links(number);
+   data = unguarded((: read_file, message_filename(number, "") :));
+   if(!data)
+     return data;
+   sscanf(data, "%*d\n%s", data);
+   return data;
+}
+private void create_new_message(int number, string data, int links) {
+   unguarded((: rm, message_filename(number, "") :));
+   unguarded((: write_file, message_filename(number, ""),
+                            "" +links + "\n" + data :));
+}
+private void increment_links(int number) {
+  string message;
+  int num_links;
+  convert_links(number);
+  message = unguarded((: read_file, message_filename(number, "") :));
+  if (!message) {
+     return ;
+  }
+  sscanf(message, "%d\n%s", num_links, message);
+  num_links++;
+  unguarded((: rm, message_filename(number, "") :));
+  unguarded((: write_file, message_filename(number, ""),
+               "" + num_links + "\n" + message :));
+}
+private void decrement_links(int number) {
+  string message;
+  int num_links;
+  convert_links(number);
+  message = unguarded((: read_file, message_filename(number, "") :));
+  if (!message) {
+     return ;
+  }
+  sscanf(message, "%d\n%s", num_links, message);
+  num_links--;
+  unguarded((: rm, message_filename(number, "") :));
+  if (num_links > 0) {
+     unguarded((: write_file, message_filename(number, ""),
+                  "" + num_links + "\n" + message :));
+  }
+}
+private int check() {
+  string base;
+  base = base_name(previous_object());
+  if (base != "/obj/handlers/mailer" &&
+      base != "/obj/handlers/folder_handler" &&
+      base != "/obj/handlers/converter" &&
+      base != "/net/daemon/pop3" &&
+      base != "/net/daemon/imap4" &&
+      base != "/secure/bulk_delete") {
+    printf("Folder handler: Illegal access ! (%O)\n", base);
+    return 1;
+  } else
+    return 0;
+}
+private void convert_class(string pname, string fname) {
+  class mail_header hdr;
+  int i;
+  i = sizeof(info);
+  while (i--) {
+    hdr = new(class mail_header);
+    hdr->number = ((mapping)info[i])["number"];
+    hdr->status = ((mapping)info[i])["status"];
+    hdr->subject = ((mapping)info[i])["subject"];
+    hdr->from = ((mapping)info[i])["from"];
+    info[i] = hdr;
+  }
+  unguarded((: save_object, folder_filename(lower_case(pname)+fname) :));
+}
+class mail_header *get_messages(string pname, string fname) {
+  if (check())
+    return ({ });
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+fname) :));
+  if (sizeof(info) && mapp(info[0])) {
+    convert_class(pname, fname);
+  }
+  return info;
+}
+string load_message(string pname, string fname, int number) {
+  string message;
+  if (check()) {
+    return " ";
+  }
+  if (file_size(message_filename(number, "l")) > 0)  {
+    convert_links(number);
+  }
+  message = query_message_data(number);
+  if (!message) {
+    printf("* Failed to load message.\n", number);
+  }
+  return message;
+}
+void delete_it(string pname, string fname, int *deleted) {
+  int i, idx;
+  if (check()) {
+    return;
+  }
+  if (!PLAYER_HANDLER->test_user(pname)) {
+    return;
+  }
+  if (sizeof(deleted) > 1) {
+    deleted = uniq_array(deleted);
+    deleted = sort_array(deleted, 1);
+  }
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+fname) :));
+  if (sizeof(info) && mapp(info[0])) {
+    convert_class(pname, fname);
+  }
+  i = sizeof(deleted);
+  while (i--) {
+    reset_eval_cost();
+    if ((idx = member_array(deleted[i], mesg_numbers)) > -1) {
+      if (file_size(message_filename(mesg_numbers[idx], "l")) > 0) {
+        convert_links(mesg_numbers[idx]);
+      }
+      decrement_links(mesg_numbers[idx]);
+      mesg_numbers = delete(mesg_numbers, idx, 1);
+      if (idx < sizeof(info) && info[idx] &&
+          ((class mail_header)info[idx])->status == "N") {
+        new_thingy--;
+      }
+      info = delete(info, idx, 1);
+    }
+  }
+  unguarded((: save_object, folder_filename(lower_case(pname)+fname) :));
+}
+private void send_frog(object player, string to, string from) {
+   object ob;
+   if (!player || !environment(player)->send_message(to)) {
+      catch(ob = clone_object(POST_FROG));
+      write("A small frog with a post office hat wanders up and takes "
+            "your mail.\n");
+      say("A small frog with a post office hat wanders up to "+
+          player->query_cap_name()+" and takes "+
+          player->query_possessive()+" mail.\n");
+      if (find_player(to) && sscanf(from, "%*s@%*s") == 2) {
+        catch(ob->move(COMM_ROOM, ob->query_mmsgin(), ob->query_mmsgout()));
+      } else {
+        catch(ob->move(environment(player)));
+      }
+      catch(ob->send_mail(to, from));
+   }
+}
+private void send_notification(string to,
+                               string from) {
+    if (find_player(from) ||
+        sscanf(from, "%*s@%*s") == 2) {
+       call_out((: send_frog :), 0, find_player(from), to, from);
+    }
+}
+void add_it(class mail_message mesg, int flag) {
+  int i, counter, bong, ptpost;
+  string *local_to, *remote_to, *fail_to, str;
+  class mail_header hdr;
+  if (check()) {
+    return;
+  }
+  if (sizeof(mesg->cc)) {
+    mesg->to += mesg->cc;
+  }
+  mesg->to = MIME->get_email_addrs(implode(mesg->to, ","))[0];
+  local_to = ({ });
+  remote_to = ({ });
+  fail_to = ({ });
+  str = "";
+  bong = sizeof(mesg->to);
+  for (i = 0; i < bong; i++) {
+    if ((str = check_local(mesg->to[i]))) {
+      if (MAIL_TRACK->query_list(str)) {
+        local_to += MAIL_TRACK->query_members(str) - ({ mesg->from });
+        if ( str == "playtesters" ) {
+          ptpost = 1;
+        }
+      } else {
+        local_to += ({ str });
+      }
+    } else {
+      remote_to += ({ mesg->to[i] });
+    }
+  }
+  local_to = uniq_array(local_to);
+  remote_to = uniq_array(remote_to);
+  if ((i = sizeof(local_to))) {
+    if (!(counter = load_counter())) {
+      if (!flag) {
+        printf("Aborting send of message...\n");
+      }
+      return;
+    }
+    if (file_size(message_filename(counter, "")) > 0) {
+      if (!flag) {
+        printf("Fatal error when sending message: File %d exists.\n"
+               "Please contact Turrican.\n", counter);
+      }
+      return;
+    }
+    for (i = 0; i < sizeof(local_to); i++) {
+      if (!flag) {
+        printf("Sending to: %s.\n", capitalize(local_to[i]));
+      }
+      if(MAIL_TRACK->find_mailer(local_to[i]) ||
+         PLAYER_HANDLER->test_user(local_to[i])) {
+        mesg_numbers = ({ });
+        info = ({ });
+        new_thingy = 0;
+        unguarded((: restore_object, folder_filename(local_to[i]+"inbox") :));
+        if (sizeof(info) && mapp(info[0]))
+          convert_class(local_to[i], "inbox");
+        if(sizeof(mesg_numbers) > MAX_FOLDER_SIZE) {
+          write("Sorry, mailbox is full for " + local_to[i] + ".\n");
+          mesg->to -= ({ local_to[i] });
+          mesg->cc -= ({ local_to[i] });
+          local_to = delete(local_to, i--, 1);
+          continue;
+        }
+        if(!PLAYER_HANDLER->test_active(local_to[i])) {
+          write("Sorry, " + local_to[i] + " is inactive and so unable to "
+                "receive mail.\n");
+          mesg->to -= ({ local_to[i] });
+          mesg->cc -= ({ local_to[i] });
+          local_to = delete(local_to, i--, 1);
+          continue;
+        }
+        mesg_numbers += ({ counter });
+        new_thingy++;
+        hdr = new(class mail_header);
+        hdr->number = counter;
+        hdr->status = "N";
+        hdr->subject = mesg->subject;
+        hdr->from = mesg->from;
+        info += ({ hdr });
+        if (!unguarded((: save_object, folder_filename(local_to[i]+"inbox") :))) {
+          if (!flag) {
+            printf("Couldn't save mailbox for %s...\n",
+                   capitalize(local_to[i]));
+          }
+          mesg->to -= ({ local_to[i] });
+          mesg->cc -= ({ local_to[i] });
+          local_to = delete(local_to, i--, 1);
+          continue;
+        }
+        if(this_player() && environment(this_player()))
+          send_notification(local_to[i], mesg->from);
+      } else {
+        fail_to += ({ local_to[i] });
+        mesg->to -= ({ local_to[i] });
+        mesg->cc -= ({ local_to[i] });
+        local_to = delete(local_to, i--, 1);
+      }
+    }
+    if (i) {
+      ++counter;
+      save_counter(counter);
+      create_new_message(counter - 1, mesg->body, i);
+    }
+  }
+  if ((i = sizeof(fail_to))) {
+    while (i--) {
+      MAILER->do_mail_message(mesg->from, "postmaster", "Error! User "+
+                              fail_to[i]+" unknown", 0,
+                              "Original message included:\n\n> "+
+                              replace_string(mesg->body, "\n", "\n> "), 1, 0);
+    }
+  }
+  if (sizeof(remote_to) && !flag) {
+    for (i = 0; i < sizeof(remote_to); i++) {
+      sscanf(remote_to[i], "%*s@%s", str);
+      if (str && INTERMUD_D->GetMudName(str)) {
+        printf("Sorry, Intermud mail is not currently supported.  "
+               "Didn't send mail to %s.\n", remote_to[i]);
+        remote_to = delete(remote_to, i--, 1);
+        continue;
+      }
+    }
+    SMTP->eventSendMail(remote_to, mesg->from, mesg->body);
+  }
+  if (ptpost) {
+    BOARD_HAND->add_message("playtesters", capitalize(mesg->from),
+                            mesg->subject, sprintf( "%-=78s\n",
+                            mesg->body ));
+  }
+}
+void mark_read(string pname, string fname, int *unread) {
+  int i;
+  if (check()) {
+    return;
+  }
+  if (!PLAYER_HANDLER->test_user(pname)) {
+    return;
+  }
+  unread = uniq_array(unread);
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+fname) :));
+  if (sizeof(info) && mapp(info[0])) {
+    convert_class(pname, fname);
+  }
+  if (new_thingy == sizeof(unread)) {
+    return;
+  }
+  new_thingy = 0;
+  i = sizeof(mesg_numbers);
+  while (i--) {
+    if (member_array(i, unread) > -1) {
+      ((class mail_header)info[i])->status = "N";
+      new_thingy++;
+    }
+    else if(i < sizeof(info))
+      ((class mail_header)info[i])->status = " ";
+    else
+      write("\nErk, problems. The arrays don't quite match.\n");
+    reset_eval_cost();
+  }
+  unguarded((: save_object, folder_filename(lower_case(pname)+fname) :));
+  new_thingy = 0;
+}
+int move_it(string pname, string from, string to, int number) {
+  class mail_header tmphdr;
+  if (check())
+    return 1;
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+to) :));
+  if (sizeof(info) && mapp(info[0])) {
+    convert_class(pname, to);
+  }
+  if (member_array(number, mesg_numbers) > -1) {
+    return 1;
+  }
+  if(sizeof(mesg_numbers) > MAX_FOLDER_SIZE) {
+    return 2;
+  }
+  if (file_size(message_filename(number, "l")) > 0) {
+    convert_links(number);
+  }
+  increment_links(number);
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+from) :));
+  if (sizeof(info) && mapp(info[0])) {
+    convert_class(pname, from);
+  }
+  tmphdr = info[member_array(number, mesg_numbers)];
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+to) :));
+  mesg_numbers += ({ number });
+  info += ({ tmphdr });
+  if (tmphdr->status == "N") {
+    new_thingy++;
+  }
+  unguarded((: save_object, folder_filename(lower_case(pname)+to) :));
+  return 0;
+}
+int check_empty(string pname, string fname) {
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(lower_case(pname)+fname) :));
+  if (!sizeof(mesg_numbers)) {
+    unguarded((: rm, folder_filename(lower_case(pname)+fname)+".o" :));
+    return 1;
+  }
+  return 0;
+}
+string check_local(string str) {
+  string name;
+  if (sscanf(lower_case(str),
+             "%*([\n \t]*([ \t!-;=?-~]+<)?)%([A-Za-z]+)"
+             "%*((.discworld(@|$))|$)",
+             name) == 3) {
+    return name;
+  }
+  return 0;
+}
+int *mail_count(string pname) {
+  int num;
+  mesg_numbers = ({ });
+  info = ({ });
+  new_thingy = 0;
+  unguarded((: restore_object, folder_filename(pname+"inbox") :));
+  if(sizeof(info) && mapp(info[0]))
+    convert_class(pname, "inbox");
+  num = sizeof(mesg_numbers);
+  if (!mesg_numbers || !num)
+    return ({ 0, 0 });
+  return ({ num, new_thingy});
+}
+string finger_mail(string pname) {
+  string ret;
+  int *tmp;
+  tmp = mail_count(pname);
+  if(!tmp[0])
+    return "No mail.\n";
+  if (tmp[0] == 1) {
+    ret = "1 mail message";
+  } else {
+    ret = tmp[0] + " mail messages";
+  }
+  if(tmp[1] <= 0)
+    ret += ".\n";
+  else
+    ret += ", " + tmp[1] + " of them unread.\n";
+  return ret;
+}
+string check_mail(string pname) {
+  int *tmp;
+  string ret;
+  tmp = mail_count(pname);
+  switch(tmp[1]) {
+  case 0:
+    ret = "";
+    break;
+  case 1:
+    ret = "\nYou have %^YELLOW%^1 NEW%^RESET%^ mail message.  Go to a "
+      "post office to read it.\n\n";
+    break;
+  default:
+    ret = "\nYou have %^YELLOW%^" + tmp[1] + " NEW%^RESET%^ mail messages.  "
+      "Go to a post office to read them.\n\n";
+  }
+  if(tmp[0] > MAX_FOLDER_SIZE) {
+    ret = "\n%^BOLD%^%^RED%^You have " + tmp[0] + " messages in your inbox.  "
+      "You will receive no more mail until this number is reduced below "
+      "acceptable limits.%^RESET%^" + ret;
+  } else if(tmp[0] > WARN_FOLDER_SIZE) {
+    ret = "\n%^BOLD%^%^RED%^You have " + tmp[0] + " messages in your inbox.  "
+      "This is far too many.\n  Please delete some immediately!%^RESET%^" +
+      ret;
+  }
+  return ret;
+}
+private void save_counter(int counter) {
+  if (check())
+    return;
+  unguarded((: rm, MAIL_PATH+"counter.save" :));
+  unguarded((: rename, MAIL_PATH+"counter", MAIL_PATH+"counter.save" :));
+  unguarded((: write_file, MAIL_PATH+"counter", ""+counter :));
+}
+private int load_counter() {
+  string bing;
+  int ret;
+  if (check()) {
+    return 0;
+  }
+  if (bing = unguarded((: read_file, MAIL_PATH+"counter" :))) {
+    sscanf(bing, "%d", ret);
+  } else {
+    printf("The mail counter was lost. Please contact Turrican.\n");
+    return 0;
+  }
+  return ret;
+}
+void set_counter(int x) {
+  if(file_size(message_filename(x, "")) > 0) {
+    printf("Invalid counter value: File exists.\n");
+    return;
+  }
+  save_counter(x);
+}
+void dest_me() {
+  destruct(this_object());
+}
+void delete_account(string pname) {
+  string folder;
+  string *folders;
+  int message;
+  object mailer;
+  if(previous_object() != find_object( "/secure/related_files") &&
+     previous_object() != find_object( "/secure/bulk_delete"))
+    return;
+  mailer = clone_object(MAILER);
+  folders = (string *)mailer->query_folders(pname);
+  destruct(mailer);
+  if (!folders && file_size(folder_filename(pname+"inbox.o")) == -1)
+    return;
+  if (!folders)
+    folders = ({"inbox"});
+  foreach (folder in folders) {
+    mesg_numbers = ({ });
+    unguarded( (: restore_object, folder_filename(pname+folder) :) );
+    if (pointerp(mesg_numbers)) {
+      foreach (message in mesg_numbers) {
+        reset_eval_cost();
+        if (file_size(message_filename(message, "l")) > 0) {
+          convert_links(message);
+        }
+        decrement_links(message);
+      }
+    }
+    unguarded( (: rm, folder_filename(pname + folder + ".o") :) );
+  }
+  unguarded( (: rm, folder_filename(pname +".o") :) );
+}
+
+==================================================
+FILE: handlers/fuel_handler.c
+==================================================
+
+#include <fuel_handler.h>
+object *burners;
+void create() {
+   seteuid( (string)"/secure/master"->
+           creator_file( file_name( this_object() ) ) );
+   burners = ({ });
+   call_out( "consume_fuel", FUEL_TIME );
+}
+void add_burner( object thing ) {
+   burners += ({ thing });
+}
+void consume_fuel() {
+   burners -= ({ 0 });
+   catch( burners->consume_fuel() );
+   call_out( "consume_fuel", FUEL_TIME );
+}
+void remove_burner( object thing ) {
+   burners -= ({ thing });
+}
+object *query_burners() {
+   return burners - ({ 0 });
+}
+mixed *stats() {
+  return ({
+    ({ "burners" , sizeof( burners ) }),
+    ({ "next event", find_call_out( "consume_fuel" ) }),
+   });
+}
+
+==================================================
+FILE: handlers/garbage.c
+==================================================
+
+nosave string *trouble = ({});
+nosave mapping cloned_by = ([]);
+nosave object *_rooms;
+nosave int lag, lastlag, maxlag, minlag, burstlag, users;
+#define DEBUG
+#define MIN_TIME 219599
+#define MAX_TIME 219600
+#define FAULT_RATE 4500
+#define ROOM_IDLE_DELAY 7200
+#define ROOM_STABLE_DELAY 10800
+#define NO_AUTO_REBOOT 1
+#define REBOOTS_PER_CRASH 6
+#define CHANGE_SPEED 6
+#define SAVE_FILE "/save/garbage"
+int max_time;
+int crash;
+int limit;
+nosave int faults_prev;
+nosave int stime_prev;
+nosave int utime_prev;
+nosave int uptime_prev;
+nosave int rate_exceeded;
+nosave int times_run;
+#if efun_defined(get_garbage)
+int get_junk(object ob){
+  return ob->query_dest_other() == 0;
+}
+#else
+int get_junk(object ob){
+  if(!clonep(ob) || refs(ob) != 2 || query_shadowing(ob) ||
+     environment(ob) || ob->query_dest_other())
+    return 0;
+  return 1;
+}
+#endif
+nosave int id;
+void create(){
+  function tmp;
+  mapping map;
+  unguarded(function(){
+    restore_object(SAVE_FILE);
+    if(!max_time) {
+      max_time = MAX_TIME;
+      crash = 1;
+      limit = 1000;
+      save_object(SAVE_FILE);
+    } else {
+      if(crash)
+        max_time -= max_time/CHANGE_SPEED;
+      else
+        max_time += max_time/(CHANGE_SPEED*REBOOTS_PER_CRASH);
+      if(max_time > MAX_TIME)
+        max_time = MAX_TIME;
+      crash = 1;
+      save_object(SAVE_FILE);
+    }
+  });
+  map = rusage();
+  faults_prev = map["majflt"];
+  stime_prev = map["stime"];
+  utime_prev = map["utime"];
+  uptime_prev = uptime();
+  id = call_out("housekeeping", 300);
+  tmp = function(function func) {
+    int diff;
+    diff = real_time() - time();
+    if(diff > 2){
+      diff -= 2;
+      lag += diff;
+      if(diff > maxlag) {
+        maxlag = diff;
+        if(maxlag > 600) {
+          master()->crash("Too much lag to recover");
+          shutdown(0);
+        }
+      }
+    }
+    if(diff < minlag) {
+      minlag = diff;
+    }
+    if(diff > 2 && (diff - lastlag > burstlag))
+      burstlag = diff - lastlag;
+    lastlag = diff;
+    diff = sizeof(users());
+    if(diff > users) {
+      users = diff;
+    }
+    efun::call_out(func, 1, func);
+  };
+  call_out(tmp, 1, tmp);
+}
+void check_reboot() {
+  int faults_now;
+  int stime_now;
+  int utime_now;
+  mapping map;
+  int reboot;
+  map = rusage();
+  stime_now = map["stime"];
+  utime_now = map["utime"];
+  faults_now = map["majflt"];
+  event(users(), "inform",
+        "Cpu usage for period = "+
+        ((((utime_now-utime_prev) + (stime_now-stime_prev) ) / 10.0 )/
+         (uptime() - uptime_prev))+"% Fault rate is "+
+       (faults_now - faults_prev), "cpu");
+  event(users(), "inform", "Machine lag is "+
+        (lag/900) + " seconds (average) "+minlag+" seconds (min) "+
+        maxlag+" seconds (max) "+burstlag+" seconds (burst)", "cpu");
+  log_file("GARBAGE", "%s lag %d (%d/%d) burst %d users %d faults %d "
+           "cpu %.1f%%\n",
+           ctime(time())[4..18], (lag/900), minlag, maxlag, burstlag,
+           users, (faults_now - faults_prev),
+           ((((utime_now-utime_prev) + (stime_now-stime_prev) ) /
+             15.0 )/ (uptime() - uptime_prev)));
+  if(find_object("/obj/shut") && "/obj/shut"->query_time_to_crash() != 9999)
+    return;
+#ifndef NO_TIMED_REBOOT
+  if(uptime() > max_time)
+    reboot = 1;
+#endif
+#ifndef NO_AUTO_REBOOT
+  if((uptime() > MIN_TIME) &&
+     (faults_now > (faults_prev + FAULT_RATE))) {
+    if(rate_exceeded) {
+      reboot = 1;
+    }
+  } else {
+    rate_exceeded = 1;
+  } else {
+    rate_exceeded = 0;
+  }
+#endif
+  if(reboot) {
+    shout("A'Tuin cries out: Too heavy, I need to put the Disc down for a "+
+          "moment.\n");
+    "/obj/shut"->shut(10);
+    log_file("GARBAGE", ctime(time())[4..18]+" Auto; Faults: "+
+             faults_now+", "+ faults_prev+"; uptime: "+uptime()+"; Cpu: "+
+             ((((utime_now-utime_prev) + (stime_now-stime_prev) ) / 15.0 ) /
+              (uptime() - uptime_prev))+
+             "\n");
+    call_out(function(){
+      crash = 0;
+      unguarded((:save_object(SAVE_FILE):));
+    }, 9*60);
+    return;
+  }
+#if efun_defined(set_check_limit)
+  if(lag > 900)
+    limit += 5;
+  if(lag < 300)
+    limit--;
+  limit = set_check_limit(limit);
+#endif
+  faults_prev = faults_now;
+  uptime_prev = uptime();
+  stime_prev = stime_now;
+  utime_prev = utime_now;
+  users = 0;
+  lag = 0;
+  maxlag = 0;
+  burstlag = 0;
+  minlag = 900;
+}
+void start_cleanup() {
+  int i;
+  int t = real_time();
+  _rooms = filter(objects((: function_exists("query_last_visited", $1) :)),
+                  (: $1->query_keep_room_loaded() == 0 &&
+                   $1->query_last_visited() < (time() - ROOM_IDLE_DELAY) &&
+                   $1->query_last_visited() > (time() - ROOM_STABLE_DELAY):));
+  for(i=(times_run % 2); i<sizeof(_rooms); i += 2)
+    catch(_rooms[i]->clean_up());
+  log_file("GARBAGE", "%s cleaning %d rooms. Current memory %.2fM\n",
+           ctime(time())[4..18], i/2, (memory_info() / 1024000.0));
+  event(users(), "inform",
+        sprintf("Cleaning %d idle rooms", i/2), "cpu");
+  if(real_time() - t > 1)
+    log_file("GARBAGE", "%s room cleanup took %d seconds.\n",
+             ctime(time())[4..18], real_time() - t);
+}
+void tidy_up() {
+  int rmem, ocount;
+  rmem = memory_info();
+  ocount = reclaim_objects();
+  rmem -= memory_info();
+  event(users(), "inform",
+        sprintf("Reclaimed %d object%s (%d byte%s)",
+                ocount, (ocount == 1 ? "" : "s"),
+                rmem, (rmem == 1 ? "" : "s") ), "cpu");
+}
+void housekeeping() {
+  string *tmpkeys;
+  int i;
+  object *junk;
+  int t = real_time();
+  i = set_eval_limit(0);
+  set_eval_limit(5000000);
+#if efun_defined(get_garbage)
+  junk = filter(get_garbage(), (:get_junk:));
+#else
+  junk = objects((:get_junk:));
+#endif
+  set_eval_limit(i);
+  times_run++;
+  call_out("check_reboot", 10);
+  if(!(times_run % 3))
+    call_out("tidy_up", 30);
+  if(times_run > 4 && (times_run % 2 == 1))
+    call_out("start_cleanup", 60);
+  foreach(object ob in junk)
+    trouble |= ({base_name(ob)});
+  id = call_out((:housekeeping:), 15 * 60);
+  foreach(object ob in junk) {
+#ifdef DEBUG
+    if(cloned_by[file_name(ob)])
+      log_file("GARBAGE_DEBUG", "%O cloned by %O\n", ob,
+               cloned_by[file_name(ob)]);
+#endif
+    reset_eval_cost();
+    ob->dest_me();
+  }
+  tmpkeys = keys(cloned_by);
+  if(sizeof(tmpkeys)>10000){
+    cloned_by = ([]);
+  }
+#if !efun_defined(add_action)
+  "/obj/handlers/livings"->remove_garbage();
+#endif
+  if(real_time() - t > 1)
+    log_file("GARBAGE", "%s garbage cleanup took %d seconds.\n",
+             ctime(time())[4..18], real_time() - t);
+}
+nosave private object armoury, cloner;
+void cloned(object ob){
+  object obcloner;
+  if(!armoury)
+    armoury = find_object("/obj/handlers/armoury");
+  if(!cloner)
+    cloner = find_object("/global/cloner");
+  if(previous_object(1) != armoury && previous_object() != cloner){
+    obcloner = previous_object(1);
+  } else catch {
+    int i = 2;
+    obcloner = armoury;
+    while(obcloner == armoury || obcloner == cloner)
+      obcloner = previous_object(i++);
+  };
+  if(member_array(base_name(ob), trouble) != -1){
+    string tmp = "";
+#if 0
+    int i, j;
+    for(i = 2; i < sizeof(call_stack()); i++){
+      if(!call_stack(1)[i])
+        break;
+      for(j = 0; j < 4; j++)
+        tmp = sprintf("%s %O", tmp, call_stack(j)[i]);
+      tmp += "\n";
+    }
+#endif
+    cloned_by[file_name(ob)] = sprintf("%O\n%s", obcloner, tmp);
+  }
+  if((find_call_out(id) < 0) && ((uptime() - uptime_prev) > (30 * 60)))
+    id = call_out((:housekeeping:), 0);
+}
+int query_next_reboot() {
+#ifndef NO_TIMED_REBOOT
+  return max_time - uptime();
+#else
+  return -1;
+#endif
+}
+int query_faults_prev() {
+   return faults_prev;
+}
+void set_max_time(int i) { max_time = i; save_object(SAVE_FILE); }
+void dest_me(){
+  crash = 0;
+  unguarded((:save_object(SAVE_FILE):));
+  destruct(this_object());
+}
+
+==================================================
+FILE: handlers/gathering.c
+==================================================
+
+#include <weather.h>
+#include <tasks.h>
+#define INIT_FILE "/obj/gatherables/handler.dat"
+class item_data {
+    string skill;
+    int    difficulty;
+    string *season;
+    mixed  quant;
+    string ob;
+}
+mapping items = ([ ]);
+void create() {
+    seteuid("/secure/master"->creator_file(file_name(this_object())));
+    items = "/obj/handlers/data"->compile_data(({ INIT_FILE }));
+}
+mixed query_item( string name ) {
+    class item_data h;
+    if (!(items[name])) {
+        return 0;
+    }
+    h = (class item_data)items[name];
+    return ({ h->skill, h->difficulty, h->season, h->quant, h->ob });
+}
+void add_item( string name, string skill, int diff,
+               string *season, mixed quant, string ob ) {
+    class item_data h;
+    h = new( class item_data );
+    h->skill = skill;
+    h->difficulty = diff;
+    h->season = season;
+    h->quant = quant;
+    h->ob = ob;
+    items[name] = h;
+}
+mapping query_items() {
+    return items;
+}
+object *gather_item( string word, object player ) {
+object *basket = ({ });
+object *matched = ({ });
+object item;
+mixed  *current_item;
+class item_data info;
+string temp_name;
+int temp_scarcity;
+int result;
+int quantity;
+   if ( !objectp( player ) || !environment( player ) )
+      return ({ });
+   matched = match_objects_for_existence( word, ({ environment( player ) }) );
+   if ( !sizeof( matched ) )
+      return ({ });
+   foreach( object temp in matched ) {
+      if ( environment( temp ) == environment( player ) )
+         basket += ({ temp });
+      current_item = temp->query_gather();
+      temp_name = "";
+      temp_scarcity = 0;
+      if ( !sizeof( current_item ) )
+         continue;
+      if ( sizeof( current_item ) != 1 ) {
+         error( "When Terano recoded this, he assumed that this array would "
+            "only contain one array inside it. This turned out to be "
+            "wrong.\n" );
+      }
+      for ( int x = 0; x < sizeof( current_item[0] ); x = x + 2 ) {
+         switch ( current_item[ 0 ][ x ] ) {
+           case "item name":
+           case "item_name":
+                  temp_name = evaluate( current_item[ 0 ][ x+1 ],
+               environment( player ), player );
+              if ( !stringp( temp_name ) )
+                    temp_name = 0;
+                  break;
+           case "scarcity":
+                    temp_scarcity = evaluate(current_item[0][ x+1 ],
+                  environment( player ), player, temp_name);
+                    if ( !intp( temp_scarcity ) )
+                        temp_scarcity = 0;
+                    break;
+         }
+      }
+      tell_creator( player, "Started to check for %s.\n", temp_name );
+       if ( random( 100 ) >= temp_scarcity) {
+         tell_creator( player, "Not found %s due to scarcity (%d).\n",
+            temp_name, temp_scarcity );
+         continue;
+      }
+      if (!items[temp_name]) {
+         tell_creator( player, "Not found %s due to no info!\n",
+            temp_name );
+         continue;
+        }
+      info = items[ temp_name ];
+      if ( sizeof( info->season ) ) {
+          if (member_array( WEATHER->query_season(), info->season ) == -1) {
+         tell_creator( player, "Not found %s: Out of season!\n",
+            temp_name );
+         continue;
+        }
+      }
+      if ( stringp( info->skill ) && strlen( info->skill ) ) {
+         result = TASKER->perform_task( player, info->skill ,info->difficulty, TM_FREE );
+      switch( result ) {
+         case FAIL:
+         case BARF:
+            tell_creator( player, "Not found %s: Skillcheck failed!\n",
+               temp_name );
+            continue;
+         case AWARD:
+            tell_object(player,
+                  "%^YELLOW%^You have learned something new about gathering!%^RESET%^\n" );
+         case SUCCEED:
+         }
+      }
+      quantity = evaluate( info->quant, environment( player ), player,
+         temp_name );
+      if ( !quantity || !intp( quantity ) )
+         continue;
+      item = clone_object( info->ob );
+        if (item->query_continuous()) {
+         item->set_amount( quantity );
+            basket += ({ item });
+        }
+        else {
+         item->dest_me();
+         basket += allocate( quantity, (: clone_object( $(info->ob) ) :) );
+      }
+      continue;
+   }
+   return basket;
+}
+
+==================================================
+FILE: handlers/gossip_handler.c
+==================================================
+
+#include <gossip.h>
+mixed *gossip;
+mixed *rumours;
+nosave mixed *filter_these;
+private void save_stuff();
+void create() {
+   seteuid(getuid());
+   filter_these = ({ "fuck", "fucking", "fucker", "cunt", "bitch", "shit" });
+   gossip = ({ });
+   rumours = ({ });
+   unguarded( (: restore_object(GOSSIP_SAVE_FILE) :) );
+   call_out((: save_stuff :), 10*60);
+}
+private void save_stuff() {
+   call_out((: save_stuff :), 10*60);
+   if (sizeof(gossip) > GOSSIP_KEEP_LEVEL) {
+      gossip = gossip[sizeof(gossip)-GOSSIP_KEEP_LEVEL..];
+   }
+   if (sizeof(rumours) > RUMOUR_KEEP_LEVEL) {
+      rumours = rumours[sizeof(rumours)-RUMOUR_KEEP_LEVEL..];
+   }
+   unguarded( (: save_object(GOSSIP_SAVE_FILE) :) );
+}
+void add_gossip(string name, string mess) {
+   string *bits;
+   int i;
+   bits = explode(mess, " ");
+   for (i = 0; i < sizeof(bits); i++) {
+      if (member_array(bits[i], filter_these) != -1) {
+         return ;
+      }
+   }
+   gossip += ({ ({ name, mess }) });
+}
+varargs string remove_gossip(string match, int force)
+{
+  int pos, index;
+  if (!match || match == "") return "Must provide a match string";;
+  pos = -1;
+  for (index = sizeof(gossip); index; index--) {
+    if (strsrch(gossip[index - 1][1], match) != -1) {
+      if (pos == -1)
+        pos = index - 1;
+      else if (!force) {
+        return "too many matches";
+      }
+    }
+  }
+  if (pos != -1) {
+    string found = "found " + gossip[pos][1] + " by " + gossip[pos][0];
+    gossip = delete(gossip, pos, 1);
+    return found;
+  } else
+    return "No match";
+}
+void add_rumour(string name, string mess) {
+   rumours += ({ ({ name, mess }) });
+   save_stuff();
+}
+string *query_random_gossip() {
+   if (sizeof(rumours) && random(2)) {
+      return rumours[random(sizeof(rumours))];
+   } else {
+      if (sizeof(gossip))
+	 return gossip[random(sizeof(gossip))];
+      else
+	 return 0;
+   }
+}
+mixed *query_gossip() {
+   return gossip;
+}
+string *query_filter() {
+   return filter_these;
+}
+mixed *query_rumours() {
+   return rumours;
 }

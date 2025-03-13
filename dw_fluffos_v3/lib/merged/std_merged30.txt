@@ -1,1501 +1,2154 @@
-# Total Tokens: 17452
-# Total Files Merged: 1
-# Total Characters: 58176
+# Total Tokens: 19309
+# Total Files Merged: 7
+# Total Characters: 64383
 
-t/club_control_room.c
+t/player_housing.c
 ==================================================
 
-#include <clubs.h>
-#include <money.h>
-#include <move_failures.h>
+#include <dirs.h>
+#include <housing.h>
+#include <login_handler.h>
 #include <player_handler.h>
-inherit "/std/basic/club_listing";
-inherit "/std/room/inherit/club_discuss";
-private int _percentage_cut;
-private int _room_type;
-private string _region;
-protected int do_create(string name);
-protected int do_create_family(string name);
-protected int do_replace(string name);
-protected int do_vote(string name, string position, string club);
-protected int do_nominate(string name, string position, string club);
-protected int do_balance(string name);
-protected int do_deposit(string mon, string name, string account, string reason);
-protected int do_change(string name, string type);
-protected int do_change_option(string name, string type);
-protected int do_disband(string name);
-protected int do_insignia(string number, int num);
-protected int do_recruiter_add(string name, string recruit);
-protected int do_recruiter_remove(string name, string recruit);
-protected int do_financials(string name, string account);
-protected int do_describe(string name);
-protected int do_club_list_member(string name);
-protected int do_withdrawl(string money, string club, string account, string reason);
-protected int do_transfer(string money, string club, string from_account,
-                          string to_account, string reason);
-protected int do_force_election(string name);
-protected void finish_description(string describe, string name);
-protected int do_announcement(string name);
-private int check_member_func(string club, string person, string mem);
-mixed query_property(string name);
-void add_help_file(string name);
+inherit "/std/room/inherit/placement";
+inherit "/std/room/inherit/room_save";
+#define STANDARD_EXITS ({ "north", "northeast", "east", "southeast", \
+                          "south", "southwest", "west", "northwest"})
+#undef PLAYTESTING
+#define DEBUG
+private nosave int _setup_callout;
+varargs string* query_direc(object thing);
+int query_relative(string direc);
+varargs mixed query_door_control(string direc);
+varargs mixed* query_dest_other(string direc);
+int modify_exit(string dir, mixed* arr);
+varargs int add_item(mixed shorts, mixed desc, int no_plural);
+string the_short();
+string* query_exits();
+int query_exit(string direc);
+void setup_doors();
+void update_doors();
+private void update_short_cache(string direc);
+int test_occupier(string name);
+string show_surface(string direc);
+int allow_list();
+int do_deny(string player, string location);
+int do_allow(object player, string location);
+int add_allowed(string pname);
+int remove_allowed(string pname);
+string query_owner();
+class decoration {
+  string short;
+  string covering;
+}
+class exit_data {
+  string long;
+  string key;
+  int difficulty;
+  int closed;
+  int locked;
+  int autolock;
+  int transparent;
+  mixed trap_data;
+}
+class exit_shorts {
+  string one_short;
+  string a_short;
+}
+private class decoration *decorations;
+private string base_long;
+private mapping exits;
+private mapping exit_shorts;
+private nosave mapping coverings;
+private nosave string owner;
+private string *allowed = ({ });
+private string *tell_denied = ({ });
+private nosave string decoration_desc = "";
+private nosave string quit_location;
+private nosave int done_setup;
+private nosave int setup_counter;
+private nosave string *surfaces;
+#ifdef DEBUG
+void debug_log(string fmt, mixed args ...) {
+    debug_printf(fmt + "\n", args ...);
+  if(base_name(this_object()) == "/d/cwc/Bes_Pelargic/Pong_Ping/roads/phoenix_avenue/housing/05entrycorridor") {
+    log_file("HOUSING_DEBUG", "%s (%s): " + fmt + "\n",
+       ctime(time())[4..18], base_name(this_object()), args ...);
+  }
+}
+#endif
 void create() {
-   _percentage_cut = 5;
-   _room_type = CLUB_ROOM_CLUB_OR_FAMILY;
+  room_save::create();
+  exits = ([ ]);
+  exit_shorts = ([ ]);
+  decorations = ({ });
+  tell_denied = ({ });
+  this_object()->add_item("left", (: show_surface("left") :));
+  this_object()->add_item("right", (: show_surface("right") :));
+  this_object()->add_item("forward", (: show_surface("forward") :));
+  this_object()->add_item("backward", (: show_surface("backward") :));
+  this_object()->add_item("up", (: show_surface("up") :));
+  this_object()->add_item("down", (: show_surface("down") :));
+  done_setup = 0;
+  setup_doors();
+  call_out("setup_doors", 0);
 }
-private int club_commands_allowed() {
-   return _room_type != CLUB_ROOM_FAMILY_ONLY;
+string show_surface(string direc) {
+  class decoration tmp;
+  int found;
+  string lstr, dstr;
+  mixed tmp2;
+  switch(direc) {
+  case "left":
+  case "right":
+  case "forward":
+  case "backward":
+    tmp2 = this_player()->query_facing();
+    direc = (string)this_player()->find_abs(direc, tmp2[0]);
+    break;
+  case "up":
+    direc = "ceiling";
+    break;
+  case "down":
+    direc = "floor";
+    break;
+  }
+  if(!decorations) {
+    decorations = ({ });
+  } else {
+    foreach(tmp in decorations) {
+      if(member_array(tmp->short, surfaces) == -1)
+        decorations -= ({ tmp });
+      if(tmp->short == direc || tmp->short == direc + " wall") {
+        found = 1;
+        break;
+      }
+    }
+  }
+  if(found) {
+    direc = replace(direc, ({ " wall", "" }));
+    if(member_array(direc, query_direc()) != -1) {
+      lstr = "$C$";
+      update_short_cache(direc);
+      if(exit_shorts[direc] && exit_shorts[direc]->one_short) {
+        if(query_door_control(direc))
+          lstr += query_door_control(direc)->one_short() + " leads";
+        else
+          lstr = "an exit leads";
+        lstr += " to " + exit_shorts[direc]->one_short;
+      } else {
+        if(query_door_control(direc))
+          lstr += "is the " + query_door_control(direc)->one_short();
+        else
+          lstr += "is an exit";
+      }
+      lstr += " and the ";
+    } else
+      lstr = "The ";
+    dstr = desc_surface(direc);
+    if(dstr != "")
+      dstr = "  " + dstr;
+    return lstr + tmp->short + " is " + tmp->covering + "." + dstr;
+  }
+  return "";
 }
-private int family_commands_allowed() {
-   return _room_type != CLUB_ROOM_CLUB_ONLY;
+string show_corner(string direc) {
+  string tmp;
+  tmp = desc_surface(direc);
+  if(tmp == "") {
+    tmp = "The " + direc + " corner is empty.";
+  }
+  return tmp;
+}
+string exit_long() {
+  string *direcs, lstr;
+  int i, j;
+  object door;
+  direcs = query_direc();
+  if(!sizeof(direcs))
+    return "";
+  lstr = "  $C$";
+  for(i=0; i<sizeof(direcs); i++) {
+    update_short_cache(direcs[i]);
+    if(query_relative(direcs[i])) {
+      j = member_array(this_player()->find_rel(direcs[i]), REL_DIRS);
+      lstr += REL_DIRS[j+2];
+      if(exit_shorts[direcs[i]]) {
+        if(query_door_control(direcs[i]))
+          lstr += " " + query_door_control(direcs[i])->a_short() + " leads "
+            "to " + exit_shorts[direcs[i]]->a_short;
+        else
+          lstr += " an exit leads to " + exit_shorts[direcs[i]]->a_short;
+      } else {
+        if(query_door_control(direcs[i]))
+          lstr += " is " + query_door_control(direcs[i])->a_short();
+        else
+          lstr += " is an exit";
+      }
+    } else {
+      door = query_door_control(direcs[i]);
+      if(door) {
+        if(member_array("window", door->query_name()) != -1)
+          lstr += door->a_short() + " looks out";
+        else
+          lstr += door->a_short() + " leads " + direcs[i];
+      } else
+        lstr += "an exit leads " + direcs[i];
+    }
+    if(i < sizeof(direcs)-2)
+      lstr += ", ";
+    if(i == sizeof(direcs)-2)
+      lstr += " and ";
+    if(i == sizeof(direcs)-1)
+      lstr += ".";
+  }
+  return lstr;
+}
+string decoration_long() {
+  class decoration tmp;
+  string lstr, wstr, tmpstr, *tmparray, *names;
+  int i;
+#ifdef 0
+  if(decoration_desc != "")
+    return decoration_desc;
+#endif
+  lstr = "";
+  if(sizeof(decorations)) {
+    coverings = ([ ]);
+    names = ({ "walls" });
+    foreach ( tmp in decorations ) {
+      if(!coverings[tmp->covering])
+        coverings[tmp->covering] = ({ tmp->short });
+      else
+        coverings[tmp->covering] += ({ tmp->short });
+      if(classp(tmp) && strsrch(tmp->short, "wall") == -1)
+        names += ({ tmp->short });
+    }
+    i = 0;
+    tmparray = sort_array(keys(coverings),
+                        (: sizeof(coverings[$1]) - sizeof(coverings[$2]) :));
+    if(sizeof(tmparray) > 3) {
+      lstr += "  The " + query_multiple_short(names) + " are multicoloured.  ";
+    } else if(sizeof(tmparray) == 1) {
+      lstr += "  The surfaces are all " + decorations[0]->covering + ".  ";
+    } else {
+      foreach(tmpstr in tmparray) {
+        if(i == 0)
+          wstr = "  The ";
+        else
+          wstr = "the ";
+        if(i == sizeof(tmparray)-1 && sizeof(coverings[tmpstr]) > 1)
+          wstr += "other surfaces";
+        else
+          wstr += query_multiple_short(coverings[tmpstr], "", 1);
+        if(sizeof(coverings[tmpstr]) > 1)
+          wstr += " are ";
+        else
+          wstr += " is ";
+        wstr += tmpstr;
+        if(i < sizeof(tmparray) -2)
+          wstr += ", ";
+        else if(i == sizeof(tmparray) -2)
+          wstr += " and ";
+        else if(i == sizeof(tmparray) -1)
+          wstr += ".  ";
+        i++;
+        lstr += wstr;
+      }
+    }
+  }
+  decoration_desc = lstr;
+  return decoration_desc;
+}
+string query_long() {
+  string lstr, tmp;
+  if(base_long)
+    lstr = "This is " + base_long + ".";
+  else
+    lstr = "";
+  tmp = decoration_long();
+  if(tmp != "")
+    lstr += tmp;
+  else
+    lstr += "  ";
+  return (lstr + furniture_long() + exit_long() + "\n");
+}
+int setup_exit(string direc, int relative) {
+  if(member_array(direc, STANDARD_EXITS) != -1 && relative)
+    modify_exit(direc, ({ "relative", 1 }));
+  modify_exit(direc, ({ "closed", 1 }));
+  return 1;
+}
+void set_base_desc(string desc) {
+  base_long = desc;
+}
+string query_base_desc() {
+  return base_long;
+}
+void set_quit_handler(string filename) {
+  quit_location = filename;
+}
+string query_quit_handler() {
+  if(this_player() && !test_occupier(this_player()->query_name()) &&
+     quit_location)
+    return quit_location;
+  return base_name(this_object());
+}
+void add_surface(string short, string covering ){
+  class decoration tmp;
+  string dir;
+  if(!surfaces)
+    surfaces = ({ });
+  surfaces += ({ short });
+  if(!decorations)
+    decorations = ({ });
+  else {
+    foreach(tmp in decorations)
+      if(tmp->short == short) {
+        add_item(tmp->short, (: show_surface($(tmp->short)) :));
+        short = replace(short, ({" wall", ""}));
+        foreach(dir in keys(ABS_FACING)) {
+          if(ABS_FACING[short] &&
+             ABS_FACING[dir] == (ABS_FACING[short] % 8 ) + 1) {
+            add_item(dir+" corner", (: show_corner($(dir)) :));
+            break;
+          }
+        }
+        return;
+      }
+  }
+  tmp = new(class decoration );
+  tmp->short = short;
+  tmp->covering = covering;
+  decorations += ({ tmp });
+  add_item(tmp->short, (: show_surface($(tmp->short)) :));
+  short = replace(short, ({" wall", ""}));
+  foreach(dir in keys(ABS_FACING))
+    if(ABS_FACING[short] &&
+       ABS_FACING[dir] == (ABS_FACING[short] + 1) % 8) {
+      add_item(dir+" corner", (: show_corner($(dir)) :));
+      break;
+    }
+  decoration_desc = "";
+}
+string *query_surfaces() {
+  string *stmp;
+  class decoration tmp;
+  stmp = ({ });
+  foreach(tmp in decorations) {
+    stmp += ({ replace(tmp->short, ({" wall", ""})) });
+  }
+  return stmp;
+}
+int decorate_surface(string short, string covering ){
+  class decoration tmp;
+  foreach(tmp in decorations)
+    if(tmp->short == short) {
+      tmp->covering = covering;
+      event(this_object(), "save");
+      decoration_desc = "";
+      return 1;
+    }
+  return 0;
+}
+void query_decorations() {
+  printf("%O\n", decorations);
+}
+int test_save(object thing) {
+  return thing->query_furniture() || thing->query_missing_item_receipt();
+}
+int test_remove(object thing, int flag, mixed dest) {
+  if(!placement::test_remove(thing, flag, dest))
+    return 0;
+  return room_save::test_remove(thing, flag, dest);
+}
+object *my_process_non_living(object *int_non_livings, int start) {
+  object *not_positioned;
+  not_positioned = filter(int_non_livings,
+                          (: !$1->query_property("current room position") &&
+                           !$1->query_property("current room hidden") :) );
+  return not_positioned;
 }
 void init() {
-   string bit;
-   if (club_commands_allowed()) {
-      add_help_file("club_control_room");
-      bit = "club name";
-      add_command("create", "club called <string'club name'>",
-                  (: do_create($4[0]) :));
-      add_command("list", "clubs",
-                  (: club_list(this_player()->query_name(), 0, 0) :) );
-      add_command("list", "clubs [with member] <string'member name'>",
-                  (: do_club_list_member($4[0]) :));
-      add_command("list", "club <string'club name'>",
-                  (: club_info($4[0], 1, this_player()->query_name()) :) );
-      add_command("vote",
-                  "<word'person'> for <string:small'position'> in <string'club name'>",
-                  (: do_vote($4[0], $4[1], $4[2]) :));
-      add_command("nominate",
-                  "<word'person'> for <string:small'position'> in <string'club name'>",
-                  (: do_nominate($4[0], $4[1], $4[2]) :));
-      add_command("disband", "<string'club name'>", (: do_disband($4[0]) :));
-      add_command("change", "<string'club name'> to {elected}",
-                   (: do_change($4[0], "elected") :) );
-      add_command("change", "<string'club name'> option {secret|open}",
-                      (: do_change_option($4[0], $4[1]) :) );
-      add_command("replace", "<number> insignia for <string'club name'>",
-                      (: do_insignia($4[1], $4[0]) :));
-      add_command("replace", "insignia for <string'club name'>",
-                      (: do_insignia($4[0], 1) :));
-      add_command("recruiter", "add <string'member'> for <string'club'>",
-                      (: do_recruiter_add($4[1], $4[0]) :));
-      add_command("recruiter", "remove <string'member'> for <string'club'>",
-                      (: do_recruiter_remove($4[1], $4[0]) :));
-      add_command("financials", "<string'club'>",
-                      (: do_financials($4[0], CLUB_DEFAULT_ACCOUNT_NAME) :));
-      add_command("financials", "<string'club'> account <string'account name'>",
-                      (: do_financials($4[0], $4[1]) :));
-      add_command("description", "of club <string'club name'>",
-                   (: do_describe($4[0]) :));
-      add_command("announce", "for club <string'club name'>",
-                  (: do_announcement($4[0]) :));
-      add_command("withdraw", "<string'money'> from <string'club name'> for <string:small'reason'>",
-                  (: do_withdrawl($4[0], $4[1], CLUB_DEFAULT_ACCOUNT_NAME, $4[2]) :));
-      add_command("withdraw", "<string'money'> from <string'club name'> for <string:quoted'reason'>",
-                  (: do_withdrawl($4[0], $4[1], CLUB_DEFAULT_ACCOUNT_NAME, $4[2]) :));
-      add_command("withdraw", "<string'money'> from <string'club name'> account <string'account name'> for <string:small'reason'>",
-                  (: do_withdrawl($4[0], $4[1], $4[2], $4[3]) :));
-      add_command("withdraw", "<string'money'> from <string'club name'> account <string'account name'> for <string:quoted'reason'>",
-                  (: do_withdrawl($4[0], $4[1], $4[2], $4[3]) :));
-      add_command("transfer", "<string'money'> from <string'club name'> account <string'source account'> to <string'desination account'> for <string:small'reason'>",
-                  (: do_transfer($4[0], $4[1], $4[2], $4[3], $4[4]) :));
-      add_command("transfer", "<string'money'> from <string'club name'> account <string'source account'> to <string'desination account'> for <string:quoted'reason'>",
-                  (: do_transfer($4[0], $4[1], $4[2], $4[3], $4[4]) :));
-      add_command("election", "force in <string'club'>",
-                  (: do_force_election($4[0]) :));
-      club_discuss::init();
-   }
-   if (family_commands_allowed()) {
-      add_help_file("family_control_room");
-      if (bit) {
-         bit += "|family name";
-      } else {
-         bit = "family name";
-      }
-      add_command("create", "family called <string'family name'>",
-                  (: do_create_family($4[0]) :));
-      add_command("list", "families",
-                  (: club_list(this_player()->query_name(), 1, 0) :) );
-      add_command("list", "family <string'family name'>",
-                  (: family_info($4[0], this_player()->query_name()) :) );
-   }
-   add_command("description", "of <string'" + bit + "'>",
-                (: do_describe($4[0]) :));
-   add_command("balance", "[of] <string'" + bit  +"'>",
-               (: do_balance($4[0]) :));
-   add_command("deposit", "<string:small'money'> to <string'" + bit + "'>",
-               (: do_deposit($4[0], $4[1], CLUB_DEFAULT_ACCOUNT_NAME, 0) :));
-   add_command("deposit", "<string:small'money'> to <string'" + bit + "'> for <string:small'reason'>",
-               (: do_deposit($4[0], $4[1], CLUB_DEFAULT_ACCOUNT_NAME, $4[2]) :));
-   add_command("deposit", "<string:small'money'> to <string'" + bit + "'> account <string'account name'>",
-               (: do_deposit($4[0], $4[1], $4[2], 0) :));
-   add_command("deposit", "<string:small'money'> to <string'" + bit + "'> account <string'account name'> for <string:small'reason'>",
-               (: do_deposit($4[0], $4[1], $4[2], $4[3]) :));
-}
-int is_valid_club_name(string name) {
-   int i;
-   if (strlen(name) > CLUB_MAX_NAME_LEN) {
-      return 0;
-   }
-   for (i = 0; i < strlen(name); i++) {
-      if (!((name[i] >= 'a' && name[i] <= 'z') ||
-            (name[i] >= 'A' && name[i] <= 'Z') ||
-            name[i] == '\'' ||
-            name[i] == ' ' ||
-            name[i] == '_')) {
-          return 0;
-       }
-   }
-   return 1;
-}
-void set_club_control_type(int room_type) {
-   _room_type = room_type;
-}
-int query_club_control_type() {
-   return _room_type;
-}
-void set_club_region(string region) {
-   _region = region;
-}
-string query_club_region() {
-   return _region;
-}
-protected int do_create(string name) {
-   string place;
-   if (CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("Cannot create '" + name + "' as the name already "
-                      "exists.\n");
-      return 0;
-   }
-   if (!is_valid_club_name(name)) {
-      add_failed_mess("The club name '" + name + "' has invalid characters in "
-                      "it.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   if (this_player()->query_value_in(place) < CLUB_STARTUP_COST) {
-      add_failed_mess("You need " +
-                      MONEY_HAND->money_value_string(CLUB_STARTUP_COST, place) +
-                      " to start a club.\n");
-      return 0;
-   }
-   write("It will cost you " +
-         MONEY_HAND->money_value_string(CLUB_STARTUP_COST, place) +
-         " to create a club.  Double check the capitalization of " +
-         name + ", you cannot change it after it is created.  "
-         "Do you wish to continue? ");
-   input_to("confirm_create", 0, name);
-   return 1;
-}
-protected void confirm_create(string str, string name) {
-   object badge;
-   string place;
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   str = lower_case(str);
-   if (strlen(str) < 1 ||
-       (str[0] != 'n' && str[0] != 'y' && str[0] != 'q')) {
-      write("Please answer yes or no.\nDo you wish to continue creating "
-            "the club " + name + " for " +
-            MONEY_HAND->money_value_string(CLUB_STARTUP_COST, place) +
-            "? ");
-      input_to("confirm_create", 0, name);
-      return ;
-   }
-   if (str[0] == 'n' || str[0] == 'q') {
-      write("Aborted.\n");
-      return ;
-   }
-   if (this_player()->query_value_in(place) < CLUB_STARTUP_COST) {
-      write("Your money appears to have evaporated.  You need " +
-                      MONEY_HAND->money_value_string(CLUB_STARTUP_COST, place) +
-                      " to start a club.\nAborting club creation.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->create_club(name,
-                                 this_player()->query_name(),
-                                 CLUB_PERSONAL,
-                                 query_club_region())) {
-      this_player()->pay_money(MONEY_HAND->create_money_array(CLUB_STARTUP_COST,
-                                                           place), place);
-      write("Created the club called '" + name + "'.\n");
-      badge = clone_object(CLUB_BADGE);
-      badge->set_club(name);
-      if (badge->move(this_player()) == MOVE_OK) {
-         if (!this_player()->wear_armour(badge)) {
-            write("You notice a badge turn up and wear itself, this is your "
-                  "membership badge.\n");
-         } else {
-            write("You notice a badge turn up and attempt to wear itself, "
-                  "this is your membership badge.\n");
-         }
-      } else {
-         badge->move(environment(this_player()));
-         badge->set_worn_by(this_player());
-         write("You notice a badge turn up and wear itself, this is your "
-               "membership badge.\n");
-      }
-      event(users(), "inform", this_player()->query_cap_name() +
-                     " created the club " + name, "club");
-   }
-}
-int is_valid_family_name(string name) {
-  if (PLAYER_HANDLER->test_user(lower_case(name))) {
-    add_failed_mess("Cannot use the family name '" + name + "' since "
-        "a player is already using it.\n");
-    return 0;
+  placement::init();
+  if(!allowed) {
+    allowed = ({ });
   }
-  if(!PLAYER_HANDLER->test_valid(name)) {
-    add_failed_mess("The family name '" + name + "' is invalid.\n");
-    return 0;
-  }
-  if (!is_valid_club_name(name)) {
-    if (this_player()->query_creator()) {
-      add_failed_mess("invalid.\n");
+  add_command("allow", "list", (: allow_list() :));
+  if(test_occupier(this_player()->query_name()) ||
+     this_player()->query_creator()) {
+    if(!HOUSING->query_house(base_name(this_object()))) {
+      add_command("allow", "<indirect:player:here>",
+                  (: do_allow($1[0], "room") :));
+      add_command("deny", "<word'player'>",
+                  (: do_deny($4[0], "room") :));
+    } else {
+      add_command("allow", "<indirect:player:here> <word'house|room'>",
+                  (: do_allow($1[0], $4[1]) :));
+      add_command("deny", "<word'player'> <word'house|room'>",
+                  (: do_deny($4[0], $4[1]) :));
     }
-    add_failed_mess("The family name '" + name + "' has invalid characters "
-                    "in it.\n");
+  }
+}
+protected void event_enter_checks(object ob) {
+  if(!tell_denied) {
+    tell_denied = ({ });
+  }
+  if(ob && interactive(ob) &&
+     member_array(ob->query_name(), tell_denied) != -1) {
+    write("%^YELLOW%^%^BOLD%^You are no longer allowed to control this "
+          "room.%^RESET%^\n");
+    tell_denied -= ({ ob->query_name() });
+  }
+}
+void event_enter(object ob, string message, object from) {
+#ifdef PLAYTESTING
+  if(interactive(ob) &&
+     (!ob->query_creator() &&
+     !"/obj/handlers/playtesters"->query_playtester(ob->query_name())) &&
+     ob->query_name() != "gumboot") {
+    tell_object(ob, "Sorry, this area is only open to playtesters.\n");
+    ob->move(from);
+  }
+#endif
+  event_enter_checks(ob);
+}
+int allow_list() {
+  string *tmp;
+  if(owner && owner != "For Sale" && owner != "Under Offer") {
+    tmp = ({ owner }) + allowed;
+  } else {
+    tmp = allowed;
+  }
+  if (!test_occupier(this_player()->query_name()) &&
+      !this_player()->query_creator()) {
+    add_failed_mess("You are not allowed to control this room.\n", ({ }));
     return 0;
   }
-  if (strlen(name) > MAX_FAMILY_NAME_LEN) {
-    if (this_player()->query_creator()) {
-      add_failed_mess("too long!\n");
-    }
-    add_failed_mess("The maximum length of a family name is " +
-                    MAX_FAMILY_NAME_LEN + ".\n");
-    return 0;
+  switch(sizeof(tmp)) {
+  case 0:
+    add_succeeded_mess(({"Noone is allowed to control this room.\n",
+                           "$N messes with something in " + the_short() +
+                           ".\n"}));
+    break;
+  case 1:
+    add_succeeded_mess(({query_multiple_short(tmp) +
+                           " is allowed to control this room.\n",
+                           "$N messes with something in " + the_short() +
+                           ".\n"}));
+    break;
+  default:
+    add_succeeded_mess(({query_multiple_short(tmp) +
+                           " are allowed to control this room.\n",
+                           "$N messes with something in " + the_short() +
+                           ".\n"}));
   }
   return 1;
 }
-protected int do_create_family(string name) {
-   string place;
-   if (CLUB_HANDLER->is_club(name)) {
-      if (this_player()->query_creator()) {
-         write("exist\n");
-      }
-      add_failed_mess("Cannot create '" + name + "' as the name already "
-                      "exists.\n");
-      return 0;
-   }
-   if(!is_valid_family_name(name))
-     return 0;
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   if (this_player()->query_value_in(place) < FAMILY_STARTUP_COST) {
-      add_failed_mess("You need " +
-                      MONEY_HAND->money_value_string(FAMILY_STARTUP_COST,
-                                                     place) +
-                      " to start a family.\n");
-      return 0;
-   }
-   write("It will cost you " +
-         MONEY_HAND->money_value_string(FAMILY_STARTUP_COST, place) +
-         " to create a family.  Do you wish to continue? ");
-   input_to("confirm_create_family", 0, name);
-   return 1;
-}
-protected void confirm_create_family(string str, string name) {
-   string place;
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   str = lower_case(str);
-   if (strlen(str) < 1 ||
-       (str[0] != 'n' && str[0] != 'y' && str[0] != 'q')) {
-      write("Please answer yes or no.\nDo you wish to continue creating "
-            "the family " + name + " for " +
-            MONEY_HAND->money_value_string(FAMILY_STARTUP_COST, place) +
-            "? ");
-      input_to("confirm_create_family", 0, name);
-      return ;
-   }
-   if (str[0] == 'n' || str[0] == 'q') {
-      write("Aborted.\n");
-      return ;
-   }
-   if (this_player()->query_value_in(place) < FAMILY_STARTUP_COST) {
-      write("Your money appears to have evaporated.  You need " +
-            MONEY_HAND->money_value_string(FAMILY_STARTUP_COST, place) +
-            " to start a family.\nAborting family creation.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->create_club(name,
-                                 this_player()->query_name(),
-                                 CLUB_FAMILY,
-                                 query_club_region())) {
-      if (this_player()->query_family_name()) {
-         CLUB_HANDLER->move_family_member(this_player()->query_family_name(),
-                                          this_player()->query_name(),
-                                          name);
-      } else {
-         CLUB_HANDLER->add_member(name, this_player()->query_name());
-      }
-      this_player()->pay_money(MONEY_HAND->create_money_array(FAMILY_STARTUP_COST,
-                                                              place), place);
-      write("Created the family called '" + name + "'.\n");
-      this_player()->set_family_name(name);
-      event(users(), "inform", this_player()->query_cap_name() +
-                     " created the family " + name, "club");
-   }
-}
-protected int do_nominate(string person, string position, string club_name) {
-   string our_name;
-   our_name = this_player()->query_name();
-   if (!CLUB_HANDLER->is_member_of(club_name, our_name)) {
-      add_failed_mess("You can only nominate people in a club your a "
-                      "member of.\n");
-      return 0;
-   }
-   person = lower_case(person);
-   if (!CLUB_HANDLER->is_member_of(club_name, person)) {
-      person = this_player()->expand_nickname(person);
-   }
-   if (!CLUB_HANDLER->is_member_of(club_name, person)) {
-      add_failed_mess("You can only nominate people in the club.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_election_in_progress(club_name)) {
-      add_failed_mess("This club is not having an election right now.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_voting_in_progress(club_name)) {
-      add_failed_mess("This club is not accepting nominations right now, "
-                      "it is past the nomination phase.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_nomination_in_progress(club_name)) {
-      add_failed_mess("This club not in the nomination phase of "
-                      "voting.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_valid_position(club_name, position)) {
-      add_failed_mess("You must nominate them in a valid position.\n"
-                      "Valid positions are " +
-                      sort_and_capitalise(CLUB_HANDLER->query_valid_positions(club_name)) +
-                      ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_nomination_in_progress(club_name)) {
-      add_failed_mess("This club is not accepting nominations for positions "
-                      "right now.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_creator_club(club_name) &&
-       PLAYER_HANDLER->test_creator(person)) {
-      add_failed_mess("You cannot nominate a creator to a position in a "
-                      "non-creator club.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->has_nominated_person(club_name,
-                                           position,
-                                           person,
-                                           our_name)) {
-      add_failed_mess("You have already nominated " + capitalize(person) +
-                      " for the position " + capitalize(position) + " in '" +
-                      CLUB_HANDLER->query_club_name(club_name) + "'.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->nominate_person(club_name,
-                                     position,
-                                     person,
-                                     our_name)) {
-      add_succeeded_mess( ({
-                      "$N nominated " + capitalize(person) + " to " +
-            capitalize(position) + " in " +
-            CLUB_HANDLER->query_club_name(club_name) + ".\n",
-                      "$N nominated " + capitalize(person) + " to " +
-            capitalize(position) + " in " +
-            CLUB_HANDLER->query_club_name(club_name) + ".\n" }) );
-      if (find_player(lower_case(person)) &&
-          environment(find_player(lower_case(person))) != this_object()) {
-         tell_object(find_player(lower_case(person)),
-                     "You have a weird feeling that " +
-                     this_player()->the_short() +
-                     " just nominated you for " + capitalize(position) +
-                     ".\n");
-      }
-      return 1;
-   }
-   add_failed_mess("Unable to nominate " + person + " to " +
-                   position + " in '" +
-                   CLUB_HANDLER->query_club_name(club_name) + "'.\n");
-   return 0;
-}
-protected int do_vote(string person, string position, string club_name) {
-   string our_name;
-   string *stuff;
-   our_name = this_player()->query_name();
-   if (!CLUB_HANDLER->is_member_of(club_name, our_name)) {
-      add_failed_mess("You can only vote for people in a club you're a "
-                      "member of.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_member_of(club_name, person)) {
-      person = this_player()->expand_nickname(person);
-   }
-   if (!CLUB_HANDLER->is_member_of(club_name, person)) {
-      add_failed_mess("You can only vote for people in the club.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_election_in_progress(club_name)) {
-      add_failed_mess("This club is not having an election at the moment.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_nomination_in_progress(club_name)) {
-      add_failed_mess("This club is accepting nominations right now, "
-                      "it is not ready for votes.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_voting_in_progress(club_name)) {
-      add_failed_mess("This club is not accepting votes right now.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_valid_position(club_name, position)) {
-      add_failed_mess("You must vote for them in a valid position.\n"
-                      "Valid positions are " +
-                      sort_and_capitalise(CLUB_HANDLER->query_valid_positions(club_name)) +
-                      ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_nominated_for(club_name, position, person)) {
-      stuff =  CLUB_HANDLER->query_nominated_for(club_name, position);
-      if (sizeof(stuff)) {
-         add_failed_mess("You must vote for a person that has been "
-                         "nominated for the position.\n" +
-                         sort_and_capitalise(stuff) +
-                         " have been nominated for " + position + " in " +
-                         club_name + ".\n");
-      } else {
-         add_failed_mess("No one has been nominated for the position "
-                         + position + " in " + club_name + ".\n");
-      }
-      return 0;
-   }
-   if (CLUB_HANDLER->has_person_voted(club_name, position, our_name)) {
-      add_failed_mess("You can only vote for each position once.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->vote_for_person(club_name,
-                                     position,
-                                     person,
-                                     our_name)) {
-      add_succeeded_mess(({
-                      "$N vote for $C$" + person + " to " + position + " in " +
-            CLUB_HANDLER->query_club_name(club_name) + ".\n",
-                      "$N voted for " + position + " in " +
-            CLUB_HANDLER->query_club_name(club_name) + ".\n" }));
-      return 1;
-   }
-   add_failed_mess("Unable vote for " + person + " to " +
-                   position + " in " + club_name +
-            CLUB_HANDLER->query_club_name(club_name) + ".\n");
-   return 0;
-}
-protected int do_balance(string name) {
-   string place;
-   int amount;
-   string bit;
-   string *accounts;
-   string account;
-   string account_name;
-   string ret;
-   if (club_commands_allowed()) {
-      bit = "club";
-   }
-   if (family_commands_allowed()) {
-      if (bit) {
-         bit += " or family";
-      } else {
-         bit = "family";
-      }
-   }
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must get a balance of an existing " + bit + ".\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_family(name)) {
-      bit = "family";
-   } else {
-      bit = "club";
-   }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of the " + bit +
-                      " to get the balance.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   accounts = CLUB_HANDLER->query_account_names(name);
-   ret = "";
-   foreach (account in accounts) {
-      if (account == CLUB_DEFAULT_ACCOUNT_NAME) {
-         account_name = "main " + bit + " account";
-      } else {
-         account_name = "special " + bit + " account " + account;
-      }
-      amount = CLUB_HANDLER->query_balance(name, account);
-      if (amount < 0) {
-         ret += "The balance of the " + account_name + " in '" +
-                CLUB_HANDLER->query_club_name(name) +
-                "' is in remission by " +
-                MONEY_HAND->money_value_string(-amount, place) + ".\n";
-      } else {
-         ret += "The balance of the " + account_name + " in '" +
-                CLUB_HANDLER->query_club_name(name) + "' is " +
-                MONEY_HAND->money_value_string(amount, place) + ".\n";
-      }
-   }
-   ret += "The next pay period ends at " +
-          ctime(CLUB_HANDLER->query_time_fees_due(name)) +
-          ", which will cost " +
-          MONEY_HAND->money_value_string(CLUB_HANDLER->query_club_cost_per_period(name), place) + " from the main " + bit + " account.\n",
-   add_succeeded_mess(({ ret,
-                      "$N checks the balance of '" +
-                      CLUB_HANDLER->query_club_name(name) + "'.\n" }));
-   return 1;
-}
-protected int do_deposit(string mon, string name, string account, string reason) {
-   int amt;
-   int after;
-   int total;
-   string place;
-   mixed money;
-   string bit;
-   string account_name;
-   if (club_commands_allowed()) {
-      bit = "club";
-   }
-   if (family_commands_allowed()) {
-      if (bit) {
-         bit += " or family";
-      } else {
-         bit = "family";
-      }
-   }
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must deposit into an existing " + bit + ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of the " + bit +
-                      " to deposit into the clubs coffers.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_creator_club(name) &&
-       this_player()->query_creator()) {
-      add_failed_mess("Creators can only deposit to creator " + bit + "s.\n");
-      return 0;
-   }
-   if (account == CLUB_DEFAULT_ACCOUNT_NAME) {
-      account_name = "main " + bit + " account";
-   } else {
-      account_name = "special " + bit + " account " + account;
-   }
-   if (!CLUB_HANDLER->is_account_of(name, account)) {
-      add_failed_mess("The account " + account_name + " is not in the " +
-                      bit + " '" + CLUB_HANDLER->query_club_name(name) + "'\n");
-      return 0;
-   }
-   if (strlen(reason) > 60) {
-      add_failed_mess("The reason must be less than 60 characters.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   money = MONEY_HAND->parse_money(mon, this_player(), place);
-   if (intp(money)) {
-      switch (money) {
-         case NO_MATCH :
-            add_failed_mess("You do not have '" + mon + "'.\n");
-            return 0;
-         case NO_MONEY :
-            add_failed_mess("You can only deposit money.\n");
-            return 0;
-         default :
-            add_failed_mess("You can only deposit legal tender.\n");
-            return 0;
-      }
-   }
-   amt = money->query_value_in(place);
-   if (place != "default") {
-      amt += money->query_value_in("default");
-   }
-   after = amt - ((amt * _percentage_cut) / 100);
-   CLUB_HANDLER->add_money(name,
-                           after,
-                           CLUB_TRANSACTION_DEPOSIT,
-                           this_player()->query_name(),
-                           account,
-                           reason);
-   total = CLUB_HANDLER->query_balance(name, account);
-   money->move("/room/rubbish");
-   add_succeeded_mess(({ "$N deposit " +
-                         MONEY_HAND->money_value_string(amt, place) +
-                         ", which after expenses is " +
-                         MONEY_HAND->money_value_string(after, place) +
-                         ", to the " +
-                         (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                         " '" +
-                         CLUB_HANDLER->query_club_name(name) +
-                         "' for a total of " +
-                         MONEY_HAND->money_value_string(total, place) + ".\n",
-                         "$N deposits some money to the " +
-                         (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                         " '" +
-                         CLUB_HANDLER->query_club_name(name) +
-                         "'.\n" }));
-   return 1;
-}
-protected int do_withdrawl(string money,
-                           string name,
-                           string account,
-                           string reason) {
-   string place;
-   int value;
-   string bit;
-   object obj;
-   string account_name;
-   string* stuff;
-   string ret;
-   if (club_commands_allowed()) {
-      bit = "club";
-   }
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must withdraw from an existing " + bit + ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of the " + bit +
-                      " to withdraw money from the club.\n");
-      return 0;
-   }
-   if (account == CLUB_DEFAULT_ACCOUNT_NAME) {
-      account_name = "main " + bit + " account";
-   } else {
-      account_name = "special " + bit + " account " + account;
-   }
-   if (!CLUB_HANDLER->is_account_of(name, account)) {
-      add_failed_mess("The account " + account_name + " is not in the " +
-                      bit + " '" + CLUB_HANDLER->query_club_name(name) + "'\n");
-      return 0;
-   }
-   if (strlen(reason) > 60) {
-      add_failed_mess("The reason must be less than 60 characters.\n");
-      return 0;
-   }
-    if(!CLUB_HANDLER->is_elected_club(name)) {
-        add_failed_mess("You may only withdraw funds from an elected "
-            "club.\n");
-        return 0;
+int do_allow(object player, string location) {
+  string pname;
+  string *rooms;
+  string room;
+  int failed;
+  if((query_owner() != this_player()->query_name()) &&
+     !this_player()->query_creator()) {
+    add_failed_mess("You are not allowed to control this room.\n", ({ }));
+    return 0;
+  }
+  if(environment(player) != this_object()) {
+    return add_failed_mess("$I is not here.\n", ({ player }));
+  }
+  pname = lower_case(player->query_name());
+  if(test_occupier(pname)) {
+    add_failed_mess("$I is already able to control this room.\n");
+    return 0;
+  }
+  if(location == "house") {
+    rooms = HOUSING->query_rooms(base_name(this_object()));
+    failed = 1;
+    foreach(room in rooms) {
+      failed &= room->add_allowed(pname);
     }
-   if (!CLUB_HANDLER->is_allowed_to_modify_account(name,
-                                                   account,
-                                                   this_player()->query_name())) {
-      stuff = CLUB_HANDLER->query_account_allowed_positions(name, account);
-      ret = "Only the positions " + query_multiple_short(stuff);
-      stuff = CLUB_HANDLER->query_account_allowed_people(name, account);
-      if (sizeof(stuff)) {
-         ret += " and the people " + query_multiple_short(stuff);
-      }
-      add_failed_mess(ret + " can withdraw from this account.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   value = MONEY_HAND->value_from_string(money, place);
-   if (value > CLUB_HANDLER->query_balance(name, account)) {
-      add_failed_mess("The " + account_name +
-                      " does not have that much money!\n");
-      return 0;
-   }
-   obj = MONEY_HAND->make_new_amount(value, place);
-   if (!obj) {
-      add_failed_mess("Unable to create the money object.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->remove_money(name,
-                              value,
-                              CLUB_TRANSACTION_WITHDRAWL,
-                              this_player()->query_name(),
-                              account,
-                              reason)) {
-      obj->move(this_player());
-      add_succeeded_mess(({ "$N withdraw " +
-                            MONEY_HAND->money_value_string(value, place) +
-                            " from the " +
-                            (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                            " '" +
-                            CLUB_HANDLER->query_club_name(name) +
-                            "'.\n",
-                            "$N withdraws some money from the " +
-                            (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                            " '" +
-                            CLUB_HANDLER->query_club_name(name) +
-                            "'.\n" }));
-      return 1;
-   } else {
-      obj->dest_me();
-      add_failed_mess("Unable to remove the money from the account.\n");
-      return 0;
-   }
+  } else {
+    failed = add_allowed(pname);
+  }
+  if (failed) {
+     add_failed_mess("Failed to add " + pname + " as being able to control "
+                     "the " + location + ".\n");
+     return 0;
+  }
+  tell_object(player, "You are now permitted to control this " + location +
+              ".\n");
+  add_succeeded_mess(({ pname + " is allowed to control this " + location +
+                          ".\n", ""}));
+  return 1;
 }
-protected int do_transfer(string money,
-                           string name,
-                           string from_account,
-                           string to_account,
-                           string reason) {
-   string place;
-   int value;
-   string bit;
-   object obj;
-   string from_account_name;
-   string to_account_name;
-   string* stuff;
-   string ret;
-   if (club_commands_allowed()) {
-      bit = "club";
-   }
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must transfer money in an existing " + bit + ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of the " + bit +
-                      " to transfer money.\n");
-      return 0;
-   }
-   if (from_account == CLUB_DEFAULT_ACCOUNT_NAME) {
-      from_account_name = "main " + bit + " account";
-   } else {
-      from_account_name = "special " + bit + " account " + from_account;
-   }
-   if (to_account == CLUB_DEFAULT_ACCOUNT_NAME) {
-      to_account_name = "main " + bit + " account";
-   } else {
-      to_account_name = "special " + bit + " account " + to_account;
-   }
-   if (!CLUB_HANDLER->is_account_of(name, from_account)) {
-      add_failed_mess("The account " + from_account_name + " is not in the " +
-                      bit + " '" + CLUB_HANDLER->query_club_name(name) + "'\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_account_of(name, to_account)) {
-      add_failed_mess("The account " + to_account_name + " is not in the " +
-                      bit + " '" + CLUB_HANDLER->query_club_name(name) + "'\n");
-      return 0;
-   }
-   if (strlen(reason) > 60) {
-      add_failed_mess("The reason must be less than 60 characters.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_allowed_to_modify_account(name,
-                                                   from_account,
-                                                   this_player()->query_name())) {
-      stuff = CLUB_HANDLER->query_account_allowed_positions(name, from_account);
-      ret = "Only the positions " + query_multiple_short(stuff);
-      stuff = CLUB_HANDLER->query_account_allowed_people(name, from_account);
-      if (sizeof(stuff)) {
-         ret += " and the people " + query_multiple_short(stuff);
-      }
-      add_failed_mess(ret + " can withdraw from this account.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   value = MONEY_HAND->value_from_string(money, place);
-   if (value > CLUB_HANDLER->query_balance(name, from_account)) {
-      add_failed_mess("The " + from_account_name +
-                      " does not have that much money!\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->remove_money(name,
-                              value,
-                              CLUB_TRANSACTION_TRANSFER,
-                              this_player()->query_name(),
-                              from_account,
-                              "to " + to_account_name + ": " + reason)) {
-      CLUB_HANDLER->add_money(name,
-                              value,
-                              CLUB_TRANSACTION_TRANSFER,
-                              this_player()->query_name(),
-                              to_account,
-                              "from " + from_account_name + ": " + reason);
-      add_succeeded_mess(({ "$N transfer " +
-                            MONEY_HAND->money_value_string(value, place) +
-                            " between the " +
-                            (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                            " '" +
-                            CLUB_HANDLER->query_club_name(name) +
-                            "' accounts " + from_account_name + " and " +
-                            to_account_name + ".\n",
-                            "$N transfers some money between accounts in the " +
-                            (CLUB_HANDLER->is_family(name) ? "family" : "club") +
-                            " '" +
-                            CLUB_HANDLER->query_club_name(name) +
-                            "'.\n" }));
-      return 1;
-   } else {
-      obj->dest_me();
-      add_failed_mess("Unable to remove the money from the account.\n");
-      return 0;
-   }
+int do_deny(string player, string location) {
+  object ob;
+  string *rooms, room;
+  if(member_array(player, allowed) == -1) {
+    add_failed_mess(player + " is not on the allow list.\n");
+    return 0;
+  }
+  if (!test_occupier(this_player()->query_name()) &&
+      !this_player()->query_creator()) {
+    add_failed_mess("You are not allowed to control this room.\n");
+    return 0;
+  }
+  if(!test_occupier(player)) {
+    add_failed_mess(player + " is already not allowed to control this room.\n");
+    return 0;
+  }
+  if(location == "house") {
+    rooms = HOUSING->query_rooms(base_name(this_object()));
+    foreach(room in rooms)
+      room->remove_allowed(player);
+  } else {
+    remove_allowed(player);
+  }
+  ob = find_player(player);
+  if(ob && environment(ob) == this_object()) {
+    tell_object(ob, "%^YELLOW%^%^BOLD%^You are no longer allowed to control " +
+                the_short() + ".\n%^RESET%^");
+  } else {
+    tell_denied += ({ player });
+  }
+  add_succeeded_mess(({player + " is no longer allowed to control this " +
+                     location + ".\n", "" }));
+  return 1;
 }
-private void do_change_inform(string club_name) {
-   object *people;
-   object person;
-   people = map(CLUB_HANDLER->query_members(club_name), (: find_player :));
-   people -= ({ 0 });
-   foreach (person in people) {
-      all_inventory(person)->event_club_change(this_player(), club_name);
-   }
+private void update_short_cache(string direc) {
+  string ostr, astr;
+  if(!exit_shorts)
+    exit_shorts = ([ ]);
+  if(find_object(query_dest_other(direc)[0])) {
+    ostr = query_dest_other(direc)[0]->one_short();
+    if(this_player())
+      ostr = this_player()->convert_message(ostr);
+    astr = query_dest_other(direc)[0]->a_short();
+    if(this_player())
+      astr = this_player()->convert_message(astr);
+    if(!exit_shorts[direc] ||
+       ostr != exit_shorts[direc]->one_short ||
+       astr != exit_shorts[direc]->a_short) {
+      exit_shorts[direc] = new(class exit_shorts,
+                               one_short : ostr,
+                               a_short : astr);
+    }
+  }
 }
-protected int do_change(string name, string type) {
-   int ret;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must change a club that exists.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_personal_club(name)) {
-      add_failed_mess("The club must be a founder type before you can change "
-                      "it to another type.\n");
-      return 0;
-   }
-   switch (type) {
-      case "elected" :
-         if (CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-            if (sizeof(CLUB_HANDLER->query_members(name)) <
-                CLUB_MINIMUM_ELECTED_MEMBERS) {
-               add_failed_mess("You must have at least " +
-                               query_num(CLUB_MINIMUM_ELECTED_MEMBERS) +
-                               " members to change to an elected club.\n");
-            } else if (CLUB_HANDLER->change_club_type(name, CLUB_ELECTED)) {
-               ret = 1;
-               add_succeeded_mess("$N change$s the type of '" +
-                                  CLUB_HANDLER->query_club_name(name) +
-                                  "' to elected.\n");
-               call_out((: do_change_inform :), 0, name);
-            } else {
-               add_failed_mess("You are unable to change the club type.\n");
-            }
-         } else {
-            add_failed_mess("You must be the founder to change the "
-                            "club type.\n");
-         }
-         break;
-   }
-   return ret;
+void update_doors() {
+  string exit;
+  object door_ob;
+  if(!done_setup)
+    setup_doors();
+  if(!exits)
+    exits = ([ ]);
+  foreach(exit in query_exits()) {
+    door_ob = query_door_control(exit);
+    if(door_ob) {
+      if(door_ob->query_key() == "generic_key") {
+#ifdef DEBUG
+        if(exits[exit])
+          debug_log("update_doors", "Door %s has generic_key, exit data "
+                    "has %s", exit, exits[exit]->key);
+        else
+          debug_log("update_doors", "Door %s has generic_key, no existing "
+                    "exit data.", exit);
+#endif
+      }
+      exits[exit] = new(class exit_data,
+                        long : door_ob->query_long(),
+                        key : door_ob->query_key(),
+                        difficulty: door_ob->query_difficulty(),
+                        closed : door_ob->query_closed(),
+                        locked : door_ob->query_locked(),
+                        autolock : door_ob->query_autolock(),
+                        transparent : door_ob->query_transparent(),
+                        trap_data : door_ob->query_trap_data());
+#ifdef DEBUG2
+      debug_log("update_doors: Door %s: key: %s, difficulty: %d, closed: %d, "
+                "locked: %d, owner: %s", exit, exits[exit]->key,
+                exits[exit]->difficulty, exits[exit]->closed,
+                exits[exit]->locked, owner);
+#endif
+    }
+  }
 }
-protected int do_change_option(string name, string option) {
-   int ret;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must change a club that exists.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_elected_club(name)) {
-      add_failed_mess("You must change options through discussion items.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_personal_club(name) &&
-       !CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be the founder of the club to change the "
-                      "options of the club.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_personal_club(name)) {
-      add_failed_mess("The club must be a personal club before the options "
-                      "can be changed in this way.\n");
-      return 0;
-   }
-   switch (option) {
-      case "secret" :
-         if (CLUB_HANDLER->set_club_secret(name)) {
-            add_succeeded_mess("$N wipe$s the records on the club '" +
-                            CLUB_HANDLER->query_club_name(name) + "'.\n");
-            ret = 1;
-         } else {
-            add_failed_mess("Unable to change the club to a secret type.\n");
-         }
-         break;
-      case "open" :
-         if (CLUB_HANDLER->reset_club_secret(name)) {
-            add_succeeded_mess("$N replace$s the records of the club '" +
-                            CLUB_HANDLER->query_club_name(name) + "'.\n");
-            ret = 1;
-         } else {
-            add_failed_mess("Unable to change the club to an open type.\n");
-         }
-         break;
-   }
-   return ret;
+void setup_doors() {
+  string exit;
+  object door;
+  string other, other_id;
+#ifdef DEBUG2
+  debug_log("Setup doors called.");
+#endif
+  if(!this_object()->query_exits()) {
+    this_object()->calc_exits();
+  }
+  if(!exits || !sizeof(exits)) {
+    if(!this_object()->query_exits()) {
+#ifdef DEBUG2
+      debug_log("Leaving setup_doors, No exits to setup.");
+#endif
+    } else if(query_inventory_loaded()) {
+#ifdef DEBUG
+      debug_log("Leaving setup_doors, exits not setup %O, autoloading: %d "
+                "inventory loaded: %d.",
+                exits, query_auto_loading(), query_inventory_loaded());
+#endif
+    }
+    return;
+  }
+  foreach(exit in keys(exits)) {
+    door = query_door_control(exit);
+    if(!door) {
+      if(!query_exit(exit)) {
+        map_delete(exits, exit);
+      }
+      continue;
+    }
+    if(!owner)
+      catch(owner = HOUSING->query_owner(base_name(this_object())));
+#ifdef DEBUG2
+      if(exit == "out")
+        debug_log("Setting up %s: key: %s, difficulty: %d, closed: %d, "
+                  "locked: %d, owner: %s", exit, exits[exit]->key,
+                  exits[exit]->difficulty, exits[exit]->closed,
+                  exits[exit]->locked, owner);
+#endif
+      modify_exit(exit, ({ "key", exits[exit]->key,
+                             "difficulty", exits[exit]->difficulty,
+                             "closed", exits[exit]->closed,
+                             "locked", exits[exit]->locked,
+                             "autolock", exits[exit]->autolock,
+                             "lock owner", owner,
+                             }));
+      if(exits[exit]->trap_data && arrayp(exits[exit]->trap_data)) {
+        door->setup_trap(exits[exit]->trap_data[0],
+                         exits[exit]->trap_data[1],
+                         exits[exit]->trap_data[2],
+                         exits[exit]->trap_data[3],
+                         exits[exit]->trap_data[4]);
+        if(exits[exit]->trap_data[5])
+          door->set_trap_armed(1);
+      }
+    other = door->query_dest();
+    other_id = door->query_other_id();
+#ifdef NO_SLOW_LOAD
+    if(!find_object(other) && exit != "out")
+      continue;
+#endif
+    if(!other_id) {
+      door->force_other();
+      other_id = door->query_other_id();
+    }
+    if(!other_id) {
+#ifdef DEBUG2
+      debug_log("No other_id, adding call_out.");
+#endif
+      if(!_setup_callout) {
+        _setup_callout = call_out("setup_doors", 0);
+        return;
+      }
+    }
+    other->modify_exit(other_id, ({ "key", exits[exit]->key,
+                                      "difficulty", exits[exit]->difficulty,
+                                      "closed", exits[exit]->closed,
+                                      "locked", exits[exit]->locked,
+                                      "autolock", exits[exit]->autolock,
+                                      "lock owner", owner,
+                                      }));
+    if(exits[exit]->trap_data && arrayp(exits[exit]->trap_data)) {
+      door = other->query_door_control(other_id);
+      if(door && objectp(door)) {
+        door->setup_trap(exits[exit]->trap_data[0],
+                         exits[exit]->trap_data[1],
+                         exits[exit]->trap_data[2],
+                         exits[exit]->trap_data[3],
+                         exits[exit]->trap_data[4]);
+        if(exits[exit]->trap_data[5])
+          door->set_trap_armed();
+      }
+    }
+  }
+  done_setup = 1;
 }
-protected int do_disband(string name) {
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must disband a club that exists.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_elected_club(name)) {
-      add_failed_mess("You cannot disband an elected club.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_personal_club(name)) {
-      add_failed_mess("The club must be a personal club type for you to "
-                      "be able to disband it.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be the founder of the club to disband it.\n");
-      return 0;
-   }
-   write("Are you sure you wish to disband the club '" +
-         CLUB_HANDLER->query_club_name(name) +
-         "'? ");
-   input_to("disband_confirm", 0, name);
-   add_succeeded_mess("");
-   return 1;
+string query_owner() {
+  if(owner)
+    return owner;
+  return HOUSING->query_owner(base_name(this_object()));
 }
-protected void disband_confirm(string str, string name) {
-   string club_name;
-   str = lower_case(str);
-   if (str == "" ||
-       str[0] == 'n' ||
-       str[0] == 'q') {
-      write("Canceling disbanding of the club '" + name + "'.\n");
-      return ;
-   }
-   if (str[0] == 'y') {
-      if (!CLUB_HANDLER->is_club(name)) {
-         write("The club appears to have been disbanded already.\n");
-         return 0;
-      }
-      if (CLUB_HANDLER->is_elected_club(name)) {
-         write("The club has changed to an elected club and you cannot "
-               "disband it.\n");
-         return 0;
-      }
-      if (!CLUB_HANDLER->is_personal_club(name)) {
-         write("The club must be a personal club for you to be able to "
-                         "disband it.\n");
-         return 0;
-      }
-      if (!CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-         write("You must be the founder of the club to disband it.\n");
-         return 0;
-      }
-      club_name = CLUB_HANDLER->query_club_name(name);
-      CLUB_HANDLER->disband_club(name);
-      write("You disband the club '" + club_name + "'.\n");
-      say(this_player()->the_short() + " disbands the club '" +
-                      club_name + "'.\n");
-   } else {
-      write("You must answer yes or no.\n");
-      write("Are you sure you wish to disband the club '" +
-            CLUB_HANDLER->query_club_name(name) +
-            "'? ");
-      input_to("disband_confirm", 0, name);
-   }
+string set_owner(string who) { owner = who; }
+int add_allowed(string pname) {
+  if(test_occupier(pname))
+    return 0;
+  allowed += ({ pname });
+  event(this_object(), "save");
+  return 0;
 }
-protected int do_insignia(string name, int num) {
-   int i;
-   object *insignias;
-   object ob;
-   string place;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must create the insignia for a club that exists.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_family(name)) {
-      add_failed_mess("You cannot create insignia for a family.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of the club to create the "
-                      "insignia for it.\n");
-      return 0;
-   }
-   if (num > 1 &&
-       !CLUB_HANDLER->is_recruiter_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a recruiter to ask for more than one "
-                      "insignia.\n");
-      return 0;
-   }
-   if (num > 20) {
-      add_failed_mess("You cannot ask for more than 20 insignia.\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   if (this_player()->query_value_in(place) < (num * CLUB_COST_INSIGNIA)) {
-      add_failed_mess("You need " +
-                      MONEY_HAND->money_value_string(CLUB_COST_INSIGNIA * num, place) +
-                      " to pay for " +
-                      query_num(num) + " insignia.\n");
-      return 0;
-   }
-   insignias = ({ });
-   for (i = 0; i < num; i++) {
-      ob = clone_object(CLUB_HANDLER->query_insignia_path(name));
-      ob->set_cond(ob->query_max_cond());
-      ob->set_club(name);
-      if (ob->move(this_player()) == MOVE_OK) {
-         insignias += ({ ob });
-         this_player()->pay_money(MONEY_HAND->create_money_array(CLUB_COST_INSIGNIA,
-                                                           place), place);
-      } else {
-         ob->dest_me();
-      }
-   }
-   if (!sizeof(insignias)) {
-      add_failed_mess("Unable to move the insignia into your inventory, "
-                      "insignia not created.\n");
-      return 0;
-   } else {
-      add_succeeded_mess("$N create$s " + query_num(sizeof(insignias)) +
-                         " club '" + CLUB_HANDLER->query_club_name(name) +
-                         "' insignia.\n");
-      return 1;
-   }
+int remove_allowed(string pname) {
+  if(!test_occupier(pname))
+    return 0;
+  allowed -= ({ pname });
+  event(this_object(), "save");
+  return 1;
 }
-protected int do_recruiter_remove(string name,
-                                  string recruit) {
-   string *all_names;
-   string one_name;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must remove a recruiter to a club that exists.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_personal_club(name)) {
-      if (!CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-         add_failed_mess("Only the founder can remove recruiters.\n");
-         return 0;
-      }
-   } else if (CLUB_HANDLER->is_elected_club(name)) {
-      if (!CLUB_HANDLER->is_president_of(name, this_player()->query_name()) &&
-          !CLUB_HANDLER->is_vice_president_of(name, this_player()->query_name())) {
-         add_failed_mess("Only the president and vice president can remove "
-                         "recruiters.\n");
-         return 0;
-      }
-   } else {
-      add_failed_mess("Unknown club type.\n");
-      return 0;
-   }
-   all_names = map(explode(recruit, ","),
-                   (: this_player()->expand_nickname($1) :));
-   if (recruit == "all") {
-      all_names = CLUB_HANDLER->query_recruiters(name);
-   }
-   foreach (one_name in all_names) {
-      if (!CLUB_HANDLER->is_recruiter_of(name, one_name)) {
-         add_failed_mess("The person(s) you are removeing must be a recruiter "
-                         " of the club.\n");
-         all_names -= ({ name });
-         continue;
-      }
-      CLUB_HANDLER->remove_recruiter(name, one_name);
-      one_name = lower_case(one_name);
-      if (find_player(one_name) &&
-          environment(find_player(one_name)) != this_object()) {
-         tell_object(find_player(one_name), "You feel suddenly feel like "
-                     "you are unable to "
-                     "recruit people into the club '" +
-                     CLUB_HANDLER->query_club_name(name) +
-                     "'.\n");
-      }
-   }
-   if (!sizeof(all_names)) {
-      return 0;
-   }
-   add_succeeded_mess("$N remove$s " + query_multiple_short(all_names) +
-                      " as " +
-                      (sizeof(all_names) > 1 ? "recruiters " : "a recruiter ") +
-                      "to the club '" + CLUB_HANDLER->query_club_name(name) +
-                      "'.\n");
-   return 1;
+int test_occupier(string name) {
+  if(!owner)
+    catch(owner = HOUSING->query_owner(base_name(this_object())));
+  if(!owner || lower_case(owner) == "for sale" ||
+     lower_case(owner) == "under offer")
+    return 1;
+  if(PLAYER_HANDLER->test_creator(name))
+    return 1;
+  if(!allowed)
+    allowed = ({ });
+  return (owner == name || (member_array(name, allowed) != -1));
 }
-protected int do_recruiter_add(string name, string recruit) {
-   string *all_names;
-   string one_name;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("You must add a recruiter to a club that exists.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_personal_club(name)) {
-      if (!CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-         add_failed_mess("Only the founder can add recruiters.\n");
-         return 0;
-      }
-   } else if (CLUB_HANDLER->is_elected_club(name)) {
-      if (!CLUB_HANDLER->is_president_of(name, this_player()->query_name()) &&
-          !CLUB_HANDLER->is_vice_president_of(name, this_player()->query_name())) {
-         add_failed_mess("Only the president and vice president can add "
-                         "recruiters.\n");
-         return 0;
-      }
-   } else {
-      add_failed_mess("Unknown club type.\n");
-      return 0;
-   }
-   all_names = map(explode(recruit, ","),
-                   (: this_player()->expand_nickname($1) :));
-   if (recruit == "all") {
-      all_names = CLUB_HANDLER->query_members(name);
-   }
-   foreach (one_name in all_names) {
-      if (!CLUB_HANDLER->is_member_of(name, one_name)) {
-         add_failed_mess("The person you are making a recruiter must be a "
-                         "member of the club.\n");
-         all_names -= ({ one_name });
-         continue;
-      }
-      if (CLUB_HANDLER->is_recruiter_of(name, one_name)) {
-         add_failed_mess("The person you are making a recruiter is already a "
-                         "recruiter of the club.\n");
-         all_names -= ({ one_name });
-         continue;
-      }
-      CLUB_HANDLER->add_recruiter(name, one_name);
-      one_name = lower_case(one_name);
-      if (find_player(one_name) &&
-          environment(find_player(one_name)) != this_object()) {
-         tell_object(find_player(one_name), "You feel suddenly empowered to "
-                     "recruit people into the club '" +
-                     CLUB_HANDLER->query_club_name(name) +
-                     "'.\n");
-      }
-   }
-   if (!sizeof(all_names)) {
-      return 0;
-   }
-   add_succeeded_mess("$N add$s " + query_multiple_short(all_names) +
-                      (sizeof(all_names) == 1? " as a recruiter " : " as recruiters ") +
-                      "to the club '" + CLUB_HANDLER->query_club_name(name) +
-                      "'.\n");
-   return 1;
+int ownership_change(string old_owner, string new_owner) {
+  if(old_owner != new_owner) {
+    owner = new_owner;
+    allowed = ({ });
+    return 1;
+  }
+  return 0;
 }
-protected int do_financials(string name, string account) {
-   string place;
-   class club_transaction* transactions;
-   int i;
-   int deposit_total;
-   int withdrawl_total;
-   string ret;
-   string account_name;
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("The club '" + name + "' does not exist.\n");
-      return 0;
+string *query_allowed() {
+   if (allowed) {
+     return allowed;
    }
-   if (!CLUB_HANDLER->is_member_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be a member of a club to see its "
-                      "financials.\n");
-      return 0;
-   }
-   if (account == CLUB_DEFAULT_ACCOUNT_NAME) {
-      account_name = "main club account";
-   } else {
-      account_name = "special club account " + account;
-   }
-   if (!CLUB_HANDLER->is_account_of(name, account)) {
-      add_failed_mess("The account " + account_name + " is not in the "
-                      "club '" + CLUB_HANDLER->query_club_name(name) + "'\n");
-      return 0;
-   }
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   ret = "The club '" + CLUB_HANDLER->query_club_name(name) +
-         "' " + account_name + " has a current balance of " +
-         MONEY_HAND->money_value_string(CLUB_HANDLER->query_balance(name, account), place) +
-         " and the next pay period ends at " +
-         ctime(CLUB_HANDLER->query_time_fees_due(name)) +
-         ", which will cost " +
-         MONEY_HAND->money_value_string(CLUB_HANDLER->query_club_cost_per_period(name), place) +
-         ".\n";
-   transactions =  CLUB_HANDLER->query_transactions(name, account);
-   for (i = 0; i < sizeof(transactions); i++) {
-      if (transactions[i]->amount > 0) {
-         ret += i + ": DEPOSIT " +
-               MONEY_HAND->money_value_string(transactions[i]->amount, place) +
-               " from " + transactions[i]->who +
-               " at " + ctime(transactions[i]->date) + " (" +
-               CLUB_HANDLER->query_transaction_type_name(transactions[i]->transaction_type) +
-               ")\n";
-         if (transactions[i]->information) {
-            ret += "   - " + transactions[i]->information + "\n";
-         }
-         deposit_total += transactions[i]->amount;
-      } else {
-         ret += i + ": WITHDRAWL " +
-               MONEY_HAND->money_value_string(-transactions[i]->amount, place) +
-               " from " + transactions[i]->who +
-               " at " + ctime(transactions[i]->date) + " (" +
-               CLUB_HANDLER->query_transaction_type_name(transactions[i]->transaction_type) +
-               ")\n";
-         if (transactions[i]->information) {
-            ret += "   - " + transactions[i]->information + "\n";
-         }
-         withdrawl_total += -transactions[i]->amount;
-      }
-   }
-   ret += "\nTotal withdrawals: " +
-         MONEY_HAND->money_value_string(withdrawl_total, place) + "\n";
-   ret += "Total deposits  : " +
-         MONEY_HAND->money_value_string(deposit_total, place) + "\n";
-   write("$P$Club Financials$P$" + ret);
-   return 1;
+   return ({ });
 }
-protected int do_describe(string name) {
-   string bit;
-   if (club_commands_allowed()) {
-      bit = "club";
-   }
-   if (family_commands_allowed()) {
-      if (bit) {
-         bit += " or family";
-      } else {
-         bit = "family";
-      }
-   }
-   if (!CLUB_HANDLER->is_club(name)) {
-      add_failed_mess("The " + bit + " '" + name +
-                      "' must exist for you to describe it.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_elected_club(name)) {
-      add_failed_mess("You cannot change the description of an elected club, "
-                      "it must be done as a discussion item.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_personal_club(name) &&
-       !CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be the founder of a personal club to "
-                      "change the description.\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->is_family(name) &&
-       !CLUB_HANDLER->is_founder_of(name, this_player()->query_name())) {
-      add_failed_mess("Only the founder of the family can set the "
-                      "description of the family.\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->is_personal_club(name) &&
-       !CLUB_HANDLER->is_family(name)) {
-      add_failed_mess("Unknown club type.\n");
-      return 0;
-   }
-   write("What do you wish to change the description of '" +
-         CLUB_HANDLER->query_club_name(name) + "' to?\n");
-   this_player()->do_edit("", (: finish_description($1, $(name)) :));
-   add_succeeded_mess("");
-   return 1;
-}
-protected void finish_description(string describe, string name) {
-   if (!describe ||
-       describe == "") {
-      write("Aborting setting the description.\n");
-      return ;
-   }
-   CLUB_HANDLER->set_club_description(name, describe);
-   if (CLUB_HANDLER->is_family(name)) {
-      write("Set the description of the family '" +
-             CLUB_HANDLER->query_club_name(name) + "' to:\n" +
-             CLUB_HANDLER->query_club_description(name) + "\n");
-   } else {
-      write("Set the description of the club '" +
-             CLUB_HANDLER->query_club_name(name) + "' to:\n" +
-             CLUB_HANDLER->query_club_description(name) + "\n");
-   }
-}
-void set_percentage_cut(int value) {
-   _percentage_cut = value;
-}
-int query_percentage_cut() {
-   return _percentage_cut;
-}
-string query_club_warning_message() {
-   string place;
-   string ret;
-   place = query_property("place");
-   if (!place) {
-      place = "default";
-   }
-   ret = "";
-   if (club_commands_allowed()) {
-      ret += "Clubs have a few rules and regulations associated with "
-         "them.  They cost " +
-         MONEY_HAND->money_value_string(CLUB_STARTUP_COST, place) +
-         " to start.  Every quarter of a " + mud_name() + " year the club "
-         "costs " +
-         MONEY_HAND->money_value_string(CLUB_COST_PER_YEAR, place) +
-         " plus " +
-         MONEY_HAND->
-            money_value_string(CLUB_COST_PER_MEMBER_PER_YEAR, place) +
-         " per member.  Each insignia will cost " +
-         MONEY_HAND->money_value_string(CLUB_COST_INSIGNIA, place) +
-         " to be made, and the cost an insignia is taken from the "
-         "person requesting the insignia, not the club.\n\n"
-         "If the club goes into remission for 2 pay periods then the "
-         "club will be disbanded.  If the club is not touched for 8 "
-         "real weeks then the club will be disbanded.  A club is "
-         "considered touched if a member is added or removed, if an "
-         "election is held or nominations are added or if money is "
-         "deposited into the account.\n\n"
-         "Clubs default to being founder controlled clubs, meaning "
-         "that the founder has all the control of the club.  Once a "
-         "club gets over " +
-         CLUB_MINIMUM_ELECTED_MEMBERS +
-         " members it can change to an elected club.  In this mode "
-         "the committee members of the club are elected to their "
-         "positions.  Once a club gets over " +
-         CLUB_MAXIMUM_ELECTED_MEMBERS + " it must become an elected "
-         "club.  A new election is held every " + mud_name() + " year for all "
-         "the positions.  If the founder of a founder base club leaves "
-         "the mud or is idle is for 8 real weeks then the club will be "
-         "disbanded.\n\n"
-         "In this room, clubs can be created and disbanded.  Money can "
-         "be deposited into a club, or withdrawn from a club.  It is "
-         "possible to see the balance of a given club, and also to see "
-         "various lists of clubs.  It is also possible to nominate "
-         "someone for position, vote for someone and to force an "
-         "election in a particular club.  Furthermore, announcements "
-         "and discussion items for clubs can be added here.  Club "
-         "insignias can be replaced, and types and options of a club "
-         "can be changed.  Finding out more about a club's financials "
-         "is also possible, as well as changing the description of a "
-         "club.  Last, but not least, a recruiter can be added to a "
-         "club.\n";
-   }
-   if (family_commands_allowed()) {
-      ret += "Families have a few rules and regulations associated "
-        "with them.  They cost " +
-       MONEY_HAND->money_value_string(FAMILY_STARTUP_COST, place) +
-       " to start and cost " +
-       MONEY_HAND->money_value_string(FAMILY_COST_PER_YEAR, place) +
-       " in upkeep every quarter of a " + mud_name() + " year, plus " +
-       MONEY_HAND->
-         money_value_string(FAMILY_COST_PER_MEMBER_PER_YEAR, place) +
-       " per member.\n\n"
-       "You can create relationships between people, and also create "
-       "families.  It is possible to list families, or details about "
-       "any particular "
-       "family.  On a family of yours, you can set the description, "
-       "see its bank balance and deposit more money into its account.  "
-       "If your family balance is less than the required amount when "
-       "it is time for your family to pay for its fees, the family "
-       "will be disbanded.\n\n"
-       "You cannot choose a family name from the books for "
-       "your families.\n";
-   }
-   return ret;
-}
-protected int do_club_list_member(string name) {
-   if (!PLAYER_HANDLER->test_user(name)) {
-      add_failed_mess(name + " does not play " + mud_name() + ".\n");
-      return 0;
-   }
-   if (club_list(this_player()->query_name(),
-                 0,
-                 (: check_member_func($1, $2, $(name)) :))) {
-      return 1;
-   }
-   add_failed_mess("Could not find any clubs with " + name +
-                   " as a member.\n");
+int is_allowed(string name) {
+  if((query_owner() && (lower_case(name) == lower_case(query_owner()))) ||
+     (member_array(lower_case(name), query_allowed()) != -1) ||
+     PLAYER_HANDLER->test_creator(name)) {
+    return 1;
+  }
    return 0;
 }
-private void finish_announcement(string str, string name) {
-   if (!str) {
-      write("Aborting.\n");
+void dest_me() {
+#ifdef NOT_USED
+  if (base_name(this_object()) + ".c" != __FILE__)
+    update_doors();
+#endif
+  ::dest_me();
+}
+void event_open(object door, object opener) {
+#ifdef DEBUG2
+  debug_log("door opened by %s [%d]", opener->query_name(), done_setup);
+#endif
+  if(done_setup) {
+    ::event_open(door, opener);
+    update_doors();
+  }
+}
+void event_close(object door, object closer) {
+#ifdef DEBUG2
+    debug_log("door closed by %s [%d]", closer->query_name(), done_setup);
+#endif
+  if(done_setup) {
+    ::event_close(door, closer);
+    update_doors();
+  }
+}
+void event_unlock(object door, object unlocker) {
+#ifdef DEBUG2
+  debug_log("door unlocked by %s [%d]",
+            unlocker?unlocker->query_name():"noone", done_setup);
+#endif
+  if(done_setup) {
+    ::event_unlock(door, unlocker);
+    update_doors();
+  }
+}
+void event_lock(object door, object locker) {
+#ifdef DEBUG2
+  debug_log("door locked by %s [%d]", locker?locker->query_name():"noone",
+            done_setup);
+#endif
+  if(done_setup) {
+    ::event_lock(door, locker);
+    update_doors();
+  }
+}
+
+==================================================
+FILE: room/inherit/punishment_inherit.c
+==================================================
+
+#define NOMIC_SYSTEM_CASE_CLASSES
+#include <nomic_system.h>
+#include <nroff.h>
+private nosave string _short;
+private nosave string _mail_information;
+private nosave string _desc_file;
+void create() {
+   _mail_information = "";
+   this_object()->setup();
+}
+void set_short(string short) {
+   _short = short;
+}
+void set_description_file(string str) {
+   _desc_file = str;
+}
+string query_description_file() {
+   return _desc_file;
+}
+void set_mail_information(string mail) {
+   _mail_information = mail;
+}
+string query_short(string area, class nomic_case the_case, string type, mixed data) {
+   return _short;
+}
+string query_description(string area, string type) {
+   string str;
+   if (_desc_file) {
+      str = unguarded( (: NROFF_HAND->cat_file(_desc_file+"_nroff", 1) :) );
+      if (!str) {
+         unguarded( (: NROFF_HAND->create_nroff(_desc_file, _desc_file+"_nroff") :) );
+         str = unguarded( (: NROFF_HAND->cat_file(_desc_file+"_nroff", 1) :) );
+      }
+      if (str) {
+         return str;
+      }
+   }
+   return "Nothing particularly special.\n";
+}
+void start_punishment(string area, class nomic_case the_case, string type, function finish) {
+   evaluate(finish, the_case, type, 0);
+}
+void complete_punishement(string area, class nomic_case the_case, string type, mixed data) {
+   return ;
+}
+void suspend_punishment(string area, class nomic_case the_case, string type, mixed data) {
+   return ;
+}
+string query_mail_information(string area, class nomic_case the_case,
+                              string type, mixed data) {
+   return _mail_information;
+}
+
+==================================================
+FILE: room/inherit/room_rental.c
+==================================================
+
+#include <room/room_rental.h>
+string *query_exits();
+int check_entry( object player_ob, object room_ob ) {
+  return ROOM_RENTAL_HANDLER->check_tenant( player_ob, room_ob );
+}
+string query_costume_mess( object costume ) {
+  return "The imp takes the " + costume->query_short() + ".\n";
+}
+void evict_tenant( object* tenants ) {
+  string exit = query_exits()[0];
+  foreach (object person in tenants) {
+     tell_object( person, "You hear the soft tinkling of a bell.  As the "
+               "sound resounds throughout the room it shatters your "
+               "illusions.  A small imp hurries into the room and gently but "
+               "firmly propels you outside the door.\n" );
+  }
+  tenants->move_with_look( exit, "$N appears from $F as though he's been "
+                                "pushed in rather abruptly.\n" );
+}
+void event_exit( object ob, string message, object to ) {
+  object *costumes;
+  costumes = filter( deep_inventory( ob ),
+                     (: $1->query_property( "costume" ) :) );
+  foreach( object costume in costumes )
+    costume->move( "/room/rubbish", query_costume_mess( costume ) );
+}
+
+==================================================
+FILE: room/inherit/room_rental_office.c
+==================================================
+
+#include <money.h>
+#include <room/room_rental.h>
+private string _location;
+private string _domain;
+int do_rental( string room );
+int add_room( string room, int cost );
+int delete_room( string room );
+int clear_rooms();
+void set_domain( string dom ) {
+  _domain = dom;
+}
+string query_domain() {
+  return _domain;
+}
+void set_location( string loc ) {
+  _location = loc;
+}
+string query_location() {
+  return _location;
+}
+void create() {
+  set_location( "default" );
+  set_domain( "default" );
+}
+void init() {
+  add_command( "list", "[rooms]" );
+  add_command( "rent", "<string'room'>",
+               (: do_rental( $4[0] ) :) );
+  if ( this_player()->query_creator() ) {
+    add_command( "add", "<string> for <number>",
+                 (: add_room( $4[0], $4[1] ) :) );
+    add_command( "remove", "<string>", (: delete_room( $4[0] ) :) );
+  }
+}
+string query_list() {
+   string room;
+   string list = "";
+   string tenant;
+   object room_ob;
+   object office_ob = this_object();
+   tell_creator( "goldenthread", "getting list for %s ( %O )\n",
+                 office_ob->short(), office_ob );
+   foreach( room in ROOM_RENTAL_HANDLER->query_rooms_to_rent( office_ob ) ) {
+      tenant = ROOM_RENTAL_HANDLER->query_who_rents( room, office_ob );
+      tell_creator( "goldenthread", "found %s\n", room );
+      if ( room_ob = load_object( room ) ) {
+         list += room_ob->query_short();
+         if ( tenant != "nobody" )
+            list += " (rented by " + tenant + ")\n";
+         else
+            list += " (available for " + MONEY_HAND->money_value_string(
+               to_int( ROOM_RENTAL_HANDLER->query_rental_value( room ) ),
+               _domain ) + ")\n";
+      }
+   }
+   if ( list != "")
+      list = "/global/events"->convert_message(list) + "\n";
+   else
+      list = "There are no rooms available here.\n";
+   return list;
+}
+int do_list() {
+  string list = "Here are the rooms available to rent in " + _location
+                + ":\n\n";
+  this_player()->add_succeeded_mess( this_object(), "$N ask$s for a list "
+                                     "of available rooms.\n", ({ }) );
+  list += query_list();
+  tell_object( this_player(), list );
+  return 1;
+}
+int add_room( string room, int cost ) {
+  if ( ROOM_RENTAL_HANDLER->add_room( room, cost, this_object() ) ) {
+    this_player()->add_succeeded_mess( this_object(),
+                   ({ "$N $V a room.\n", "" }), ({ }) );
+    return 1;
+  }
+  this_player()->add_failed_mess( this_object(),
+                                  "That room cannot be added.\n", ({ }) );
+  return 0;
+}
+int delete_room( string room ) {
+  if( ROOM_RENTAL_HANDLER->delete_room( room, this_object() ) ) {
+    this_player()->add_succeeded_mess( this_object(),
+                   ({ "$N $V a room.\n", "" }), ({ }) );
+    return 1;
+  }
+  return 0;
+}
+int clear_rooms() {
+  if( ROOM_RENTAL_HANDLER->clear_rooms( this_object() ) ) {
+    this_player()->add_succeeded_mess( this_object(),
+                   ({ "$N $V the list of rooms.\n", "" }), ({ }) );
+    return 1;
+  }
+  return 0;
+}
+int do_rental( string room ) {
+  object ob = this_player();
+  int ret = ROOM_RENTAL_HANDLER->do_rental( ob, room, this_object() );
+  switch( ret ) {
+    case RENTAL_SUCCESS:
+      ob->pay_money( MONEY_HAND->create_money_array(
+          ROOM_RENTAL_HANDLER->query_rental_value( room ), query_domain() ),
+          query_domain() );
+      ob->add_succeeded_mess( this_object(), ({ "$N $V a room.\n", "" }),
+                              ({ }) );
+      return 1;
+    case RENTAL_NO_SUCH_ROOM:
+      ob->add_failed_mess( this_object(), "There is no such room here.\n",
+                           ({ }) );
+      return 0;
+    case RENTAL_ALREADY_RENTED:
+      ob->add_failed_mess( this_object(), "The room has already been rented.\n",
+                           ({ }) );
+      return 0;
+    case RENTAL_NO_MONEY:
+      ob->add_failed_mess( this_object(), "You don't have enough money for "
+                           "that.\n", ({ }) );
+      return 0;
+    default:
+      ob->add_failed_mess( this_object(), "Something has gone wrong.  Please "
+                           "contact a creator.\n", ({ }) );
+      return 0;
+  }
+}
+void init_dynamic_arg( mapping map, object ob ) {
+   _domain = map[ "domain" ];
+   _location = map[ "location" ];
+}
+mapping query_dynamic_auto_load( void ) {
+   return ([ "domain" : _domain,
+           "location" : _location, ]);
+}
+
+==================================================
+FILE: room/inherit/room_save.c
+==================================================
+
+#include <move_failures.h>
+#include <player.h>
+inherit "/global/auto_load";
+#define SAVE_TIME 10
+#if 0
+#undef AUTO_LOAD_OB
+#define AUTO_LOAD_OB "/global/auto_load_debug"
+#endif
+varargs void set_save_file( string file, object thing );
+varargs void do_load(object thing);
+mapping query_dynamic_auto_load();
+void init_dynamic_arg(mapping bing);
+private mapping details;
+private nosave string _save_file, _ram_file;
+private nosave object _effects;
+private nosave int _inventory_loaded;
+private nosave int _last_saved;
+private nosave int _door_opened, _door_unlocked;
+#ifdef DEBUG_SAVE
+void debug_log(string fmt, mixed args ...) {
+    debug_printf(fmt + "\n", args ...);
+#ifdef DISABLED
+  if(base_name(this_object()) == "/d/cwc/Bes_Pelargic/Shoo_Li/roads/pang_ho_street/housing/03flat") {
+    log_file("HOUSING_DEBUG", "%s (%s): " + fmt + "\n",
+             ctime(time())[4..18], base_name(this_object()), args ...);
+  }
+#endif
+}
+#endif
+void create() {
+   _save_file = "";
+   details = ([ ]);
+   _last_saved = time();
+}
+void set_save_file( string file) {
+#ifdef USE_RAMDISK
+  string *bits, fname;
+  int i;
+#endif
+  _save_file = file;
+#ifdef USE_RAMDISK
+  if(strsrch(_save_file, "/save/player_housing") != -1) {
+    _ram_file = replace_string(_save_file, "/save/player_housing",
+                               "/save/ramdisk/player_housing");
+    fname = "";
+    bits = explode(_ram_file, "/");
+    for(i=0; i<sizeof(bits)-1; i++) {
+      fname += "/" + bits[i];
+      if(file_size(fname) == -1) {
+        debug_printf("Creating %s", fname);
+        mkdir(fname);
+      }
+    }
+  }
+#endif
+  do_load();
+}
+int test_save(object ob) { return 1; }
+string query_save_file() {
+   return _save_file;
+}
+void event_save(object thing) {
+  if(!thing || !_inventory_loaded || !_save_file || _save_file == "") {
+    if(find_call_out("do_save") != -1)
+      remove_call_out("do_save");
+    return;
+  }
+  if(thing == this_object() || base_name(thing) == "/std/room/basic/door" ||
+     test_save(thing)) {
+    if (find_call_out("do_save") == -1)
+      call_out("do_save", SAVE_TIME);
+  }
+}
+void door_action() {
+  if(_door_opened || _door_unlocked) {
+    event_save(this_object());
+#ifdef DEBUG_SAVE
+    debug_log("saving opened %d unlocked %d", _door_opened,
+        _door_unlocked);
+  } else {
+    debug_log("not saving %s door has returned "
+        "to original state.\n", base_name(this_object()));
+#endif
+  }
+  _door_opened = 0;
+  _door_unlocked = 0;
+}
+void event_open(object door, object opener) {
+  _door_opened++;
+  if(find_call_out("door_action") != -1)
+    remove_call_out("door_action");
+  call_out("door_action", 5);
+}
+void event_close(object door, object closer) {
+  _door_opened--;
+  if(find_call_out("door_action") != -1)
+    remove_call_out("door_action");
+  call_out("door_action", 5);
+}
+void event_unlock(object door, object unlocker) {
+  debug_printf("Event unlock called %O", door);
+  _door_unlocked++;
+  if(find_call_out("door_action") != -1)
+    remove_call_out("door_action");
+  call_out("door_action", 5);
+}
+void event_lock(object door, object locker) {
+  debug_printf("Event lock called %O", door);
+  _door_unlocked--;
+  if(find_call_out("door_action") != -1)
+    remove_call_out("door_action");
+  call_out("door_action", 5);
+}
+void do_save() {
+  int saved;
+#ifdef DEBUG_SAVE
+  object ob;
+#endif
+  remove_call_out("do_save");
+  if(!_save_file || _save_file == "") {
+#ifdef DEBUG_SAVE
+    log_file("ROOM_SAVE", "%s no save file for %s\n", ctime(time())[4..18],
+             base_name(this_object()));
+#endif
+    return;
+  }
+  details = ([ ]);
+  details = query_dynamic_auto_load();
+#ifdef USE_RAMDISK
+  if(_ram_file)
+    saved = unguarded((: save_object, _ram_file, 3 :));
+  else
+#endif
+    saved = unguarded((: save_object, _save_file, 3 :));
+#ifdef DEBUG_SAVE
+  if (saved) {
+    log_file("HOUSING_DEBUG",
+             "%s %s saved.\n", ctime(time())[4..18],
+             base_name(this_object()));
+  } else {
+    log_file("HOUSING_DEBUG",
+             "%s %s failed to save.\n", ctime(time())[4..18],
+             base_name(this_object()));
+  }
+#endif
+#ifdef DEBUG_INVENTORY
+  foreach(ob in all_inventory(this_object())) {
+    if(test_save(ob))
+      log_file(base_name(this_object()) + ".log",
+               "%s %s contained %d items.\n", ctime(time())[4..18],
+               ob->query_short(), sizeof(deep_inventory(ob)));
+  }
+#endif
+  _last_saved = time();
+}
+void do_load( object thing ) {
+  mapping tmp;
+  string fname;
+  if(_save_file) {
+    if(_ram_file &&
+       (file_size(_ram_file + ".o.gz") > 0 || file_size(_ram_file + ".o") > 0))
+      fname = _ram_file;
+    else
+      fname = _save_file;
+    if(file_size(fname + ".o.gz") > 0 || file_size(fname + ".o") > 0) {
+      tmp = this_object()->query_properties();
+      unguarded((: restore_object, fname :));
+      this_object()->set_properties(tmp);
+      if ( sizeof( details ) ) {
+        init_dynamic_arg( details );
+      } else {
+        _inventory_loaded = 1;
+      }
+    } else {
+      _inventory_loaded = 1;
+    }
+  }
+  _last_saved = time();
+  remove_call_out("do_save");
+  remove_call_out("door_action");
+  _door_opened = 0;
+  _door_unlocked = 0;
+}
+int test_remove(object thing, int flag, mixed dest) {
+  if(test_save(thing))
+    event(this_object(), "save", thing);
+  return 1;
+}
+int test_add( object ob, int flag) {
+  if(!query_auto_loading() && test_save(ob))
+    event(this_object(), "save", ob);
+  return 1;
+}
+int query_prevent_insert() { return 1; }
+mapping query_dynamic_auto_load() {
+  mapping map;
+  string *obs;
+  map = ([ ]);
+#ifdef DISABLED
+  if ( _effects ) {
+    if ( sizeof( (mixed *)_effects->query_effs() ) ) {
+      _effects->effect_freeze();
+      _effects->effects_saving();
+      map += ([
+               "effects" : ({
+                 (mixed *)_effects->query_effs(),
+                 (int *)_effects->query_eeq()
+               })
+      ]);
+      _effects->effect_unfreeze();
+    }
+  }
+#endif
+  obs = filter(all_inventory(this_object()), "test_save");
+  catch(obs = AUTO_LOAD_OB->create_auto_load( obs, 0 ) );
+  map["inv"] = obs;
+  return map;
+}
+private int move_to_dest(object ob) {
+   if (base_name(ob) == PLAYER_RECEIPT) {
+      ob->reset_get();
+   }
+   return ob->move(this_object());
+}
+void init_dynamic_arg( mapping bing ) {
+#ifdef DEBUG_INVENTORY
+  object ob;
+  log_file(base_name(this_object()) + ".log",
+           "%s Loading.\n", ctime(time())[4..18]);
+#endif
+  if ( !mapp( bing ) ) {
+#ifdef DEBUG_INVENTORY
+  log_file(base_name(this_object()) + ".log",
+           "%s no mapping to load.\n", ctime(time())[4..18]);
+#endif
+    return;
+  }
+  if ( bing[ "effects" ] ) {
+    _effects->set_effs( bing[ "effects" ][ 0 ] );
+    _effects->set_eeq( bing[ "effects" ][ 1 ] );
+    if ( environment() && shadow( this_object(), 0 ) )
+       move_object( environment() );
+    _effects->init_after_save();
+  }
+#ifdef DEBUG_INVENTORY
+  log_file(base_name(this_object()) + ".log",
+           "%s done effects.\n", ctime(time())[4..18]);
+#endif
+  if ( bing[ "inv" ] && !_inventory_loaded) {
+#ifdef DEBUG_INVENTORY
+  log_file(base_name(this_object()) + ".log",
+           "%s starting inventory.\n", ctime(time())[4..18]);
+#endif
+    AUTO_LOAD_OB->load_auto_load_to_inventory( bing["inv"], this_object(),
+                                               this_player(),
+                                               (: move_to_dest($1) :) );
+    _inventory_loaded = 1;
+  } else {
+#ifdef DEBUG_INVENTORY
+  log_file(base_name(this_object()) + ".log",
+           "%s inventory_loaded already set.\n", ctime(time())[4..18]);
+#endif
+  }
+#ifdef DEBUG_INVENTORY
+  log_file(base_name(this_object()) + ".log",
+           "%s done inventory.\n", ctime(time())[4..18]);
+  foreach(ob in all_inventory(this_object())) {
+    if(test_save(ob))
+      log_file(base_name(this_object()) + ".log",
+               "%s %s contains %d items.\n", ctime(time())[4..18],
+               ob->query_short(), sizeof(deep_inventory(ob)));
+  }
+  if(!sizeof(all_inventory(this_object())))
+    log_file(base_name(this_object()) + ".log",
+             "%s room has no inventory.\n", ctime(time())[4..18]);
+#endif
+}
+void check_euid() {
+  if ( previous_object() ) {
+    seteuid( geteuid( previous_object() ) );
+  }
+}
+int query_keep_room_loaded() { return 1; }
+void dest_me() {
+  if(find_call_out("do_save") != -1)
+    do_save();
+}
+int query_inventory_loaded() { return _inventory_loaded; }
+
+==================================================
+FILE: room/inherit/scripting.c
+==================================================
+
+#include <expressions.h>
+#include "nroff.h";
+inherit "/std/basic/expressions";
+#define SCRIPTING_WAIT_COMMAND  1
+#define SCRIPTING_COMMAND       2
+#define SCRIPTING_EXPRESSION    3
+#define SCRIPTING_GOTO          4
+#define SCRIPTING_TRIGGER_EVENT 5
+class script_data {
+   int type;
+   string actor;
+   string str;
+   class parse_node* expr;
+   int number;
+}
+class script {
+   string* valid_actors;
+   class script_data* data;
+   int priority;
+}
+class running_script {
+   class script script;
+   int position;
+   object who;
+   string who_name;
+   string who_short;
+   int run_priority;
+}
+private mapping _script_data;
+private nosave int _callout_tag;
+private nosave class running_script* _running_scripts;
+object find_npc( string what );
+int is_allowed( string name );
+void event_save( object ob );
+class script query_script( string name ){
+   return _script_data[name];
+}
+private void add_running_script(class running_script script) {
+   if (!sizeof(_running_scripts)) {
+      _running_scripts += ({ script });
       return ;
    }
-   if (CLUB_HANDLER->set_announcement(name,
-                                      str)) {
-      write("Added the announcement to the club " +
-            CLUB_HANDLER->query_club_name(name) +
-            ".\n");
+}
+void trigger_script( string event, object who, int override ){
+   int i;
+   class script this_script;
+   class running_script running;
+   this_script = query_script( event );
+   if (!this_script || !objectp(who)) {
+      return;
+   }
+   running = new(class running_script);
+   running->script = this_script;
+   running->who = who;
+   running->position = 0;
+   running->who_name = who->query_name();
+   running->who_short = who->the_short();
+   if (undefinedp(override)) {
+      running->run_priority = this_script->priority;
    } else {
-      write("Unable to add the announcement to the club " +
-            CLUB_HANDLER->query_club_name(name) +
-            " for some reason.\n");
+      running->run_priority = override;
+   }
+   add_running_script(running);
+}
+void repeat_loop() {
+   object npc;
+   class script_data data;
+   string str;
+   class parse_node node;
+   if (!sizeof( _running_scripts ) ) {
+      return;
+   }
+   if (_running_scripts[0]->position >= sizeof(_running_scripts[0]->script)) {
+      _running_scripts = _running_scripts[1..];
+      if (!sizeof( _running_scripts ) ) {
+         return;
+      }
+   }
+   data = _running_scripts[0]->script->data[_running_scripts[0]->position];
+   _running_scripts[0]->position++;
+   _callout_tag = call_out( "repeat_loop", 2);
+   switch ( data->type) {
+   case SCRIPTING_WAIT_COMMAND :
+      remove_call_out(_callout_tag);
+      _callout_tag = call_out( "repeat_loop",  data->number);
+      return;
+   case SCRIPTING_COMMAND :
+      npc = find_npc( data->actor );
+      if( !npc ){
+         repeat_loop();
+         return;
+      }
+      npc->do_command( data->str );
+      break;
+   case SCRIPTING_EXPRESSION :
+      node = evaluate_expresion(data->expr);
+      if (node->type == EXPRESSION_TYPE_STRING) {
+         npc = find_npc( data->actor );
+         if (!npc) {
+            repeat_loop();
+            return ;
+         }
+         npc->do_command( data-> str );
+      }
+      break;
+   case SCRIPTING_GOTO :
+      _running_script[0]->position = data->number;
+      break;
+   case SCRIPTING_TRIGGER_EVENT :
+      trigger_script(data->name, _running_script[0]->npc,
+                     _running_script[0]->run_priority | PRIORITY_FRONT);
+      break;
+   }
+   call_out("repeat_loop");
+}
+void set_script(string name, class script script) {
+   _script_data[name] = script;
+   event_save(this_object());
+}
+void set_script_data(string name, class script_data* data) {
+   if (_script_data[name]) {
+      _script_data[name]->data = data;
+      event_save(this_object());
    }
 }
-protected int do_announcement(string name) {
-   if (!CLUB_HANDLER->is_elected_club(name)) {
-      add_failed_mess("The club must be an elected club for an announcement "
-                      "to be set.\n");
-      return 0;
+void set_script_actors(string name, string* actors) {
+   if (_script_data[name]) {
+      _script_data[name]->actors = actors;
+      event_save(this_object());
    }
-   if (!CLUB_HANDLER->is_president_of(name, this_player()->query_name()) &&
-       !CLUB_HANDLER->is_secretary_of(name, this_player()->query_name())) {
-      add_failed_mess("Only the president and secretary can set an "
-                      "announcement.\n");
-      return 0;
+}
+int set_script_data_location(string name, int pos, class script_data data) {
+   if (_script_data[name] &&
+       pos >= 0 && pos < sizeof(_script_data[name]->data)) {
+      _script_data[name]->data[pos] = data;
+      event_save(this_object());
+      return 1;
    }
-   write("What announcement do you wish to set?\n");
-   this_player()->do_edit(0,
-                          (: finish_announcement :),
-                          0,
-                          0,
-                          name);
+   return 0;
+}
+int delete_script_data_location(string name, int pos) {
+   if (_script_data[name] &&
+       pos >= 0 && pos < sizeof(_script_data[name]->data)) {
+      _script_data[name]->data = _script_data[name]->data[0..pos-1] +
+                                 _script_data[name]->data[pos+1..];
+      event_save(this_object());
+      return 1;
+   }
+   return 0;
+}
+int insert_script_data_before(string name, int pos, class script_data data) {
+   if (_script_data[name]) {
+      _script_data[name]->data = _script_data[name]->data[0..pos-1] +
+                                 ({ data }) +
+                                 _script_data[name]->data[pos..];
+      event_save(this_object());
+      return 1;
+   }
+   return 0;
+}
+void menu_prompt(string name, class* script) {
+   tell_object( this_player(), "Enter the name of the person who should "
+      "perform an action ( or another command such as \"wait\" ).\n" );
+   print_commands();
+   input_to( "menu_input", 0, name, script );
+}
+private int query_pos_from_string(string str) {
+   if (bits[2] == "begining") {
+      return 0;
+   } else if (bits[2] == "end") {
+      return sizeof(script->data);
+   } else {
+      pos = to_int(bits[2]);
+   }
+   if (pos < 0 || pos > sizeof(script->data)) {
+      return -1;
+   }
+   return pos;
+}
+void menu_input( string input, string name, class script script ){
+   string* bits;
+   bits = explode(lower_case(input), " ");
+   switch (lower_case(bits[0])) {
+   case "h" :
+   case "help" :
+      show_help();
+      break;
+   case "s" :
+   case "save" :
+      set_script(name, script);
+      break;
+   case "q" :
+   case "quit" :
+      write("Are you sure you want to quit and "
+         "lose the current script?\n" );
+      input_to( "check_quit", 0, name, script );
+      return ;
+   case "l" :
+   case "list" :
+      write(query_script_string(script));
+      break;
+   case "a" :
+   case "add" :
+      if (sizeof(bits) != 3) {
+         write("Syntax: add <person> <pos|end|begining>\n");
+      } else if (lower_case(bits[1]) != "wait" &&
+                 member_array(bits[1], script->actors) == -1) {
+         write("The actor must be one of " +
+               query_multiple_short(script->actors)  + " not " +
+               bits[1] + ".\n");
+      } else {
+         pos = query_pos_from_string(bits[2]);
+         if (pos != -1) {
+            write("Which command do you want to execute for " + bits[1] +
+                  "?\n: ");
+            input_to("enter_command", 0, name, script, bits[1], pos);
+         } else {
+            write("The position must be in the range 0.." +
+                  sizeof(script->data) + " or 'begining' or 'end'.\n");
+         }
+      }
+      break;
+   case "d" :
+   case "delete" :
+      if (sizeof(bits) != 2) {
+         write("Syntax: delete <pos|end|begining>\n");
+      } else {
+         pos = query_pos_from_string(bits[2]);
+         if (pos != -1) {
+         } else {
+            write("The position must be in the range 0.." +
+                  sizeof(script->data) + " or 'begining' or 'end'.\n");
+         }
+      }
+      break;
+   default :
+      write("Invalid command " + bits[1] + ".\n");
+   }
+   menu_prompt(name, script);
+}
+protected void enter_command( string input, string name, class script script ) {
+   if( _temp_script->script[sizeof( _temp_script->script ) - 1] == "wait" ){
+      if( !to_int(input) ){
+         tell_object( this_player(), "%^BOLD%^For the wait command you "
+            "must enter a whole value for the number of seconds "
+            "to wait%^RESET%^.\n" );
+         prompt_command();
+         return;
+      }
+   }
+   _temp_script->script = _temp_script->script + ({input});
+   tell_object( this_player(), "Enter the name of the person who should "
+      "perform an action ( or another command such as \"wait\" ).\n" );
+   print_commands();
+   input_to( "input_name" );
+}
+void print_commands(){
+   tell_object( this_player(), "Command [ h for help ]:\n" );
+}
+void show_help(){
+   string str;
+   str = unguarded((: NROFF_HAND->cat_file("/doc/room/scripting_nroff", 1) :));
+   if(!str){
+     unguarded((: NROFF_HAND->create_nroff(PATH +"scripting_online_help",
+        PATH +"scripting_nroff") :));
+     str = unguarded((:NROFF_HAND->cat_file(PATH +"scripting_nroff", 0):));
+   }
+   write(str);
+}
+void query_quit( string input, string func ){
+   if( (input == "y") || (input == "yes") || (input == "Y") ){
+      write("Okay, quitting.\n" );
+   }else{
+      write("%^BOLD%^You did not enter \"y\" "
+         "or \"yes\" so you are not being quitted.%^RESET%^\n" );
+      call_other( this_object(), func );
+   }
+}
+void set_script(string name, class scripting* script) {
+   write("Saving current script and exiting.\n" );
+   _scripts[name] = script;
+   event_save( this_object() );
+}
+string query_script_string( class scripting* script ){
+   int i;
+   string str;
+   if( _temp_script->tag == "" ) {
+      return;
+   }
+   str = "\nScript name \""+ _temp_script->tag + ":\n\n";
+   for( i = 0; i < sizeof(_temp_script->script); i++ ){
+      str += _temp_script->script[i]->name +"  :  ";
+      str += _temp_script->script[i]->action +"\n";
+   }
+   str += "\n";
+   return str;
+}
+void query_delete( string input, int num ){
+   if( (input == "y") || (input == "yes") || (input == "Y") ){
+      tell_object( this_player(), "Okay, removing script.\n" );
+      if( sizeof(_script_data) == 1 ){
+         _script_data = ({});
+      }else if( sizeof(_script_data) == 2 ){
+         _script_data = ({_script_data[!num]});
+      }else{
+         if( !num ){
+            _script_data = _script_data[1..];
+         }else{
+            _script_data = _script_data[0..(num - 1)] +
+               _script_data[(num + 1)..];
+         }
+      }
+      event_save( this_object() );
+   }else{
+      tell_object( this_player(), "%^BOLD%^You did not enter \"y\" or "
+         "\"yes\" so the script will not be deleted.%^RESET%^\n" );
+   }
+   _temp_script->tag = "";
+   _temp_script->script = ({});
+}
+int get_index( mixed input ){
+   int i;
+   if( to_int( input ) ){
+      i = to_int( input );
+      if( i > sizeof(_script_data) ){
+         tell_object( this_player(), "Invalid option, quitting.\n" );
+         return -1;
+      }else{
+         return i - 1;
+      }
+   }else{
+      for( i = 0; i < sizeof(_script_data); i++ ){
+         if( _script_data[i]->tag == input ) return i;
+      }
+      tell_object( this_player(), "Invalid option, quitting.\n" );
+      return -1;
+   }
+}
+void edit_script( string input, int which ){
+   string *comm, command, text;
+   int line, i;
+   if( input == "" ){
+      input_to( "edit_script", 0, which );
+      tell_object( this_player(), "Command [ R(eplace), D(elete), "
+         "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+      return;
+   }
+   command = "";
+   line = -1;
+   text = "";
+   comm = explode( input, " " );
+   if( sizeof(comm) ) command = comm[0];
+   if( sizeof(comm) > 1) line = to_int(comm[1]) - 1;
+   if( sizeof(comm) > 2){
+      comm = comm[2..];
+      text = implode(comm, " ");
+   }
+   switch (command){
+      case "s" :
+      case "S" :
+         tell_object( this_player(), "Done editing script.\n" );
+         _script_data[which]->script = _temp_script->script;
+         return;
+      case "q" :
+      case "Q" :
+         tell_object( this_player(), "Quitting without saving changes.\n");
+         return;
+      case "v" :
+      case "V" :
+         for( i = 0; i < sizeof(_temp_script->script); i++ )
+            tell_object(this_player(),(i+1) +"  "+
+               _temp_script->script[i] +"\n");
+            input_to( "edit_script", 0, which );
+            tell_object( this_player(), "Command [ R(eplace), D(elete), "
+               "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+            return;
+      case "d" :
+      case "D" :
+         if( (line < 0) || ((line +1) > sizeof(_temp_script->script)) ){
+            tell_object( this_player(), "For this command you need to "
+               "enter a valid line number.\n" );
+            input_to( "edit_script", 0, which );
+            tell_object( this_player(), "Command [ R(eplace), D(elete), "
+               "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n");
+            return;
+         }
+         if( sizeof(_temp_script->script) == 1 ){
+            _temp_script->script = ({});
+         }else if( sizeof(_temp_script->script) == 2 ){
+            _temp_script->script = ({_temp_script->script[!line]});
+         }else{
+            _temp_script->script = _temp_script->script[0..(line-1)] +
+                _temp_script->script[line+1..];
+         }
+         tell_object( this_player(), "Line "+ (line+1) +" deleted.  "
+            "Please note that the line numbers for the rest of the "
+            "script may have been effected by this change.\n" );
+         input_to( "edit_script", 0, which );
+         tell_object( this_player(), "Command [ R(eplace), D(elete), "
+            "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+         return;
+      case "r" :
+      case "R" :
+         if( (line < 0) || ((line +1) > sizeof(_temp_script->script)) ){
+            tell_object( this_player(), "For this command you need to "
+               "enter a valid line number.\n" );
+            input_to( "edit_script", 0, which );
+            tell_object( this_player(), "Command [ R(eplace), D(elete), "
+               "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+            return;
+         }
+         tell_object( this_player(), "Replacing line "+ (line+1) +" with \""+
+            text +"\".\n" );
+         _temp_script->script[line] = text;
+         input_to( "edit_script", 0, which );
+         tell_object( this_player(), "Command [ R(eplace), D(elete), "
+            "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+         return;
+      case "i" :
+      case "I" :
+         if( (line < 0) || ((line +1) > sizeof(_temp_script->script)) ){
+            tell_object( this_player(), "For this command you need to "
+               "enter a valid line number.\n" );
+            input_to( "edit_script", 0, which );
+            tell_object( this_player(), "Command [ R(eplace), D(elete), "
+               "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+            return;
+         }
+         tell_object( this_player(), "Inserting \""+ text +"\" at line "+
+            (line+1) +".  Please note that the line numbers for the rest "
+            "of the script may have been effected by this change.\n" );
+         if( !line ){
+            _temp_script->script = ({text}) + _temp_script->script;
+         }else{
+            _temp_script->script = _temp_script->script[0..(line-1)] +
+               ({text}) + _temp_script->script[line..];
+         }
+         input_to( "edit_script", 0, which );
+         tell_object( this_player(), "Command [ R(eplace), D(elete), "
+            "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+         return;
+      default :
+         tell_object( this_player(),"%^BOLD%^Unknown command.\n%^RESET%^");
+         input_to( "edit_script", 0, which );
+         tell_object( this_player(), "Command [ R(eplace), D(elete), "
+            "I(nsert), V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+         return;
+   }
+}
+int do_add_script( string input ){
+   if( input == "" ){
+      tell_object( this_player(),
+         "You must enter a name for the script.\n" );
+      add_succeeded_mess( "" );
+      return 1;
+   }
+   if( return_script( input ) != ({}) ){
+      tell_object( this_player(), "%^BOLD%^There is already a script for \""+
+         input +"\", if you wish to keep the existing version then quit "
+         "now and start over, if you continue the new version will "
+         "replace the old one.%^RESET%^\n" );
+   }else{
+      tell_object( this_player(), "This script will be known as \""+
+         input +"\".\n" );
+   }
+   _temp_script = new(class fancy_hat, tag : input, script : ({}) );
+    tell_object( this_player(), "Enter the name of the person who should "
+      "perform an action, or another command such as \"wait\". eg\n\n"
+      "  \"mike\"\n"
+      "  \"thug1\"\n"
+      "  \"wait\"\n" );
+   print_commands();
+   input_to( "input_name" );
+   add_succeeded_mess( "$N begin$s to write a new script.\n" );
    return 1;
 }
-private int check_member_func(string club,
-                              string person,
-                              string mem) {
-   if (!CLUB_HANDLER->is_member_of(club, mem)) {
+int do_list_scripts(){
+   int i;
+   if( !sizeof(_script_data) ){
+      this_player()->add_failed_mess( this_object(),
+         "No scripts found.\n" );
       return 0;
    }
-   if (CLUB_HANDLER->query_club_secret(club) &&
-       !CLUB_HANDLER->is_member_of(club, person)) {
-      return 0;
-   }
+   tell_object(this_player(), sizeof(_script_data) +" scripts found:\n\n");
+   for( i = 0; i < sizeof(_script_data); i++ )
+      tell_object( this_player(), (i +1) +"  "+ _script_data[i]->tag +"\n");
+   add_succeeded_mess( "" );
    return 1;
 }
-protected int do_force_election(string name) {
-   if (!CLUB_HANDLER->is_elected_club(name)) {
-      add_failed_mess("The club must be elected for you to force an "
-                      "election in it.\n");
-      return 0;
+int do_view_script( mixed input ){
+   int num;
+   num = get_index( input );
+   if( num == -1 ){
+      add_succeeded_mess( "" );
+      return 1;
    }
-   if (!CLUB_HANDLER->is_president_of(name, this_player()->query_name())) {
-      add_failed_mess("You must be the president of the club to force an "
-                      "election.\n");
-      return 0;
+   if( undefinedp( _temp_script ) ){
+      _temp_script = new( class fancy_hat,
+      tag : _script_data[num]->tag, script : _script_data[num]->script );
+   }else{
+      _temp_script->tag = _script_data[num]->tag;
+      _temp_script->script = _script_data[num]->script;
    }
-   if (CLUB_HANDLER->is_election_in_progress(name) > time()) {
-      add_failed_mess("There is already an election in progress, you cannot "
-                      "start another one!\n");
-      return 0;
-   }
-   if (CLUB_HANDLER->query_minimum_next_election(name) > time()) {
-      add_failed_mess("It is too soon to force an election, that cannot "
-                      "be done until " +
-                       ctime(CLUB_HANDLER->query_minimum_next_election(name)) +
-                       ".\n");
-      return 0;
-   }
-   if (!CLUB_HANDLER->start_election(name)) {
-      add_failed_mess("Could not start the election for some reason.\n");
-      return 0;
-   }
-   add_succeeded_mess("$N start$s an election in " +
-                      CLUB_HANDLER->query_club_name(name) + ".\n");
+   view_script(1);
+   add_succeeded_mess( "" );
    return 1;
 }
+int do_test_script( mixed input ){
+   int num;
+   num = get_index( input );
+   if( num == -1 ){
+      add_succeeded_mess( "" );
+      return 1;
+   }
+   tell_object( this_player(), "Triggering event \""+
+      _script_data[num]->tag +"\".\n" );
+   trigger_thingy( _script_data[num]->tag, file_name( this_player()) );
+   add_succeeded_mess( "" );
+   return 1;
+}
+int do_delete_script( mixed input ){
+   int num;
+   num = get_index( input );
+   if( num == -1 ){
+      add_succeeded_mess( "" );
+      return 1;
+   }
+   if( undefinedp( _temp_script ) ){
+      _temp_script = new( class fancy_hat,
+      tag : _script_data[num]->tag, script : _script_data[num]->script );
+   }else{
+      _temp_script->tag = _script_data[num]->tag;
+      _temp_script->script = _script_data[num]->script;
+   }
+   tell_object( this_player(), "Are you sure that you want to "
+      "permanently remove the script \""+ _temp_script->tag +"\"?\n" );
+   input_to( "query_delete", 0, num );
+   add_succeeded_mess( "" );
+   return 1;
+}
+int do_edit_script( mixed input ){
+   int num, i;
+   num = get_index( input );
+   if( num == -1 ){
+      add_succeeded_mess( "" );
+      return 1;
+   }
+   if( undefinedp( _temp_script ) ){
+      _temp_script = new( class fancy_hat,
+      tag : _script_data[num]->tag, script : _script_data[num]->script );
+   }else{
+      _temp_script->tag = _script_data[num]->tag;
+      _temp_script->script = _script_data[num]->script;
+   }
+   tell_object( this_player(), "Editing script \""+ _temp_script->tag +
+      "\".\n\nThis is a complete listing of the script:\n" );
+   for( i = 0; i < sizeof(_temp_script->script); i++ ){
+      tell_object(this_player(),(i+1) +"  "+ _temp_script->script[i] +"\n");
+   }
+   tell_object( this_player(), "Command [ R(eplace), D(elete), I(nsert), "
+      "V(iew), S(ave), Q(uit) ]:\nEg \"R 13 rabbit\".\n" );
+   input_to( "edit_script", 0, num );
+   add_succeeded_mess( "" );
+   return 1;
+}
+void init(){
+   if( !is_allowed( this_player()->query_name() ) ) {
+      return;
+   }
+   add_command( "add",
+      "script <string'name'>", (: do_add_script( $4[0] ) :) );
+   add_command( "list", "scripts",
+      (: do_list_scripts() :) );
+   add_command( "view",
+      "script <string'name'>", (: do_view_script( $4[0] ) :) );
+   add_command( "view",
+      "script <number>", (: do_view_script( $4[0] ) :) );
+   add_command( "test",
+      "script <string'name'>", (: do_test_script( $4[0] ) :) );
+   add_command( "test", this_object(),
+      "script <number>", (: do_test_script( $4[0] ) :) );
+   add_command( "delete",
+      "script <string'name'>", (: do_delete_script( $4[0] ) :) );
+   add_command( "delete",
+      "script <number>", (: do_delete_script( $4[0] ) :) );
+   add_command( "edit",
+      "script <string'name'>", (: do_edit_script( $4[0] ) :) );
+   add_command( "edit",
+      "script <number>", (: do_edit_script( $4[0] ) :) );
+}
+
+==================================================
+FILE: room/inherit/terrain_map_room.c
+==================================================
+
+#include <room.h>
+#include <login_handler.h>
+private int     _x_coord = -1;
+private int     _y_coord = -1;
+private int     _installed = 0;
+private string  _extra_long = "";
+private object  _map_handler;
+private mapping _features = ([ ]);
+private string  _outside_types;
+string query_feature_item_desc(string title);
+int    do_gocoords(int x, int y);
+void add_extra_look(object ob);
+void setup_room_chat();
+object query_chatter();
+varargs void room_chat(mixed* args, object chatob);
+void add_item(mixed type, mixed desc);
+void remove_item(string name);
+mixed *query_coords() { return ({ _x_coord, _y_coord }); }
+void create()
+{
+   _x_coord = -1;
+   _y_coord = -1;
+}
+void setup_room() {
+   add_extra_look(this_object());
+   setup_room_chat();
+}
+void set_coords(int x, int y)
+{
+   _x_coord = x;
+   _y_coord = y;
+}
+void init()
+{
+   tell_creator(this_player(), "Coords: (%d, %d)\n", _x_coord, _y_coord);
+   if (this_player()->query_creator()) {
+      add_command("gocoords", "<number'x'> <number'y'>", (: do_gocoords($4[0], $4[1]) :));
+   }
+}
+object query_map_handler()
+{
+   return _map_handler;
+}
+int    do_gocoords(int x, int y)
+{
+   object   room = query_map_handler()->load_room_at(x, y);
+   string   msgin = this_player()->query_mmsgin();
+   string   msgout = this_player()->query_mmsgout();
+   if (!room) {
+     this_player()->add_failed_mess(this_object(),
+                           "No room at those coordinates.\n", ({ }));
+     return 0;
+   }
+   msgin = replace(msgin, ({ "$N", this_player()->a_short() }) );
+   msgout = replace(msgout, ({ "$N", this_player()->a_short() }) );
+   if (!this_player()->move_with_look(room, msgin, msgout))
+      add_succeeded_mess("Move attempt failed.\n");
+   return 1;
+}
+void reset_handler()
+{
+   if (query_map_handler())
+      query_map_handler()->reset_handler();
+}
+void receive_message(string mess_class, string message)
+{
+   string   *bits = explode(mess_class, ":");
+   mapping  feature;
+   int      range = -1;
+   if (bits[0] == "feature") {
+      feature = _features[bits[1]];
+      if (!feature)
+         return;
+      if (sizeof(bits) >= 3)
+         range = to_int(bits[2]);
+         if ((range >= 0) && (range != feature["range"]))
+            return;
+      message = replace(message, ({ "$D", feature["direc"] }));
+   }
+   tell_creator("dek", "receive_message\n");
+   tell_room(this_object(), message);
+}
+void do_a_feature_chat()
+{
+   string   *chats = ({ });
+   string   feature_chat;
+   string   title;
+   mapping  feature;
+   object   handler = query_map_handler();
+   foreach(title, feature in _features) {
+      feature_chat = handler->get_a_feature_chat(title, feature["range"],
+                                                        feature["direc"]);
+      if (feature_chat) {
+         chats += ({ feature_chat });
+      }
+   }
+   if (sizeof(chats)) {
+      tell_room(this_object(), chats[random(sizeof(chats))] + "\n");
+   }
+}
+void do_an_outside_chat()
+{
+   string chat = query_map_handler()->get_an_outside_chat(_outside_types);
+   if (chat && strlen(chat))
+      tell_room(this_object(), chat + "\n");
+}
+void set_map_handler(mixed handler)
+{
+   if (objectp(handler))
+      _map_handler = handler;
+   else
+      _map_handler = load_object(handler);
+}
+int can_view_feature(string type)
+{
+   return 1;
+}
+int can_exit_to(string type)
+{
+   return 1;
+}
+int can_enter_from(string type)
+{
+   return 1;
+}
+int do_outside_chats()
+{
+   return 1;
+}
+varargs void setup_room_chat(mixed *args, object chatobj)
+{
+   if (do_outside_chats() && !query_chatter()) {
+      room_chat(({ 60, 120, ({ "#do_a_feature_chat",
+                                  "#do_an_outside_chat" }) }) );
+   }
+   call_out("make_chat", 10);
+}
+void make_chat()
+{
+  if (query_chatter()) {
+     query_chatter()->make_chat();
+  }
+}
+mixed *query_to_same(string type) { return 0; }
+mixed *query_to_other(string type) { return 0; }
+mixed *query_from_other(string type) { return 0; }
+mixed *get_to_same(string from, string to, string type)
+{
+   mixed *result = query_to_same(type);
+   if (arrayp(result))
+      return map(result, (: replace($1, ({ "$T", $2, "$F", $3 }) ) :), to, from);
+   return 0;
+}
+mixed *get_to_other(string from, string to, string type)
+{
+   mixed *result = query_to_other(type);
+   if (arrayp(result))
+      return map(result, (: replace($1, ({ "$T", $2, "$F", $3 }) ) :), to, from);
+   return 0;
+}
+mixed *get_from_other(string from, string to, string type)
+{
+   mixed *result = query_from_other(type);
+   if (arrayp(result))
+      return map(result, (: replace($1, ({ "$T", $2, "$F", $3 }) ) :), to, from);
+   return 0;
+}
+void set_extra_long(string extra)
+{
+   _extra_long = extra;
+}
+void set_outside_types(string types)
+{
+   _outside_types = types;
+}
+string extra_look()
+{
+   string   result = _extra_long;
+   string   title;
+   mapping  feature;
+   foreach (title, feature in _features) {
+      result += query_map_handler()->query_feature_desc(title, feature["range"],
+                                    feature["direc"]) + "\n";
+   }
+   return result;
+}
+mixed query_room(string room_path)
+{
+   string   *bits = explode(room_path, ":");
+   object   room;
+   object   handler;
+   if (sizeof(bits) < 3)
+      return room_path;
+   room = load_object(bits[0]);
+   handler = room->query_map_handler();
+   return handler->query_room(room_path);
+}
+void add_feature(string title, string direc, int range, mixed items)
+{
+   _features[title] = (["direc":direc, "range":range, "items":items]);
+   add_item(items, (: query_feature_item_desc($(title)) :));
+}
+void remove_feature(string title)
+{
+   mapping  feature = _features[title];
+   mixed    items;
+   if (!feature)
+      return;
+   map_delete(_features, title);
+   items = feature["items"];
+   if (stringp(items))
+      remove_item(items);
+   else
+      remove_item(items[0]);
+}
+int query_feature_range(string title)
+{
+   mapping   feature = _features[title];
+   if (!feature)
+      return -1;
+   return feature["range"];
+}
+string query_feature_item_desc(string title)
+{
+   return query_map_handler()->query_feature_item_desc(title);
+}
+mapping query_features() { return _features; }
+void login_restore( string name, string l_event)
+{
+   object player;
+   string path = explode(file_name(this_object()), "#")[0];
+   int    *coords, x, y;
+   if (l_event != LOGIN)
+      return;
+   player = find_player(name);
+   if (!player)
+      return;
+   coords = player->query_property("area_map_coords");
+   player->remove_property("area_map_coords");
+   if (!coords)
+      return;
+   x = coords[0];
+   y = coords[1];
+   LOGIN_HANDLER->remove_static_login_call(name, "login_restore", path);
+   player->move(query_map_handler()->load_room_at(x, y));
+}
+void event_quit(object player)
+{
+   string name;
+   string path = explode(file_name(this_object()), "#")[0];
+   if (!player)
+      return;
+   if (!interactive(player))
+      return;
+   if ((_x_coord < 0) || (_y_coord < 0))
+      return;
+   name = player->query_name();
+   player->add_property("area_map_coords", query_coords());
+   LOGIN_HANDLER->add_static_login_call(name, "login_restore", path);
+}
+int query_installed() { return _installed; }
+void set_installed() { _installed = 1; }

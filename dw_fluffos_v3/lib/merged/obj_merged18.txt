@@ -1,1188 +1,2823 @@
-# Total Tokens: 10115
-# Total Files Merged: 3
-# Total Characters: 33724
+# Total Tokens: 21670
+# Total Files Merged: 5
+# Total Characters: 72249
 
-ney_handler.c
+aytesters.c
 ==================================================
 
-#include <money.h>
-#define DEF_VALUE 1
-#define SAVE_FILE "/save/money_handler"
-#define USE_VAULT DEF_VALUE
-mapping values;
-mapping symbols;
-mapping details;
-mapping aliases;
-mapping adjectives;
-mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2);
-varargs object *filter_legal_money_array(mixed *m_array, string where);
-varargs mixed *filter_legal_money_to_array(mixed *m_array, string where);
+#include <board.h>
+#include <project_management.h>
+#include <player_handler.h>
+#include <playtesters.h>
+#include <login.h>
+#define SAVE_FILE "/save/playtesters"
+#define LEVEL 150
+#define NORMAL_PLAYTESTER 1
+#define SENIOR_PLAYTESTER 2
+#define BUG_SKIP 10
+private int count = 0;
+private nosave int updating = 0;
+private string* months = ({});
+private mapping pts = ([]);
+private mapping playtesters = ([]);
+private mapping ages = ([]);
+private mapping guilds = ([]);
+private mapping bugs = ([]);
+private mapping leave = ([]);
+private mapping tmp_pts = ([ ]);
+private mapping _jump_points;
+private string *executives = ({ });
+int query_leave (string);
+void save_file() {
+    unguarded( (: save_object, SAVE_FILE :) );
+}
 void create() {
-   seteuid( (string)"/secure/master"->
-      creator_file( file_name( this_object() ) ) );
-   values = ([ "default": ({ "brass", 1, "copper", 10, "silver", 100,
-                                          "gold", 2000, "platinum", 6000 }) ]);
-   symbols = ([ ]);
-   details = ([
-      "brass": ({ "heads", "tails", "a head", "a tail", "brass", 0 }),
-      "copper": ({ "heads", "tails", "a head", "a tail", "copper", 0 }),
-      "silver": ({ "heads", "tails", "a head", "a tail", "silver", 0 }),
-      "gold": ({ "heads", "tails", "a head", "a tail", "gold", 0 }),
-      "platinum": ({ "heads", "tails", "a head", "a tail", "platinum", 0 }) ]);
-   aliases = ([ ]);
-   adjectives = ([ ]);
-   if ( file_size( SAVE_FILE +".o" ) > 0 ) {
-      unguarded((: restore_object, SAVE_FILE :));
-   }
-   if ( !symbols ) {
-      symbols = ([ ]);
-   }
-   if ( !aliases ) {
-      aliases = ([ ]);
-   }
-   if ( !adjectives ) {
-      adjectives = ([ ]);
-   }
+   seteuid( master()->creator_file( file_name( this_object() ) ) );
+   months = ({ });
+   pts = ([ ]);
+   ages = ([ ]);
+   guilds = ([ ]);
+   bugs = ([ ]);
+   playtesters = ([ ]);
+   leave = ([ ]);
+   tmp_pts = ([ ]);
+   _jump_points = ([ ]);
+   executives = ({ });
+   if ( file_size( SAVE_FILE + ".o" ) > 0 )
+      unguarded( (: restore_object, SAVE_FILE, 1 :) );
+   call_out( "reset", 2 );
 }
-void save_me() { unguarded( (: save_object, SAVE_FILE :) ); }
-mapping query_all_values() { return copy( values ); }
-string *query_all_places() {
-   return keys(values);
+string* query_playtesters() {
+    return copy( keys( pts ) );
 }
-mixed *query_values() { return copy( values[ "default" ] ); }
-mixed *query_values_in( string where ) {
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   return copy( values[ where ] );
+int query_playtester( string name ) {
+  return !undefinedp( pts[ name ] );
 }
-mixed *query_weighted_values_in( string where, int backwards ) {
-    mixed *bits;
-    int i, j;
-    int max_size;
-    int len;
-    mixed *arr, *reversed;
-    if ( !where || ( where == "" ) ) {
+int check_playtester( string ) {
+    log_file( "PLAYTESTERS", file_name( previous_object() ) + " using "
+              "deprecated check_playtester() call\n" );
+    return 0;
+}
+int query_tester( mixed person ) {
+    object ob;
+    string str;
+    if ( stringp( person ) ) {
+        ob = find_player( person );
+        if ( !ob ) {
+            return 0;
+        }
+        str = person;
+    } else if ( objectp( person ) ) {
+        ob = person;
+        str = person->query_name();
+    } else {
         return 0;
     }
-    bits = copy( values[ where ] );
-    arr = ({ });
-    max_size = 0;
-    for ( i = 0; i < sizeof( bits ); i += 2 ) {
-        len = sizeof( bits[ i ] );
-        if ( len > max_size ) {
-            arr += ({ bits[ i ], bits[ i + 1 ] });
-            max_size = len;
-            continue;
-        }
-        for ( j = 0; j < sizeof( arr ); j += 2 ) {
-            if ( len <= sizeof( arr[ j ] ) ) {
-                arr = arr[ 0..j-1] + ({ bits[ i ], bits[ i + 1 ] }) + arr[j..];
-                break;
-            }
-        }
+    return ( ob->query_creator() ||
+             ob->query_property( "test character" ) ||
+             query_playtester( str ) );
+}
+protected int get_age_raw( string name ) {
+    int fu = PLAYER_HANDLER->test_age( name );
+    if ( fu < 0 )
+        fu = -fu;
+    return fu;
+}
+int get_age_cached( string name ) {
+    if ( ages[ name ] < 0 )
+        ages[ name ] = -ages[ name ];
+    return ages[ name ];
+}
+int get_age_uncached( string name ) {
+    if ( find_player( name ) )
+        ages[ name ] = find_player( name )->query_time_on();
+    return get_age_cached( name );
+}
+int get_age_uncached_offline( string name ) {
+    ages[ name ] = get_age_raw( name );
+    return get_age_cached( name );
+}
+int query_senior_playtester( string name ) {
+    return ( pts[ name ] == SENIOR_PLAYTESTER );
+}
+int add_playtester( string name ) {
+    if ( pts[ name ] )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " added as a playtester by %s\n", this_player()->query_name() );
+    pts[ name ] = NORMAL_PLAYTESTER;
+    ages[ name ] = get_age_uncached_offline( name );
+    guilds[ name ] = PLAYER_HANDLER->test_guild( name );
+    bugs[ name ] = ([ ]);
+    if (tmp_pts[name]) {
+      if (tmp_pts[name] == SENIOR_PLAYTESTER) {
+        pts[name] = SENIOR_PLAYTESTER;
+      }
+      map_delete (tmp_pts, name);
     }
-    if ( backwards ) {
-        reversed = ({ });
-        for ( i = sizeof( arr ) - 1; i > 0; i -= 2) {
-            reversed += ({ arr[ i - 1 ], arr[ i ] });
-        }
-        return reversed;
+    PT_APPLICATION_HANDLER->delete_applicant (name);
+    save_file();
+    return 1;
+}
+int add_senior_playtester( string name ) {
+    if ( pts[ name ] != NORMAL_PLAYTESTER )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " promoted to senior playtester by %s\n",
+              this_player()->query_name() );
+    pts[ name ] = SENIOR_PLAYTESTER;
+    save_file();
+    return 1;
+}
+int remove_senior_playtester( string name, string reason ) {
+    if ( pts[ name ] != SENIOR_PLAYTESTER )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " demoted from senior playtester; Reason: " + reason +
+              " by "+ this_player()->query_name() + "\n" );
+    pts[ name ] = NORMAL_PLAYTESTER;
+    save_file();
+    return 1;
+}
+int remove_playtester( string name, string reason ) {
+    string str;
+    if ( !query_playtester( name ) )
+        return 0;
+    str = ctime( time() ) +": "+ name + " removed as a playtester";
+    if ( reason ) {
+        str += "; Reason: " + reason;
     }
-    else {
-       return arr;
+    str += " by "+ this_player()->query_name() + "\n" ;
+    log_file( "PLAYTESTERS", str + "\n" );
+    map_delete( pts, name );
+    map_delete( ages, name );
+    map_delete( guilds, name );
+    map_delete( bugs, name );
+    PROJECT_HANDLER->clear_playtesting_projects (({name }));
+    save_file();
+    return 1;
+}
+string reason_invalid_playtester(string name) {
+    if ( !PLAYER_HANDLER->test_user( name ) ) {
+        return "not a user";
     }
-}
-int query_smallest_value_in(string where) {
-   mixed* values;
-   int value;
-   int i;
-   if (! where) {
-      where = "default";
-   }
-   values = query_values_in(where);
-   value = values[1];
-   for (i = 2; i < sizeof(values); i += 2) {
-      if (values[i + 1] < value) {
-         value = values[i + 1];
-      }
-   }
-   return value;
-}
-void add_type( string where, string type, int value ) {
-   int i;
-   if ( !values[ where ] ) {
-      values[ where ] = ({ type, value });
-      save_me();
-      return;
-   }
-   if ( member_array( type, values[ where ] ) != -1 ) {
-      return;
-   }
-   for ( i = 0; i < sizeof( values[ where ] ); i += 2 ) {
-      if ( value < values[ where ][ i + 1 ] ) {
-         values[ where ] = values[ where ][ 0 .. i - 1 ] + ({ type, value })
-                           + values[ where ][ i .. sizeof( values ) ];
-         save_me();
-         return;
-      }
-   }
-   values[ where ] += ({ type, value });
-   save_me();
-}
-void remove_type( string where, string type ) {
-   int i;
-   if ( !values[ where ] ) {
-      return;
-   }
-   i = member_array( type, values[ where ] );
-   if ( i == -1 ) {
-      return;
-   }
-   values[ where ] = delete( values[ where ], i, 2 );
-   if ( !sizeof( values[ where ] ) ) {
-      map_delete( values, where );
-   }
-   save_me();
-}
-mapping query_details() { return copy( details ); }
-mixed *query_details_for( string word ) {
-   if ( !details[ word ] ) {
-      return ({ "heads", "tails", "a head", "a tail", "unknown", 0 });
-   }
-   return copy( details[ word ] );
-}
-void add_details( string word, string hd_sht, string tl_sht, string hd_lng,
-                  string tl_lng, mixed composition, string plural ) {
-   if ( details[ word ] ) {
-      return;
-   }
-   details[ word ] = ({ hd_sht, tl_sht, hd_lng, tl_lng, composition, plural });
-   save_me();
-}
-void remove_details( string word ) {
-   if ( !details[ word ] ) {
-      return;
-   }
-   map_delete( details, word );
-   save_me();
-}
-mapping query_symbols() { return copy( symbols ); }
-string query_symbol_for( string word ) {
-   if ( !symbols[ word ] ) {
-      return 0;
-   }
-   return copy( symbols[ word ] );
-}
-void add_symbol( string word, string symboliser ) {
-   if ( symbols[ word ] ) {
-      return;
-   }
-   symbols[ word ] = symboliser;
-   save_me();
-}
-void remove_symbol( string word ) {
-   if ( !symbols[ word ] ) {
-      return;
-   }
-   map_delete( symbols, word );
-   save_me();
-}
-string query_alias_for( string type ) {
-   log_file("OBSOLETE_CALLS",
-      sprintf("%O %s: %O called query_alias_for\n",
-         this_object(),
-         ctime(time()),
-         previous_object()
-         ));
-   if ( !details[ type ] ) return "coin";
-   if ( !details[ type ][ 5 ] ) return "coin";
-   return explode( type, " " )[ sizeof( explode( type, " " ) ) - 1 ];
-}
-void set_aliases_for(string type, string *words) {
-   if (!words || !sizeof(words)) {
-      if (aliases[type]) {
-         map_delete(aliases, type);
-      }
-   } else {
-      aliases[type] = words;
-   }
-   save_me();
-   return;
-}
-string *query_aliases_for( string type ) {
-   string *ret;
-   if ( !details[ type ] || !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      ret = ({ "coin" });
-   } else {
-      ret = ({ explode(type, " ")[<1] });
-   }
-   if ( aliases[ type ] ) {
-      ret += aliases[ type ];
-   }
-   return ret;
-}
-void set_adjectives_for(string type, string *words) {
-   if (!words || !sizeof(words)) {
-      if (adjectives[type]) {
-         map_delete(adjectives, type);
-      }
-   } else {
-      adjectives[type] = words;
-   }
-   save_me();
-   return;
-}
-string *query_adjectives_for( string type ) {
-   string *ret;
-   if ( adjectives[ type ] ) {
-      ret = adjectives[ type ];
-   }
-   else {
-      ret = ({ });
-   }
-   return ret;
-}
-string query_short_for( string type ) {
-   if ( !details[ type ] ) {
-      return type +" coin";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return type +" coin";
-   }
-   return type;
-}
-string query_plural_for( string type ) {
-   if ( !details[ type ] ) {
-      return "coins";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return "coins";
-   }
-   return details[ type ][ MONEY_DETAILS_PLURAL ];
-}
-void set_plural_for( string type, string plural ) {
-   if ( !details[ type ] ) {
-      return;
-   }
-   details[ type ][ MONEY_DETAILS_PLURAL ] = plural;
-   save_me();
-}
-string query_main_plural_for( string type ) {
-   string *type_exp;
-   if ( !details[ type ] ) {
-      return type +" coins";
-   }
-   if ( !details[ type ][ MONEY_DETAILS_PLURAL ] ) {
-      return type +" coins";
-   }
-   type_exp = explode(type, " ");
-   return implode(type_exp[0 .. <2] +
-      ({ details[ type ][ MONEY_DETAILS_PLURAL ] }), " " );
-}
-varargs int query_value( string type, string where ) {
-   int i, j, count, total;
-   string *places;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( where == "mean" ) {
-      places = m_indices( values );
-      for ( i = 0; i < sizeof( places ); i++ ) {
-         if ( ( j = member_array( type, values[ places[ i ] ] ) ) != -1 ) {
-            count++;
-            total += values[ places[ i ] ][ j + 1 ];
-         }
-      }
-      if ( !count ) {
-         return 0;
-      }
-      if ( !( total / count ) ) {
-         return 0;
-      }
-      return total / count;
-   }
-   if ( !values[ where ] ) {
-      return 0;
-   }
-   i = member_array( type, values[ where ] );
-   if ( i == -1 ) {
-      return 0;
-   }
-   return values[ where ][ i + 1 ];
-}
-varargs int query_total_value( mixed mon_array, string where ) {
-   int i, amt;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
-      amt += mon_array[ i + 1 ] * query_value( mon_array[ i ], where );
-   }
-   return amt;
-}
-string money_string( mixed mon_array ) {
-   int i;
-   string ret;
-   if ( !sizeof( mon_array ) ) {
-      return "nothing";
-   }
-   ret = "";
-   while( i < sizeof( mon_array ) ) {
-      if ( !mon_array[ i + 1 ] ) {
-         mon_array = delete( mon_array, i, 2 );
-      } else {
-         i += 2;
-      }
-   }
-   for ( i = 0; i < sizeof( mon_array ); i += 2 ) {
-      ret += mon_array[ i + 1 ] +" ";
-      if ( mon_array[ i + 1 ] == 1 ) {
-         ret += query_short_for( mon_array[ i ] );
-      } else {
-         ret += query_main_plural_for( mon_array[ i ] );
-      }
-      if ( i == sizeof( mon_array ) - 4 ) {
-         ret += " and ";
-      } else if ( i != sizeof( mon_array ) - 2 ) {
-         ret += ", ";
-      }
-   }
-   return ret;
-}
-varargs mixed *create_money_array( int value, string where ) {
-   int i, amt;
-   mixed *mon_array;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( !value ) {
-      return ({ });
-   }
-   mon_array = ({ });
-   for ( i = sizeof( values[ where ] ) - 2; i >= 0; i -= 2 ) {
-      if ( value >= values[ where ][ i + 1 ] ) {
-         mon_array += ({ values[ where ][ i ], amt = value /
-                         values[ where ][ i + 1 ] });
-         value -= amt * values[ where ][ i + 1];
-      }
-   }
-   return mon_array;
-}
-varargs string money_value_string( int value, string where ) {
-   string symboliser;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if ( !symbols[ where ] ) {
-      if (value < 0) {
-         return "negative " + money_string( create_money_array( -value,
-                                                                where ) );
-      } else {
-         return money_string( create_money_array( value, where ) );
-      }
-   }
-   symboliser = symbols[ where ];
-   return (string)symboliser->symbolise_value( value );
-}
-mixed* money_array_from_string(string str, string where) {
-   int value;
-   int number;
-   int i;
-   int pos;
-   int frog;
-   int match;
-   int max_match;
-   string plural;
-   string *bits;
-   string type;
-   string match_name;
-   mixed *stuff;
-   mixed* ret_arr;
-   if (!where) {
-      where = "default";
-   }
-   if (symbols[ where ]) {
-      value = symbols[ where ]->unsymbolise_string( str );
-      if (value) {
-         return create_money_array(value, where);
-      }
-   }
-   ret_arr = ({ });
-   stuff = query_weighted_values_in( where, 1 );
-   if (!value && stuff) {
-      bits = explode(str, " ") - ({ "and", ",", "" });
-      for (i = 0; i < sizeof(bits); i++) {
-         if (sscanf(bits[i], "%d", number) == 1 &&
-             i + 1 < sizeof(bits)) {
-            i++;
-            type = bits[i];
-            max_match = 0;
-            do {
-               match = 0;
-               if (type[<1] == ',') {
-                  type = type[0..<2];
-               }
-               type = lower_case(type);
-               for (pos = 0; pos < sizeof(stuff); pos += 2) {
-                  plural = query_plural_for(stuff[pos]);
-                  frog = strsrch(stuff[pos], " ", -1);
-                  if (frog) {
-                     plural = stuff[pos][0..frog] + plural;
-                  }
-                  if (lower_case(stuff[pos]) == type ||
-                      strsrch(lower_case(stuff[pos]), type) != -1 ||
-                      lower_case(plural) == type ||
-                      strsrch(lower_case(plural), type) != -1) {
-                     match = stuff[pos + 1];
-                     match_name = stuff[pos];
-                  }
-               }
-               if (match) {
-                  i++;
-                  max_match = match;
-                  if (i < sizeof(bits)) {
-                     type += " " + bits[i];
-                  }
-               }
-            } while (match && i < sizeof(bits));
-            if (max_match) {
-               ret_arr += ({ match_name, number });
-            }
-            i--;
-         } else {
-            i++;
-         }
-      }
-   }
-   return ret_arr;
-}
-int value_from_string(string str, string where) {
-   return query_total_value(money_array_from_string(str, where), where);
-}
-mixed *calc_change( int value, mixed *mon_array ) {
-   int i, num;
-   mixed *ret;
-   ret = ({ });
-   for ( i = sizeof( mon_array ) - 2; i >= 0; i -= 2 ) {
-      if ( value >= mon_array[ i + 1 ] ) {
-         num = value / mon_array[ i + 1 ];
-         value = value % mon_array[ i + 1 ];
-         ret += ({ mon_array[ i ], num });
-         if ( !value ) {
-            return ret;
-         }
-      }
-   }
-   return ret;
-}
-mixed *make_money_array_payment( string type,
-                                 int value,
-                                 mixed *mon_array,
-                                 string where,
-                                 int use_default) {
-   int i;
-   int j;
-   int num;
-   int total;
-   int cur_match;
-   string mon_name;
-   mixed *poss_values;
-   mixed *ret;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-   if (type) {
-      i = member_array( type, mon_array );
-      if ( i != -1 ) {
-         if ( value <= mon_array[ i + 1 ] ) {
-            mon_array[ i + 1] -= value;
-            return ({ ({ type, value }), 0, mon_array });
-         }
-      }
-      value *= query_value( type, where );
-   }
-   if (!value) {
-      return 0;
-   }
-   total = query_total_value( mon_array, where );
-   if (use_default  &&  where != "default") {
-      total += query_total_value( mon_array, "default" );
-   }
-   if ( value > total ) {
-      return 0;
-   }
-   poss_values = ({ });
-   if ( where != "default" && use_default ) {
-      poss_values += values[ "default" ];
-   }
-   poss_values += values[ where ];
-   ret = ({ });
-   for ( i = ( sizeof( poss_values ) - 2 ); i >= 0; i -= 2 ) {
-      j = member_array( poss_values[ i ], mon_array );
-      if ( j != - 1 ) {
-         if ( poss_values[ i + 1 ] <= value ) {
-            num = value / poss_values[ i + 1 ];
-            if ( num > mon_array[ j + 1 ] ) {
-               num = mon_array[ j + 1 ];
-            }
-            mon_array[ j + 1] -= num;
-            value -= num * poss_values[ i + 1 ];
-            ret += ({ poss_values[ i ], num });
-            if ( !value ) {
-               return ({ ret, value, mon_array });
-            }
-         }
-      }
-   }
-   cur_match = value + 10000000;
-   for (i = 0; i < sizeof(poss_values); i +=2 ) {
-      j = member_array( poss_values[ i ], mon_array);
-      if (j != -1 &&
-          mon_array[j + 1] > 0 &&
-          poss_values[i + 1] >= value &&
-          poss_values[i + 1] - value <= cur_match - value) {
-         cur_match = poss_values[i + 1];
-         mon_name = poss_values[i];
-      }
-   }
-   if (mon_name) {
-      j = member_array(mon_name, mon_array);
-      i = member_array(mon_name, poss_values);
-      mon_array[j + 1] -= 1;
-      value = poss_values[i + 1] - value;
-      ret += ({ poss_values[ i ], 1 });
-   } else {
-      return 0;
-   }
-   return ({ ret, value, mon_array });
-}
-varargs mixed *make_payment( string type, int value, object thing,
-                             string where ) {
-   mixed *mon_array;
-   mixed *stuff;
-   if (!type) {
-     return 0;
-   }
-   mon_array = copy(thing->query_money_array());
-   stuff = make_money_array_payment( type, value, mon_array, where, 1);
-   if (!stuff) {
-      return stuff;
-   }
-   if (stuff[MONEY_PAY_CHANGE]) {
-      return ({ stuff[MONEY_PAY_RETURN], calc_change(stuff[MONEY_PAY_CHANGE],
-                                                     values[where]) });
-   }
-   return ({ stuff[MONEY_PAY_RETURN], stuff[MONEY_PAY_CHANGE] });
-}
-varargs object pay_amount_from(int value, object money, string where) {
-   int i;
-   object change;
-   mixed *m_array, *p_array;
-   mixed *change_array;
-   mixed *pay_array;
-   if (!where || where == "") {
-      where = "default";
-   }
-   change_array = ({ });
-   pay_array = ({ });
-   m_array = create_money_array(value, where);
-   for (i = 0; i < sizeof(m_array); i += 2) {
-      p_array = make_payment(m_array[i], m_array[i + 1], money, where);
-      if (!pointerp(p_array)) {
-         continue;
-      }
-      if (sizeof(p_array[0]) > 0)
-         pay_array = merge_money_arrays(pay_array, p_array[0]);
-      if (sizeof(p_array[1]) > 0) {
-         change_array = merge_money_arrays(change_array, p_array[1]);
-      }
-   }
-   if (sizeof(pay_array) > 0)  {
-      for (i = 0; i < sizeof(pay_array); i += 2) {
-         pay_array[i + 1] = -pay_array[i + 1];
-      }
-      money->adjust_money(pay_array);
-   }
-   if (sizeof(change_array) == 0) {
-      return 0;
-   }
-#ifdef USE_VAULT
-   change = MONEY_VAULT->get_money_ob();
-   change->set_money_array(change_array);
-#else
-   change = clone_object(MONEY_OBJECT);
-#endif
-   return change;
-}
-varargs object make_new_amount( int value, string where ) {
-   object money;
-   if ( !where || ( where == "" ) ) {
-      where = "default";
-   }
-#ifdef USE_VAULT
-   money = MONEY_VAULT->get_money_ob();
-#else
-   money = clone_object( MONEY_OBJECT );
-#endif
-   money->set_money_array( create_money_array( value, where ) );
-   if ( !(int)money->query_value_in( where ) ) {
-      money->dest_me();
-      return 0;
-   }
-   return money;
-}
-varargs object *filter_legal_tender(object money, string where) {
-   mixed *m_array;
-   object *monies;
-   m_array = money->query_money_array();
-   monies = filter_legal_money_array(m_array, where);
-#ifdef USE_VAULT
-   MONEY_VAULT->add_to_list(money);
-#else
-   money->move("/room/rubbish");
-#endif
-   return monies;
-}
-varargs object *filter_legal_money_array(mixed *m_array, string where) {
-   object good, no_good;
-   mixed *money_arrays;
-   money_arrays = filter_legal_money_to_array(m_array, where);
-   if (sizeof(money_arrays[0]) == 0) {
-      good = 0;
-   } else  {
-#ifdef USE_VAULT
-      good = MONEY_VAULT->get_money_ob();
-#else
-      good = clone_object(MONEY_OBJECT);
-#endif
-      good->set_money_array(money_arrays[0]);
-   }
-   if (sizeof(money_arrays[1]) == 0) {
-      no_good = 0;
-   } else  {
-#ifdef USE_VAULT
-     no_good = MONEY_VAULT->get_money_ob();
-#else
-     no_good = clone_object(MONEY_OBJECT);
-#endif
-     no_good->set_money_array(money_arrays[1]);
-   }
-   return ({ good, no_good });
-}
-varargs mixed *filter_legal_money_to_array(mixed *m_array, string where) {
-   int i;
-   mixed *poss_values;
-   mixed *good_array = ({ });
-   mixed *no_good_array = ({ });
-   if (sizeof(m_array) == 0) {
-      return ({ ({ }), ({ }) });
-   }
-   if (!where || where == "") {
-     where = "default";
-   }
-   if (!(poss_values = values[where])) {
-      return ({ ({ }), copy(m_array) });
-   }
-   for (i = 0; i < sizeof(m_array); i += 2) {
-      if (member_array(m_array[i], poss_values) != -1) {
-         good_array += ({ m_array[i], m_array[i + 1] });
-      } else {
-         no_good_array += ({ m_array[i], m_array[i + 1] });
-      }
-   }
-   return ({ good_array, no_good_array });
-}
-mixed *merge_money_arrays(mixed *m_array1, mixed *m_array2)  {
-   int i;
-   int idx;
-   mixed *new_m_array;
-   if (!m_array1)
-      m_array1 = ({ });
-   if (!m_array2)
-      m_array2 = ({ });
-   if (sizeof(m_array1) < sizeof(m_array2))  {
-      new_m_array = copy(m_array2);
-      for (i = 0; i < sizeof(m_array1); i += 2)  {
-         idx = member_array(m_array1[i], new_m_array);
-         if (idx > -1)  {
-            new_m_array[idx + 1] += m_array1[i + 1];
-            if (new_m_array[idx + 1] <= 0)
-               new_m_array = delete(new_m_array, idx, 2);
-         }
-         else
-            new_m_array += ({ m_array1[i], m_array1[i + 1] });
-      }
-   }
-   else  {
-      new_m_array = copy(m_array1);
-      for (i = 0; i < sizeof(m_array2); i += 2)  {
-         idx = member_array(m_array2[i], new_m_array);
-         if (idx > -1)  {
-            new_m_array[idx + 1] += m_array2[i + 1];
-            if (new_m_array[idx + 1] <= 0)
-               new_m_array = delete(new_m_array, idx, 2);
-         }
-         else
-            new_m_array += ({ m_array2[i], m_array2[i + 1] });
-      }
-   }
-   return new_m_array;
-}
-varargs mixed parse_money(string words, object player, string place) {
-   object  thing;
-   object *monies;
-   object *things;
-   mixed  *m_array;
-   mixed  *m_array2;
-   int     i;
-   int     adjust_flag;
-   things = match_objects_for_existence(words, ({ player }));
-   if (sizeof(things) == 0) {
-      m_array = money_array_from_string(words, place);
-       if (sizeof(m_array) == 0) {
-         return NO_MATCH;
-      }
-      thing = present(MONEY_ALIAS, player);
-      if (!thing) {
-         return NO_MATCH;
-      }
-      for (i = 0; i < sizeof(m_array); i += 2) {
-         if (thing->query_money(m_array[i]) < m_array[i + 1]) {
-            return NO_MATCH;
-         }
-      }
-      adjust_flag = 1;
-   }
-   else {
-      things = filter(things, (: $1->query_property("money") :));
-      if (sizeof(things) == 0)
-         return NO_MONEY;
-      adjust_flag = 0;
-      m_array = ({ });
-      foreach (thing in things) {
-         m_array = merge_money_arrays(m_array, thing->query_money_array());
-#ifdef USE_VAULT
-         MONEY_VAULT->add_to_list(thing);
-#else
-         thing->move("/room/rubbish");
-#endif
-      }
-   }
-   monies = filter_legal_money_array(m_array, place);
-   if(monies[1])  {
-      tell_object(player, monies[1]->the_short() +
-            (monies[1]->query_number_coins() == 1 ? " is" : " are") +
-            " not legal tender here.\n");
-      m_array = monies[1]->query_money_array();
-      if (!adjust_flag)
-         this_player()->adjust_money(m_array);
-#ifdef USE_VAULT
-      MONEY_VAULT->add_to_list(monies[1]);
-#else
-      monies[1]->dest_me();
-#endif
-   }
-   if (monies[0])  {
-      if (adjust_flag)  {
-         m_array2 = copy(monies[0]->query_money_array());
-         for (i = 0; i < sizeof(m_array2); i += 2)
-            m_array2[i + 1] = -m_array2[i + 1];
-         this_player()->adjust_money(m_array2);
-      }
-      return monies[0];
-   }
-   else  {
-      return NO_LEGAL;
-   }
-}
-mixed *query_person_payments(int value, string place,
-                             object payer, object payee) {
-   mixed *stuff;
-   mixed *mon_array;
-   mixed *rabbit;
-   mon_array = copy(payer->query_money_array());
-   stuff = make_money_array_payment( 0, value, mon_array, place, 0);
-   if (!stuff) {
-      return 0;
-   }
-   if (stuff[MONEY_PAY_CHANGE]) {
-      mon_array = copy(payee->query_money_array());
-      rabbit = make_money_array_payment( 0, stuff[MONEY_PAY_CHANGE],
-                                         mon_array, place, 0);
-      if (!rabbit || rabbit[MONEY_PAY_CHANGE]) {
-         return 0;
-      }
-      return ({ stuff[MONEY_PAY_RETURN], rabbit[MONEY_PAY_RETURN] });
-   }
-   return ({ stuff[MONEY_PAY_RETURN], ({ }) });
-}
-string * query_valid_types(){
-  mixed *tmp;
-  string *elem, *valid_types = ({ });
-  int i;
-  tmp = values(query_all_values());
-  foreach( elem in tmp ){
-    for( i = 0; i < sizeof( elem ); i += 2 ){
-      if ( stringp( elem[i] ) )
-        valid_types += ({ elem[i] });
+    if ( PLAYER_HANDLER->test_creator( name ) ) {
+        return "currently a creator";
     }
-  } return valid_types;
-}
-string query_origin_of( string type ){
-  string elem, *places;
-  if( member_array( type, query_valid_types() ) == -1 )
+    if ( PLAYER_HANDLER->test_level( name ) < LEVEL ) {
+        return "level is too low";
+    }
     return 0;
-  places = query_all_places();
-  foreach( elem in places ){
-    if( member_array( type,query_values_in( elem ) ) != -1 )
-      return elem;
-  }
 }
-string * query_aliases_of( string word ){
-  string *types, elem, *aliases = ({ });
-  types = query_valid_types();
-  foreach( elem in types ){
-    if( member_array( word,query_aliases_for( elem ) ) != -1 )
-      aliases += ({ elem });
-  } return aliases;
+int valid_playtester( string name ) {
+    return ( !stringp( reason_invalid_playtester( name ) ) );
 }
-int query_value_of( string type ){
-  if( member_array( type, query_valid_types() ) == -1 )
-    return 0;
-   return query_value( type, query_origin_of( type ) );
+int hire_playtester( object thing ) {
+    string name;
+    if ( !objectp( thing ) )
+        return 0;
+    name = thing->query_name();
+    if ( !stringp( name ) )
+        return 0;
+    if ( !valid_playtester( name ) )
+        return 0;
+    return add_playtester( name );
 }
-string smallest_in( string place ) {
-   int i, smallest, r;
-   mixed *values;
-   values = query_values_in( place );
-   smallest = values[1];
-   r = 1;
-   for ( i = 3; i < sizeof( values ); i += 2 ) {
-      if ( values[i] < smallest ) {
-         smallest = values[i];
-         r = i;
-      }
-   }
-   return values[r-1];
+void adjust_quota( string name, int amount ) {
+    string* bits;
+    string right_now;
+    int* bing;
+    int age;
+    bits = explode( ctime( time() ), " " ) - ({ "" });
+    right_now = bits[ 1 ] + " " + bits[ 4 ];
+    if (!bugs[name][right_now]) {
+      bugs[name][right_now] = 0;
+    }
+    bing = bugs[ name ][ right_now ];
+    age = get_age_uncached( name );
+    if ( arrayp( bing ) && ( sizeof( bing ) == 3 ) ) {
+        bing[ 0 ] += amount;
+        bing[ 1 ] += age - bing[ 2 ];
+        bing[ 2 ] = age;
+    } else {
+        bing = ({ amount, 0, age });
+    }
+    bugs[ name ][ right_now ] = bing;
+    save_file();
 }
-int smallest_value_in( string place ) {
-   int i, smallest;
-   mixed *values;
-   values = query_values_in( place );
-   smallest = values[1];
-   for ( i = 3; i < sizeof( values ); i += 2 ) {
-      if ( values[i] < smallest ) {
-         smallest = values[i];
-      }
-   }
-   return smallest;
+protected void check_playtesters_one( string name ) {
+    if ( !valid_playtester( name ) ) {
+        remove_playtester( name, reason_invalid_playtester( name ) +
+                           " [automatic]" );
+    } else {
+        adjust_quota( name, 0 );
+    }
 }
-mapping query_mapped_values_in( string where ) {
-   mapping values = ([]);
-  mixed * array;
-  int i;
-   if ( !where || ( where == "" ) )
-      where = "default";
-  array = query_values_in(where);
-   for ( i = 1; i < sizeof(array); i += 2 )
-  {
-      values += ([array[i-1]:array[i]]);
-   }
-   return values;
-}
-
-==================================================
-FILE: handlers/monster_handler.c
-==================================================
-
-int num;
-void create() {
-  seteuid("Room");
-  unguarded((: restore_object, "/save/monster-handler" :));
-}
-string query_shadow_name() {
-  num++;
-  return "/tmp/mon-shad/frog-"+num;
+void check_playtesters( string* who ) {
+    string* bits;
+    string right_now;
+    if ( sizeof( who ) ) {
+        check_playtesters_one( who[ 0 ] );
+        if ( sizeof( who ) > 1 ) {
+            call_out( "check_playtesters", random( 10 ) + 5, who[ 1.. ] );
+        } else {
+            bits = explode( ctime( time() ), " " ) - ({ "" });
+            right_now = bits[ 1 ] + " " + bits[ 4 ];
+            if ( member_array( right_now, months ) < 0 ) {
+                months += ({ right_now });
+                save_file();
+            }
+        }
+    }
 }
 void reset() {
-  unguarded((: save_object, "/save/monster-handler" :));
+    if ( !updating )
+        call_out( "check_playtesters", 30, copy( keys( pts ) ) );
+    updating++;
+    updating %= 12;
 }
-void dest_me() {
-  unguarded((: save_object, "/save/monster-handler" :));
-}
-
-==================================================
-FILE: handlers/multiplayer.c
-==================================================
-
-#include <login_handler.h>
-#include <playerinfo.h>
-#define SAVE_FILE   "/save/multiplayer"
-#define ALIST "/secure/alist"
-#define ALLOWED_ITEMS ({ "/obj/misc/club_badge", "/obj/misc/al_receipt" })
-string *denied_parcels;
-mapping allowed;
-protected void create() {
-  string denied_parcel;
-  int changed = 0;
-  denied_parcels = ({ });
-  allowed = ([ ]);
-  seteuid(master()->creator_file(file_name()));
-  if (file_size(SAVE_FILE + ".o") > 0) {
-    unguarded((: restore_object, SAVE_FILE, 1 :));
-  }
-  foreach (denied_parcel in denied_parcels) {
-    if (!PLAYER_HANDLER->test_user(denied_parcel)) {
-      denied_parcels -= ({ denied_parcel });
-      changed = 1;
+void report_made( string name, string type, string file, string text ) {
+    int post = 0;
+    if ( !query_playtester( name ) )
+        return;
+    if ( regexp( type, "IDEA" ) ) {
+        post = 1;
+    } else if ( regexp( type, "BUG" ) ) {
+        count = ( count + 1 ) % BUG_SKIP;
+        post = ( count == 0 );
     }
-  }
-  if (changed) {
-    unguarded((: save_object, SAVE_FILE :));
-  }
+    if ( post ) {
+        BOARD_HAND->add_message( "playtester_bugs", capitalize( name ),
+                                 type + " for " + file,
+                                 sprintf( "%75-=s", text ) );
+    }
+    adjust_quota( name, 1 );
 }
-private void save_me() {
-  unguarded((: save_object, SAVE_FILE :));
+string query_show_list() {
+    string result;
+    result = "              ";
+    foreach ( string month in months[ <5.. ] ) {
+        result += "    " + month;
+    }
+    result += "\n";
+    foreach ( string name in sort_array( query_playtesters(), 1 ) ) {
+        if ( query_senior_playtester( name ) ) {
+            result += "S ";
+        } else {
+            result += "  ";
+        }
+        if ( stringp( leave[ name ] ) )
+            result += sprintf( "%-14s", "[" + name + "]" );
+        else
+            result += sprintf( " %-12s ", name );
+        foreach ( string month in months[ <5.. ] ) {
+            if ( sizeof( bugs[ name ][ month ] ) >= 2 )
+                result += sprintf( "   %4d %4d", bugs[ name ][ month ][ 0 ],
+                                   ( bugs[ name ][ month ][ 1 ] / 3600 ) );
+            else
+                result += "   ---- ----";
+        }
+        result += "\n";
+    }
+    return result;
 }
-string *check_allowed(mixed user, mixed *others) {
-  string *not_allowed;
-  mixed tmp, alt;
-  if(objectp(user))
-    user = user->query_name();
-  if(!allowed[user] && PLAYERINFO_HANDLER->query_alt_of(user) != "")
-    user = PLAYERINFO_HANDLER->query_alt_of(user);
-  not_allowed = ({ });
-  foreach(tmp in others) {
-    if(objectp(tmp))
-      tmp = tmp->query_name();
-    alt = PLAYERINFO_HANDLER->query_alt_of(tmp);
-    if(!alt)
-      alt = tmp;
-    if(!allowed[user] || member_array(alt, allowed[user]) == -1)
-      not_allowed += ({ tmp });
-  }
-  return not_allowed;
+string query_show_list_colour() {
+    string result;
+    string colour;
+    int online, reports;
+    string temp;
+    result = "              ";
+    foreach ( string month in months[ <5.. ] ) {
+        result += "    " + month;
+    }
+    result += "\n";
+    foreach ( string name in sort_array( query_playtesters(), 1 ) ) {
+        reports = 0;
+        online = 0;
+        if ( query_senior_playtester( name ) ) {
+            temp = "S ";
+        } else {
+            temp = "  ";
+        }
+        temp += sprintf( "%%s%-12s%%%%^RESET%%%%^", name );
+        foreach ( string month in months[ <5.. ] ) {
+	          if (query_leave (name)) {
+                    colour = "%%^WHITE%%^";
+	          }
+            else if ( sizeof( bugs[ name ][ month ] ) >= 2 ) {
+                reports += bugs[ name ][ month ][ 0 ];
+                online += bugs[ name ][ month ][ 1 ];
+                if ( bugs[ name ][ month ][ 1 ] == 0 )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^MAGENTA%%^" :
+                               "%%^BOLD%%^%%^MAGENTA%%^" );
+                else if ( bugs[ name ][ month ][ 0 ] >=
+                     ( bugs[ name ][ month ][ 1 ] / 7200 ) )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^GREEN%%^" :
+                               "%%^BOLD%%^%%^GREEN%%^" );
+                else if ( bugs[ name ][ month ][ 0 ] <
+                          ( bugs[ name ][ month ][ 1 ] / 24000 ) )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^RED%%^" :
+                               "%%^BOLD%%^%%^RED%%^" );
+                else
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^ORANGE%%^" :
+                               "%%^YELLOW%%^" );
+                temp += sprintf( "   %s%4d %4d%%%%^RESET%%%%^",
+                                 colour,
+                                 bugs[ name ][ month ][ 0 ],
+                                 ( bugs[ name ][ month ][ 1 ] / 3600 ) );
+            } else
+                temp += "   ---- ----";
+        }
+        temp += "\n";
+        if ( online == 0 )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^BOLD%^%^WHITE%^" :
+                       "%^BOLD%^%^MAGENTA%^" );
+        else if ( reports >= ( online / 7200 ) )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^GREEN%^" :
+                       "%^BOLD%^%^GREEN%^" );
+        else if ( reports < ( online / 24000 ) )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^RED%^" :
+                       "%^BOLD%^%^RED%^" );
+        else
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^ORANGE%^" :
+                       "%^YELLOW%^" );
+        result += sprintf( temp, colour );
+    }
+    return result;
 }
-int add_git(string git) {
-  PLAYERINFO_HANDLER->add_entry(this_player(), git, "multiplay",
-                                "Caught multiplaying.\n");
-  return 1;
+mapping query_playtester_guilds() {
+    mapping r = ([]);
+    foreach ( string pt, string guild in guilds ) {
+        if ( arrayp( r[ guild ] ) )
+            r[ guild ] += ({ pt });
+        else
+            r[ guild ] = ({ pt });
+    }
+    return r;
 }
-int add_allowed(string user, string other) {
-  int oldsize, changed;
-  if (!(PLAYER_HANDLER->test_user(user) && PLAYER_HANDLER->test_user(other))) {
+mapping query_guilds() {
+    return copy( guilds );
+}
+void update_guilds() {
+  string guild;
+    foreach( string player, mapping data in playtesters ) {
+        if ( !sizeof (data[ "guild" ]) ) {
+            guild = PLAYER_HANDLER->test_guild( player );
+            if (!sizeof (guild)) {
+              guild = "/std/guilds/standard";
+            }
+            data[ "guild" ] = guild;
+        }
+    }
+    save_file();
+}
+mixed query_pt_data( string name ) {
+    if ( !undefinedp( playtesters[ name ] ) )
+        return copy( playtesters[ name ] );
     return 0;
-  }
-  if(PLAYERINFO_HANDLER->query_alt_of(user))
-    user = PLAYERINFO_HANDLER->query_alt_of(user);
-  if(PLAYERINFO_HANDLER->query_alt_of(other))
-    other = PLAYERINFO_HANDLER->query_alt_of(other);
-  if (undefinedp(allowed[user])) {
-    allowed[user] = ({ other });
-  } else {
-    oldsize = sizeof(allowed[user]);
-    allowed[user] |= ({ other });
-  }
-  if (!oldsize || (oldsize != sizeof(allowed[user]))) {
-    changed = 1;
-    PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                                  "Added to multiplayer handler as allowed "
-                                  "together with " + other + ".\n");
-  }
-  if (undefinedp(allowed[other])) {
-    allowed[other] = ({ user });
-  } else {
-    oldsize = sizeof(allowed[other]);
-    allowed[other] |= ({ user });
-  }
-  if (!oldsize || (oldsize != sizeof(allowed[other]))) {
-    changed = 1;
-    PLAYERINFO_HANDLER->add_entry(this_player(), other, "multiplay",
-                                  "Added to multiplayer handler as allowed "
-                                  "together with " + user + ".\n");
-  }
-  if (changed) {
-    call_out((: save_me :), 1);
-  }
-  return 1;
 }
-int delete_allowed(string user) {
-  if(PLAYERINFO_HANDLER->query_alt_of(user))
-    user = PLAYERINFO_HANDLER->query_alt_of(user);
-  if (undefinedp(allowed[user]))
-    return 0;
-  map_delete(allowed, user);
-  call_out((: save_me :), 1);
-  PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                                "Deleted from multiplayer handler "
-                                "(allowed).\n");
-  return 1;
+mapping query_bugs( string name ) {
+    return copy( bugs[ name ] );
 }
-mapping query_allowed() {
-  return copy(keys(allowed));
+string* query_months() {
+    return copy( months );
 }
-int add_denied_parcel(string user) {
-  if (!"/secure/master"->query_lord(geteuid(previous_object())) &&
-      !"/d/liaison/master"->query_deputy(geteuid(previous_object()))) {
-    write("You do not have permission to add a user to this list.\n");
-    return 0;
-  }
-  if (member_array( user, denied_parcels) != -1) {
-    denied_parcels -= ({ user });
-  }
-  if (!PLAYER_HANDLER->test_user(user)) {
-    return 0;
-  }
-  denied_parcels += ({ lower_case(user) });
-  call_out((: save_me :), 1);
-  PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                            "Denied the use of the parcel system.\n");
-  return 1;
+int set_leave( string name, string reason ) {
+    if ( pts[ name ] ) {
+        leave[ name ] = reason;
+        log_file( "PLAYTESTERS", ctime( time() ) + ": " + name + " marked as "
+                  "on leave: " + reason + "\n" );
+        save_file();
+        return 1;
+    } else {
+        return 0;
+    }
 }
-int remove_denied_parcel(string user) {
-  if (!"/secure/master"->query_lord(geteuid(previous_object())) &&
-      !"/d/liaison/master"->query_deputy(geteuid(previous_object()))) {
-    write("You do not have permission to remove a user to this list.\n");
-    return 0;
-  }
-  if (member_array(user, denied_parcels) == -1)
-    return 0;
-  denied_parcels -= ({ user });
-  call_out((: save_me :), 1);
-  PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                           "Allowed the use of the parcel system.\n");
-  return 1;
+int reset_leave( string name ) {
+    if ( leave[ name ] ) {
+        map_delete( leave, name );
+        log_file( "PLAYTESTERS", ctime( time() ) + ": " + name + " no longer "
+                  "marked as on leave\n" );
+        save_file();
+        return 1;
+    } else {
+        return 0;
+    }
 }
-int member_denied_parcel( string user ) {
-  if (member_array(user, denied_parcels) == -1)
-    return 0;
-  return 1;
+int query_leave( string name ) {
+    return stringp( leave[ name ] );
 }
-string *query_denied_parcels() {
-  return copy(denied_parcels);
+#ifdef PLAYTESTERS_HANDLER_OLD_STYLE_CONVERSION
+void transfer_data_callout( string* pts ) {
+    string pt;
+    mixed bing;
+    int lastage;
+    int nowage;
+    if ( sizeof( pts ) ) {
+        pt = pts[ 0 ];
+        nowage = get_age_uncached_offline( pt );
+        lastage = nowage - playtesters[ pt ][ "age" ];
+        guilds[ pt ] = PLAYER_HANDLER->test_guild( pt );
+        ages[ pt ] = nowage;
+        bugs[ pt ] = ([ ]);
+        foreach ( string s in keys( playtesters[ pt ] ) -
+                  ({ "senior", "age", "current age", "guild" }) ) {
+            bing = playtesters[ pt ][ s ];
+            if ( arrayp( bing ) ) {
+                bugs[ pt ][ s ] = ({ bing[ 0 ], bing[ 1 ], nowage });
+            } else if ( intp( bing ) ) {
+                bugs[ pt ][ s ] = ({ bing, lastage, nowage });
+            }
+        }
+        tell_creator( "arienne", "Done " + pt + "!\n" );
+        if ( sizeof( pts ) > 1 ) {
+            call_out( "transfer_data_callout", 5, pts[ 1.. ] );
+        } else {
+            save_file();
+            tell_creator( "arienne", "Done the transfer!\n" );
+        }
+    }
 }
-varargs void mark_log(string user, string comment) {
-  if (!comment) {
-    log_file("MULTIPLAYERS", ctime(time())
-             + " " + user
-             + " Previous log entries handled.\n");
-    PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                                  "Previous log entries handled.\n");
-  } else {
-    log_file("MULTIPLAYERS", ctime(time())
-             + " " + user
-             + ": " + comment + "\n" );
-    PLAYERINFO_HANDLER->add_entry(this_player(), user, "multiplay",
-                                  comment + "\n");
-  }
+void transfer_data_to_new_system() {
+    foreach ( string pt in keys( playtesters ) ) {
+        if ( playtesters[ pt ][ "senior" ] )
+            pts[ pt ] = SENIOR_PLAYTESTER;
+        else
+            pts[ pt ] = NORMAL_PLAYTESTER;
+    }
+    call_out( "transfer_data_callout", 5, copy( keys( playtesters ) ) );
 }
-string query_name() {
-  return "Multiplayer handler";
+#endif
+mapping query_jump_points() {
+   if (!_jump_points) {
+      _jump_points = ([ ]);
+   }
+   return copy(_jump_points);
 }
-void record_object(string action, object player, object item) {
-  mixed stuff;
-  stuff = item->query_property("dropped");
-  if(sizeof(stuff) && player->query_name() != stuff[0])
-    stuff = ({ player->query_name(), query_ip_number(player), time(),
-                 stuff[0] });
-  else
-    stuff = ({ player->query_name(), query_ip_number(player), time() });
-  item->add_property("dropped", stuff, 1800);
+void add_jump_point(string from, string to) {
+   if (!_jump_points[from]) {
+      _jump_points[from] = ({ });
+   }
+   _jump_points[from] += ({ to });
+   save_file();
 }
-int check_multiplayers(string action, object player, object item) {
-  mixed stuff;
-  string direction, verb, res, is;
-  if(objectp(player) && !interactive(player))
-    return 0;
-  stuff = item->query_property("dropped");
-  if(!stuff)
-    return 0;
-  is = "";
-  switch(action) {
-  case "get":
-    verb = " got ";
-    direction = " from ";
-    break;
-  case "give":
-    verb = " was given ";
-    direction = " by ";
-    is = "is ";
-    break;
-  case "slip":
-    verb = " was slipped ";
-    direction = " by ";
-    is = "is ";
-    break;
-  case "palm":
-    verb = " palmed ";
-    direction = " from ";
-    break;
-  case "plant":
-    verb = " planted ";
-    direction = " on ";
-    is = "is ";
-    break;
-  case "recover":
-    verb = " recovered ";
-    direction = " from ";
-    break;
-  }
-  if(stuff[0] != player->query_name() &&
-     query_ip_number(player) == stuff[1] &&
-     sizeof(check_allowed(player, ({ stuff[0]}) ))) {
-    res = capitalize(player->query_name()) + verb + item->a_short() +
-      direction + stuff[0] + " who " + is +"logged in from the same "
-      "address.";
-  } else if(direction != " by " &&
-            player->query_name() == stuff[0] &&
-            player->query_refresh_time() > stuff[2]) {
-    res = capitalize(player->query_name()) + verb + item->a_short() +
-      " after a refresh.";
-  } else if(ALIST->query_alt(player->query_name(), stuff[0]) == 100) {
-    res = capitalize(player->query_name()) + verb + item->a_short() +
-      direction + stuff[0] + " who is " + player->query_possessive() +
-      " alt.";
-  } else if(ALIST->query_alt(player->query_name(), stuff[0]) >= 60) {
-    res = capitalize(player->query_name()) + verb +  item->a_short() +
-      direction + stuff[0] + " who is POSSIBLY " +
-      player->query_possessive() + " alt.";
-  } else if(sizeof(stuff) == 4) {
-    if(player->query_name() == stuff[3]) {
-      if(player->query_refresh_time() > stuff[2]) {
-        res = capitalize(player->query_name()) + verb + item->a_short() +
-          " after a refresh" + direction + stuff[0] + ".";
+void remove_jump_point_from(string from) {
+   map_delete(_jump_points, from);
+   save_file();
+}
+void remove_jump_point(string from, string to) {
+   if (_jump_points[from]) {
+      _jump_points[from] -= ({ to });
+      if (!sizeof(_jump_points[from])) {
+         map_delete(_jump_points, from);
       }
-    } else if(ALIST->query_alt(player->query_name(), stuff[3]) == 100) {
-      res = capitalize(player->query_name()) + verb + item->a_short();
-      if(stuff[0] != player->query_name())
-        res += " via " + stuff[0];
-      res += direction + stuff[3] + " who is " + player->query_possessive() +
-        " alt.";
-    } else if(ALIST->query_alt(player->query_name(), stuff[3]) >= 60) {
-      res = capitalize(player->query_name()) + verb + item->a_short();
-      if(stuff[0] != player->query_name())
-        res += " via " + stuff[0];
-      res += direction + stuff[3] + " who is _POSSIBLY_ " +
-        player->query_possessive() + " alt.";
+      save_file();
+   }
+}
+string* query_jump_destination(string from) {
+   return _jump_points[from];
+}
+int add_pt_exec( string name ) {
+    if ( undefinedp (pts[ name ]))
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " promoted to playtester executive by %s\n",
+              this_player()->query_name() );
+    executives += ({ name });
+    save_file();
+    return 1;
+}
+int remove_pt_exec( string name ) {
+    if ( !undefinedp (pts[ name ]))
+        return 0;
+    if (member_array (name, executives) == -1) {
+      return 0;
     }
-  } else if((PLAYER_HANDLER->test_creator(stuff[0]) ||
-             PLAYER_HANDLER->test_property(stuff[0], "test character")) &&
-            !player->query_creator() &&
-            !player->query_property("test character") &&
-            member_array(base_name(item), ALLOWED_ITEMS) == -1 &&
-            base_name(item)[0..14] != "/d/liaison/TOYS") {
-    res = capitalize(player->query_name()) + verb + item->a_short() +
-      direction + stuff[0];
-    user_event("inform", res, "cheat");
-    log_file("/d/admin/log/CHEAT", ctime(time()) + ": " +
-             player->convert_message(res) + "\n");
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " removed from playtester executive by %s\n",
+              this_player()->query_name() );
+    executives -= ({ name });
+    save_file();
+    return 1;
+}
+int query_pt_exec(string name) {
+  if (member_array (name, executives) == -1) {
     return 0;
   }
-  if(res) {
-    user_event("inform", res, "multiplayer");
-    log_file("MULTIPLAYERS", ctime(time()) + ": " +
-             player->convert_message(res) + "\n");
+  return 1;
+}
+int query_exec_access (string name) {
+  if (master()->query_senior(name)) {
+    return 1;
+  }
+  if (query_pt_exec (name)) {
+    return 1;
+  }
+  if (query_senior_playtester (name)) {
+    return 1;
+  }
+  if (load_object ("/d/playtesters/master")->query_deputy (name)) {
+    return 1;
   }
   return 0;
+}
+
+==================================================
+FILE: handlers/potion.c
+==================================================
+
+inherit "/std/object";
+mapping paths = allocate_mapping(10);
+mapping potions = allocate_mapping(10);
+#define POTION_DIR "/obj/potions/"
+string *directories = ({
+    POTION_DIR,
+});
+void create() {
+    string dir, s, dummy, title, path, index;
+    int d, i;
+    seteuid("Room");
+    for (d = 0; d < sizeof(directories); d++) {
+        dir = directories[d];
+        index = dir + "index";
+        i = 1;
+        if (file_size(index) > 0) {
+            while (s = read_file(index, i++, 1)) {
+                if ((s == "") || (sscanf(s, "#%s", dummy))) {
+                    continue;
+                }
+                if (sscanf(s, "\"%s\"%*s\"%s\"", title, path) != 3) {
+                    continue;
+                }
+                paths[title] = path;
+                potions[title] = 0;
+            }
+        }
+    }
+    ::create();
+}
+int query_min_level(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+        return -1;
+    }
+    if (!potions[s]) {
+        potions[s] = clone_object(paths[s]);
+    }
+    return potions[s]->query_min_level();
+}
+string query_chant(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+        return 0;
+    }
+    if (!potions[s]) {
+        potions[s] = clone_object(paths[s]);
+    }
+    return potions[s]->query_chant();
+}
+object query_potion(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+       return 0;
+    }
+    if (!potions[s]) {
+       potions[s] = clone_object(paths[s]);
+    }
+    return potions[s];
+}
+mixed clone_reagent(string s) {
+    object pot;
+    string potion;
+    potion = this_player()->expand_nickname(s);
+    if (undefinedp(paths[potion])) {
+      return -1;
+    }
+    pot = query_potion(s);
+    printf("Verb = %O\n", query_verb());
+    return pot->clone_reagent(query_verb());
+}
+mapping query_paths() {
+    return paths;
+}
+mapping query_potions() {
+    return potions;
+}
+
+==================================================
+FILE: handlers/potion_space.c
+==================================================
+
+#define SAVE_FILE "/save/potion_space"
+mixed *effect_vols;
+void create() {
+  seteuid("Room");
+  unguarded((: restore_object, SAVE_FILE :));
+}
+int add_effect(string ob, int x1, int x2, int y1, int y2) {
+   if (!stringp(ob)) {
+      tell_object(this_player(), "Effect object must be a string.\n");
+      return 0;
+   }
+   effect_vols = ({ ob, x1, x2, y1, y2 }) + effect_vols;
+   unguarded((: save_object, SAVE_FILE :));
+   return 1;
+}
+int remove_effect(object ob) {
+   int i;
+   for (i = 0; i < sizeof(effect_vols); i+=5)
+      if (effect_vols[i] == ob) {
+         effect_vols = effect_vols[0..i-1] + effect_vols[i+5..sizeof(effect_vols)];
+         break;
+      }
+   unguarded((: save_object, SAVE_FILE :));
+   return 1;
+}
+string *query_effect_at(int *coord) {
+   int i;
+   string *obs;
+   obs = ({ });
+   for (i = 0; i < sizeof(effect_vols); i+=5) {
+      if (coord[0] >= effect_vols[i+1] && coord[0] <= effect_vols[i+2] &&
+          coord[1] >= effect_vols[i+3] && coord[1] <= effect_vols[i+4])
+         obs += ({ effect_vols[i] });
+   }
+   return obs;
+}
+mixed *query_attrs_at(int *coord){
+   string *effects;
+   int sum, i, pass_through;
+   mixed *attrs, *temp_attrs;
+   effects = query_effect_at(coord);
+   if (!sizeof(effects)) return ({ 0, 100, ({ }), ({ }), ({ }), ({ }) });
+   attrs = effects[0]->query_attrs(coord);
+   sum = 100;
+   pass_through = effects[0]->query_pass_through(coord);
+   i = 1;
+   while (pass_through && i < sizeof(effects)) {
+      if (effects[i]->backdrop()) break;
+      temp_attrs = effects[i]->query_attrs(coord);
+      attrs = "/obj/container"->merge_potions(attrs, temp_attrs,
+                                   sum, pass_through, sum + pass_through);
+      sum += pass_through;
+      pass_through = effects[i]->query_pass_through(coord);
+      i++;
+   }
+   return attrs;
+}
+void potion_drunk(mixed ob, int *coord, int quantity) {
+   string *effects;
+   int i, pass_through;
+   effects = query_effect_at(coord);
+   pass_through = 100;
+   for (i = 0; i < sizeof(effects) && pass_through; i++) {
+      if (i > 0 && effects[i]->backdrop()) break;
+      effects[i]->action_drunk(ob, coord, quantity * pass_through / 100);
+      pass_through = pass_through * effects[i]->query_pass_through(coord) / 100;
+   }
+   return;
+}
+void potion_touch(mixed ob, int *coord, int quantity) {
+   string *effects;
+   int i, pass_through;
+   effects = query_effect_at(coord);
+   pass_through = 100;
+   for (i = 0; i < sizeof(effects) && pass_through; i++) {
+      if (i > 0 && effects[i]->backdrop()) break;
+      effects[i]->action_touch(ob, coord, quantity * pass_through / 100);
+      pass_through = pass_through * effects[i]->query_pass_through(coord) / 100;
+   }
+   return;
+}
+void potion_smell(mixed ob, int *coord, int quantity) {
+   string *effects;
+   int i, pass_through;
+   effects = query_effect_at(coord);
+   pass_through = 100;
+   for (i = 0; i < sizeof(effects) && pass_through; i++) {
+      if (i > 0 && effects[i]->backdrop()) break;
+      effects[i]->action_smell(ob, coord, quantity * pass_through / 100);
+      pass_through = pass_through * effects[i]->query_pass_through(coord) / 100;
+   }
+   return;
+}
+void potion_create(mixed ob, int *coord, int quantity) {
+   string *effects;
+   int i, pass_through;
+   effects = query_effect_at(coord);
+   pass_through = 100;
+   for (i = 0; i < sizeof(effects) && pass_through; i++) {
+      if (i > 0 && effects[i]->backdrop()) break;
+      effects[i]->action_create(ob, coord, quantity * pass_through / 100);
+      pass_through = pass_through * effects[i]->query_pass_through(coord) / 100;
+   }
+   return;
+}
+mixed *query_effect_vols() {
+   return effect_vols + ({ });
+}
+int *neutral_coordinate() {
+   return ({ 0, 0 });
+}
+
+==================================================
+FILE: handlers/project_management.c
+==================================================
+
+#include "project_management.h"
+#include <playtesters.h>
+#include <permissions.h>
+#include <board.h>
+#include <mail.h>
+#include <cmds/twiki.h>
+int query_project_completeness(string);
+string* query_project_tasks(string);
+int valid_operation (string name, string action, string project);
+int find_project (string);
+void do_save();
+int nuke_creator_project_cache(string*);
+string* query_projects_for_creator (string);
+int clear_file_cache (string nfile);
+void do_mail (string*, string);
+int clear_playtesting_projects (string*);
+class project* filter_by_query (mapping);
+void catch_status_change (string, int);
+class file_access_cache {
+  string id;
+  mapping accesses;
+}
+string *pt_post_cache = ({ });
+class project *projects = ({ });
+class project_tmp *tmp_projects = ({ });
+int touched;
+int last_summary;
+mapping summary;
+mapping num_assignments;
+nosave mapping inform = ([ ]);
+nosave mapping creator_project_cache = ([ ]);
+nosave mapping pt_assignment_cache = ([ ]);
+nosave class file_access_cache *cache = ({ });
+nosave string *excluded = ({
+  "bfg",
+  "dionysus",
+  "melian",
+});
+mapping project_locks = ([ ]);
+void save_file() {
+  if (find_call_out ("do_save") == -1) {
+    call_out ("do_save", 10);
+  }
+}
+void do_log (string text) {
+  log_file (PROJECT_LOG, text);
+}
+void do_save() {
+  seteuid ("Root");
+  touched = 1;
+  unguarded ((: save_object, PROJECT_SAVE :));
+  touched = 0;
+}
+void do_load() {
+  unguarded ((: restore_object, PROJECT_SAVE :));
+}
+void create() {
+  string *creators = ({ });
+  do_load();
+  if (!last_summary) {
+    last_summary = time();
+  }
+  if (!summary) {
+    summary = ([ ]);
+  }
+  if (!tmp_projects) {
+    tmp_projects = ({ });
+  }
+  if (!creator_project_cache) {
+    creator_project_cache = ([ ]);
+  }
+  if (!cache) {
+    cache = ({ });
+  }
+  if (!pt_post_cache) {
+    pt_post_cache = ({ });
+  }
+  if (!num_assignments) {
+    num_assignments = ([ ]);
+  }
+  foreach (class project p in projects) {
+    creators += p->creators;
+  }
+  creators = uniq_array (creators);
+  foreach (string c in creators) {
+    query_projects_for_creator (c);
+  }
+}
+void touch_project (string id, string reason, string name) {
+  int i = find_project (id);
+  object ob;
+  if (i == -1) {
+    return;
+  }
+  projects[i]->last_touched = time();
+  projects[i]->what_touched = reason;
+  projects[i]->touched_by = name;
+  save_file();
+  if (find_call_out ("do_inform") == -1) {
+    call_out ("do_inform", 120);
+  }
+  if (undefinedp (summary[id])) {
+    summary[id] = ({ name });
+  }
+  else {
+    summary[id] += ({ name });
+  }
+  if (undefinedp (inform[id])) {
+    inform[id] = ({ name });
+  }
+  else {
+    inform[id] += ({ name });
+  }
+  foreach (string d in projects[i]->domains) {
+    ob = load_object ("/d/" + d + "/master");
+    if (ob) {
+      ob->nuke_creator_project_cache (projects[i]->creators);
+    }
+    nuke_creator_project_cache (projects[i]->creators);
+  }
+  do_log (sprintf ("%s:  Project %s touched by %s:  %s\n",
+    ctime (time()), id, name, reason));
+}
+void do_inform() {
+  int i;
+  foreach (string id, string *names in inform) {
+    i = find_project (id);
+    user_event ("inform", sprintf ("%s: Project %s touched by %s",
+      query_multiple_short(map (projects[i]->domains, (: capitalize ($1) :))),
+      id, query_multiple_short (map (uniq_array (names),
+      (: capitalize ($1) :)))), "message", this_player());
+  }
+  inform = ([ ]);
+}
+string* query_projects_for_creator (string c) {
+  if (!creator_project_cache[c]) {
+    creator_project_cache[c] = map (filter_by_query ((["creators": c])),
+      (: $1->id :));
+  }
+  return creator_project_cache[c];
+}
+string* query_projects_for_creator_in_domain (string creator, string domain) {
+  return sort_array (map (filter_by_query ((["creators": creator, "domains" : domain])),
+      (: $1->name :)), 1);
+}
+string query_touched (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (!projects[i]->last_touched) {
+    return "This project has not been touched since it was added.";
+  }
+  return sprintf ("%s last touched project %s on %s:  %s.",
+    (projects[i]->touched_by ? capitalize (projects[i]->touched_by) :
+    "Someone"), id,
+    ctime (projects[i]->last_touched), projects[i]->what_touched);
+}
+mapping query_summary_mapping() {
+  return summary;
+}
+int query_last_summary() {
+  return last_summary;
+}
+string query_summary_page() {
+  string ret = "Project changes since " + ctime (last_summary) + "\n\n";
+  foreach (string proj, string *names in summary) {
+    ret += sprintf ("%-30s touched by %s\n",
+      proj, query_multiple_short (uniq_array (names)));
+  }
+  return ret;
+}
+int insert_into_projects (mixed temp) {
+  int index = 0;
+  if (!sizeof (projects)) {
+    projects = ({ temp });
+    return 0;
+  }
+  while (index < sizeof (projects) && temp->id > projects[index]->id) {
+    index++;
+  }
+  if (index == sizeof (projects)) {
+    projects = projects + ({ temp });
+  }
+  else if (index == 0) {
+    projects = ({ temp }) + projects;
+  }
+  else {
+    projects = projects[0..index-1] + ({ temp }) +
+      projects[index..sizeof(projects)];
+  }
+  return index;
+}
+int insert_into_cache (mixed temp) {
+  int index = 0;
+  if (!sizeof (cache)) {
+    cache = ({ temp });
+    return 0;
+  }
+  while (index < sizeof (cache) && temp->id > cache[index]->id) {
+    index++;
+  }
+  if (index == sizeof (cache)) {
+    cache = cache + ({ temp });
+  }
+  else if (index == 0) {
+    cache = ({ temp }) + cache ;
+  }
+  else {
+    cache = cache[0..index-1] + ({ temp }) +
+      cache[index..sizeof(cache)];
+  }
+  return index;
+}
+int insert_into_tasks (int i, mixed temp) {
+  int index = 0;
+  if (!sizeof (projects[i]->tasks)) {
+    projects[i]->tasks = ({ temp });
+    return 0;
+  }
+  while (index < sizeof (projects[i]->tasks) &&
+    temp->id > projects[i]->tasks[index]->id) {
+      index++;
+  }
+  if (index == sizeof (projects[i]->tasks)) {
+    projects[i]->tasks = projects[i]->tasks + ({ temp });
+  }
+  else if (index == 0) {
+    projects[i]->tasks = ({ temp }) + projects[i]->tasks;
+  }
+  else {
+    projects[i]->tasks = projects[i]->tasks[0..index-1] + ({ temp })
+      + projects[i]->tasks[index..sizeof(projects[i]->tasks)];
+  }
+  return index;
+}
+int insert_into_notes (int i, mixed temp) {
+  int index = 0;
+  if (!sizeof (projects[i]->notes)) {
+    projects[i]->notes = ({ temp });
+    return 0;
+  }
+  while (index < sizeof (projects[i]->notes) &&
+    temp->id > projects[i]->notes[index]->id) {
+      index++;
+  }
+  if (index == sizeof (projects[i]->notes)) {
+    projects[i]->notes = projects[i]->notes + ({ temp });
+  }
+  else if (index == 0) {
+    projects[i]->notes = ({ temp }) + projects[i]->notes;
+  }
+  else {
+    projects[i]->notes = projects[i]->notes[0..index-1] + ({ temp })
+      + projects[i]->notes[index..sizeof(projects[i]->notes)];
+  }
+  return index;
+}
+protected int find_index (string id, mixed array) {
+  int mid, right, left;
+  if (!sizeof (array)) {
+    return -1;
+  }
+  right = sizeof (array);
+  mid = (left + right) / 2;
+  left = 0;
+  do {
+    if (array[mid]->id == id) {
+      return mid;
+    }
+    if (id > array[mid]->id) {
+      left = mid + 1;
+      mid = (left + right) / 2;
+    }
+    else if (id < array[mid]->id) {
+      right = mid;
+      mid = (left + right) / 2;
+    }
+  } while (left < right);
+  return -1;
+}
+string parse_details(class project p) {
+  string ret = sprintf ("$I$5=The %s (%s) project belongs to the %s %s and is "
+    "in %s, with assigned creators of: %s.\n",
+    p->id, p->name, query_multiple_short (p->domains),
+    (sizeof (p->domains) == 1 ? "domain" : "domains"), STATUS[p->status],
+    query_multiple_short (p->creators));
+    ret = replace (ret, ({"$I$5=", "<p>"}));
+  return ret;
+}
+int find_project (string id) {
+  int i = find_index (id, projects);
+  return i;
+}
+int find_note(mixed i, string id) {
+  int j;
+  if (!intp(i)) {
+    i = find_project (i);
+  }
+  j = find_index (id, projects[i]->notes);
+  return j;
+}
+int find_task(mixed i, string id) {
+  int j;
+  if (!intp(i)) {
+    i = find_project (i);
+  }
+  j = find_index (id, projects[i]->tasks);
+  return j;
+}
+class file* find_file(mixed i, string nfile, string task) {
+  int j;
+  class file *tmp = ({ });
+  if (!intp(i)) {
+    i = find_project (i);
+  }
+  if (!sizeof (projects[i]->files)) {
+    return tmp;
+  }
+  for (j=0; j < sizeof (projects[i]->files); j++) {
+    if (projects[i]->files[j]->file == nfile) {
+      if (sizeof (task)) {
+        if (task == "leader" || projects[i]->files[j]->task == task) {
+          tmp += ({ projects[i]->files[j] });
+        }
+      }
+      else if (!sizeof (projects[i]->files[j]->task)) {
+          tmp += ({ projects[i]->files[j] });
+      }
+    }
+  }
+  return tmp;
+}
+int find_cache_file (string file) {
+  int i = find_index (file, cache);
+  return i;
+}
+int delete_project (string id, string name) {
+  int i = find_index (id, projects);
+  if (i == -1) {
+    return 0;
+  }
+  projects -= ({ projects[i] });
+  do_log (sprintf ("%s:  %s deleted project %s.\n",
+    ctime(time()), name, id));
+  save_file();
+  return 1;
+}
+int delete_task (string id, string task_id, string name) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks -= ({ projects[i]->tasks[j] });
+  touch_project (id, "Deleted task " + task_id, name);
+  return 1;
+}
+int delete_note (string id, string note_id, string name) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_note (i, note_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->notes -= ({ projects[i]->notes[j] });
+  touch_project (id, "Deleted note " + note_id, name);
+  return 1;
+}
+int add_project (string id, string nname, string lead, string desc,
+  string *dom, string *cre, string add_name, int size, int complexity,
+  string *guilds) {
+  int i;
+  class project tmp;
+  if (find_project (id) != -1) {
+    return -1;
+  }
+  tmp = new (class project, id: id, name: nname, leader: lead,
+    date_added: time(), added_by: add_name,
+    date_completed: 0, status: 0, estimated_completion: 0,
+    description: desc, domains: dom, creators: (sizeof (cre) ? cre :
+    ({})), playtesters: ({ }), tasks: ({ }),
+    files: ({ }), twiki: ({ }), percent_complete: 0, sub_projects: ({ }),
+    notes: ({ }), size: size, complexity: complexity, guild_specific :
+    guilds);
+  i = insert_into_projects (tmp);
+  touch_project (id, "Project added", add_name);
+  return i;
+}
+int add_cache_file (string id) {
+  int i;
+  class file_access_cache tmp;
+  if (find_cache_file (id) != -1) {
+    return -1;
+  }
+  tmp = new (class file_access_cache, id: id, accesses: ([ ]));
+  i = insert_into_cache (tmp);
+  return i;
+}
+int set_completion_date (string id, int date) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->estimated_completion = date;
+}
+int add_creator (string id, string creator) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (!sizeof (projects[i]->creators)) {
+    projects[i]->creators = ({ creator });
+  }
+  else if (member_array (creator, projects[i]->creators) == -1) {
+    projects[i]->creators += ({ creator });
+  }
+  return 1;
+}
+int add_twiki (string id, string twiki) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (!sizeof (projects[i]->twiki)) {
+    projects[i]->twiki = ({ twiki });
+  }
+  else {
+    projects[i]->twiki += ({ twiki });
+  }
+  return 1;
+}
+string* query_twiki (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return copy (projects[i]->twiki);
+}
+class file* query_files (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return copy (projects[i]->files);
+}
+int add_file (string id, string file, int access, string name, string task) {
+  int i = find_project (id);
+  int k;
+  mixed ob;
+  class file tmp;
+  class file *files = ({ });
+  if (i == -1) {
+    return 0;
+  }
+  if (access == GRANT_MASK || access == LOCK_MASK) {
+    ob = find_player (name);
+    if (!ob) {
+      return 0;
+    }
+  }
+  if (!ob) {
+    ob = name;
+  }
+  k = master()->valid_grant (ob, file, access);
+  if (!k) {
+    log_file ("CHEAT", ctime(time()) + ": " + name + " tried to add "
+      "level " + access + " access to file " + file + "\n");
+    return 0;
+  }
+  tmp = new (class file, file: file, access: access, task: task);
+  if (!sizeof (projects[i]->files)) {
+    projects[i]->files = ({ tmp });
+  }
+  else {
+    files = find_file (i, file, task);
+    foreach (class file f in files) {
+      if (f->access == access && f->task == task) {
+        return 0;
+      }
+    }
+    projects[i]->files += ({ tmp });
+  }
+  clear_file_cache (file);
+  touch_project (id, "Added a file permission", name);
+  return 1;
+}
+int remove_file (string id, string file, string task, string name) {
+  int i = find_project (id);
+  class file *tmp = ({ });
+  if (i == -1) {
+    return 0;
+  }
+  tmp = find_file (i, file, task);
+  if (!sizeof (tmp)) {
+    return 0;
+  }
+  foreach (class file f in tmp) {
+    if (f->task == task) {
+      projects[i]->files -= ({ f });
+      break;
+    }
+  }
+  clear_file_cache (file);
+  touch_project (id, "Removed a file permission", name);
+  return 1;
+}
+int reset_files (string id) {
+  int i = find_project (id);
+  projects[i]->files = ({ });
+}
+int add_domain (string id, string domain) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (!sizeof (projects[i]->domains)) {
+    projects[i]->domains = ({ domain });
+  }
+  else {
+    projects[i]->domains += ({ domain });
+  }
+  return 1;
+}
+int set_project_leader (string id, string leader) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->leader= leader;
+}
+string query_project_leader (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->leader;
+}
+string* query_project_subprojects (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->sub_projects;
+}
+string* query_projects() {
+  return map (projects, (: $1->id :));
+}
+int set_status (string id, int stat) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (stat >= sizeof (STATUS)) {
+    return 0;
+  }
+  projects[i]->status = stat;
+  catch_status_change (id, stat);
+}
+int query_status (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->status;
+}
+string query_all_projects_info() {
+  string ret = "";
+  foreach (class project p in projects) {
+    ret += parse_details (p);
+  }
+  return ret;
+}
+string* query_project_tasks (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return map (projects[i]->tasks, (: $1->id :));
+}
+string* query_project_notes (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (!sizeof (projects[i]->notes)) {
+    return 0;
+  }
+  return map (projects[i]->notes, (: $1->id :));
+}
+string* query_project_domains (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->domains;
+}
+int set_description (string id, string desc) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->description = desc;
+  return 1;
+}
+string query_description (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->description;
+}
+int set_status_change(string id, int time) {
+  int i = find_project (id);
+  if (time) {
+    projects[i]->last_status_change = time;
+  }
+}
+string project_info (string id) {
+  int i = find_project (id);
+  string ret = "";
+  if (i == -1) {
+    return "There is no project with that ID.\n";
+  }
+  ret += sprintf ("\n$I$5=Project %s (%s) belongs to the %s %s.\n",
+    id, projects[i]->name, query_multiple_short
+      (projects[i]->domains), (sizeof(projects[i]->domains) == 1 ?
+      "domain" : "domains"));
+  if (sizeof (projects[i]->description)) {
+    ret += sprintf ("$I$5=Project %s has the following description: \n",
+      id, projects[i]->description);
+  }
+  ret += sprintf ("$I$5=Project %s is %s percent complete.\n",
+    id, query_num (query_project_completeness (id)));
+  ret += sprintf ("$I$5=Project %s has a project leader of: %s.\n",
+    id, projects[i]->leader);
+  ret += sprintf ("$I$5=Project %s has the following assigned creators:  %s.\n",
+    id, query_multiple_short (projects[i]->creators));
+  ret += sprintf ("$I$5=Project %s is currently: in %s.\n",
+    id, STATUS[projects[i]->status]);
+  ret += sprintf ("$I$5=Project %s was added at: %s by %s.\n",
+    id, ctime (projects[i]->date_added), projects[i]->added_by);
+  if (sizeof (projects[i]->twiki)) {
+    ret += sprintf ("$I$5=Project %s has the following twiki pages: %s.\n",
+      id, query_multiple_short (projects[i]->twiki));
+  }
+  if (sizeof (projects[i]->tasks)) {
+    ret += sprintf ("$I$5=Project %s has the following tasks: %s.\n",
+      id, query_multiple_short (query_project_tasks (id)));
+  }
+  if (projects[i]->estimated_completion) {
+    ret += sprintf ("$I$5=Project %s will be completed by the estimated date "
+      "of: %s.\n", id, ctime (projects[i]->estimated_completion));
+  }
+    ret = replace (ret, ({"$I$5=", "<p>"}));
+  return ret;
+}
+string task_info (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  string ret = "";
+  if (i == -1) {
+    return "There is no project with that ID.\n";
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return "There is no task with that ID for project " + id + ".\n";
+  }
+  ret += sprintf ("Project %s:  task %s.\n", id, task_id);
+  ret += sprintf ("task %s is %s percent complete.\n",
+    task_id, query_num (projects[i]->tasks[j]->percent_complete));
+  ret += sprintf ("task %s has the following assigned creators:  %s.\n",
+    query_multiple_short (projects[i]->tasks[j]->assigned_to));
+  return ret;
+}
+int set_project_completeness (string id, int percent) {
+  int i = find_project (id);
+  if (i == -1) {
+    return -1;
+  }
+  projects[i]->percent_complete = percent;
+}
+int set_project_name (string id, string name) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->name = name;
+}
+string query_project_name (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->name;
+}
+int query_project_completeness (string id) {
+  int i = find_project(id);
+  int percent = 0;
+  int counter = 0;
+  string p;
+  if (i == -1) {
+    return 0;
+  }
+  if (projects[i]->percent_complete) {
+    return projects[i]->percent_complete;
+  }
+  if (!sizeof (projects[i]->tasks)) {
+    return 0;
+  }
+  if (sizeof (projects[i]->sub_projects)) {
+    foreach (p in projects[i]->sub_projects) {
+      if (p == id) {
+        continue;
+      }
+      percent += query_project_completeness (p);
+      counter++;
+    }
+  }
+  foreach (class task bing in projects[i]->tasks) {
+      if (!intp (bing->percent_complete)) {
+        bing->percent_complete = to_int (bing->percent_complete);
+      }
+      percent += bing->percent_complete;
+      counter++;
+  }
+  return percent / counter;
+}
+int update_project_task_completeness (string id, string task, int percent) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return -1;
+  }
+  j = find_task (i, task);
+  if (j == -1) {
+    return -1;
+  }
+  projects[i]->tasks[j]->percent_complete = percent;
+}
+int assign_project_task_creator (string id, string task, string creator) {
+  int i = find_project (id);
+  int j;
+  string *cres;
+  if (i == -1) {
+    return -1;
+  }
+  j = find_task (i, task);
+  if (j == -1) {
+    return -1;
+  }
+  cres = projects[i]->tasks[j]->assigned_to;
+  if (!sizeof (cres)) {
+    cres = ({ creator });
+  }
+  else {
+    cres += ({ creator });
+  }
+  projects[i]->tasks[j]->assigned_to = cres;
+  if (member_array (creator, projects[i]->creators) == -1) {
+    add_creator (id, creator);
+  }
+  return 1;
+}
+int add_task_to_project (string id, string task_id, string name, string aim) {
+  int i = find_project (id);
+  int j;
+  class task tmp;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j != -1) {
+    return 0;
+  }
+  tmp = new (class task, id: task_id, added_by: name,
+    date_added: time(), aims: aim);
+  touch_project (id, "Added task " + task_id, name);
+  return insert_into_tasks (i, tmp);
+}
+int add_note_to_project (string id, string note_id, string note, string name) {
+  int i = find_project (id);
+  int j;
+  class note tmp;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_note (i, note_id);
+  if (j != -1) {
+    return 0;
+  }
+  tmp = new (class note, id: note_id, note: note, added_by: name,
+    date_added: time());
+  touch_project (id, "Added note " + note_id, name);
+  return insert_into_notes (i, tmp);
+}
+int set_task_name (string id, string task_id, string name) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j]->task_name = name;
+  return 1;
+}
+int set_task_aims (string id, string task_id, string aims) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j]->aims = aims;
+  return 1;
+}
+string query_task_aims (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->aims;
+  }
+string query_task_name (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->task_name;
+}
+class task* project_task_data (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return ({ });
+  }
+  return projects[i]->tasks;
+}
+class note* project_note_data (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return ({ });
+  }
+  return projects[i]->notes;
+}
+int set_task_comments (string id, string task_id, string comments) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j]->comments = comments;
+  return 1;
+}
+string query_task_comments (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->comments;
+}
+int add_task_creator (string id, string task_id, string creator) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  if (!sizeof (projects[i]->tasks[j]->assigned_to)) {
+    projects[i]->tasks[j]->assigned_to= ({ creator });
+  }
+  else {
+    projects[i]->tasks[j]->assigned_to+= ({ creator });
+  }
+  return 1;
+}
+string* query_task_creators (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->assigned_to;
+}
+int set_task_completion (string id, string task_id, int percent) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j]->percent_complete = percent;
+  return 1;
+}
+int query_task_competion (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->percent_complete;
+}
+int set_task_completion_date(string id, string task_id, int date) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j]->completion_date = date;
+  return 1;
+}
+int query_task_completion_date (string id, string task_id) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, task_id);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j]->completion_date;
+}
+class project* filter_by_query (mapping query) {
+  string tmp_str, *tmp_arr;
+  int match, unassigned = 0;
+  class project *tmp = ({ });
+  string *un = ({"unassigned", "none", "no-one", "noone", "nobody"});
+  if (member_array (query["creators"], un) != -1) {
+    unassigned = 1;
+  }
+  foreach (class project p in projects) {
+    match = 0;
+    tmp_str = query ["projid"];
+    if (sizeof (tmp_str)) {
+      if (p->id == query["projid"]) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    tmp_str = query ["domains"];
+    if (sizeof (tmp_str)) {
+      tmp_arr = explode (replace (tmp_str, ({" ", ""})), ",");
+      if (sizeof (map (tmp_arr, (: lower_case ($1) :))
+        & map (p->domains, (: lower_case ($1) :))) == sizeof (tmp_arr)) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    tmp_str = query["creators"];
+    if (sizeof (tmp_str)) {
+      tmp_arr = explode (replace (tmp_str, ({" ", ""})), ",");
+      if (sizeof (map (tmp_arr, (: lower_case ($1) :))
+        & map (p->creators, (: lower_case ($1) :))) == sizeof (tmp_arr)) {
+        match = 1;
+      }
+      else if (unassigned && !sizeof (p->creators)) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (sizeof (query["status"])) {
+      if (query["status"] == "all") {
+        match = 1;
+      }
+      else if (p->status == member_array (query["status"], STATUS)) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (sizeof (query["leader"])) {
+      if (lower_case (p->leader) == lower_case (query["leader"])) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (query["touched"]) {
+      if (p->last_touched > time() - query["touched"] ) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (query["completeness"]) {
+      if (query_project_completeness (p->id)
+        >= to_int (query["completeness"])) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    tmp_str = query["playtesters"];
+    if (sizeof (tmp_str)) {
+      tmp_arr = explode (replace (tmp_str, ({" ", ""})), ",");
+      if (sizeof (tmp_arr & p->playtesters) == sizeof (tmp_arr)) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (match) {
+      tmp += ({ p });
+    }
+  }
+  return tmp;
+}
+class task* filter_tasks_by_query (string id, mapping query) {
+  string tmp_str, *tmp_arr;
+  int match, i, j;
+  class task *tmp = ({ });
+  i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  foreach (class task p in projects[i]->tasks) {
+    match = 0;
+    tmp_str = query["creators"];
+    if (sizeof (tmp_str)) {
+      tmp_arr = explode (replace (tmp_str, ({" ", ""})), ",");
+      if (sizeof (tmp_arr & p->assigned_to) == sizeof (tmp_arr)) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (sizeof (query["completed"])) {
+      j = to_int (query["completed"]);
+      if (p->percent_complete > j) {
+        match = 1;
+      }
+      else {
+        continue;
+      }
+    }
+    if (match) {
+      tmp += ({ p });
+    }
+  }
+  return tmp;
+}
+class project get_project_file (string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i];
+}
+void set_project_file (string id, class project tmp, string name) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i] = tmp;
+  touch_project (id, "Updated project file", name);
+  catch_status_change (id, tmp->status);
+}
+class project* data_dump() {
+  mapping dom_proj = ([ ]);
+  string d;
+  class project *tmp = ({ });
+  string *dom;
+  foreach (class project p in projects) {
+    foreach (d in p->domains) {
+      if (undefinedp (dom_proj [d])) {
+        dom_proj [d] = ({ p });
+      }
+      else {
+        dom_proj [d] += ({ p });
+      }
+    }
+  }
+  dom = sort_array (keys (dom_proj), 1);
+  foreach (d in dom) {
+    tmp += dom_proj[d];
+  }
+  return uniq_array (tmp);
+}
+class task get_task_file (string id, string t) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, t);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->tasks[j];
+}
+void set_task_file (string id, string t, class task tmp, string name) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_task (i, t);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->tasks[j] = tmp;
+  touch_project (id, "Updated task " + t, name);
+}
+class note get_note_file (string id, string t) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_note (i, t);
+  if (j == -1) {
+    return 0;
+  }
+  return projects[i]->notes[j];
+}
+void set_note_file (string id, string t, class note tmp, string name) {
+  int i = find_project (id);
+  int j;
+  if (i == -1) {
+    return 0;
+  }
+  j = find_note(i, t);
+  if (j == -1) {
+    return 0;
+  }
+  projects[i]->notes[j] = tmp;
+  touch_project (id, "Updated note " + t, name);
+}
+int is_creator_on_project (string name, string id) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  if (member_array ("all", projects[i]->creators) != -1) {
+    return 1;
+  }
+  if (member_array (name, projects[i]->creators) != -1) {
+    return 1;
+  }
+  return 0;
+}
+varargs int valid_operation (string name, string action, string project,
+  string* dom) {
+  object ob;
+  string *domains;
+  int i = find_project (project);
+  int j;
+  if (master()->high_programmer (name)) {
+    return 1;
+  }
+  if (name == "drakkos") {
+    return 1;
+  }
+  if (i != -1) {
+    domains = query_project_domains (project);
+  }
+  else if (dom) {
+    domains = dom;
+  }
+  if (is_creator_on_project (name, project)) {
+    return 1;
+  }
+  if (action == PLAYTESTING) {
+    ob = find_object ("/d/playtesting/master");
+    if (ob->query_lord() == name) {
+      return 1;
+    }
+    if (ob->query_deputy (name)) {
+      return 1;
+    }
+  }
+  if (!sizeof (domains)) {
+    return 0;
+  }
+  foreach (string d in domains) {
+    ob = find_object ("/d/" + d + "/master");
+    if (function_exists (CALLBACK, ob)) {
+      j = call_other (ob, CALLBACK, name, action, project);
+      if (j != -1) {
+        return j;
+      }
+    }
+    if (ob->query_lord() == name) {
+      return 1;
+    }
+    if (ob->query_deputy (name) && action != PLAYTESTING) {
+      return 1;
+    }
+  }
+  if (action == PROJECT) {
+    return 1;
+    return sizeof (filter (domains, (:
+      find_object ("/d/" + $1 + "/master")->query_member ($(name)) :)));
+  }
+  if (action == TASK || action == NOTE) {
+    return is_creator_on_project (name, project);
+  }
+  return 0;
+}
+void catch_status_change (string id, int status) {
+  object ob;
+  int i = find_project (id);
+  foreach (string d in projects[i]->domains) {
+    ob = load_object ("/d/" + d + "/master");
+    if (!ob) {
+      continue;
+    }
+    if (function_exists ("project_status_change", ob)) {
+      ob->project_status_change (id, status);
+    }
+  }
+  if (status == member_array ("play", STATUS)) {
+    WHATWHAT->add_project (projects[i]->name, projects[i]->domains,
+      projects[i]->creators, projects[i]->description, "play");
+  }
+  if (status != member_array ("playtesting", STATUS)) {
+    clear_playtesting_projects (projects[i]->playtesters);
+    projects[i]->playtesters = ({ });
+    save_file();
+  }
+  projects[i]->last_status_change = time();
+}
+int assign_playtesters (string id, string *pt, string name) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  pt = map(pt, (: lower_case ($1) :));
+  pt = filter (pt, (: PLAYTESTER_HAND->query_playtester ($1) :));
+  projects[i]->playtesters = pt;
+  save_file();
+  foreach (string p in pt) {
+    if (pt_assignment_cache [p]) {
+      map_delete (pt_assignment_cache, p);
+    }
+  }
+  return 1;
+}
+string* add_playtester (string id, string *pt) {
+  int i = find_project (id);
+  string *names;
+  if (i == -1) {
+    return 0;
+  }
+  pt = map(pt, (: lower_case ($1) :));
+  pt = filter (pt, (: PLAYTESTER_HAND->query_playtester ($1) :));
+  names = projects[i]->playtesters;
+  projects[i]->playtesters = uniq_array (names += pt);
+  clear_playtesting_projects (pt);
+  save_file();
+  do_mail (pt, projects[i]->id);
+  return pt;
+}
+int remove_playtester (string id, string *pt) {
+  int i = find_project (id);
+  if (i == -1) {
+    return 0;
+  }
+  pt = map(pt, (: lower_case ($1) :));
+  projects[i]->playtesters -= pt;
+  clear_playtesting_projects (pt);
+  save_file();
+  return 1;
+}
+void do_load_tmp() {
+  unguarded ((: restore_object, TMP_SAVE :));
+}
+void do_setup() {
+  projects = ({ });
+  foreach (class project p in tmp_projects) {
+    projects += ({ p });
+  }
+  tmp_projects = ({ });
+  do_save();
+}
+int clear_file_cache (string nfile) {
+  int i = find_cache_file (nfile);
+  if (i == -1) {
+    return 0;
+  }
+  cache -= ({ cache[i] });
+  return 1;
+}
+int query_permission (string project, string name, string nfile, int access) {
+  int i = find_project (project);
+  int j;
+  string *tasks = ({ });
+  class file *tmp = ({ });
+  if (i == -1) {
+    return 0;
+  }
+  if (projects[i]->leader != name &&
+    member_array (name, projects[i]->creators) == -1) {
+    return 0;
+  }
+  if (projects[i]->leader == name) {
+    tasks = map (projects[i]->tasks, (: $1->id :));
+    tasks += ({"leader"});
+  }
+  else {
+    tasks = map (filter (projects[i]->tasks, (: member_array ($(name),
+      $1->assigned_to) != -1 :)), (: $1->id :));
+  }
+  tasks += ({""});
+  foreach (string t in tasks) {
+    tmp += find_file (i, nfile, t);
+  }
+  if (!sizeof (tmp)) {
+    return 0;
+  }
+  tmp = uniq_array (tmp);
+  foreach (class file f in tmp) {
+    j = find_cache_file (f->file);
+    if (j == -1) {
+      j = add_cache_file (f->file);
+    }
+    if (!sizeof (f->task)) {
+      if (f->access == access) {
+        if (cache[j]->accesses[name] < access) {
+          cache[j]->accesses[name] = access;
+        }
+        return 1;
+      }
+    }
+    else if (member_array (f->task, tasks) != -1) {
+        if (f->access == access) {
+          if (cache[j]->accesses[name] < access) {
+            cache[j]->accesses[name] = access;
+          }
+          return 1;
+        }
+    }
+  }
+  return 0;
+}
+int nuke_creator_project_cache(string *creators) {
+  if (!creator_project_cache) {
+    return 0;
+  }
+  foreach (string c in creators) {
+    map_delete (creator_project_cache, c);
+    return 1;
+  }
+}
+int query_file_permission (string name, string nfile, int access) {
+  string *a_projects = query_projects_for_creator (name);
+  int i, j, k, l = 0;
+  if (!sizeof (a_projects)) {
+    return 0;
+  }
+  j = find_cache_file (nfile);
+  if (j != -1 ) {
+    k = cache[j]->accesses[name];
+    if (k == -1) {
+      return 0;
+    }
+    if (k >= access) {
+      return 1;
+    }
+  }
+  foreach (string p in a_projects) {
+    i = query_permission (p, name, nfile, access);
+    if (!l && i) {
+      l = 1;
+    }
+  }
+  return l;
+}
+void set_project_lock (string project) {
+  project_locks[project] = time();
+}
+int query_project_lock (string project) {
+  if (project_locks[project] + PROJECT_LOCK > time()) {
+    return 1;
+  }
+  map_delete (project_locks, project);
+  return 0;
+}
+string generate_pt_report() {
+  string *new_cache = ({ });
+  string missing_projects = "";
+  string ret = "";
+  string *det = ({ });
+  string project_list = "";
+  string tmp;
+  string post = "";
+  int i;
+  class project *in_pt = ({ });
+  class project *out_pt = ({ });
+  class project *new_pt = ({ });
+  string *del = ({ });
+  class project *playtesting = filter_by_query ((["status": "playtesting"]));
+  foreach (class project p in playtesting) {
+      new_cache += ({ p->id });
+      if (member_array (p->id, pt_post_cache) == -1) {
+        new_pt += ({ p });
+      }
+      else {
+        in_pt += ({ p });
+      }
+    }
+  if (sizeof (pt_post_cache)) {
+    foreach (string id in pt_post_cache) {
+      if (member_array (id, new_cache) == -1) {
+        i = find_project (id);
+        if (i == -1) {
+          del += ({ id });
+        }
+        else {
+          out_pt += ({ projects[i] });
+        }
+      }
+    }
+  }
+  if (sizeof (new_pt)) {
+    ret += "The following projects have entered playtesting:\n\n";
+    foreach (class project p in new_pt) {
+      det = ({ });
+      det += ({sprintf ("*  %s (%s): %s.\n   Description: %s\n   "
+        "Project leader: %s.\n   "
+        "Creators: %s.\n   Notes: %s.\n", p->id, p->name,
+          query_multiple_short (p->domains), (p->description ? replace
+            (p->description, ({"\n", ""})) :
+          "None"), (p->leader ? p->leader :
+          "No-one"), (p->creators ? query_multiple_short (p->creators) :
+          "None"), (sizeof (p->pt_notes) ? replace (p->pt_notes,
+          ({"\n", ""})) : "None")) });
+      ret += implode (det, "\n\n");
+    }
+    ret += "\n\n";
+  }
+  if (sizeof (in_pt)) {
+    ret += "The following projects are still in playtesting:\n\n";
+    det = ({ });
+    foreach (class project p in in_pt) {
+      det += ({sprintf ("*  %s (%s): %s.", p->id, p->name,
+        query_multiple_short (p->domains)) });
+    }
+    ret += implode (det, "\n");
+    ret += "\n\n";
+  }
+  if (sizeof (out_pt)) {
+    det = ({ });
+    ret += "The following projects have been removed from playtesting:\n\n";
+    foreach (class project p in out_pt) {
+      det += ({sprintf ("*  %s (%s): %s.", p->id, p->name,
+        STATUS[p->status]) });
+    }
+    ret += implode (det, "\n\n");
+    ret += "\n\n";
+  }
+  if (sizeof (del)) {
+    ret += "The following projects have been deleted from the handler:\n\n";
+    foreach (string d in del) {
+      det += ({sprintf ("*  %s.", d) });
+    }
+    ret += implode (det, "\n\n");
+    ret += "\n\n";
+  }
+  pt_post_cache = new_cache;
+  if (!sizeof (ret)) {
+    ret= "Wow, absolutely nothing is officially in playtesting at the "
+      "moment.  You can all have the week off.\n\n";
+  }
+  else {
+    ret += "Remember that you can use the 'playtesting' command for more "
+      "information on projects that are currently in playtesting.\n\n";
+  }
+  return ret;
+}
+int make_post() {
+  int ret;
+  ret = BOARD_HAND->add_message("ptforum",
+         "The Project Tracker", "What's in Playtesting?",
+         generate_pt_report() +
+         TWIKI_HANDLER->find_changes_in_database("Playtesters", last_summary));
+  last_summary = time();
+  save_file();
+}
+string* query_pt_cache() {
+  return pt_post_cache;
+}
+string* query_pt_projects (string name) {
+  class project *tmp;
+  if (!undefinedp (pt_assignment_cache [name])) {
+    return pt_assignment_cache [name];
+  }
+  tmp = filter_by_query ((["playtesters" : name ]));
+  if (!tmp) {
+    pt_assignment_cache[name] = ({ });
+  }
+  else {
+    pt_assignment_cache[name] = map (tmp, (: $1->id :));
+  }
+  return pt_assignment_cache[name];
+}
+int query_number_of_pts (mixed proj) {
+  int i;
+  int t;
+  if (!intp (proj)) {
+    i = find_project (proj);
+  }
+  else {
+    i = proj;
+  }
+  if (i == -1) {
+    return -1;
+  }
+  switch (projects[i]->size) {
+    case 0:
+      t = 2;
+    break;
+    case 1:
+      t = 3;
+    break;
+    case 2:
+      t = 4;
+    break;
+    case 3:
+      t = 5;
+    break;
+    case 4:
+      t = 6;
+    break;
+    case 5:
+      t = 8;
+    break;
+    case 6:
+      t = 0;
+    break;
+    default:
+      t = 2;
+    break;
+  }
+  return t;
+}
+int next_rotation_time(mixed proj) {
+  int i, t;
+  if (!intp (proj)) {
+    i = find_project (proj);
+  }
+  else {
+    i = proj;
+  }
+  if (i == -1) {
+    return -1;
+  }
+  if (projects[i]->complexity == member_array ("special", COMPLEXITY)) {
+    return 0;
+  }
+  switch (projects[i]->size) {
+    case 0:
+      t = WEEK;
+    break;
+    case 1:
+      t = WEEK * 2;
+    break;
+    case 2:
+      t = WEEK * 2;
+    break;
+    case 3:
+      t = WEEK * 4;
+    break;
+    case 4:
+      t = WEEK * 4;
+    break;
+    case 5:
+      t = WEEK * 6;
+    break;
+    case 6:
+      t = WEEK * 6;
+    default:
+      t = WEEK;
+  }
+  if (!projects[i]->current_rotation) {
+    projects[i]->last_rotation = time();
+    projects[i]->current_rotation = 1;
+    save_file();
+  }
+  return projects[i]->last_rotation + t;
+}
+int query_time_to_rotate (mixed proj) {
+  int i;
+  i = next_rotation_time(proj);
+  if (i < time()) {
+    return 1;
+  }
+  else {
+    return 0;
+  }
+}
+int query_number_rotations(mixed proj) {
+  int i ;
+  if (!intp (proj)) {
+    i = find_project (proj);
+  }
+  else {
+    i = proj;
+  }
+  if (i == -1) {
+    return -1;
+  }
+  if (projects[i]->complexity == member_array ("special", COMPLEXITY)) {
+    return projects[i]->current_rotation + 1;
+  }
+  return projects[i]->complexity + 2;
+}
+int query_rotation (mixed proj) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->current_rotation;
+}
+string* query_playtesters (mixed proj) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->playtesters;
+}
+int set_complexity (mixed proj, int com) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->complexity = com;
+  return 1;
+}
+int set_size(mixed proj, int siz) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->size = siz;
+  return 1;
+}
+int query_size(mixed proj) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->size;
+}
+int set_guild_specific (mixed proj, string *guilds) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  projects[i]->guild_specific = guilds;
+  return 1;
+}
+string *query_guild_specific(mixed proj) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  if (i == -1) {
+    return 0;
+  }
+  return projects[i]->guild_specific;
+}
+int clear_playtesting_projects (string *names) {
+  foreach (string v in names) {
+    if (pt_assignment_cache[v]) {
+      map_delete (pt_assignment_cache, v);
+    }
+    if (!num_assignments[v]) {
+      num_assignments[v] = 1;
+    }
+    else {
+      num_assignments[v] += 1;
+    }
+  }
+  save_file();
+}
+class project* get_playtesting_projects () {
+  class project *tmp;
+  tmp = filter_by_query ((["status": "playtesting"]));
+  return tmp;
+}
+void set_rotations (string proj, int rot) {
+  int i = find_project (proj);
+  if (i == -1) {
+    return;
+  }
+  projects[i]->current_rotation = rot;
+}
+string* assign_pts_to_project (mixed proj) {
+  int i = (!intp (proj) ? find_project (proj) : proj);
+  int needed, tmp;
+  int min = sizeof (projects) + 1, max = -1;
+  mapping guilds;
+  mapping tmp_assign_cache = ([ ]);
+  string tpt;
+  string *valid = ({ });
+  string *selected = ({ });
+  string *virgins = ({ });
+  string *ordered = ({ });
+  string *last = ({ });
+  string *nvalid = ({ });
+  string *unassigned = ({ });
+  string *assigned = ({ });
+  if (i == -1) {
+    return 0;
+  }
+  if (projects[i]->size != member_array ("special", SIZE)) {
+    needed = query_number_of_pts (proj);
+  }
+  else {
+    return ({ });
+  }
+  if (sizeof (projects[i]->guild_specific)) {
+    guilds = PLAYTESTER_HAND->query_guilds();
+    foreach (string g in projects[i]->guild_specific) {
+      foreach (string name, string gu in guilds) {
+        if (load_object (gu)->query_name() == g) {
+          valid += ({ name });
+        }
+      }
+    }
+  }
+  else {
+    valid = PLAYTESTER_HAND->query_playtesters();
+  }
+  foreach (string v in valid) {
+    if (!sizeof (query_pt_projects (v))) {
+      unassigned += ({ v });
+    }
+    else {
+      assigned += ({ v });
+    }
+  }
+  if (sizeof (unassigned) >= needed) {
+    valid = unassigned;
+  }
+  else {
+    valid = unassigned;
+    while (sizeof (valid) < needed) {
+      tmp = random (sizeof (assigned));
+      valid += ({ assigned[tmp] });
+      assigned -= ({ assigned[tmp] });
+    }
+  }
+  foreach (string va in valid) {
+    if (member_array (lower_case (va), excluded) != -1) {
+      nvalid += ({ va });
+    }
+    if (PLAYTESTER_HAND->query_leave (va)) {
+      nvalid += ({ va });
+    }
+  }
+  valid -= nvalid;
+  virgins = valid - (projects[i]->last_pt_cohort ? projects[i]->last_pt_cohort : ({ }));
+  if (sizeof (projects[i]->last_pt_cohort)) {
+    clear_playtesting_projects (projects[i]->last_pt_cohort);
+  }
+  last = projects[i]->last_pt_cohort;
+  projects[i]->last_pt_cohort = ({ });
+  projects[i]->last_rotation = time();
+  foreach (string v in valid) {
+    tmp_assign_cache[v] = sizeof (query_pt_projects (v)) + num_assignments[v];
+  }
+  foreach (string pt, int val in tmp_assign_cache) {
+    if (val < min) {
+      min = val;
+    }
+    if (val > max) {
+      max = val;
+    }
+  }
+  for (int v = min; v <= max; v++) {
+    ordered = ({ });
+    foreach (string pt, int val in tmp_assign_cache) {
+      if (val == v) {
+        ordered += ({ pt });
+      }
+    }
+    if ((sizeof (selected) + sizeof (ordered))  >= needed) {
+      do {
+        tpt = ordered[random(sizeof(ordered))];
+        selected += ({ tpt });
+        ordered-= ({ tpt });
+      } while (sizeof (selected) < needed);
+      projects[i]->playtesters = selected;
+      save_file();
+      if (!last) {
+        last = ({ });
+      }
+      clear_playtesting_projects ((selected ? selected : ({ })) + (last? last : ({ })));
+      do_mail (selected, projects[i]->id);
+      return selected;
+    }
+    else {
+      selected += ordered;
+    }
+  }
+  valid = uniq_array (valid);
+  projects[i]->last_pt_cohort = projects[i]->playtesters;
+  if (sizeof (projects[i]->playtesters)) {
+    if (sizeof (projects[i]->all_pts)) {
+      projects[i]->all_pts += ({ projects[i]->playtesters });
+    }
+    else {
+      projects[i]->all_pts = ({ projects[i]->playtesters });
+    }
+  }
+  projects[i]->playtesters = selected;
+  clear_playtesting_projects ((selected ? selected : ({ })) + (last? last : ({ })));
+  do_mail (selected, projects[i]->id);
+  save_file();
+  return selected;
+}
+void rotate_project (mixed tmp) {
+  int i;
+  if (intp (tmp)) {
+    i = tmp;
+  }
+  else {
+    i = find_project (tmp);
+  }
+  if (projects[i]->current_rotation == query_number_rotations (i)) {
+    AUTO_MAILER->auto_mail( "drakkos", "The Playtester Wheel Of Fate",
+      "Your project in playtesting", projects[i]->leader,
+      "Bing!\n\nThe project " + projects[i]->id + " has reached the end of "
+      "its automatic playtesting lifetime and has been put back into a state "
+      "of limbo.  If you wish for the project to continue in playtesting, then "
+      "please set the project back into playtesting and give Drakkos a nudge!\n\n"
+      "Thx bye,\nThe Playtester Wheel Of Fate.\n", 0, 0, 1 );
+    AUTO_MAILER->auto_mail( "drakkos", "The Playtester Wheel Of Fate",
+      "Your project in playtesting", implode (projects[i]->playtesters, ","),
+      "Bing!\n\nThe project " + projects[i]->id + " has reached the end of "
+      "its automatic playtesting lifetime and has been put back into a state "
+      "of limbo.  Thank you for your work on the last stage of its current "
+      "playtesting phase.\n\n"
+      "Thx bye,\nThe Playtester Wheel Of Fate.\n", 0, 0, 1 );
+    set_status(projects[i]->id, 4);
+    projects[i]->current_rotation = 0;
+    return;
+  }
+  projects[i]->current_rotation = projects[i]->current_rotation+1;
+  projects[i]->last_rotation = time();
+  assign_pts_to_project(i);
+}
+void reset() {
+  if (!last_summary) {
+    last_summary = time();
+  }
+  if ((last_summary + TIME_BETWEEN_POSTINGS) < time()) {
+    make_post();
+  }
+  for (int i = 0; i < sizeof (projects); i++) {
+    if (projects[i]->status != member_array ("playtesting", STATUS)) {
+      continue;
+    }
+    if (query_time_to_rotate (i)) {
+      rotate_project (i);
+    }
+  }
+}
+void do_mail (string *playtesters, mixed proj) {
+  string text = "Hello!\n\nYou have been assigned to project " +
+    proj + " on its latest rotation.  You can use "
+    "'playtesting details " + proj + " to find out more about "
+    "the project if neccessary.\n\nRegards,\nThe Playtester Wheel "
+    "Of Fate.\n";
+  AUTO_MAILER->auto_mail( "drakkos", "The Playtester Wheel Of Fate",
+    "Your new playtester assignment", implode (playtesters, ","),
+    text, 0, 0, 1 );
+}
+void clear() {
+  string *names;
+  for (int i = 0; i < sizeof (projects); i++) {
+    projects[i]->all_pts = ({ });
+    projects[i]->last_pt_cohort = ({ });
+    projects[i]->playtesters = ({ });
+  }
+  names = PLAYTESTER_HAND->query_playtesters();
+  clear_playtesting_projects (names);
+  save_file();
+}
+void test_num() {
+  printf ("%O\n", pt_assignment_cache);
+}
+
+==================================================
+FILE: handlers/property_tracker.c
+==================================================
+
+#include <login.h>
+#define CACHE_PROPERTY "property_tracker"
+nosave inherit "/std/object";
+void save_file();
+private string *_invalid_properties;
+private mapping _property_funcs;
+void create() {
+    ::create();
+    seteuid( "Root" );
+    set_name( "tracker" );
+    set_short( "property tracker" );
+    unguarded( (: restore_object, "/save/property_tracker.o" :) );
+    if ( !_invalid_properties ) {
+        _invalid_properties = ({ "team", "ctf_deaths", "ctf_shared",
+            "ctf_solo",
+            "completed feather quest", "ChapelGapp",
+            "scythe sharpness", "DJ to ephebe",
+            "emote", "quiting frog", "woeshipper",
+            "arresting", "Junior's friend", "donetd",
+            "Sek_gem", "looky thingy", "riddle_master",
+            "help shopkeeper" });
+        _property_funcs = ([ ]);
+        save_file();
+    }
+}
+public void check_properties(mixed person, string type) {
+    string property;
+    mixed data;
+    int result;
+    int diff;
+    if (type != LOGIN)
+        return;
+    if ( !objectp(person) && !( person = find_player( person ) ) ) {
+        return;
+    }
+#ifdef CACHE_TIME
+    diff = CACHE_TIME;
+#else
+    diff = 1;
+#endif
+    if ( time() > person->query_property( CACHE_PROPERTY ) + diff ) {
+#ifdef DEBUG
+        tell_creator( "taffyd", "Scanning %s (%O) for properties.\n",
+            person->query_name(), person );
+#endif
+        foreach( property, data in person->query_properties() ) {
+            if ( member_array( property, _invalid_properties ) > -1 ) {
+#ifdef DEBUG
+                tell_creator( "taffyd", "Checking to property %s.\n",
+                    property );
+#endif
+                if ( _property_funcs[ property ] ) {
+                    result = call_other( _property_funcs[ property ][ 1 ],
+                        _property_funcs[ property ][ 0 ], property, person,
+                        data );
+                    if ( result ) {
+                        continue;
+                    }
+                }
+#ifdef DEBUG
+                tell_creator( "taffyd", "Removing property %s.\n",
+                    property );
+#endif
+                person->remove_property( property );
+            }
+        }
+#ifdef CACHE_TIME
+        person->add_property( CACHE_PROPERTY, time() );
+#else
+        person->remove_property( CACHE_PROPERTY );
+#endif
+    }
+    person->add_skill_level( "other.language.common.spoken", -person->query_skill( "other.language.common.spoken" ) );
+    person->add_skill_level( "other.language.common.written", -person->query_skill( "other.language.common.written" ) );
+}
+public string query_invalid_properties() {
+    return copy( _invalid_properties );
+}
+varargs public int add_invalid_property( string property, mixed func, mixed obj ) {
+#ifdef LORD_ONLY
+    if ( !master()->query_lord( previous_object( -1 ) ) ) {
+        tell_creator( this_player(1), "Get a Lord to add your property for "
+            "you.\n" );
+        return 0;
+    }
+#endif
+    if ( member_array( property, _invalid_properties ) == -1 ) {
+        if ( objectp( func ) ) {
+            func = file_name( func );
+        }
+        if ( objectp( obj ) ) {
+            obj = file_name( obj );
+        }
+        if ( func && obj ) {
+            _property_funcs[ property ] = ({ func, obj });
+        }
+        _invalid_properties += ({ property });
+        save_file();
+        return 1;
+    }
+    return 0;
+}
+int remove_invalid_property( string property ) {
+#ifdef LORD_ONLY
+    if ( !master()->query_lord( previous_object( -1 ) ) ) {
+        tell_creator( this_player(1), "Get a Lord to add your property for "
+            "you.\n" );
+        return 0;
+    }
+#endif
+    if ( _property_funcs[ property ] ) {
+        map_delete( _property_funcs, property );
+    }
+    _invalid_properties -= ({ property });
+    save_file();
+    return 1;
+}
+void save_file() {
+    unguarded( (: save_object, "/save/property_tracker" :) );
+}
+void reset_data() {
+    unguarded( (: rm, "/save/property_tracker.o" :) );
+}
+void convert_no_score( string property, object who, mixed data ) {
+    if ( property != "no_score" )
+        return;
+    if ( data ) {
+        who->remove_property( property );
+        who->add_property( "no score", 1 );
+    }
+}
+int remove_warmth( string property, object who, mixed data ) {
+    if ( property != "warmth" ) {
+        return 1;
+    }
+    if ( !who->query_property_time_left( property ) ) {
+        who->remove_property( property );
+        return 1;
+    }
+    return 1;
 }

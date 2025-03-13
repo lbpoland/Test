@@ -1,1908 +1,2456 @@
-# Total Tokens: 16910
-# Total Files Merged: 14
-# Total Characters: 56409
+# Total Tokens: 22026
+# Total Files Merged: 21
+# Total Characters: 73487
 
-re/basic.c
+r/wetness.c
 ==================================================
 
-#include <move_failures.h>
-#include <position.h>
-#include <room/placement.h>
-inherit "/std/object";
-inherit "/std/basic/item_chat";
-inherit "/std/room/furniture/inherit/furniture_base";
+#include "path.h"
+#include <effect.h>
+#include <weather.h>
+#define MAX_EFFECT 200
+#define MAX_DURATION 120
+#define MAX_STRENGTH 240
+#define MIN_STRENGTH 20
+string query_classification() { return "body.wetness"; }
+int beginning( object player, int wetness, int id ) {
+  int dryness;
+  tell_object( player, "Squelch.\n" );
+  player->submit_ee( "squelch", ({ 20, 20 }), EE_CONTINUOUS );
+  player->add_extra_look( this_object() );
+  if(dryness = (int)player->check_dryness())
+    wetness -= dryness;
+  if ( wetness > (int)player->query_weight() )
+    wetness = (int)player->query_weight();
+  return wetness;
+}
+void restart( object player ) {
+  player->add_extra_look( this_object() );
+}
+int merge_effect( object player, int new_wetness, int old_wetness, int id ) {
+  int wetness, dryness;
+  wetness = new_wetness + old_wetness;
+  if(dryness = (int)player->check_dryness())
+    wetness -= dryness;
+  if ( wetness > (int)player->query_weight() )
+      wetness = (int)player->query_weight();
+  if ( wetness <= 0 )
+    player->submit_ee(0, 0, EE_REMOVE );
+  return wetness;
+}
+void end( object player, int strength, int id ) {
+  tell_object(player, "You feel dry now.\n");
+  player->remove_extra_look( this_object() );
+}
+void squelch(object player, int wetness, int id) {
+  string loc;
+  object env;
+  int bingle;
+  env = environment(player);
+  if(!env)
+    return;
+  loc = (string)env->query_property("location");
+  if(loc == "outside" && (int)WEATHER->query_temperature(env) > 0) {
+    bingle = (int)WEATHER->query_temperature(env) / 2 +
+      env->query_property("warmth");
+  } else if(loc == "inside")
+    bingle = (20 / 2) + env->query_property( "warmth" );
+  if(player->query_personal_temp() / 3 > bingle)
+    bingle -= (player->query_personal_temp() / 3);
+  if(!env->query_water() && bingle > 0)
+    wetness -= bingle;
+  if(player->query_property("dead"))
+    wetness = 0;
+  if(wetness <= 0)
+    player->submit_ee(0, 0, EE_REMOVE );
+  if (wetness > 10 && !random(3) && !env->query_water() ) {
+    tell_object(player, "Squelch.\n" );
+  }
+  player->set_arg_of(player->sid_to_enum(id), wetness);
+}
+string wet_string( object player, int self ) {
+  int wetness;
+  int *enums;
+  enums = (int *)player->effects_matching( "body.wetness" );
+  if ( !sizeof( enums ) )
+    return "";
+  wetness = (int)player->arg_of(enums[0]);
+  if (!intp(wetness)) {
+     wetness = 0;
+     player->submit_ee(0, 0, EE_REMOVE );
+  }
+  switch ( ( wetness * 100 ) / ( 1 +
+      (int)player->query_weight() ) ) {
+    case 0 .. 5 :
+      if (self)
+        return "look slightly wet";
+      else
+        return "looks slightly wet";
+    case 6 .. 10 :
+      if (self)
+        return "look rather wet";
+      else
+        return "looks rather wet";
+    case 11 .. 30 :
+      if (self)
+        return "look wet and bedraggled";
+      else
+        return "looks wet and bedraggled";
+    case 31 .. 80 :
+      if (self)
+        return "are soaked and don't look that well at all";
+      else
+        return "is soaked and doesn't look that well at all";
+    case 81 .. 100 :
+      if (self)
+        return "look like you have just been dunked in a lake";
+      else
+        return "looks like "+ player->query_pronoun() +
+          " has just been dunked in a lake";
+      break;
+    default :
+      return "";
+  }
+}
+string extra_look(object player)  {
+   return capitalize(player->query_pronoun()) + " " + wet_string(player, 0) +
+             ".\n";
+}
+
+==================================================
+FILE: npc/goals_inherit.c
+==================================================
+
+#include <npc/goals.h>
+#include "goal_inherit.h"
+class goal_information {
+   mixed data;
+   int priority;
+   string *events;
+}
+class plan_info {
+   int priority;
+   mixed data;
+}
+private nosave mapping _goals;
+private nosave mapping _events;
+private nosave mapping _emotions;
+private nosave mixed* _plans;
+private nosave string  _current_plan;
+private class goal_information query_goal_information(string goal);
+void remove_goal_event(string goal, string event);
+void add_goal_event(string goal, string event);
+int query_goal_priority(string goal);
+int check_current_plan_finished();
 void create() {
-  do_setup++;
-  object::create();
-  furniture_base::create();
-  add_alias( "furniture" );
-  add_plural( "furniture" );
-  set_opaque();
-  do_setup--;
-  if ( !do_setup ) {
-    this_object()->setup();
-  }
-  set_no_all(1);
+   _goals = ([ ]);
+   _events = ([ ]);
+   _plans = ({ });
 }
-varargs int move( mixed dest, string messin, string messout ) {
-  int i, t, f;
-  object from;
-  if(stringp(dest)) {
-    dest = find_object(dest);
-  }
-  if (!move_check(dest)) {
-     write(the_short() + " resists being picked up and shocks you slightly.\n");
-     return MOVE_INVALID_DEST;
-  }
-  if(!dest) {
-    return MOVE_INVALID_DEST;
-  }
-  if(living(dest)) {
-    t = (int)this_object()->query_complete_weight() * 2;
-    if(!(dest->add_weight(t))) {
-      return MOVE_TOO_HEAVY;
-    }
-  }
-  i = ::move(dest, messin, messout);
-  if(i != MOVE_OK) {
-    dest->add_weight(-t);
-    return i;
-  }
-  from = environment();
-  if(from && living(from)) {
-    f = (int)this_object()->query_complete_weight() * 2;
-    from->add_weight(-f);
-  }
-  return i;
+mapping query_goals() {
+   return _goals;
 }
-int get(mixed dest) {
-  if(!move_check(dest)) {
-    write("You feel it would be wrong to take " + the_short() + ".\n");
-    return 2;
-  }
-  return ::get(dest);
+mapping query_events() {
+   return _events;
 }
-mixed query_static_auto_load() {
-  if ( base_name(this_object()) + ".c" == __FILE__ ) {
-    return int_query_static_auto_load();
-  }
-  return ([ ]);
-}
-mixed query_dynamic_auto_load() {
-   mapping junk;
-   junk = object::query_dynamic_auto_load();
-   if (!junk) {
-      junk = ([ ]);
+void add_goal(string goal, mixed data) {
+   class goal_information frog;
+   if (!goal->invarient(this_object())) {
+      return ;
    }
-   junk["bonded"] = query_bonded();
-   return junk;
+   if (!_goals[goal]) {
+      frog = new(class goal_information);
+      frog->data = data;
+      frog->priority = goal->query_priority(this_object(), data);
+      frog->events = ({ });
+      _goals[goal] = frog;
+      goal->initialise(this_object(), goal, data);
+   } else {
+      goal->add_again(this_object(), query_goal_information(goal)->data, data);
+   }
 }
-void init_dynamic_arg(mapping map) {
-   object::init_dynamic_arg(map);
-   set_bonded(map["bonded"]);
+void remove_goal(string goal) {
+   class goal_information frog;
+   string event;
+   frog = query_goal_information(goal);
+   if (frog) {
+      goal->finalise(this_object(), frog->data);
+      foreach (event in frog->events) {
+         remove_goal_event(goal, event);
+      }
+      map_delete(_goals, goal);
+   }
 }
-string query_help_file_directory() {
-   return "/doc/furniture/";
+private class goal_information query_goal_information(string goal) {
+   class goal_information frog;
+   frog = _goals[goal];
+   return frog;
+}
+mixed query_goal_data(string goal) {
+   class goal_information frog;
+   frog = query_goal_information(goal);
+   if (frog) {
+      return frog->data;
+   }
+   return 0;
+}
+int set_goal_data(string goal, mixed data) {
+   class goal_information frog;
+   frog = query_goal_information(goal);
+   if (frog) {
+      frog->data = data;
+      return 1;
+   }
+   return 0;
+}
+int query_goal_priority(string goal) {
+   class goal_information frog;
+   frog = query_goal_information(goal);
+   if (frog) {
+      return frog->priority;
+   }
+   return GOAL_INVALID_PRIORITY;
+}
+void change_goal_priority(string goal) {
+   class goal_information frog;
+   int new_priority;
+   string evt;
+   frog = query_goal_information(goal);
+   if (frog) {
+      new_priority = goal->query_priority(this_object(), frog->data);
+      if (new_priority != frog->priority) {
+         frog->priority = new_priority;
+      }
+      foreach (evt in frog->events) {
+         remove_goal_event(goal, evt);
+         add_goal_event(goal, evt);
+      }
+   }
+}
+void add_goal_event(string goal, string event) {
+   class goal_information frog;
+   string test_goal;
+   int i;
+   int priority;
+   int found;
+   frog = query_goal_information(goal);
+   if (frog) {
+      if (!_events[event]) {
+         _events[event] = ({ goal });
+      } else if (member_array(goal, _events[event]) == -1) {
+         priority = query_goal_priority(goal);
+         while (i < sizeof(_events[event])) {
+            test_goal = _events[event][i];
+            if (query_goal_priority(_events[event][i]) < priority) {
+               _events[event] = _events[event][0..i-1] + ({ goal }) +
+                                _events[event][i..];
+               found = 1;
+               break;
+            }
+            i++;
+         }
+         if (!found) {
+            _events[event] += ({ goal });
+         }
+      }
+      frog->events += ({ event });
+   }
+}
+void remove_goal_event(string goal, string event) {
+   class goal_information frog;
+   frog = query_goal_information(goal);
+   if (frog && _events[event]) {
+      _events[event] -= ({ goal });
+      if (!sizeof(_events[event])) {
+         map_delete(_events, event);
+      }
+      frog->events -= ({ event });
+   }
+}
+varargs void notify_npc_event(string event, mixed *information ...) {
+   string goal;
+tell_creator("pinkfish", "%s %O\n", event, _events[event]);
+   if (_events[event]) {
+      foreach (goal in _events[event]) {
+         if (goal->notify_of_event(this_object(),
+                                   query_goal_information(goal)->data,
+                                   event,
+                                   information)) {
+            return ;
+         }
+      }
+   }
+   if (sizeof(_plans)) {
+      if (_plans[PLAN_PLAN]->notify_of_event(this_object(),
+                                      ((class plan_info)_plans[PLAN_INFO])->data,
+                                      event,
+				      information)) {
+         check_current_plan_finished();
+      }
+   }
+}
+void activate_plan(string plan,
+                   string goal,
+                   mixed data) {
+   int priority;
+   int pos;
+   int i;
+   int old;
+   mixed *tmp;
+   class plan_info info;
+   priority = query_goal_priority(goal);
+   pos = member_array(plan, _plans);
+   if (pos != -1) {
+      info = _plans[pos + PLAN_INFO];
+      info->data = plan->combine_plans(info->data, data);
+      if (info->priority != priority) {
+         old = -1;
+         for (i = pos - PLAN_ARRAY_SIZE; i >= 0; i -= PLAN_ARRAY_SIZE) {
+            if (priority > ((class plan_info)_plans[i + PLAN_INFO])->priority) {
+               old = i;
+            } else {
+               break;
+            }
+         }
+         if (old != -1) {
+            tmp = _plans[pos..pos + PLAN_ARRAY_SIZE];
+            _plans = _plans[0..pos - 1] + _plans[pos + PLAN_ARRAY_SIZE..];
+            _plans = _plans[0..old - 1] + tmp + _plans[old..];
+         } else {
+            for (i = pos + PLAN_ARRAY_SIZE; i < sizeof(_plans);
+                 i += PLAN_ARRAY_SIZE) {
+               if (priority < ((class plan_info)_plans[i + PLAN_INFO])->priority) {
+                  old = i;
+               } else {
+                  break;
+               }
+            }
+            if (old != -1) {
+               tmp = _plans[old..old + PLAN_ARRAY_SIZE];
+               _plans = _plans[0..old - 1] + _plans[old + PLAN_ARRAY_SIZE..];
+               _plans = _plans[0..pos - 1] + tmp + _plans[pos..];
+            }
+         }
+      }
+   } else {
+      old = -1;
+      info = new(class plan_info);
+      info->data = data;
+      info->priority = priority;
+      for (i = 0; i < sizeof(_plans); i += PLAN_ARRAY_SIZE) {
+         if (priority > ((class plan_info)_plans[i + PLAN_INFO])->priority) {
+            _plans = _plans[0..i - 1] + ({ plan, info }) +
+                     _plans[i..];
+            old = i + PLAN_ARRAY_SIZE;
+            break;
+         }
+      }
+      if (i >= sizeof(_plans)) {
+         _plans += ({ plan, info });
+      }
+   }
+tell_creator("pinkfish", "Activating %O, %O, %O\n", _current_plan, _plans[PLAN_PLAN], _plans[PLAN_INFO]);
+   if (_plans[PLAN_PLAN] != _current_plan) {
+      if (_current_plan) {
+         pos = member_array(_current_plan, _plans);
+         if (pos != -1) {
+            _plans[pos + PLAN_PLAN]->suspend_plan(this_object(),
+                                                  ((class plan_info)_plans[pos + PLAN_INFO])->data);
+         }
+      }
+      _plans[PLAN_PLAN]->activate_plan(this_object(),
+                                       ((class plan_info)_plans[PLAN_INFO])->data);
+      while (check_current_plan_finished());
+   }
+}
+int check_current_plan_finished() {
+   if (sizeof(_plans)) {
+      if (_plans[PLAN_PLAN]->finished(this_object(),
+                                      ((class plan_info)_plans[PLAN_INFO])->data)) {
+         _plans = _plans[PLAN_ARRAY_SIZE..];
+         if (sizeof(_plans)) {
+            _plans[PLAN_PLAN]->activate_plan(this_object(),
+                                             ((class plan_info)_plans[PLAN_INFO])->data);
+         }
+         return 1;
+      }
+   }
+   return 0;
+}
+void set_plan_data(string plan, mixed data) {
+   int pos;
+   pos = member_array(plan, _plans);
+   if (pos != -1) {
+      ((class plan_info)_plans[pos + PLAN_INFO])->data = data;
+   }
 }
 mixed *stats() {
-   return ::stats() +
-          ({ ({ "bonded", query_bonded() }) });
+   mixed *ret;
+   string goal;
+   class goal_information frog;
+   int goal_num;
+   int i;
+   goal_num = 0;
+   ret = ({ });
+   foreach (goal in keys(_goals)) {
+      frog = query_goal_information(goal);
+      ret += ({ ({ "Goal " + goal_num + ") name", goal }) });
+      ret += ({ ({ "Goal " + goal_num + ") events",
+                   query_multiple_short(frog->events) }) });
+      ret += ({ ({ "Goal " + goal_num + ") priority",  frog->priority }) });
+      goal_num++;
+   }
+   for (i = 0; i < sizeof(_plans); i += PLAN_ARRAY_SIZE) {
+      ret += ({ ({ "Plan " + goal_num + ") name", _plans[i + PLAN_PLAN] }) });
+      ret += ({ ({ "Plan " + goal_num + ") priority",
+                   ((class plan_info)_plans[i + PLAN_INFO])->priority }) });
+   }
+   return ret;
+}
+void set_goal_plan_data(string goal, string plan, mixed data) {
+   mixed goal_data;
+   goal_data = query_goal_data(goal);
+   goal->set_plan_data(this_object(), goal_data, plan, data);
+}
+mixed query_goal_plan_data(string goal, string plan) {
+   mixed goal_data;
+   goal_data = query_goal_data(goal);
+   return goal->query_plan_data(this_object(), goal_data, plan);
 }
 
 ==================================================
-FILE: room/furniture/bath.c
+FILE: npc/locksmith.c
 ==================================================
 
-#include <effect.h>
-inherit "/std/room/furniture/surface";
-#define WET_EFFECT "/std/effects/other/wetness"
-#define SOAP_EFFECT "/std/effects/healing/antiseptic_soap"
-int water = 0;
-int dirt = 0;
-string* dirt_messages = ({
-    "clear",
-    "almost clear",
-    "soapy",
-    "foamy",
-    "slightly dirty",
-    "fairly dirty",
-    "dirty",
-    "very dirty",
-    "muddy"
-});
-void zap_bad_effects( object who );
-int do_wash(object *indirect_obs );
-void create(){
-    ::create();
-    add_property( "no recycling", 1 );
-    this_object()->add_extra_look( this_object() );
-    add_help_file("bath");
+#include <armoury.h>
+#include <money.h>
+#define LOG "/log/LOCKSMITH"
+#define LOGGING 1
+inherit "/obj/monster";
+private void save_killers();
+private void load_killers();
+private void remove_killer(string name);
+private void clear_false_client();
+private void payment_timeout();
+private int check_owner();
+private void unlock(object door);
+private string get_price();
+private int calc_price();
+private void generic_responses();
+private void go_back();
+private void unlock_all( string path );
+private void delay_opening( string env );
+void finish_opening( string path, string env );
+public void confirmation(string response, object player);
+public void free_for_hire();
+public string query_client();
+public void move_recording();
+public string* query_killers();
+public string* query_responses();
+public string query_domain();
+public string query_last_room();
+protected int set_savefile(string file);
+protected int set_price(int price);
+protected int set_currency_region(string region);
+protected int set_responses(string *responses);
+protected int set_domain(string domain);
+public int do_hire( int all );
+public int do_pay();
+public int do_ask(string exit);
+private string _client;
+private string* _killers;
+private int _price;
+private int _paid;
+private int _all_doors;
+private object _door;
+private string _savefile;
+private string _region;
+private string* _responses;
+private string _domain;
+private string _last_room;
+void create() {
+  generic_responses();
+  do_setup++;
+  ::create();
+  do_setup--;
+  if (!do_setup)
+    this_object()->setup();
+  add_enter_commands("#move_recording");
 }
-string extra_look() {
-    object *stuff;
-    string answer = "";
-    stuff = all_inventory( this_object() );
-    if (water) {
-        if (dirt >= sizeof(dirt_messages)) {
-            dirt = sizeof(dirt_messages) - 1;
-        }
-        answer = answer + "It's about three quarters full of " +
-            dirt_messages[dirt] + " water.\n";
-    }
-    if( sizeof( stuff ) ) {
-        answer = answer + "It has "+ query_multiple_short( stuff ) +" in it.\n";
-    }
-   return answer;
-}
-string long_status() {
-    return "";
-}
-void init(){
-    ::init();
-    add_command( "lie", "in <direct:object>");
-    add_command( "sit", "in <direct:object>");
-    add_command( "kneel", "in <direct:object>");
-    add_command( "stand", "in <direct:object>");
-    add_command( "leave", "<direct:object>");
-    add_command( "fill", "<direct:object>");
-    add_command( "empty", "<direct:object>");
-    add_command( "splash", "<indirect:living:here>");
-    add_command( "wash", "<indirect:living:here>");
-}
-int can_player_get_in_it() {
-    if (environment(this_object())!=environment(this_player())) {
-      this_player()->add_failed_mess(this_object(), "The " + this_object()->short() + " needs to "
-      "be on the floor for you to get in it.\n");
-      return 0;
-    }
-    if( environment( this_object() ) == this_player() ){
-        this_object()->move(environment(this_player() ));
-        tell_object(this_player(), "You drop the "+
-            this_object()->short()+".\n");
-        tell_room(environment(this_player()), this_player()->short()+" drops "
-        "a "+this_object()->short()+".\n", this_player() );
-    }
-    return 1;
-}
-void wet_everyone_in() {
-    object *victims;
-    if (!water) {
-        return;
-    }
-    victims = filter(all_inventory(environment(this_object())),
-        (: living($1) :) );
-    foreach( object victim in victims ) {
-        if (victim -> query_position_type() == "in" &&
-            victim -> query_position_on() == "the "+this_object()->short()) {
-            victim->add_effect( WET_EFFECT, 500 );
-        }
-    }
+void init() {
+  ::init();
+  if(interactive(this_player())) {
+    this_player()->add_command("hire", this_object(), "<direct>",
+                                  (: do_hire( 0 ) :) );
+    this_player()->add_command("hire", this_object(),
+                                   "<direct> to unlock an entire house",
+                                   (: do_hire( 1 ) :) );
+    this_player()->add_command("pay", this_object(), "<direct>");
+    this_player()->add_command("ask", this_object(),
+                                "<direct> to {open|unlock} [the] "
+                                "<word'exit'> door",
+                                (: do_ask($4[2]) :));
+    this_player()->add_command("confirm", this_object(), "");
+  }
 }
 void reset() {
-    wet_everyone_in();
+  clear_false_client();
 }
-int do_fill() {
-    object player;
-    player=this_player();
-    if (water) {
-        player->add_failed_mess(this_object(), "The " + this_object()->short() + " is "
-            "already full of water.\n");
-        return 0;
-    }
-    add_succeeded_mess( "", ({ }) );
-    tell_object(player, "You fill the " + this_object()->short() + " with clean water.\n" );
-    tell_room(environment(player), player->short()+" fills "
-        "the " + this_object()->short() + " with clean water.\n", player );
-    water=1;
-    dirt=0;
-    wet_everyone_in();
-    return 1;
+public void free_for_hire() {
+  _client = 0;
+  _paid = 0;
+  _door = 0;
+  _all_doors = 0;
+  set_move_after(60, 60);
 }
-int do_empty() {
-    object player;
-    player=this_player();
-    if (!water) {
-        player->add_failed_mess(this_object(), "The " + this_object()->short() + " is "
-            "already as empty as it gets.\n");
-        return 0;
-    }
-    add_succeeded_mess( "", ({ }) );
-    tell_object(player, "You reach into the " + this_object()->short() + " and "
-                "pull the plug, allowing the water to drain away.\n" );
-    tell_room(environment(player), player->short()+" reaches into "
-        "the " + this_object()->short() + " and pulls the plug, allowing "
-        "the water to flow away.\n", player );
-    water=0;
-    dirt=0;
-    return 1;
+public string query_client() {
+  if(!_client)
+    return 0;
+  return _client;
 }
-int do_lie() {
-    object player;
-    if (!can_player_get_in_it()) {
-        return 0;
+public void move_recording() {
+  object room = environment(this_object());
+  if(!room) {
+    if(query_name() != "object")
+      call_out("dest_me", 5);
+    return;
+  }
+  if(_client) {
+    if(_domain && base_name(room)[0..5] == _domain) {
+      if(!room->query_owner())
+        _last_room = base_name(room);
+      return;
     }
-    player=this_player();
-    add_succeeded_mess( "", ({ }) );
-    if (player->query_position_on() == "the "+this_object()->short()) {
-        if (player->query_position() == "lying") {
-            tell_object(player, "You are already lying in the pool.\n" );
-            return 1;
-        }
-        tell_object(player, "You lie in the " + this_object()->short() + ".\n" );
-        tell_room(environment(player), player->short()+" lies "
-            "in the " + this_object()->short() + ".\n", player );
-    }
-    else {
-        tell_object(player, "You step into the " + this_object()->short() + " and lie down.\n" );
-        tell_room(environment(player), player->short()+" steps "
-            "into the " + this_object()->short() + " and lies down.\n", player );
-        if (water) {
-            player->add_effect( WET_EFFECT, 500 );
-        }
-    }
-    player->set_position( "lying" );
-    player->set_position_type( "in" );
-    player->set_position_on( "the "+this_object()->short() );
-    return 1;
-}
-int do_sit() {
-    object player;
-    if (!can_player_get_in_it()) {
-        return 0;
-    }
-    player=this_player();
-    add_succeeded_mess( "", ({ }) );
-    if (player->query_position_on() == "the "+this_object()->short()) {
-        if (player->query_position() == "sitting") {
-            tell_object(player, "You are already sitting in the " + this_object()->short() + ".\n" );
-            return 1;
-        }
-        tell_object(player, "You sit in the " + this_object()->short() + ".\n" );
-        tell_room(environment(player), player->short()+" sits "
-            "in the " + this_object()->short() + ".\n", player );
-    }
-    else {
-        tell_object(player, "You step into the " + this_object()->short() + " and sit down.\n" );
-        tell_room(environment(player), player->short()+" steps "
-            "into the " + this_object()->short() + " and sits down.\n", player );
-        if (water) {
-            player->add_effect( WET_EFFECT, 500 );
-        }
-    }
-    player->set_position( "sitting" );
-    player->set_position_type( "in" );
-    player->set_position_on( "the "+this_object()->short() );
-    return 1;
-}
-int do_kneel() {
-    object player;
-    if (!can_player_get_in_it()) {
-        return 0;
-    }
-    add_succeeded_mess( "", ({ }) );
-    player=this_player();
-    if (player->query_position_on() == "the "+this_object()->short()) {
-        if (player->query_position() == "kneeling") {
-            tell_object(player, "You are already kneeling in the " + this_object()->short() + ".\n" );
-            return 1;
-        }
-        tell_object(player, "You kneel in the " + this_object()->short() + ".\n" );
-        tell_room(environment(player), player->short()+" kneels "
-            "in the " + this_object()->short() + ".\n", player );
-    }
-    else {
-        tell_object(player, "You step into the " + this_object()->short() + " and kneel down.\n" );
-        tell_room(environment(player), player->short()+" steps "
-            "into the " + this_object()->short() + " and kneel down.\n", player );
-        if (water) {
-            player->add_effect( WET_EFFECT, 500 );
-        }
-    }
-    player->set_position( "kneeling" );
-    player->set_position_type( "in" );
-    player->set_position_on( "the "+this_object()->short() );
-    return 1;
-}
-int do_stand() {
-    object player;
-    if (!can_player_get_in_it()) {
-        return 0;
-    }
-    add_succeeded_mess( "", ({ }) );
-    player = this_player();
-    if (player->query_position_on() == "the "+this_object()->short()) {
-        if (player->query_position() == "standing") {
-            tell_object(player, "You are already standing in the " + this_object()->short() + ".\n" );
-            return 1;
-        }
-        tell_object(player, "You stand in the " + this_object()->short() + ".\n" );
-        tell_room(environment(player), player->short()+" stands "
-            "in the " + this_object()->short() + ".\n", player );
-    }
-    else {
-        tell_object(player, "You step into the " + this_object()->short() + ".\n" );
-        tell_room(environment(player), player->short()+" steps "
-            "into the " + this_object()->short() + ".\n", player );
-        if (water) {
-            player->add_effect( WET_EFFECT, 500 );
-        }
-    }
-    player->set_position( "lying" );
-    player->set_position_type( "in" );
-    player->set_position_on( "the "+this_object()->short() );
-    return 1;
-}
-void event_exit(object ob, string message, object to) {
-  if (ob==this_player() && this_player()->query_position_on() == this_object()) {
-    this_player()->return_to_default_position(1);
+    do_command("sayto " + _client + " " + _responses[11]);
+    go_back();
   }
 }
-int do_leave(){
-    if (this_player()->query_position_on() == "the "+this_object()->short()) {
-        this_player()->return_to_default_position(1);
-        tell_object(this_player(), "You clamber out of the " + this_object()->short() + ".\n" );
-        tell_room(environment(this_object()), this_player()->short()+" clambers "
-            "out of the " + this_object()->short() + ".\n", this_player() );
+public string* query_killers() {
+  return _killers;
+}
+public string query_domain() {
+  return _domain;
+}
+public string query_last_room() {
+  return _last_room;
+}
+public void confirmation(string response, object player) {
+  if(!response || !player)
+    return;
+  switch(lower_case(response)) {
+  case "yes":
+  case "y":
+    break;
+  case "no":
+  case "n":
+    do_command("nod");
+    do_command("follow " + player->query_name());
+    _door = 0;
+    return;
+  default:
+    do_command("sayto " + player->query_name() + " " + _responses[0]);
+    return;
+  }
+  if(!_client || player->query_name() != _client) {
+    do_command("sayto " + player->query_name() + " " + _responses[1]);
+    return;
+  }
+  if(!check_owner()) {
+    do_command("sayto " + player->query_name() + " " + _responses[2]);
+#ifdef LOGGING
+    log_file(LOG, "%s: %s tried to get %s to unlock door in %s leading "
+              "to %s.\n", ctime(time()), _client, query_short(),
+              base_name(environment(this_object())),_door->query_dest());
+#endif
+  } else if( _all_doors == 0 ) {
+    queue_command("emote eyes the lock on the door.", 1);
+    queue_command("emote fiddles around on the lock with some wires.", 5);
+    queue_command("emote seems satisfied.", 5);
+    unlock(_door);
+    queue_command("sayto " + player->query_name() + " " + _responses[3], 2);
+#ifdef LOGGING
+    log_file(LOG,
+              "%s: %s successfully got %s to unlock door in %s leading %s.\n",
+              ctime(time()), _client, query_short(),
+              base_name(environment(this_object())), _door->query_dest());
+#endif
+  } else {
+    queue_command("emote eyes the lock on the door.", 1);
+    queue_command("emote fiddles around on the lock with some wires.", 5);
+    queue_command("'Stand back and wait for me.", 5 );
+    queue_command("emote opens the door and disappears into the house, locking "
+                      "the door after " + query_objective() + ".", 2 );
+    delay_opening( base_name( environment( this_object() ) ) );
+    return;
+  }
+  free_for_hire();
+  go_back();
+}
+public string* query_responses() {
+  return _responses;
+}
+protected int set_savefile(string file) {
+  if(!file)
+    return 0;
+  _savefile = file;
+  load_killers();
+  return 1;
+}
+protected int set_price(int price) {
+  if(!price)
+    return 0;
+  _price = price;
+  return 1;
+}
+protected int set_currency_region(string region) {
+  if(!region)
+    return 0;
+  _region = region;
+  return 1;
+}
+protected int set_domain(string domain) {
+  if(sizeof(domain) != 6)
+    return 0;
+  _domain = domain;
+}
+protected int set_responses(string* responses) {
+  if(sizeof(responses) != 13)
+    return 0;
+  _responses = responses;
+}
+public int do_hire( int all ) {
+  if(!this_player())
+    return 0;
+  if(!this_player()->query_visible(this_object())) {
+    this_player()->add_failed_mess(this_object(),
+                                    "$C$" + this_object()->the_short() +
+                                   " cannot even see you.\n", ({ }));
+    return 0;
+  }
+  if(_client && this_player()->query_name() != _client) {
+    do_command("sayto " + this_player()->query_name() + " " + _responses[4]);
+    this_player()->add_failed_mess(this_object(), "", ({ }));
+    return 0;
+  }
+  if(_client && this_player()->query_name() == _client) {
+    if(_paid) {
+      if(member_array(this_object(), this_player()->query_followers())
+          == -1) {
+        do_command("nod " + this_player()->query_name());
+        do_command("follow " + this_player()->query_name());
+        this_player()->add_succeeded_mess(this_object(), "", ({ }));
+        return 1;
+      }
+      do_command("sayto " + this_player()->query_name() + " " +
+                  _responses[12]);
+      this_player()->add_failed_mess(this_object(), "", ({ }));
+      return 0;
+    }
+    do_command("sayto " + this_player()->query_name() + " " +
+                _responses[5]);
+    this_player()->add_failed_mess(this_object(), "", ({ }));
+    return 0;
+  }
+  _client = this_player()->query_name();
+  _all_doors = all;
+  queue_command("sayto " + this_player()->query_name() + " " +
+                 _responses[6], 1);
+  if(member_array(_client, _killers) != -1)
+    queue_command("sayto " + this_player()->query_name() +
+                   " I remember you... for you it'll be " + get_price() +
+                   ".  Up front, of course.", 2);
+  else
+    queue_command("sayto " + this_player()->query_name() + " That'll be "+
+                   get_price() + " up front.", 2);
+  this_player()->add_succeeded_mess(this_object(), "", ({ }));
+  call_out((: payment_timeout() :), 60);
+  return 1;
+}
+public int do_pay() {
+  if(!this_player())
+    return 0;
+  if(!this_player()->query_visible(this_object())) {
+    this_player()->add_failed_mess(this_object(),
+                                    "$C$" + this_object()->the_short() +
+                                   " cannot even see you.\n", ({ }));
+    return 0;
+  }
+  if(!_client || this_player()->query_name() != _client) {
+    do_command("whisper " + this_player()->query_name() + " I appreciate "
+                "that you want to give away your cash, but don't you think "
+                "should 'hire' me first?");
+    this_player()->add_failed_mess(this_object(), "", ({ }));
+    return 0;
+  }
+  if(_paid) {
+    do_command("sayto " + this_player()->query_name() + " " + _responses[7]);
+    this_player()->add_failed_mess(this_object(), "", ({ }));
+    return 0;
+  }
+  if(this_player()->query_value_in(_region) < _price) {
+    do_command("sayto " + this_player()->query_name() + " " +
+                _responses[8]);
+    free_for_hire();
+    this_player()->add_failed_mess(this_object(), "", ({ }));
+    return 0;
+  }
+  this_player()->pay_money(MONEY_HAND->create_money_array(calc_price(),
+                                                            _region), _region);
+  _paid = 1;
+  set_move_after(1200, 0);
+  do_command("emote puts the money into a pocket.");
+  do_command("whisper " + this_player()->query_name() + " " + _responses[10]);
+  init_command("follow " + this_player()->query_name(), 1);
+  this_player()->add_succeeded_mess(this_object(), "$N pay$s $D.\n", ({ }));
+#ifdef LOGGING
+  log_file(LOG, "%s: %s hired %s for %s" +
+      ( (_all_doors == 1)?" (all doors)":"" ) + "\n",
+      ctime(time()), _client, query_short(), get_price() );
+#endif
+  remove_killer(_client);
+  return 1;
+}
+public int do_ask(string exit) {
+  object room, door;
+  string dest;
+  room = environment(this_object());
+  if(!this_player() || !exit || !room)
+    return 0;
+  if(!this_player()->query_visible(this_object())) {
+    this_player()->add_failed_mess(this_object(),
+                                    "$C$" + this_object()->the_short() +
+                                   " cannot even see you.\n", ({ }));
+    return 0;
+  }
+  if(!_client || this_player()->query_name() != _client) {
+    do_command("sayto " + this_player()->query_name() + " " + _responses[1]);
+    this_player()->add_failed_mess(this_object(),
+                                   "You are not " + the_short() +
+                                   "'s client.\n", ({ }));
+    return 0;
+  }
+  do_command("unfollow " + this_player()->query_name());
+  dest = this_player()->find_abs(exit);
+  if(room->query_destination(dest) == "/room/void") {
+    do_command("sayto " + this_player()->query_name() + " " +
+                _responses[9]);
+    do_command("follow " + this_player()->query_name());
+    this_player()->add_failed_mess(this_object(),
+                                    "This exit is not valid.\n", ({ }));
+    return 0;
+  }
+  foreach(door in room->query_hidden_objects())
+    if(door->query_dest() == room->query_destination(dest)) {
+      _door = door;
+      break;
+    }
+  if( _all_doors == 0 )
+    do_command("whisper " + this_player()->query_name() + " Can you confirm "
+                "that this is your place?  And that you want the " + exit +
+                " door opened?");
+  else
+    do_command("whisper " + this_player()->query_name() + " So that's your "
+                "place on the other side?  Can you confirm that you want the " +
+                exit + " door and all the others in your house opened?" );
+  this_player()->add_succeeded_mess(this_object(), "", ({ }));
+  tell_object(this_player(), "[y]es/[n]o: ");
+  input_to("confirmation", 0, this_player());
+  return 1;
+}
+void event_enter(object ob, string message, object from) {
+  if(from && environment(ob) == this_object()) {
+    if(ob->query_name() == "coin") {
+      do_command("sayto " + file_name(from) + " You have to pay me.");
+      do_command("give coins to " + file_name(from));
+      return;
+    }
+    do_command("sayto " + file_name(from) + " I don't take donations.");
+    do_command("give " + file_name(ob) + " to " + file_name(from));
+  }
+}
+private void save_killers() {
+  string killerstring, killer;
+  if(!_savefile)
+    return;
+  if(!sizeof(_killers)) {
+    unguarded((: write_file($(_savefile), "--- no killers ---", 1) :));
+    return;
+  }
+  killerstring = "";
+  foreach(killer in _killers)
+    killerstring += killer + " ";
+  unguarded((: write_file($(_savefile), $(killerstring), 1) :));
+}
+private void load_killers() {
+  string killerstring;
+  if(!_savefile)
+    return;
+  if(file_size(_savefile) == -1) {
+    _killers = ({ });
+    return;
+  }
+  killerstring = unguarded((: read_file($(_savefile)) :));
+  if( !killerstring || killerstring == "--- no killers ---" ||
+      !_killers = explode(killerstring, " "))
+    _killers = ({ });
+}
+varargs object do_death(object killer, object weapon, string attack) {
+  if(killer && interactive(killer)) {
+    if(member_array(killer->query_name(), _killers) == -1) {
+      if (!_killers) {
+         _killers = ({ });
+      }
+      _killers += ({ killer->query_name() });
+    }
+  }
+  save_killers();
+  if(weapon && attack)
+    return ::do_death(killer, weapon, attack);
+  if(weapon)
+    return ::do_death(killer, weapon);
+  if(killer)
+    return ::do_death(killer);
+  return ::do_death();
+}
+private void remove_killer(string name) {
+  int index;
+  index = member_array(name, _killers);
+  if(index == -1)
+    return;
+  if(sizeof(_killers) == 1)
+    _killers = ({ });
+  if(index == 0)
+    _killers = _killers[ 1.. ];
+  if(index == sizeof(_killers))
+    _killers = _killers[ 0..(sizeof(_killers) -1) ];
+  _killers = _killers[ 0..(index - 1) ] + _killers[ (index + 1).. ];
+}
+private void clear_false_client() {
+  if(_client && find_living(_client) &&
+      environment(find_living(_client)) == environment(this_object()))
+    return;
+  free_for_hire();
+}
+private void payment_timeout() {
+  if(_client && !_paid)
+    free_for_hire();
+}
+private int check_owner() {
+  string dest = _door->query_dest();
+  if(load_object(dest)->query_owner() == _client)
+    return 1;
+  return 0;
+}
+private void unlock(object door) {
+  door->set_unlocked();
+  event( load_object( door->query_dest() ), "save");
+  event( environment(), "save");
+}
+private string get_price() {
+  int price;
+  if(member_array(_client, _killers) != -1)
+    price = 2 * _price;
+  else
+    price = _price;
+  if( _all_doors == 1 )
+    price*= 5;
+  return MONEY_HAND->money_string(MONEY_HAND->create_money_array(price,
+                                                                 _region));
+}
+private int calc_price() {
+  int price;
+  if(member_array(_client, _killers) != -1)
+    price = 2 * _price;
+  price = _price;
+  if( _all_doors == 1 )
+    price *= 5;
+  return price;
+}
+private void go_back() {
+  object room, door;
+  int i;
+  if(!room = environment(this_object()))
+    return;
+  if(!_last_room || base_name(room) == _last_room) {
+    do_command(room->query_exits()[random(sizeof(room->query_exits()))]);
+    return;
+  }
+  i = member_array(_last_room, room->query_dest_dir());
+  if(i == -1)
+    move(_last_room, "$N walk$s in.", "$N walk$s away.");
+  else {
+    foreach(door in room->query_hidden_objects())
+      if(door->query_dest() == _last_room &&
+          door->query_locked()) {
+        move(_last_room, "$N walk$s in, locking the door.",
+              "$N unlock$s the door and leave$s, locking it "
+              "again.");
+        return;
+      }
+    do_command(room->query_dest_dir()[i-1]);
+  }
+}
+private void generic_responses() {
+  _responses = ({0,0,0,0,0,0,0,0,0,0,0,0,0});
+  _responses[0] = "I do not understand.";
+  _responses[1] = "You have to hire me.";
+  _responses[2] = "This door does not lead to your house.  I cannot help you.";
+  _responses[3] = "It has been a pleasure doing business with you.";
+  _responses[4] = "I am already hired by someone else.";
+  _responses[5] = "You have to 'pay' me.";
+  _responses[6] = "You do require my services?";
+  _responses[7] = "You already paid me.";
+  _responses[8] = "You do not have enough money.";
+  _responses[9] = "I cannot find that door.";
+  _responses[10] = "Very well.  Please lead me to your house and 'ask' me to "
+    "open the door that troubles you.";
+  _responses[11] = "I won't leave my beloved home, sorry.  I'll wait there "
+    "for a while, if you change your mind and come back.";
+  _responses[12] = "You already hired me.";
+}
+private void unlock_all( string path ) {
+    string* files = get_dir( path + "*.c" );
+    string file;
+    object room, ob;
+    if( !sizeof( files ) )
+        return;
+    foreach( file in files ) {
+        room = load_object( path + file );
+        if( room ) {
+            foreach( ob in room->query_hidden_objects() )
+                if( ob->query_dest() )
+                     ob->set_unlocked();
+            event( room, "save" );
+        }
+    }
+}
+private void delay_opening( string env ) {
+    string path;
+    string* path_bits;
+    path_bits = explode( env, "/" );
+    path_bits[ sizeof( path_bits ) -1 ] = "";
+    path = "/" + implode( path_bits, "/" );
+    move( "/room/void" );
+    call_out( "finish_opening", 30, path, env );
+}
+void finish_opening( string path, string env ) {
+    unlock_all( path );
+#ifdef LOGGING
+    log_file(LOG,
+              "%s: %s successfully got %s to unlock all doors in %s.\n",
+              ctime(time()), _client, query_short(), path );
+#endif
+    move( env, "$N leaves the house, rubbing " + query_objective() +
+           " hands.\n", "" );
+    free_for_hire();
+    go_back();
+}
+
+==================================================
+FILE: npc/npc_intelligent.c
+==================================================
+
+#include <npc/events.h>
+inherit "/obj/monster";
+inherit "/std/npc/goals_inherit";
+int _last_hp;
+protected int check_heart_beat_results();
+void create() {
+   goals_inherit::create();
+   monster::create();
+}
+void heart_beat() {
+   int hp;
+   ::heart_beat();
+   call_out((: check_heart_beat_results :), 0);
+}
+protected int check_heart_beat_results() {
+   hp = query_hp();
+   if (hp != _last_hp) {
+      if (hp > _last_hp) {
+         notify_npc_event(EVENT_GAIN_HPS, hp - _last_hp, hp);
+      } else {
+         notify_npc_event(EVENT_LOSE_HPS, _last_hp - hp, hp);
+      }
+      _last_hp = hp;
+   }
+}
+mixed *stats() {
+   return monster::stats() + goals_inherit::stats();
+}
+int move(mixed dest, string messin, string messout) {
+   int ret;
+   object from;
+   from = environment();
+   ret = ::move(dest, messin, messout);
+   if (from) {
+      call_out((: notify_npc_event :), 0, EVENT_MOVED, from);
+   }
+   return ret;
+}
+void event_enter(object moving, string mess, object from) {
+   if (living(from)) {
+      call_out((: notify_npc_event :), 0, EVENT_GIVEN, moving);
+   }
+}
+
+==================================================
+FILE: npc/surface_decorator.c
+==================================================
+
+#include <money.h>
+inherit "/obj/monster";
+private mapping fitted_surfaces = ([ ]);
+private string *allowed_surfaces = ({ });
+private string *allowed_domains = ({ });
+private string *responses = ({
+        "'I don't fit those kinds of surfaces.",
+        "'I don't fit that kind of decor.",
+        "'You don't own this place, sorry!",
+        "'I can't decorate surfaces here!",
+        "'Something went horribly wrong!",
+        "'All finished!",
+        "'You don't have enough money to pay for the $decor$!  It "
+        "will cost you $amount$.",
+        "'I can fit $allowed$ with any of the following:",
+        "'I don't have any stock right now.",
+        "'Ok, I'll get right on with it.",
+        "'What?  Did somebody say something?",
+        "'I've already been hired by $employer$.",
+        "'Ok, take me to the room you want decorated and ask me to "
+        "fit something when we get there.",
+        "'Sorry, I don't go there."
+    });
+private string under_construction_mess = "covered in dust and dirt" ;
+private int work_time = 10;
+private object employer;
+private string last_ok;
+int do_ask( string surface, string decor );
+void create() {
+    do_setup++;
+    ::create();
+    do_setup--;
+    if (!do_setup) {
+        this_object()->setup();
+        this_object()->reset();
+    }
+    add_help_file("/doc/object/surface_decorator");
+    add_enter_commands("#check_domain");
+}
+void init() {
+    ::init();
+    this_player()->add_command( "ask", this_object(), "<direct:object> to "
+        "fit the <string'surface'> with <string'decor'>",
+        (: do_ask($4[1], $4[2])  :) );
+    this_player()->add_command( "list", this_object(), "goods from "
+        "<direct:object>" );
+    this_player()->add_command( "hire", this_object(), "<direct:object>");
+}
+int do_list() {
+    int i;
+    string thing;
+    i=1;
+    if( !sizeof( fitted_surfaces ) ) {
+        init_command( responses[8], 1 );
+        return 1;
+    }
+    init_command( replace( responses[7], ({
+            "$allowed$", query_multiple_short( map( allowed_surfaces,
+                (: pluralize($1) :) ) )
+        }) ), i );
+    foreach( thing in keys( fitted_surfaces ) ) {
+        i++;
+        init_command("'" + capitalize(thing) + " for " +
+            MONEY_HAND->money_value_string(fitted_surfaces[thing][1],
+            query_property("place")) + ".", i);
+    }
+    return 1;
+}
+int do_hire() {
+    this_player()->add_succeeded_mess( this_object(), "$N ask$s $D about "
+        + this_object()->query_possessive() + " services.\n", ({ }) );
+    if( !this_player()->query_visible( this_object() ) ) {
+        init_command( responses[10], 1 );
+        return 1;
+    }
+    if( employer &&
+        environment( employer ) == environment( this_object() ) &&
+        this_player() != employer ) {
+        init_command( replace( responses[11], ({ "$employer$", "$C$" +
+            employer->query_name() }) ), 1 );
+        return 1;
+    }
+    employer = this_player();
+    do_command("unfollow everyone");
+    employer->add_follower(this_object());
+    init_command( responses[12], 1 );
+    return 1;
+}
+int do_ask( string surface, string decor ) {
+    string long, allowed, place;
+    int fee, can_do;
+    object where;
+    can_do = 0;
+    foreach( allowed in allowed_surfaces ) {
+        if( strsrch( surface, allowed ) != -1 ) {
+            can_do = 1;
+        }
+    }
+    if( !can_do ) {
+        do_command(responses[0]);
+        return 1;
+    }
+    if( member_array( decor, keys( fitted_surfaces ) ) == -1 ) {
+        do_command(responses[1]);
+        return 1;
+    }
+    long = fitted_surfaces[decor][0];
+    fee  = fitted_surfaces[decor][1];
+    where = environment( this_object() );
+    if(!where->test_occupier( this_player()->query_name() ) ) {
+        do_command(responses[2]);
+        return 1;
+    }
+    if(!function_exists("decorate_surface", where)) {
+        do_command(responses[3]);
+        return 1;
+    }
+    place = query_property("place");
+    if ( this_player()->query_value_in( place ) < fee ) {
+        do_command( replace( responses[6], ({
+            "$decor$", decor,
+            "$amount$", MONEY_HAND->money_value_string(fee, place)
+        }) ) );
+        queue_command("stare" + this_player()->query_name());
+        return 1;
+    }
+    if(!where->decorate_surface(surface,under_construction_mess)) {
+        do_command(responses[4]);
+        return 1;
+    }
+    call_out( "finish_work", work_time, surface, long, where );
+    do_command( responses[9] );
+    do_command( "unfollow everyone" );
+    this_player()->pay_money( (mixed *)MONEY_HAND->create_money_array( fee,
+            place ), place);
+    this_player()->add_succeeded_mess( this_object(), "$N pay$s $D some "
+        "money and " + this_object()->query_pronoun() + " starts to go "
+        "about his work on the " + surface + ".\n", ({ }) );
+    return 1;
+}
+void finish_work( string surface, string long, object where ) {
+    do_command(":finishes his work.");
+    if( employer ) {
+        employer->add_follower(this_object());
+    }
+    if(!where || !where->decorate_surface(surface, long )) {
+        do_command(responses[4]);
+        return;
     }
     else {
-        tell_object(this_player(), "Umm... You're not in the " + this_object()->short() + " in the "
-            "first place.\n" );
+        do_command(responses[5]);
+        return;
     }
-    add_succeeded_mess( "", ({ }) );
-    return 1;
 }
-int do_splash( object *indirect_obs ) {
-    if (environment(this_object())!=environment(this_player())) {
-      this_player()->add_failed_mess(this_object(), "The " + this_object()->short() + " needs to "
-      "be on the floor for you to splash with it.\n");
-      return 0;
+private void go_back() {
+    move("/room/rubbish", "$N walk$s in.", "$N walk$s away.");
+    if( last_ok ) {
+        move(last_ok, "$N walk$s in.", "$N walk$s away.");
     }
-    if (!water) {
-        this_player()->add_failed_mess(this_object(), "It's not a bad idea,  "
-            " but maybe you'd need some water in the " + this_object()->short() +
-            " before you can splash.\n");
-        return 0;
-    }
-    if ( sizeof( indirect_obs ) ) {
-        add_succeeded_mess( "$N splash$es $I.\n", indirect_obs );
-        return 1;
-    }
-    this_player()->add_succeeded_mess( this_object(),
-        "$N splash$es $oself.\n", ({ }) );
-    return 1;
 }
-int do_wash( object *indirect_obs ) {
-    if (!can_player_get_in_it()) {
-        return 0;
-    }
-    if (this_player() -> query_position_type() != "in" &&
-        this_player()->query_position_on() != "the "+this_object()->short()) {
-      this_player()->add_failed_mess(this_object(), "You need to get "
-                                     "into the " + this_object()->short() +
-                                     " first.\n");
-      return 0;
-    }
-    if (!water) {
-        this_player()->add_failed_mess(this_object(), "It's not a bad idea,  "
-            " but maybe you'd need some water in the " + this_object()->short() +
-            " before you can wash.\n");
-        return 0;
-    }
-    if (dirt >= sizeof(dirt_messages) - 1) {
-        this_player()->add_failed_mess(this_object(), "The water in the " +
-            this_object()->short() +
-            " looks so muddy, it probably would just soil anyone.  Maybe " +
-            " it would be a better idea to empty it and fill it again " +
-            " with fresh water.\n");
-        return 0;
-    }
-    if ( sizeof( indirect_obs ) ) {
-        foreach( object victim in indirect_obs ) {
-            call_out( (: zap_bad_effects( $1 ) :), 0, victim );
+void check_domain() {
+    string allowed, here;
+    int ok;
+    here = file_name( environment( this_object() ) );
+    ok = 0;
+    foreach( allowed in allowed_domains ) {
+        if( strsrch( here, allowed ) != -1 ) {
+            ok = 1;
         }
-        add_succeeded_mess( "$N wash$es $I using a bar of pleasant smelling soap.\n", indirect_obs );
-        return 1;
     }
-    call_out( (: zap_bad_effects( $1 ) :), 0, this_player() );
-    this_player()->add_succeeded_mess( this_object(),
-        "$N wash$es $oself using a bar of pleasant smelling soap.\n", ({ }) );
+    if( ok ) {
+        last_ok = here;
+        return;
+    }
+    else {
+        do_command("unfollow everyone");
+        do_command( responses[13] );
+        go_back();
+        return;
+    }
+}
+void add_fitted_surface( string short, string long, int cost ) {
+    fitted_surfaces[ short ] = ({ long, cost });
+}
+mapping query_fitted_surfaces() { return fitted_surfaces; }
+void remove_fitted_surface( string short ) {
+    map_delete( fitted_surfaces, short );
+}
+void remove_all_fitted_surfaces() {
+    fitted_surfaces = ([ ]);
+}
+void add_allowed_surface( string surface ) {
+    if( member_array( surface, allowed_surfaces ) == -1 ) {
+        allowed_surfaces += ({ surface });
+    }
+}
+string *query_allowed_surfaces() { return allowed_surfaces; }
+void add_allowed_domain( string domain ) {
+    if( member_array( domain, allowed_domains ) == -1 ) {
+        allowed_domains += ({ domain });
+    }
+}
+string *query_allowed_domains() { return allowed_domains; }
+void set_responses( string *the_responses ) {
+    if( sizeof(the_responses) != sizeof(responses) ) {
+        return 0;
+    }
+    else {
+        responses = the_responses;
+    }
+}
+string *query_responses() { return responses; }
+void set_under_construction_mess( string mess ) {
+    under_construction_mess = mess;
+}
+string query_under_construction_mess() { return under_construction_mess; }
+void set_work_time( int time ) {
+    work_time = time;
+}
+int query_work_time() { return work_time; }
+void set_employer( object player ) {
+    employer = player;
+}
+object query_employer() { return employer; }
+
+==================================================
+FILE: npc/taliswoman.c
+==================================================
+
+inherit "/obj/clothing";
+#include "/d/guilds/witches/include/taliswoman.h"
+void setup();
+void init();
+void high_level();
+void set_destination(string city);
+int go_granny( string *args );
+nosave mapping _city_destinations = ([
+   "default" : AM,
+   "klk" : KLK,
+   "stolat" : STO_LAT,
+]);
+nosave private string set_destination;
+string _city;
+void setup() {
+    set_name( "taliswoman" );
+    add_alias( ({ "stone", "ass", "thong" }) );
+    set_short( "taliswoman" );
+    add_adjective( ({ "small", "surly", "ass", "smooth", "leather", "thin",
+        "witches'", "witches", "guild", "stone" }) );
+    add_property( "talisman", "no one" );
+    add_property( "no recycling", 1 );
+    set_main_plural( "taliswomen" );
+    set_long( "This small stone shaped like a small and surly ass has been "
+      "worn smooth by frequent handling.  A thin, leather thong has been "
+      "threaded through its hole.  " );
+    add_extra_look( this_object() );
+    set_value(1);
+    set_weight(2);
+    set_type( "necklace" );
+    set_max_cond( 70 );
+    set_cond( 70 );
+    init_dynamic_arg(query_dynamic_auto_load());
+}
+string extra_look() {
+    if( this_player()->query_name() != query_property( "talisman" ) ) {
+        return "\n";
+    }
+    return "This taliswoman will get you to the Witches Guild to see Granny "
+        "Weatherwax if you rub the tail of the ass, and back to "
+        "Ankh-Morpork if you rub its head. You can only use it once in "
+        "each direction, but you can get a new one from Gennie if you "
+        "haven't outgrown them.\n";
+}
+void init() {
+    add_command( "rub" , "{head|tail} of <direct:object'ass'>",
+      (: go_granny( $4[0] ) :) );
+}
+void high_level() {
+    string gender;
+    switch( this_player()->query_gender() ) {
+        case 0:
+            gender = "thing";
+            break;
+        case 1:
+            gender = "boy";
+            break;
+        case 2:
+            gender = "girl";
+            break;
+    }
+    add_failed_mess( "$D says \"You are a big " + gender + " now, so you'll "
+        "have to manage without me.  Good luck on your adventures!\"\n", );
+    set_worn_by(0);
+    this_player()->remove_property( "given taliswoman" );
+    move( "/room/rubbish", "", "$N vanishes in a puff of smoke." );
+}
+void set_destination( string city ) {
+    _city = "city";
+}
+mapping query_dynamic_auto_load() {
+    return ([
+        "::" : ::query_dynamic_auto_load(),
+        "new_destination" : _city,
+    ]);
+}
+void init_dynamic_arg( mapping map, object ) {
+    if (map["::"]) ::init_dynamic_arg(map["::"]);
+    if (map[ "city" ] ]) _city = map["city"];
+        else {
+            _city = "default";
+        }
+}
+int go_granny( string where ) {
+    mixed destination;
+    destination = _city;
+    if( !query_property( "talisman" ) ) {
+        add_failed_mess( "$D blinks rapidly and vanishes in a sudden fit "
+            "of quantum insecurity.\n" );
+        set_worn_by(0);
+        move( "/room/rubbish" );
+        return -1;
+    }
+    if( query_property( "talisman" ) != this_player()->query_name() ) {
+        this_player()->add_failed_mess( this_object(), "$D isn't yours!\n"
+            "It thumbs its metaphorical nose at you and refuses to do "
+            "anything.\n" );
+        return -1;
+    }
+    if( where == "tail" ) {
+        if( this_player()->query_level() > 20 ) {
+            high_level();
+            return -1;
+        }
+        if( query_property( "been to bad ass" ) ) {
+            add_failed_mess( "You have already used $D to travel to the "
+                "witches once.\n" );
+            return -1;
+        }
+        if( file_name( environment( this_player() ) ) == destination ) {
+            add_failed_mess( "But you are already here!\n" );
+            return -1;
+        }
+        add_succeeded_mess( ({ "$D starts to glow.  The bright glow makes "
+            "you blink and when you open your eyes, you're in a new place.\n",
+            "$N $V $D.\n" }) );
+        if( this_player()->query_guild_ob() != "/std/guilds/witch" ) {
+            call_out( (: tell_object( $(this_player()), "The taliswoman "
+                "says: To the northwest, then north of here is the home of "
+                "Granny Weatherwax.  You need to speak with her about "
+                "becoming a witch.  To get into the cottage you will need "
+                "the key to the back door; it's hidden in the privy.  To get "
+                "back to Ankh-Morpork, you can rub my head or catch the "
+                "carriage in Bad Ass to the southeast of here.  "
+                "Good luck!\n" ) :), 2 );
+            add_property( "been to bad ass", 1 );
+        }
+    }
+    else {
+        if( this_player()->query_level() > 20 ) {
+            high_level();
+            return -1;
+        }
+        if( query_property( "been to city" ) ) {
+            add_failed_mess( "You have already used $D to travel to the "
+                "city once.\n" );
+            return -1;
+        }
+        if( file_name( environment( this_player() ) ) == destination ) {
+            add_failed_mess( "But you are already here!\n" );
+            return -1;
+        }
+        add_succeeded_mess( ({ "$D starts to glow.  The bright glow makes "
+            "you blink and when you open your eyes, you're in a new place.\n",
+            "$N $V $D.\n" }) );
+        add_property( "been to city", 1 );
+    }
+    call_out( (: $(this_player())->move_with_look( $(destination),
+        "You notice a glimmering light to the side of the road.  As you "
+        "watch, the light begins to take the shape of $N as she "
+        "arrives from somewhere else.",
+        "A bright light surrounds $N.  It dims suddenly, then "
+        "vanishes.  It seems to have taken $N with it." ) :), 0 );
+    if( query_property( "been to bad ass" ) &&
+        query_property( "been to city" ) ) {
+        call_out( (: tell_object( $(this_player()), the_short() +
+            " says: You have now used me to travel once in each direction, "
+            "so our ways part here.  If you need me again, just go see "
+            "Gennie.\n" ) :), 1 );
+        this_player()->remove_property( "given taliswoman" );
+        call_out( (: set_worn_by(0), move( "/room/rubbish", "",
+            "$N vanishes in a puff of smoke." ) :), 1 );
+    }
     return 1;
 }
-int query_baths() {
-    return 1;
+varargs int add_property( string var, mixed val, int tim ) {
+    if( var == "talisman" ) {
+        if( query_property( "talisman" ) &&
+            query_property( "talisman" ) != "no one" ) {
+            call_out( (: tell_object( $(environment()), "The taliswoman "
+                "blinks rapidly and vanishes in a sudden fit of quantum "
+                "insecurity.\n" ) :), 1 );
+            call_out( (: set_worn_by(0), move( "/room/rubbish" ) :), 1 );
+        }
+    }
+    return ::add_property( var, val, tim );
 }
-void zap_bad_effects( object who ) {
-    int i, flag, *enums;
-    class effect *effs;
-    dirt++;
-    effs = (class effect *)who->query_effs();
-    enums = (int *)who->effects_matching( "body.smell" );
-    i = sizeof( enums );
-    if ( !random(dirt) && i ) {
-        i = random( i );
-        flag = 1;
-        write( "The antiseptic power of the soap defeats "+
-          (string)effs[ enums[ i ] ]->ob_name->smell_string( who,
-            effs[ enums[ i ] ]->arg ) +".\n" );
-        who->delete_effect( enums[ i ] );
-        dirt ++;
-    }
-    enums = who->effects_matching("pie.cream");
-    if (!random(dirt) && sizeof(enums)) {
-        tell_object(who, "The cream washes right off your body.\n");
-        who->delete_effect(enums[0]);
-        dirt ++;
-    }
-    enums = (int *)who->effects_matching( "misc.ketchup" );
-    i = sizeof( enums );
-    if ( !random(dirt) && i ) {
-        i = random( i );
-        flag = 1;
-        write( "The soap rinses the ketchup off your face.\n" );
-        who->delete_effect( enums[ i ] );
-        dirt ++;
-    }
-    enums = who->effects_matching("exploded.apples");
-    if (!random(dirt) && sizeof(enums)) {
-        tell_object(who, "The apples wash right off your body.\n");
-        who->delete_effect(enums[0]);
-        dirt ++;
-    }
-    enums = (int *)who->effects_matching("object.label");
-    if (!random(dirt) && sizeof(enums)) {
-        tell_object(who, "The labels stuck on you peel off in "
-          "the water.\n");
-        who->delete_effect(enums[0]);
-        dirt ++;
-    }
-    enums = who->effects_matching("body.frog-adhesive");
-    if (!random(dirt) && sizeof(enums)) {
-        tell_object(who, "The frog adhesive washes off in the water.\n");
-        who->delete_effect(enums[0]);
-        dirt ++;
-    }
-    enums = who->effects_matching("body.writing.soap");
-    if (!random(dirt) && sizeof(enums)) {
-        tell_object(who, "The rest of the words wash off without a single "
-            "bubble in sight.\n");
-        who->delete_effect(enums[0]);
-        dirt ++;
-    }
-    if (!random(dirt)) {
-        who->add_effect( SOAP_EFFECT, 10000 );
-    }
-    who->add_effect( WET_EFFECT, 250 );
+string query_destination() {
+    return _city;
 }
 
 ==================================================
-FILE: room/furniture/chime_inherit.c
+FILE: npc/test_npc.c
 ==================================================
 
-inherit "/std/object";
-inherit "/std/room/furniture/inherit/furniture_base";
-#include <weather.h>
-#define TIME 120
-string chimes_short();
-string chimes_long();
-void set_chime_type( string type );
-string chime_type();
-void jingle();
-string chime_verb();
-void add_chime_verb( string verb );
-void remove_chime_verb( string verb );
-string *query_chime_verbs();
-void set_hung_up( int up );
-int hung_up();
-void set_hook( object hook );
-object hook();
-int do_hang( object hook );
-int do_unhang();
-private string _chime_type = "metal";
-private string *_chime_verbs = ({ "jingles", "tinkles" });
-private int _hung_up = 0;
-private object _hook;
+#include <npc/goals.h>
+#include <npc/plan.h>
+inherit "/std/npc/npc_intelligent";
+void setup() {
+   string goal;
+   set_name("fluff");
+   set_short("bit of fluff");
+   set_long("A small bit of fluff.");
+   set_race("human");
+   set_guild("warrior");
+   set_level(10);
+   goal = GOALS_DIR + "basic/stay_alive_basic";
+   goal->add_goal_to_npc(this_object(), ([ ]), 100);
+   load_chat(100, ({ 1, "'Scruff!",
+                     1, "'Chickens?",
+			}));
+}
+
+==================================================
+FILE: npc/goals/base.c
+==================================================
+
+#include <npc/goals.h>
+private mapping _default_plans;
+private int _default_priority;
+#define GOAL_PLAN_ARRAY_SIZE 1
+#define GOAL_PLAN_PLAN 0
+void setup() {
+}
 void create() {
-   furniture_base::create();
-   object::create();
+   _default_plans = ([ ]);
+   _default_priority = GOAL_INVALID_PRIORITY;
+   setup();
+}
+void initialise_plans(object npc,
+                      string goal_name,
+                      mixed data) {
+}
+void initialise(object npc,
+                string goal_name,
+                class goal_control control) {
+   string name;
+   foreach (name in keys(_default_plans)) {
+tell_creator("pinkfish", "Adding event hook for %O\n", name);
+      npc->add_goal_event(base_name(this_object()), name);
+   }
+   foreach (name in keys(control->extra_plans)) {
+      npc->add_goal_event(base_name(this_object()), name);
+   }
+   initialise_plans(npc, goal_name, control->data);
+}
+string query_current_plan(object npc,
+                          class goal_control control) {
+   return control->current_plan;
+}
+mixed create_goal_data(object npc,
+                       string goal_name,
+                       mixed stuff) {
+   return stuff;
+}
+void add_goal_to_npc(object npc,
+                     mapping extra_plans,
+		     mixed stuff) {
+   class goal_control frog;
+   mixed value;
+   string goal_name;
+tell_creator("pinkfish", "Adding goal %O to npc(%O).\n", base_name(this_object()), stuff);
+   if (!mapp(extra_plans)) {
+      extra_plans = ([ ]);
+   }
+   goal_name = base_name(this_object());
+   frog = new(class goal_control);
+   frog->extra_plans = extra_plans;
+   frog->current_plan = 0;
+   frog->priority = GOAL_DEFAULT_PRIORITY;
+   frog->data = create_goal_data(npc, goal_name, stuff);
+   frog->plan_info = ([ ]);
+   npc->add_goal(goal_name, frog);
+}
+int query_priority(object npc,
+                   class goal_control control) {
+   if (control->priority != GOAL_DEFAULT_PRIORITY) {
+      return control->priority;
+   }
+   return _default_priority;
+}
+int query_default_priority() {
+   return _default_priority;
+}
+protected void set_default_priority(int priority) {
+   _default_priority = priority;
+}
+int notify_of_event(object npc,
+                    class goal_control control,
+                    string event,
+                    mixed *data) {
+   int value;
+   string plan;
+   int max_value;
+   string max_plan;
+   mixed max_data;
+   int i;
+   mixed info;
+   if (control->extra_plans[event]) {
+      for (i = 0; i < sizeof(control->extra_plans[event]);
+           i += GOAL_PLAN_ARRAY_SIZE) {
+         plan = control->extra_plans[event][i + GOAL_PLAN_PLAN];
+         info = control->plan_info[plan];
+         if (plan->pre_condition(npc,
+                                 base_name(this_object()),
+                                 info,
+                                 event,
+                                 data)) {
+            value = plan->query_sutability(npc,
+                                           base_name(this_object()),
+                                           info,
+                                           event,
+                                           data);
+            if (value > max_value) {
+               max_value = value;
+               max_plan = plan;
+               max_data = plan->query_data(npc,
+                                           base_name(this_object()),
+                                           info,
+                                           event,
+                                           data);
+            }
+         }
+      }
+   }
+   if (_default_plans[event]) {
+      for (i = 0;
+           i < sizeof(_default_plans[event]);
+           i += GOAL_PLAN_ARRAY_SIZE) {
+         plan = _default_plans[event][i + GOAL_PLAN_PLAN];
+         info = control->plan_info[plan];
+         if (plan->pre_condition(npc,
+                                 base_name(this_object()),
+                                 info,
+                                 event,
+                                 data)) {
+            value = plan->query_sutability(npc,
+                                           base_name(this_object()),
+                                           info,
+                                           event,
+                                           data);
+            if (value > max_value) {
+               max_value = value;
+               max_plan = plan;
+               max_data = plan->query_data(npc,
+                                           base_name(this_object()),
+                                           info,
+                                           event,
+                                           data);
+            }
+         }
+      }
+   }
+   if (max_plan) {
+      return npc->activate_plan(max_plan,
+                                base_name(this_object()),
+                                query_priority(npc, control) +
+                                   max_plan->query_priority_offset(),
+                                max_data);
+   }
+   return GOAL_EVENT_NOT_HANDLED;
+}
+mapping query_default_plans() {
+   return _default_plans;
+}
+protected void add_default_plan(string event_name,
+                                string plan) {
+   if (!_default_plans[event_name]) {
+      _default_plans[event_name] = ({ plan });
+   } else if (member_array(plan, _default_plans[event_name]) == -1) {
+      _default_plans[event_name] += ({ plan });
+   }
+}
+void set_plan_data(object npc,
+                   class goal_control control,
+                   string plan,
+                   mixed plan_data) {
+   control->plan_info[plan] = plan_data;
+}
+mixed query_plan_data(object npc,
+                      class goal_control control,
+                      string plan) {
+   return control->plan_info[plan];
+}
+
+==================================================
+FILE: npc/goals/basic/stay_alive.c
+==================================================
+
+#include <goals.h>
+inherit BASE_GOAL;
+void create() {
+   ::create();
+   set_default_priority(GOAL_HIGH_PRIORITY);
+   add_default_plan(EVENT_HP_LOST,
+                    GOAL_PLAN_DIR + "basic/run_away");
+   add_default_plan(EVENT_PLAN_FINISHED,
+                    GOAL_PLAN_DIR + "basic/lose_attackers");
+}
+
+==================================================
+FILE: npc/goals/basic/stay_alive_basic.c
+==================================================
+
+#include <npc/goals.h>
+#include <npc/events.h>
+#include <npc/plan.h>
+inherit GOAL_BASE_INHERIT;
+void setup() {
+   set_default_priority(GOAL_HIGH_PRIORITY);
+   add_default_plan(EVENT_LOSE_HPS,
+                    PLAN_DIR + "basic/run_away");
+}
+int invarient(object npc) {
+   return 1;
+}
+mixed initialise_plans(object npc,
+                       string goal_name,
+                       int wimpy) {
+tell_creator("pinkfish", "Initialise_plans(%O, %O, %O)\n", npc, goal_name, wimpy);
+   npc->set_goal_plan_data(goal_name,
+                           PLAN_DIR + "basic/run_away",
+                           wimpy);
+   return wimpy;
+}
+
+==================================================
+FILE: npc/goals/misc/get_drunk.c
+==================================================
+
+#include <npc/goals.h>
+#include <npc/events.h>
+#include <npc/plan.h>
+inherit GOAL_BASE_INHERIT;
+void setup() {
+   set_default_priority(GOAL_LOW_PRIORITY);
+   add_default_plan(EVENT_GIVEN_MONEY,
+                    PLAN_DIR + "control/goto_location");
+}
+int invarient(object npc) {
+   return 1;
+}
+mixed initialise_plans(object npc,
+                       string goal_name,
+                       int wimpy) {
+tell_creator("pinkfish", "Initialise_plans(%O, %O, %O)\n", npc, goal_name, wimpy);
+   npc->set_goal_plan_data(goal_name,
+                           PLAN_DIR + "basic/run_away",
+                           wimpy);
+   return wimpy;
+}
+
+==================================================
+FILE: npc/inherit/owned.c
+==================================================
+
+private mixed _owner;
+object set_owner( mixed owner ){
+  if( stringp(owner) )
+    _owner = owner;
+  if( objectp(owner) && living(owner) ){
+    if( userp(owner) )
+      _owner = owner->query_name();
+    else
+      _owner = owner;
+  }
+  return _owner;
+}
+object query_owner() {
+  if( stringp(_owner) )
+    return find_player(_owner);
+  else
+    return _owner;
+}
+object query_owner_pk_check() {
+   return query_owner();
+}
+mixed *stats(){
+  return ({
+    ({ "owner", _owner }),
+  });
+}
+
+==================================================
+FILE: npc/plans/base.c
+==================================================
+
+#include <npc/plan.h>
+private nosave int _sutability;
+private nosave mapping _hooked_events;
+void setup() {
+}
+void create() {
+   _sutability = PLAN_INVALID_SUTABILITY;
+   _hooked_events = ([ ]);
+   setup();
+}
+int pre_condition(object npc,
+		  string goal,
+                  mixed goal_info,
+		  string event,
+		  mixed *data) {
+   return 0;
+}
+int finished(object npc,
+             mixed *data) {
+   return 1;
+}
+int query_sutability(object npc,
+		     string goal,
+                     mixed goal_info,
+		     string event,
+		     mixed *data) {
+   return _sutability;
+}
+void set_sutability(int sutability) {
+   _sutability = sutability;
+}
+int query_data(object npc,
+	       string goal,
+               mixed goal_info,
+	       string event,
+	       mixed *data) {
+   return 0;
+}
+mixed create_plan_data() {
+   return 0;
+}
+void add_hooked_event(string event, function func) {
+   _hooked_events[event] = func;
+}
+void remove_hooked_event(string event) {
+   map_delete(_hooked_events, event);
+}
+int notify_event(object npc,
+                 mixed plan_data,
+                 string event,
+                 mixed *data) {
+   if (_hooked_events[event]) {
+      return evaluate(_hooked_events[event], npc, plan_data, event, data);
+   }
+   return 0;
+}
+
+==================================================
+FILE: npc/plans/basic/run_away.c
+==================================================
+
+#include <npc/plan.h>
+#include <npc/events.h>
+inherit PLAN_BASE_INHERIT;
+int moved_event(object npc,
+                mixed plan_data,
+                string event,
+                mixed *data);
+void setup() {
+   set_sutability(PLAN_MEDIUM_SUTABILITY);
+   add_hooked_event(EVENT_MOVED, (: moved_event :));
+}
+protected int being_attacked(object npc) {
+   object *attackers;
+   attackers = filter(npc->query_attacker_list(), (: environment($1) ==
+                                                 environment($2) :), npc);
+   return sizeof(attackers);
+}
+void activate_plan(object npc,
+                   mixed data) {
+   npc->run_away();
+}
+int pre_condition(object npc,
+                  string goal,
+                  mixed plan_info,
+                  string event,
+                  mixed *data) {
+   int wimpy_level;
+   int percent;
+tell_creator("pinkfish", "Precondition!\n");
+   if (!plan_info) {
+      wimpy_level = 50;
+   } else {
+      wimpy_level = plan_info;
+   }
+tell_creator("pinkfish", sprintf("%O: %O, %O\n", event, goal, plan_info));
+   percent = (npc->query_hp() * 100) / npc->query_max_hp();
+   if (percent < wimpy_level) {
+      if (being_attacked(npc) ||
+          event == EVENT_LOSE_HPS) {
+         return 1;
+      }
+   }
+   return 0;
+}
+int finished(object npc) {
+   return !being_attacked(npc);
+}
+int moved_event(object npc,
+                mixed plan_data,
+                string event,
+                mixed *data) {
+   if (finished(npc)) {
+      return 1;
+   } else {
+      npc->run_away();
+   }
+   return 0;
+}
+
+==================================================
+FILE: guilds/standard.c
+==================================================
+
+#include <skills.h>
+#include <tune.h>
+#include <guilds.h>
+#include <config.h>
+inherit "/std/object";
+nosave string gp_skill;
+nosave string start_pos;
+nosave mixed *commands;
+nosave string *skills;
+nosave mixed *spells;
+protected void create() {
+   gp_skill = "other.points";
+   start_pos = CONFIG_START_LOCATION;
+   skills = ({ "crafts", "faith", "fighting", "other" });
+   commands = ({ });
+   spells = ({ });
+   ::create();
+}
+string query_gp_skill() { return gp_skill; }
+void set_gp_skill( string word ) { gp_skill = word; }
+void set_gp( object thing ) {
+   if ( !thing ) {
+      return;
+   }
+   thing->set_max_gp( 50 + (int)thing->query_skill_bonus( gp_skill ) );
+}
+string query_start_pos( object thing ) { return start_pos; }
+void set_start_pos( string word ) { start_pos = word; }
+string *query_skills() { return skills; }
+void set_skills( string *words ) { skills = words; }
+int add_command(string name, int add_if_player) {
+   if (member_array(name, commands) != -1) {
+      return 0;
+   }
+   commands += ({ name, ({ add_if_player }) });
+   return 1;
+}
+int remove_command(string name) {
+   int i;
+   if ((i = member_array(name, commands)) == -1) {
+      return 0;
+   }
+   commands = delete(commands, i, 1);
+   return 1;
+}
+int do_command(string name, mixed param) {
+   log_file("BAD_COMMANDS", "do_command() called on /std/guilds/standard.c\n");
+   return 0;
+}
+int add_spell(string name, mixed ob, string func_name, int add_if_player) {
+   int i;
+   if ((i = member_array(name, spells)) != -1) {
+      return 0;
+   }
+   spells += ({ name, ({ ob, func_name, add_if_player }), });
+   return 1;
+}
+int remove_spell(string name) {
+   int i;
+   if ((i= member_array(name, spells)) == -1) {
+      return 0;
+   }
+   spells = delete(spells, i, 2);
+   return 1;
+}
+int cast_spell(string name, mixed bing) {
+   int i;
+   if ((i=member_array(name, spells)) == -1) {
+      return 0;
+   }
+   return (int)call_other(spells[i+1][0], spells[i+1][1], bing);
+}
+mixed *query_spells() { return spells; }
+string *query_commands() { return commands; }
+int query_skill_cost( string skill ) { return 10; }
+int query_skill_max_level( string skill ) { return 10; }
+void start_player(object pl) {
+   int i;
+   if (!spells) {
+      spells = ({ });
+   }
+   for (i=0;i<sizeof(spells);i+=2) {
+      if (spells[i+1][2] || !interactive(pl)) {
+         pl->add_spell(spells[i], spells[i+1][0], spells[i+1][1]);
+      }
+   }
+   if (!pointerp(commands)) {
+      commands = ({ });
+   }
+   for (i=0;i<sizeof(commands);i+=2) {
+      if (commands[i+1][0] || !interactive(pl)) {
+         pl->add_known_command(commands[i]);
+      }
+   }
+}
+void leave_guild() { return; }
+void player_quit() { return; }
+void player_save() { return; }
+void player_heart_beat( string guild, object thing ) {
+}
+void set_level( object thing, int level, string guild ) {
+   call_out( "set_new_level", 1, ({ thing, level, guild }) );
+}
+string adjust_primaries( object thing, int level ) {
+  int i;
+  string stat_list;
+  stat_list = "";
+  for ( i = 0; i < sizeof( skills ); i++ ) {
+    if(level - thing->query_skill(skills[i]) > 0)
+      thing->add_skill_level(skills[i], level - thing->query_skill(skills[i]));
+    stat_list += (string)SKILL_OB->query_skill_stat(skills[i]);
+    if(random(2)) {
+      stat_list += "C";
+    }
+  }
+  return stat_list;
+}
+void set_new_level( mixed *args ) {
+   int i, j, level;
+   string stat_list;
+   object thing;
+   thing = args[ 0 ];
+   if ( !thing ) {
+      return;
+   }
+   level = args[ 1 ];
+   thing->add_skill_level("fighting", level / 4 );
+   thing->add_skill_level("other", level / 4 );
+   switch(thing->query_guild_ob()) {
+   case "/std/guilds/warrior":
+   case "/std/guilds/assassin":
+     thing->add_skill_level("other.health", level);
+     break;
+   case "/std/guilds/thief":
+     thing->add_skill_level("other.health", (level * 3) / 4);
+     break;
+   default:
+     thing->add_skill_level("other.health", level / 2);
+   }
+   thing->add_skill_level("other.perception", level / 3);
+   stat_list = adjust_primaries( thing, level );
+   if(thing->query_property( "unique" ) ||
+      thing->query_property( "keep setup stats" ) ||
+      (!thing->query_race_ob() ||
+       !(thing->query_race_ob())->query_humanoid()))
+     return;
+   thing->adjust_con( -6 + random( 3 ) );
+   thing->adjust_dex( -6 + random( 3 ) );
+   thing->adjust_int( -6 + random( 3 ) );
+   thing->adjust_str( -6 + random( 3 ) );
+   thing->adjust_wis( -6 + random( 3 ) );
+   for ( i = 0; i < 25; i++ ) {
+      j = random( strlen( stat_list ) );
+      switch ( stat_list[ j .. j ] ) {
+         case "C" :
+            thing->adjust_con( 1 );
+            break;
+         case "D" :
+            thing->adjust_dex( 1 );
+            break;
+         case "I" :
+            thing->adjust_int( 1 );
+            break;
+         case "S" :
+            thing->adjust_str( 1 );
+            break;
+         default :
+            thing->adjust_wis( 1 );
+            break;
+      }
+   }
+}
+int query_level( object thing ) {
+   int i, lvl;
+   if ( !thing || !sizeof( skills ) ) {
+      return 0;
+   }
+   for ( i = 0; i < sizeof( skills ); i++ ) {
+      lvl += (int)thing->query_skill( skills[ i ] );
+   }
+   lvl /= sizeof( skills );
+   return lvl;
+}
+string query_title( object player ) { return "the Adventurer"; }
+void skills_advanced( object thing, string skill, int level ) {
+   if ( strsrch( skill, "covert" ) != -1 ) {
+      if ( ( (int)thing->query_skill( "covert.stealth" ) > 5 ) &&
+             !thing->query_known_command( "peek" ) ) {
+         tell_object( thing, "You realise that you could use your newly "
+                      "improved stealth to \"peek\" covertly at someone, and "
+                      "maybe they won't notice...\n" );
+         thing->add_known_command( "peek" );
+      }
+   } else if ( strsrch( skill, "fighting.combat.parry.held" ) != -1 ) {
+      if ( ( (int)thing->query_skill( "fighting.combat.parry.held" ) > 50 ) &&
+                  !thing->query_known_command( "riposte" ) ) {
+         tell_object( thing, "You realise that you could use your newly "
+                     "improved parry to \"riposte\" someones attack.\n" );
+         thing->add_known_command( "riposte" );
+      }
+   }
+}
+int add_position( string sub_guild, string position,
+                           int max, string* abilities, mixed* description ) {
+    return POSITION_FAIL;
+}
+int remove_position( string sub_guild, string position ) {
+    return POSITION_FAIL;
+}
+mapping query_positions( string sub_guild, string position ) {
+    return 0;
+}
+string *query_position_appointments( string sub_guild, string position ) {
+    return 0;
+}
+mixed *query_position_description( string sub_guild, string position ) {
+    return 0;
+}
+string *query_position_abilities( string sub_guild, string position ) {
+    return 0;
+}
+void reset_positions( string sub_guild ) {
+}
+int appoint_position( string sub_guild, string position,
+                                 string player_name ) {
+    return POSITION_FAIL;
+}
+int dismiss_position( string sub_guild, string position,
+                                 string player_name ) {
+    return POSITION_FAIL;
+}
+string query_position( string sub_guild, string player_name ) {
+    return 0;
+}
+int query_guild_ability( mixed thing, string ability ) {
+    return 0;
+}
+
+==================================================
+FILE: guilds/warrior.c
+==================================================
+
+#include <player_handler.h>
+#include <top_ten_tables.h>
+#include <playtesters.h>
+#define SAVE_FILE ( "/save/guilds/warriors/warrior_ob" )
+inherit "/std/guilds/standard";
+void load_file();
+void save_file();
+void setup() {
+  set_name("warriors");
+  set_short("Warriors' Guild");
+  set_long("The Warriors' Guild.\n\n"
+           "The Warriors' Guild is for the brave and "
+           "heroic.  As a member you can expect to "
+           "recieve a sound background in beating, "
+           "bashing, slicing, and dicing a variety of "
+           "opponents up with a wide selection of "
+           "weapons.  The evaluation of arms and armour "
+           "will also be covered in detail.  Join this "
+           "guild if you wish to journey to interesting "
+           "places, meet interesting people, and give "
+           "them a sound thrashing.\n");
+  set_gp_skill("fighting.points");
+  set_start_pos("/d/dist/pumpkin/squash/squash5");
+  set_skills(({  "fighting.points",
+                 "fighting.combat.melee.sharp",
+                 "fighting.combat.melee.pierce",
+                 "fighting.combat.melee.blunt",
+                 "fighting.combat.melee.unarmed",
+                 "fighting.combat.range.thrown",
+                 "fighting.combat.range.fired",
+                 "fighting.combat.parry.melee",
+                 "fighting.combat.parry.range",
+                 "fighting.combat.dodging.melee",
+                 "fighting.combat.dodging.range",
+                 "fighting.combat.special.weapon",
+                 "fighting.combat.special.unarmed",
+                 "other.evaluating.weapons",
+                 "other.evaluating.armour"  }));
+}
+int query_skill_cost(string skill) {
+  string *bits;
+  if(member_array(skill, skills) != -1)
+    return 3;
+  bits = explode(skill, ".");
+  switch(bits[0]) {
+    case "faith" :
+      return 15;
+    case "fighting" :
+      return 5;
+    case "magic" :
+      return 50;
+    default :
+      return 10;
+  }
+}
+int query_skill_max_level( string skill ) {
+  string *bits;
+  if(member_array(skill, skills) != -1)
+    return 300;
+  bits = explode(skill, ".");
+  switch (bits[0]) {
+    case "faith" :
+      return 25;
+    case "fighting" :
+      return 50;
+    case "magic" :
+      return 5;
+    case "other" :
+      return 25;
+    default :
+      return 10;
+  }
+}
+string query_title( object player ) {
+  int lvl, female;
+  female = (int)player->query_gender() == 2;
+  lvl = query_level( player );
+  switch( lvl ) {
+      case 0..15: return "the Novice Fighter";
+      case 16..30: return "the Apprentice Fighter";
+      case 31..45: return "the Skillful Fighter";
+      default: return "the Grave of All Hope";
+    }
+}
+int query_warrior( string player ) {
+  if( PLAYER_HANDLER->test_guild( player ) == "/std/guilds/warrior" ) {
+    return 1;
+  }
+  return 0;
+}
+int query_warrior_ob( object player ) {
+  if( player->query_guild_ob() == "/std/guilds/warrior" ) {
+    return 1;
+  }
+  return 0;
+}
+
+==================================================
+FILE: languages/general.c
+==================================================
+
+string long() {
+  return
+"This is the normal language spoken by most creatures.\n";
+}
+mixed garble_tell(string start, string mess) {
+  return ({ start, mess });
+}
+mixed garble_shout(string start, string mess) {
+  return ({ start, mess });
+}
+mixed garble_say(string start, string mess) {
+  return ({ start, mess });
+}
+string garble_text( mixed text, object thing, object player, string skill) {
+   string bing;
+   if (stringp(text)) {
+      return text;
+   }
+   if ( pointerp( text ) ) {
+      if ( ( bing = (string)text[ 0 ]->garble_text( text, thing, player ) ) ) {
+         return bing;
+      }
+   }
+   return "You cannot read the furry writing.\n";
+}
+
+==================================================
+FILE: languages/grunt.c
+==================================================
+
+string long() {
+  return "Consists of grunting noises.\n";
+}
+mixed garble_say(string start, string rest) {
+  string nam, loud;
+  sscanf(start, "%s %s:", nam, start);
+  if (sscanf(start, "%s loudly", start) == 1)
+    loud = " loudly";
+  else
+    loud = "";
+  switch (start) {
+    case "asks" :
+       nam = nam+" quizzically grunts"+loud;
+       break;
+    case "exclaims" :
+       nam = nam+" pointedly grunts"+loud;
+       break;
+    default :
+       nam = nam+" grunts"+loud;
+       break;
+  }
+  return ({ nam+".", "" });
+}
+
+==================================================
+FILE: languages/language_inherit.c
+==================================================
+
+#include <fixed_random.h>
+#include <tasks.h>
+#include <living.h>
+private string _long;
+private string _name;
+private string _start_text_bit;
+void setup();
+void create() {
+  setup();
+}
+void set_long(string str) {
+   _long = str;
+}
+string query_long() {
+   return _long;
+}
+void set_name(string str) {
+   _name = str;
+}
+string query_name() {
+   return _name;
 }
 void setup() {
-  set_name( "chime" );
-  set_short( (: chimes_short() :) );
-  set_long( (: chimes_long() :) );
-  add_adjective( ({ "wind", chime_type() }) );
-  set_value( 420 );
 }
-void init() {
-  add_command( "hang", "<direct:object'chime'> {on|from} "
-      "<indirect:object'hook'>", (: do_hang( $1[0] ) :) );
-  add_command( "unhang", "<direct:object'chime'>" );
-}
-string chimes_short() {
-  return chime_type() + " wind chime";
-}
-string chimes_long() {
-  return "This little wind chime is nothing more than bits of "
-             + chime_type() + " dangling from strings tied to a "
-             "ring.\n";
-}
-void set_chime_type( string type ) {
-  remove_adjective( _chime_type );
-  add_adjective( type );
-  _chime_type = type;
-}
-string chime_type() { return _chime_type; }
-void jingle() {
-  object env = environment();
-  int wind;
-  if( !env )
-    return;
-  if( !hung_up() )
-    return;
-  if( !inherits( "/std/room", env ) )
-    return;
-  wind = env->query_wind_speed();
-  if( undefinedp( wind ) ) {
-    if( env->query_property( "location" ) == "outside" ||
-        env->query_property( "windy" ) )
-      wind = WEATHER->query_windsp( this_object() );
-    else
-      return;
-  }
-  if( random( wind ) )
-    tell_room( env, the_short() + chime_verb() + " in the "
-        "wind.\n" );
-  call_out( "jingle", TIME );
-}
-string chime_verb() {
-  return " " + _chime_verbs[ random( sizeof( _chime_verbs ) ) ];
-}
-void add_chime_verb( string verb ) {
-  _chime_verbs += ({ verb });
-}
-void remove_chime_verb( string verb ) {
-  _chime_verbs -= ({ verb });
-}
-void set_chime_verbs( string *verbs ) { _chime_verbs = verbs; }
-string *query_chime_verbs() { return _chime_verbs; }
-void set_hung_up( int up ) {
-  remove_call_out( "jingle" );
-  if( up )
-    call_out( "jingle", 30 );
-  _hung_up = up;
-}
-int hung_up() { return _hung_up; }
-void set_hook( object hook ) { _hook = hook; }
-object hook() { return _hook; }
-int jingling() { return find_call_out( "jingle" ); }
-void init_dynamic_arg( mapping arg ) {
-  set_chime_type( arg[ "type" ] );
-  set_chime_verbs( arg[ "chime verbs" ] );
-  set_hook( arg[ "hook" ] );
-  set_hung_up( arg[ "hung up" ] );
-  if( undefinedp( hook() ) || !hung_up() ||
-      !sizeof( match_objects_for_existence( hook(), ({ environment() }) ) ) ) {
-    remove_property( "there" );
-    set_hung_up( 0 );
-  }
-}
-mixed query_dynamic_auto_load() {
-  return ([ "::" : ::query_dynamic_auto_load(),
-            "type" : chime_type(),
-            "chime verbs" : query_chime_verbs(),
-            "hung up" : hung_up(),
-            "hook" : hook() ]);
-}
-int do_hang( object hook ) {
-  string where = hook->a_short();
-  if( hung_up() ) {
-    add_failed_mess( "The chime is already hanging up.\n" );
-    return 0;
-  }
-  if( !hook->query_hook() && !hook->query_property( "hook" ) )
-    return 0;
-  if( move( environment( this_player() ) ) )
-    return 0;
-  if( where )
-    where = "on " + where;
-  else
-    where = "up";
-  add_property( "there", "hanging "+ where );
-  reset_get();
-  set_hung_up( 1 );
-  set_hook( hook );
-  this_player()->add_succeeded_mess( this_object(), "$N $V $D on "
-      "$I.\n", ({ hook }) );
-  return 1;
-}
-int do_unhang() {
-  if( !hung_up() ) {
-    add_failed_mess( "The chime isn't hanging from anything.\n" );
-    return 0;
-  }
-  remove_property( "there" );
-  set_get();
-  set_hung_up( 0 );
-  move( this_player() );
-  return 1;
-}
-
-==================================================
-FILE: room/furniture/clock.c
-==================================================
-
-#include <move_failures.h>
-#include <position.h>
-inherit "/obj/clock";
-inherit "/std/room/furniture/inherit/furniture_base";
-void chime(string mess) {
-  int *co_ords;
-  if(environment(this_object())) {
-    co_ords = (int *)environment(this_object())->query_co_ord();
-    "/obj/handlers/broadcaster"->broadcast_event(users(), co_ords,
-                                                 mess, 20, 1, 0 );
-    tell_room(environment(this_object()), mess);
-  }
-}
-void create() {
-   do_setup++;
-   clock::create();
-   add_alias( "furniture" );
-   add_plural( "furniture" );
-   set_opaque();
-   furniture_base::create();
-   do_setup--;
-   if ( !do_setup ) {
-     this_object()->setup();
-   }
-}
-private int do_real_move(mixed dest, string messin, string messout) {
-   return clock::move(dest, messin, messout);
-}
-varargs int move( mixed dest, string messin, string messout ) {
-  int i, t, f;
-  object from;
-  if(stringp(dest)) {
-    dest = find_object(dest);
-  }
-  if (!move_check(dest)) {
-     write(the_short() + " resists being picked up and shocks you slightly.\n");
-     return MOVE_INVALID_DEST;
-  }
-  if(!dest) {
-    return MOVE_INVALID_DEST;
-  }
-  if(living(dest)) {
-    t = (int)this_object()->query_complete_weight() * 2;
-    if(!(dest->add_weight(t))) {
-      return MOVE_TOO_HEAVY;
-    }
-    debug_printf("Added %d", t);
-  }
-  i = ::move(dest, messin, messout);
-  if(i != MOVE_OK) {
-    dest->add_weight(-t);
-    return i;
-  }
-  from = environment();
-  if(from && living(from)) {
-    f = (int)this_object()->query_complete_weight() * 2;
-    from->add_weight(-f);
-  }
-  return i;
-}
-int get(mixed dest) {
-  if(!move_check(dest)) {
-    write("You feel it would be wrong to take " + the_short() + ".\n");
-    return 2;
-  }
-  return ::get(dest);
-}
-mixed query_static_auto_load() {
-  if ( base_name(this_object()) + ".c" == __FILE__ ) {
-    return int_query_static_auto_load();
-  }
-  return ([ ]);
-}
-
-==================================================
-FILE: room/furniture/commercial.c
-==================================================
-
-#include <move_failures.h>
-#include <position.h>
-#include <money.h>
-inherit "/std/object";
-inherit "/std/basic/item_chat";
-inherit "/std/room/furniture/inherit/furniture_base";
-string query_main_status(int hints);
-private nosave int _commercial_size;
-private nosave string _commercial_type;
-private nosave string _commercial_name;
-private nosave string* _use_types;
-private nosave string _info;
-private int _revenue;
-private int _weekly_revenue;
-private int _commercial_id;
-private int _weekly_upkeep_cost;
-#define OBJECT_TAG "commercial inh"
-void create() {
-   _commercial_size = 100;
-   if (!_use_types) {
-      _use_types = ({ });
-   }
-   do_setup++;
-   object::create();
-   furniture_base::create();
-   add_alias( "furniture" );
-   add_plural( "furniture" );
-   add_property("talisman", "no one");
-   set_opaque();
-   if ( !query_property( "shop type" ) ) {
-      add_property( "shop type", "furniture" );
-   }
-   do_setup--;
-   if ( !do_setup ) {
-     this_object()->setup();
-   }
-   set_no_all(1);
-   reset_get();
-}
-void set_weekly_upkeep_cost(int cost) {
-   _weekly_upkeep_cost = cost;
-}
-int query_weekly_upkeep_cost() {
-   return _weekly_upkeep_cost;
-}
-int query_revenue() {
-   return _revenue;
-}
-void set_revenue(int revenue) {
-   _revenue = revenue;
-}
-string query_save_dir() {
-   return environment()->query_save_dir();
-}
-string query_owner() {
-  return environment()->query_owner();
-}
-string query_language() {
-  return environment()->query_language();
-}
-string query_money_place() {
-   if (!environment()) {
-      return "default";
-   }
-   return environment()->query_property("place");
-}
-int is_allowed(string person) {
-   return environment()->is_allowed(person);
-}
-string query_allowed() {
-   return environment()->query_allowed();
-}
-int query_float() {
-   return environment()->query_royalty(query_owner());
-}
-int query_royalty(string person) {
-   return environment()->query_royalty(person);
-}
-int adjust_royalty(string person, int amount) {
-   if (person == query_owner()) {
-      _revenue += amount;
-      _weekly_revenue += amount;
-   }
-   environment()->adjust_royalty(person, amount);
-}
-int adjust_float(int amt) {
-   adjust_royalty(query_owner(), amt);
-}
-int is_open_for(string type, string person) {
-   if (!environment()->query_commercial_property()) {
-      return 0;
-   }
-   return environment()->is_open_for(type, person);
-}
-void set_commercial_size(int size) {
-   _commercial_size = size;
-}
-string query_commercial_type() {
-   return _commercial_type;
-}
-void set_commercial_type(string type) {
-   _commercial_type = type;
-}
-void set_commercial_information(string info) {
-   _info = info;
-}
-string query_commercial_information() {
-   return _info;
-}
-void set_commercial_name(string name) {
-   _commercial_name = name;
-}
-string query_commercial_name() {
-   return _commercial_name;
-}
-int query_commercial_size() {
-   return _commercial_size;
-}
-int query_commercial_id() {
-   return _commercial_id;
-}
-void setup_new_commercial_id() {
-   _commercial_id = environment()->find_next_commercial_id();
-}
-void set_commercial_id(int id) {
-   _commercial_id = id;
-}
-string query_parcel_post() {
-   return environment()->query_parcel_post();
-}
-void set_shop_use_types(string* types) {
-   _use_types = types;
-}
-string* query_shop_use_types() {
-   return _use_types;
-}
-void reset_weekly_status() {
-   _weekly_revenue = 0;
-}
-string query_weekly_status_string() {
-   string ret;
-   string place;
-   place = query_money_place();
-   if (query_weekly_upkeep_cost()) {
-      ret = "Weekly Upkeep : " +
-            MONEY_HAND->money_value_string(_weekly_upkeep_cost, place) + "\n" +
-            "Weekly Revenue: " +
-            MONEY_HAND->money_value_string(_weekly_revenue, place) + "\n" +
-            "Profit        : " +
-            MONEY_HAND->money_value_string(_weekly_revenue - _weekly_upkeep_cost, place) + "\n";
-   } else {
-      ret = "Weekly Revenue: " +
-            MONEY_HAND->money_value_string(_weekly_revenue, place) + "\n";
-   }
-   return ret;
-}
-int can_trash_furniture() {
-   return 1;
-}
-int query_commercial_furniture() {
-   return 1;
-}
-varargs int move( mixed dest, string messin, string messout ) {
-   int i;
-   int t;
-   int f;
-   object from;
-   if(stringp(dest)) {
-      dest = find_object(dest);
-   }
-   if (!move_check(dest)) {
-      write(the_short() + " resists being picked up and shocks you slightly.\n");
-      return MOVE_INVALID_DEST;
-   }
-   if(!dest) {
-      return MOVE_INVALID_DEST;
-   }
-   if(living(dest)) {
-      t = (int)this_object()->query_complete_weight() * 5;
-      if(!(dest->add_weight(t))) {
-         return MOVE_TOO_HEAVY;
-      }
-      debug_printf("Added %d", t);
-   }
-   from = environment();
-   i = ::move(dest, messin, messout);
-   if(i != MOVE_OK) {
-      dest->add_weight(-t);
-      return i;
-   }
-   if(from && living(from)) {
-      f = (int)this_object()->query_complete_weight() * 5;
-      from->add_weight(-f);
-   }
-   if (from) {
-      from->remove_commercial_thing(this_object());
-   }
-   dest->add_commercial_thing(this_object());
-   dest->register_use_types(_use_types);
-   return i;
-}
-int get(mixed dest) {
-   if(!move_check(dest)) {
-      write("You feel it would be wrong to take " + the_short() + ".\n");
-      return 2;
-   }
-   return ::get(dest);
-}
-int do_status(int hint) {
-   string ret;
-   ret = query_main_status(hint);
-   write("$P$Status$P$" + ret);
-   add_succeeded_mess("$N get$s the status of $D.\n");
-   return 1;
-}
-int do_reset() {
-   string place;
-   int old_revenue;
-   place = query_money_place();
-   old_revenue = _revenue;
-   _revenue = 0;
-   add_succeeded_mess("$N clear$s the revenue of " +
-                      MONEY_HAND->money_value_string(old_revenue, place) +
-                      " on $D.\n");
-   return 1;
-}
-void init() {
-   ::init();
-   if (is_allowed(this_player()->query_name())) {
-      add_command("status", "<direct:object>", (: do_status, 0 :));
-      add_command("status", "hints <direct:object>", (: do_status, 1 :));
-      add_command("status", "hint <direct:object>", (: do_status, 1 :));
-      add_command("reset", "revenue on <direct:object>", (: do_reset :));
-   }
-}
-mixed query_static_auto_load() {
-  if ( base_name(this_object()) + ".c" == __FILE__ ) {
-    return int_query_static_auto_load();
-  }
-  return ([ ]);
-}
-mixed query_dynamic_auto_load() {
-   mapping junk;
-   junk = object::query_dynamic_auto_load();
-   if (!junk) {
-      junk = ([ ]);
-   }
-   junk["bonded"] = query_bonded();
-   add_auto_load_value(junk, OBJECT_TAG, "revenue", query_revenue());
-   add_auto_load_value(junk, OBJECT_TAG, "commercial id", query_commercial_id());
-   return junk;
-}
-void init_dynamic_arg(mapping map) {
-   object::init_dynamic_arg(map);
-   if (map) {
-      set_bonded(map["bonded"]);
-      set_revenue(query_auto_load_value(map, OBJECT_TAG, "revenue"));
-      if (query_auto_load_value(map, OBJECT_TAG, "commercial id")) {
-         set_commercial_id(query_auto_load_value(map, OBJECT_TAG, "commercial id"));
-      }
-   }
-}
-string query_help_file_directory() {
-   return "/doc/furniture/";
-}
-mixed *stats() {
-   return ::stats() +
-          ({ ({ "revenue", query_revenue() }),
-             ({ "bonded", query_bonded() }),
-             ({ "commercial id", query_commercial_id() }) });
-}
-
-==================================================
-FILE: room/furniture/curtains.c
-==================================================
-
-#include <move_failures.h>
-#include <position.h>
-inherit "/std/room/furniture/basic";
-private nosave object _window;
-private string _window_id;
-private string _window_old_long;
-void create() {
-  do_setup++;
-  ::create();
-  add_alias( "furniture" );
-  add_plural( "furniture" );
-  set_opaque();
-  if ( !query_property( "shop type" ) ) {
-    add_property( "shop type", "furniture" );
-  }
-  set_allowed_room_verbs((["hanging" : "hangs" ]));
-  do_setup--;
-  if ( !do_setup ) {
-    this_object()->setup();
-  }
-}
-void init() {
-  if(!_window_id) {
-    this_player()->add_command("hang", this_object(),
-        "<direct:object> [on|at] <indirect:object:here>");
-  }
-  this_player()->add_command("open", this_object(), "<direct:object>");
-  this_player()->add_command("close", this_object(), "<direct:object>");
-}
-int do_open() {
-  if(!_window)
-    _window = environment(this_object())->query_door_control(_window_id);
-  if(!_window_id || !_window) {
-    this_player()->add_failed_mess(this_object(),
-        "$D aren't hanging at a window.\n");
-    return 0;
-  }
-  if(_window->query_transparent()) {
-    this_player()->add_failed_mess(this_object(),
-        "$D are already open.\n");
-    return 0;
-  }
-  _window->set_transparent();
-  this_player()->add_succeeded_mess(this_object(), "$N $V $D.\n", ({}));
-  return 1;
-}
-int do_close() {
-  if(!_window)
-    _window = environment(this_object())->query_door_control(_window_id);
-  if(!_window_id || !_window) {
-    this_player()->add_failed_mess(this_object(),
-        "$D aren't hanging at a window.\n");
-    return 0;
-  }
-  if(!_window->query_transparent()) {
-    this_player()->add_failed_mess(this_object(),
-        "$D are already closed.\n");
-    return 0;
-  }
-  _window->reset_transparent();
-  this_player()->add_succeeded_mess(this_object(), "$N $V $D.\n", ({}));
-  return 1;
-}
-int do_hang(mixed *in_dir, string direct, string indirect, mixed *args) {
-  if(member_array("window", in_dir[0]->parse_command_id_list()) == -1) {
-    this_player()->add_failed_mess(this_object(),
-        "You can only $V $D at windows.\n",
-        ({ }));
-    return 0;
-  }
-  if(this_object()->move(environment(this_player())) != MOVE_OK) {
-    this_player()->add_failed_mess(this_object(),
-        "You seem to be unable to $V $D "
-        "at $I.\n", ({ in_dir[0] }));
-    return 0;
-  }
-  this_object()->add_property("current room hidden", 1);
-  _window_id = in_dir[0]->query_my_id();
-  _window_old_long = in_dir[0]->query_long();
-  in_dir[0]->set_long(in_dir[0]->query_long()+"It has " +
-                      this_object()->query_short() +
-                      " hanging round it.\n");
-  event(environment(), "save", this_object());
-  this_player()->add_succeeded_mess(this_object(),
-                                   "$N $V $D at $I.\n", ({ in_dir[0] }));
-  return 1;
-}
-void removed() {
-  this_object()->remove_property("current room hidden");
-  if(!_window)
-    _window = environment(this_object())->query_door_control(_window_id);
-  _window->set_long(_window_old_long);
-  _window->set_transparent();
-  _window_id = 0;
-}
-int query_furniture() { return 1; }
-mixed query_static_auto_load() {
-  if ( base_name(this_object()) + ".c" == __FILE__ )
-    return int_query_static_auto_load() +
-      ([ "window" : _window_id,
-       "window_old_long" : _window_old_long ]);
-  return ([ "window" : _window_id,
-          "window_old_long" : _window_old_long ]);
-}
-void init_static_arg( mapping map ) {
-  if ( !mapp( map ) ) {
-    return;
-  }
-  ::init_static_arg(map);
-  if ( !undefinedp( map[ "window" ] ) )
-    _window_id = map["window"];
-  if(!undefinedp(map["window_old_long"]))
-    _window_old_long = map["window_old_long"];
-}
-
-==================================================
-FILE: room/furniture/dividor.c
-==================================================
-
-inherit "/std/room/furniture/commercial";
-#include <room.h>
-#define SIZE_OF_FURNITURE 5
-#define TAG "dividor"
-#define TEMPLATE_DIVIDOR_ROOM "/mudlib/data/dividor_template.c"
-private int _size;
-private string _exit_direction;
-private string _our_room;
-int query_furniture_size() {
-   return _size + SIZE_OF_FURNITURE;
-}
-int query_commercial_id() {
-   if (!::query_commercial_id()) {
-      setup_new_commercial_id();
-   }
-   return ::query_commercial_id();
-}
-string query_exit_direction() {
-   return _exit_direction;
-}
-string query_exit_destination() {
-   return _our_room;
-}
-int create_room() {
-   string path;
-   string *bits;
-   string room_path;
-   string stuff;
-   path = environment()->query_save_dir();
-   path += "/division" + query_commercial_id();
-   if (file_size(path) == -2) {
-      mkdir(path);
-   }
-   bits = explode(base_name(environment()), "/");
-   room_path = implode(bits[0..<2], "/");
-   room_path += "/" + bits[<1] + "_dividor";
-   if (file_size(room_path) == -2) {
-      mkdir(room_path);
-   }
-   room_path += "/" + query_commercial_id();
-   if (file_size(room_path + ".c") > 0) {
-      return 0;
-   }
-   _our_room = room_path;
-   stuff = "inherit \"/std/room/furniture/dividor_room\";\n\n"
-           "void setup() {\n"
-           "   set_base_desc(\"" + environment()->query_base_desc() + "\");\n"
-           "   set_main_room(\"" + base_name(environment()) + "\");\n"
-           "   set_save_dir(\"" + path + "\");\n"
-           "   set_theft_handler(\"" + environment()->query_theft_handler() + "\");\n"
-           "   add_exit(\"" + ROOM_HANDLER->query_opposite_direction(query_exit_direction()) + "\", \"" + base_name(environment() + "\", \"door\");\n"
-           "   set_property_size(" + _size + ");\n"
-           "   add_property(\"place\", \"" + environment()->query_property("place") + "\");\n"
-           "}";
-   write_file(room_path + ".c", stuff, 1);
-   return 1;
-}
-void add_exit_to_room() {
-   environment()->add_exit(query_exit_direction(), query_exit_destination(), "door");
-}
-mapping query_dynamic_auto_load() {
-   mapping map;
-   map = ::query_dynamic_auto_load();
-   add_auto_load_value(map, TAG, "exit", _exit_direction);
-   add_auto_load_value(map, TAG, "room", _our_room);
-   add_auto_load_value(map, TAG, "size", _size);
-   return map;
-}
-void init_dynamic_arg(mapping map) {
-   _exit_direction = query_auto_load_value(map, TAG, "exit");
-   _our_room = query_auto_load_value(map, TAG, "room");
-   _size = query_auto_load_value(map, TAG, "size");
-   ::init_dynamic_arg(map);
-}
-
-==================================================
-FILE: room/furniture/dividor_room.c
-==================================================
-
-inherit "/std/shops/commercial";
-private string _main_room;
-void set_main_room(string room) {
-   _main_room = room;
-}
-string query_main_room() {
-   return _main_room;
-}
-string query_parcel_post() {
-   return _main_room->query_parcel_post();
-}
-
-==================================================
-FILE: room/furniture/document_handler.c
-==================================================
-
-inherit "/std/room/furniture/commercial";
-inherit "/std/room/furniture/inherit/document_handler";
-#include <room/document_handler.h>
-void create() {
-   document_handler::create();
-   commercial::create();
-   add_help_file("document_handler");
-   set_shop_use_types( ({ "document_view",
-                          "document_add",
-                          "document_delete" }) );
-}
-string query_save_dir() {
-   return commercial::query_save_dir() + "/" + query_commercial_id();
-}
-void load_me() {
-   if (!query_commercial_id()) {
-      setup_new_commercial_id();
-   }
-   if (unguarded( (: file_size(query_save_dir()) :) ) != -2) {
-      unguarded( (: mkdir(query_save_dir()) :));
-   }
-}
-void save_me() {
-   environment()->event_save(this_object());
-}
-void init() {
-   add_command("list", "documents [from] <direct:object>", (: do_list() :));
-   add_command("view", "document <string'id'> [from] <direct:object>",
-                (: do_display($4[0]) :));
-   add_command("add", "documents {html|plain} called <string:quoted'title'> to <direct:object>",
-               (: do_add_document($4[1], ($4[0] == "html"?DOCUMENT_HTML:DOCUMENT_PLAIN)) :));
-   add_command("delete", "document <string'id'> [from] <direct:object>",
-                (: do_delete_document($4[0]) :));
-}
-mapping query_dynamic_auto_load() {
-   mapping map;
-   map = commercial::query_dynamic_auto_load();
-   document_handler::query_dynamic_auto_load(map);
-   return map;
-}
-void init_dynamic_arg(mapping map) {
-   document_handler::init_dynamic_arg(map);
-   commercial::init_dynamic_arg(map);
-}
-
-==================================================
-FILE: room/furniture/fireplace.c
-==================================================
-
-#include <fuel_handler.h>
-#include <move_failures.h>
-#define WIZARD "/std/guilds/wizard"
-#define CMD "/cmds/"
-#define BURN_PER_TICK   1
-#define BRIGHT 30
-#define K      1
-inherit "/std/room/furniture/surface";
-private nosave int _light_produced;
-private nosave int _is_lit;
-private nosave int _frequency;
-private nosave string _lit_mess;
-private nosave string _unlit_mess;
-private nosave string *_lit_chats;
-private nosave string *_dying_chats;
-private nosave string _turn_on_mess;
-private nosave string _turn_off_mess;
-private nosave string _out_of_fuel_mess;
-void set_light_produced(int b);
-void set_lit_mess(string str);
-void set_unlit_mess(string str);
-void set_frequency(int i);
-void set_lit_chats(string *str);
-void add_lit_chat(string str);
-string request_lit_chat();
-void set_dying_chats(string *str);
-void add_dying_chat(string str);
-string request_dying_chat();
-void set_turn_on_mess(string mess);
-void set_turn_off_mess(string mess);
-void set_out_of_fuel_mess(string mess);
-int do_light(object *obs);
-int do_zap();
-int turn_on();
-int do_dowse(object *obs);
-int turn_off();
-int calc_fuel();
-void create() {
-  do_setup++;
-  surface::create();
-  do_setup--;
-  set_name("fireplace");
-  add_alias( ({ "fireplace", "furniture", "hearth", "fire" }) );
-  add_plural( "fireplaces" );
-  add_property( "shop type", "furniture" );
-  add_property( "degrees", 0 );
-  set_light_produced( BRIGHT );
-  set_lit_mess("A fire blazes happily in the hearth, providing "
-      "a soft red glow and pleasant warmth. It crackles and spits "
-      "occasionally, giving the room that homely feel.\n");
-  set_unlit_mess("The hearth is blackened with ashes and old embers.\n");
-  set_frequency(5);
-  set_lit_chats( ({
-      "The fire crackles and spits cheerfully.",
-      "The warm fire soothes your weariness.",
-      "An enchanting orange glow radiates from the hearth.",
-      "Small glowing embers dance over the fire.",
-      "The fire blazes in the grate." }) );
-  set_dying_chats( ({
-      "The fire splutters.",
-      "The warm red glow flickers.",
-      "A whisp of smoke from the fire trails around the room." }) );
-  set_turn_on_mess("Soon a roaring fire is blazing in the grate.\n");
-  set_turn_off_mess("The embers smoke slightly and their glow dims.\n");
-  set_out_of_fuel_mess("The fire flickers and dies away.\n");
-  if ( !do_setup ) {
-      this_object()->setup();
-  }
-  this_object()->add_extra_look( this_object() );
-  add_help_file("fireplace");
-}
-void init() {
-  this_player()->add_command("light", this_object(), "<direct:object> with <indirect:object>");
-  this_player()->add_command("extinguish", this_object(), "<direct:object>", (: do_dowse :) );
-  this_player()->add_command("dowse", this_object(), "<direct:object>");
-  if( this_player()->query_guild_ob() == WIZARD ){
-    this_player()->add_command("zap", this_object(), "<direct:object>");
-    this_player()->add_command("point", this_object(), "[finger] at <direct:object>", (: do_zap :) );
-  }
-}
-int query_fuel_left(){  return calc_fuel();  }
-void set_light_produced(int b){  _light_produced = b;  }
-int query_light_produced(){  return _light_produced;  }
-void set_frequency(int i){  _frequency = i + 1;  }
-int query_frequency(){  return _frequency;  }
-int do_light(object *obs){
-  string q_n;
-  q_n = obs[0]->query_name();
-  if( _is_lit ){
-    this_player()->add_failed_mess( this_object(),
-         "$D is already ablaze.\n", ({ }) );
-    return 0;
-  }
-  if( q_n != "flint" && q_n != "match" && q_n != "lighter" ){
-    this_player()->add_failed_mess(this_object(),
-         "You can't light $D with $I.\n", ({ obs[0] }) );
-    return 0;
-  }
-  if( this_player()->query_dex() < random(18) ){
-    this_player()->add_failed_mess(this_object(),
-      "You strike $I, but can't quite get the spark to catch.\n", ({ obs[0] }) );
-    return 0;
-  }
-  if ( calc_fuel() <= 0 ) {
-    this_player()->add_failed_mess( this_object(),
-        "There is nothing in the fireplace to burn.\n", ({ }) );
-    return 0;
-  }
-  this_player()->add_succeeded_mess(this_object(),
-    "$N $V $D with $I.\n", ({ obs[0] }) );
-  return turn_on();
-}
-int do_zap(){
-  object tp;
-  tp = this_player();
-  if(tp->query_gp() < 10){
-    tell_object(tp, "You don't even have the energy for such a small task!\n");
-    return 1;
-  }
-  if(_is_lit){
-    tell_object(tp, "There is already a merry fire burning in the fireplace.\n");
-    return 1;
-  } else {
-    tp->add_succeeded_mess(this_object(),
-      "$N extend$s an arm towards $D.\nA small fireball leaps from $p "
-      "index finger and throws itself onto the hearth.\n", ({ }) );
-    tp->adjust_gp( -10 );
-    return turn_on();
-  }
-}
-void set_turn_on_mess(string mess){  _turn_on_mess = mess;  }
-string query_turn_on_mess(){  return _turn_on_mess;  }
-void set_turn_off_mess(string mess){  _turn_off_mess = mess;  }
-string query_turn_off_mess(){  return _turn_off_mess;  }
-void msg_on(){
-  if(_is_lit){
-    tell_room(environment( this_object() ), query_turn_on_mess() );
-  }
-}
-int turn_on(){
-  int x;
-  FUEL_HANDLER->add_burner( this_object() );
-  _is_lit = 1;
-  adjust_light( query_light_produced() );
-    x = query_light_produced() / 4;
-    add_property("degrees", query_light_produced() * 4);
-    environment( this_object() )->add_property("warmth", x );
-  call_out( "msg_on", 7 );
-  return 1;
-}
-int do_dowse(object *obs){
-  if( !_is_lit ){
-    this_player()->add_failed_mess( this_object(),
-         "There is no fire to put out.\n", ({ }) );
-    return 0;
-  } else {
-    this_player()->add_succeeded_mess(this_object(),
-      "$N $V $D and the room loses its warm glow.\n", ({ }) );
-    return turn_off();
-  }
-}
-void msg_off() {
-  if(!_is_lit){
-    tell_room(environment( this_object() ), query_turn_off_mess() );
-  }
-}
-int turn_off(){
-  FUEL_HANDLER->remove_burner( this_object() );
-  _is_lit = 0;
-  adjust_light( -query_light_produced() );
-  add_property( "degrees", 0 );
-  environment( this_object() )->remove_property("warmth");
-  call_out( "msg_off", 10 );
-  return 1;
-}
-void set_out_of_fuel_mess(string mess){  _out_of_fuel_mess = mess;  }
-string query_out_of_fuel_mess(){  return _out_of_fuel_mess;  }
-void out_of_fuel() {
-  turn_off();
-  tell_room(environment( this_object() ), query_out_of_fuel_mess() );
-}
-void set_lit_chats(string *str){  _lit_chats = str;  }
-void add_lit_chat(string str){
-  if( !_lit_chats ){
-    _lit_chats = ({ });
-  }
-  _lit_chats += ({ str });
-}
-string request_lit_chat(){
-  return _lit_chats[random( sizeof(_lit_chats) - 1 )];
-}
-void set_dying_chats(string *str){  _dying_chats = str;  }
-void add_dying_chat(string str){
-  if( !_dying_chats ){
-    _dying_chats = ({ });
-  }
-  _dying_chats += ({ str });
-}
-string request_dying_chat(){
-  return _dying_chats[random( sizeof(_dying_chats) - 1 )];
-}
-void set_lit_mess(string str){  _lit_mess = str;  }
-string query_lit_mess(){  return _lit_mess;  }
-void set_unlit_mess(string str){  _unlit_mess = str;  }
-string query_unlit_mess(){  return _unlit_mess;  }
-void consume_fuel() {
-  int x;
-  int q;
-  int z;
-  int w;
-  int amount;
-  string r;
-  object *inv;
-  object ashes;
-  object thing;
-  object env;
-  inv = filter(all_inventory( this_object() ),
-              (:$1->query_property("fuel") :));
-  if( !inv || inv == ({ }) || calc_fuel() < 1){
-    out_of_fuel();
-    return;
-  }
-  x = sizeof(inv);
-  foreach(thing in inv){
-      q = thing->query_amount_left();
-      w = thing->query_weight();
-      z = q - ( ( BURN_PER_TICK * 100 / x ) / w );
-      if ( z < 1 ){
-          thing->move("/room/rubbish");
-          amount = roll_MdN(4, 20);
-          ashes = clone_object("/obj/cont_medium");
-          ashes->set_name("ash");
-          ashes->set_short("fine grey ash");
-          ashes->add_property("determinate", "some ");
-          ashes->add_adjective(({"some", "fine", "grey", "pinch", "pinches",
-           "handful", "handfuls", "bucketful", "bucketfuls", "of"}));
-          ashes->add_plural("ash");
-          ashes->set_long("This is $pile_size$ of fine grey ash, "
-            "$amount_size$. It looks like it was the leftovers "
-            "from someone's camp fire.\n");
-          ashes->set_weight_unit(({ 1, 50 }));
-          ashes->set_medium_alias("FiNeGrEyAsH");
-          ashes->set_amount_types((["pinch" : ({1, "pinches"}),
-           "handful" : ({50, "handfuls"}),
-           "bucketful" : ({1000, "bucketfuls"})]));
-          ashes->set_pile_types(({50, "small", 100, "medium",
-            200, "large", "huge"}));
-          ashes->set_continuous();
-          ashes->set_amount(amount);
-          ashes->move(this_object());
-      } else {
-        thing->set_amount_left( z );
-      }
-  }
-  calc_fuel();
-  env = environment( this_object() );
-  if( random( query_frequency() ) == 1 ){
-    if( calc_fuel() > 10 ){
-      r = request_lit_chat();
-      tell_room( env, r + "\n");
-    } else {
-      r = request_dying_chat();
-      tell_room( env, r + "\n");
-    }
-  }
-}
-int calc_fuel(){
-  object *inv;
-  object thing;
-  int tot_fuel = 0;
-  int w;
-  int amt;
-  inv = all_inventory( this_object() );
-  if( !inv || inv == ({ }) ) { return 0; }
-  foreach(thing in inv){
-    if( thing->query_property("fuel") ){
-      w =  thing->query_weight();
-      amt = thing->query_amount_left();
-      tot_fuel += w * amt * K / 100 ;
-    }
-  }
-  return tot_fuel;
-}
-int test_remove( object thing, int flat, mixed dest){
-  object tp;
-  object *prev;
-  tp = this_player();
-  prev = previous_object(-1);
-  if(_is_lit && tp && strsrch( file_name(prev[1]), CMD ) != -1 ){
-    tell_object(tp, "You reach out towards the fire but "
-       "you can't brave the flames and quickly pull away.\n");
-    tell_room( environment(tp), tp->query_short() + " tries to take something "
-      "from the fire but pulls back sucking " + tp->query_possessive() +
-      " fingers.\n", tp);
-    tp->adjust_hp( -random(120) );
-    return 0;
-  }
-  return ::test_remove(thing, flat, dest);
-}
-int test_add( object thing, int flag ) {
-  if( !thing->query_property("fuel") && environment(thing) ){
-    tell_object(this_player(), "You don't think " + thing->the_short() +
-      " would be a suitable fuel.\n");
-    return 0;
-  }
-  if( _is_lit ){
-    tell_room(environment( this_object() ),
-      ({ "The fire crackles.\n",
-         "A shower of glowing embers tumble around the hearth.\n" })[random(2)] );
-  }
-  call_out("calc_fuel",1);
-  return 1;
-}
-string extra_look( object ob ){
-  if( _is_lit ) {
-      return query_lit_mess();
-  }
-  else {
-      return query_unlit_mess();
-  }
-}
-void pre_dest_me() {
-  int tmp;
-  if(_is_lit && environment()) {
-    FUEL_HANDLER->remove_burner( this_object() );
-    _is_lit = 0;
-    adjust_light( -query_light_produced() );
-    tmp = environment()->query_property("warmth");
-    if(tmp > query_light_produced() / 4)
-      environment()->add_property("warmth", tmp -
-                            (query_light_produced() / 4));
-    else
-      environment()->remove_property("warmth");
-  }
-  return;
-}
-void dest_me() {
-  FUEL_HANDLER->remove_burner( this_object() );
-  _is_lit = 0;
-   ::dest_me();
-}
-
-==================================================
-FILE: room/furniture/fireplace_inherit.c
-==================================================
-
-inherit "/std/room/furniture/fireplace";
-
-==================================================
-FILE: room/furniture/fuel_inherit.c
-==================================================
-
-inherit "/std/object";
-private nosave int _amount;
-private nosave string *_shorts;
-private nosave string *_longs;
-string fuel_short();
-string fuel_long();
-void create(){
-   ::create();
-   if(!_amount){
-     _amount = 100;
-   }
-   set_short( (: fuel_short :) );
-   set_long( (: fuel_long :) );
-   add_property("no recycling", 1);
-   add_property("fuel", 1);
-}
-void set_amount_left(int i){  _amount = i;  }
-void adjust_amount_left(int i){  _amount += i;  }
-int query_amount_left(){  return _amount;  }
-void set_shorts(string *desc){  _shorts = desc;  }
-void set_longs(string *desc){  _longs = desc;  }
-string fuel_short(){
-   int i;
-   int x;
-   x = sizeof(_shorts);
-   for(i = 1; i <= x; i++){
-      if( (_amount + 1) > 100 - ( i * 100 / x ) ){
-         return _shorts[(i-1)];
-      }
-   }
-   return "fuel";
-}
-string fuel_long(){
-   int i;
-   int x;
-   x = sizeof(_longs);
-   for(i = 1; i <= x; i++){
-      if( ( _amount + 1 ) > ( 100 - ( i * 100 / x )) ){
-         return _longs[(i-1)];
-      }
-   }
-   return "fuel";
-}
-mixed query_dynamic_auto_load() {
-   return ([ "::" : ::query_dynamic_auto_load(),
-             "amount" : _amount
-          ]);
-}
-void init_dynamic_arg(mapping arg) {
-   _amount = arg[ "amount" ];
-   ::init_dynamic_arg(arg["::"]);
-}
-
-==================================================
-FILE: room/furniture/furniture.c
-==================================================
-
-#include <move_failures.h>
-#include <position.h>
-#include <tasks.h>
-inherit "/obj/cont_save";
-inherit "/std/basic/trap";
-inherit "/std/room/furniture/inherit/furniture_base";
-private nosave string _drawer_mess;
-private nosave mixed *_drawers;
-private nosave int _biggest;
-private nosave int _drawers_inside;
-private nosave object *_on_top;
-private nosave int _has_surface;
-#define DEBUG
-void create() {
-  do_setup++;
-  ::create();
-  _drawer_mess = "a drawer in $ob_short$";
-  _drawers = ({ });
-  _on_top = ({ });
-  add_alias( "furniture" );
-  add_plural( "furniture" );
-  set_opaque();
-  if (!query_property("shop type"))
-    add_property( "shop type", "furniture" );
-   do_setup--;
-   if(!do_setup)
-     this_object()->setup();
-}
-string query_drawer_mess() { return _drawer_mess; }
-void set_drawer_mess( string words ) { _drawer_mess = words; }
-mixed *query_drawers() { return _drawers; }
-void add_drawer( string type, int amount ) {
-   if ( !type || ( type == "" ) || ( amount < 1 ) ) {
-      return;
-   }
-   _drawers += ({ type, amount });
-   set_max_weight(query_max_weight() + amount);
-   if ( amount > _biggest ) {
-      _biggest = amount;
-   }
-}
-int query_has_surface() { return _has_surface; }
-void set_has_surface(int i) { _has_surface = i; }
-void set_drawers_inside(int i) { _drawers_inside = i; }
-int query_drawers_inside() { return _drawers_inside; }
-varargs int move( mixed dest, string messin, string messout ) {
-  int i, w;
-  object from;
-  w = (int)this_object()->query_complete_weight() * 5;
-  if ( from = environment() ) {
-    from->add_weight( -w );
-  }
-  if(!dest) {
-    return MOVE_INVALID_DEST;
-  }
-  if (!( dest->add_weight( w ) ) ) {
-    if ( from ) {
-      from->add_weight( w );
-    }
-    return MOVE_TOO_HEAVY;
-  }
-  if ( stringp( dest ) ) {
-    dest = find_object( dest );
-  }
-  i = ::move( dest, messin, messout );
-  if ( i != MOVE_OK ) {
-    if ( from ) {
-      from->add_weight( w );
-    }
-    dest->add_weight( -w );
-  } else if (query_light_needs_inform()) {
-    if ( from ) {
-      inform_of_light_level_change(from);
-    }
-    inform_of_light_level_change(dest);
-  }
-  return i;
-}
-string long( string word, int dark ) {
-   int i;
-   string ret, *sizes;
-   mapping types;
-  ret = ::long( word, dark );
-   if ( sizeof( _drawers ) && !dark &&
-        (!query_closed() || !_drawers_inside)) {
-     types = ([ ]);
-     for ( i = 0; i < sizeof( _drawers ); i += 2 ) {
-       types[ _drawers[ i ] ]++;
-     }
-     sizes = m_indices( types );
-     for ( i = 0; i < sizeof( sizes ); i++ ) {
-       sizes[ i ] = query_num( types[ sizes[ i ] ] ) +" "+ sizes[ i ] +
-         " drawer"+ ( types[ sizes[ i ] ] > 1 ? "s" : "" );
-     }
-     ret += "It has "+ query_multiple_short( sizes ) +".\n";
-   }
-   if(sizeof(_on_top))
-     ret += query_contents( "On " + the_short() + " " +
-                            (sizeof(_on_top) == 1 ? "is " : "are " ), _on_top);
-   return ret;
-}
-varargs string query_contents( string start, object *things,
-  int ignore_living) {
-  if(!arrayp(things)) {
-    things = this_object()->find_inv_match( "", this_player() );
-    things -= ({ this_player() });
-    things = filter_array( things, (: environment( $1 ) == this_object() :) );
-    things -= _on_top;
-  }
-  return ::query_contents(start, things, ignore_living);
-}
-int test_remove(object thing, int flag, mixed dest) {
-  int result;
-  mixed *stuff;
-  result = ::test_remove(thing, flag, dest);
-  if(result) {
-    stuff = thing->query_property("dropped");
-    if(environment() &&
-       dest == this_player() &&
-       function_exists("test_occupier", environment()) &&
-       !environment()->test_occupier(this_player()->query_name()) &&
-       (!sizeof(stuff) || stuff[0] != this_player()->query_name())) {
-      event(environment(this_player()), "theft", this_player(), this_object(),
-            ({ thing }));
-    }
-    if(dest) {
-      _on_top -= ({ thing });
-      thing->remove_property("_on_top");
-    }
-    event(environment(), "save");
-  }
-  return result;
-}
-int test_add( object thing, int flag ) {
+void set_start_text_bit(string str) {_start_text_bit = str; }
+string do_garble(string word, string type) {
+  string ret;
   int i;
-  int result;
-  if ( flag )
-    return 0;
-  if(!environment(thing))
-    return 1;
-  result = ::test_add(thing, flag);
-  if(!result)
-    return 0;
-  if("/cmds/living/put"->query_con() == "on" && _has_surface) {
-    _on_top += ({ thing });
-    thing->add_property("_on_top", 1);
-  } else if(sizeof(_drawers)) {
-    if ( !_biggest )
-      for ( i = 0; i < sizeof( _drawers ); i+= 2 )
-        if ( _drawers[ i + 1 ] > _biggest )
-          _biggest = _drawers[ i + 1 ];
-    if ( (int)thing->query_complete_weight() > _biggest )
-      return write( (string)thing->the_short() +" is too big "+
-                    "to fit in any of "+ the_short() +"'s drawers.\n" );
-  }
-  event(environment(), "save", this_object());
-  return result;
-}
-int pick_unlock(object player) {
-  mixed owner;
-  if(!environment())
-    return ::pick_unlock(player);
-  if(!environment() || !function_exists("query_owner", environment()))
-    return ::pick_unlock(player);
-  owner = environment()->query_owner();
-  if(stringp(owner) && pk_check(player, owner, 1)) {
-    write("You feel it would be wrong to try to break into "+
-          this_object()->query_short() + ".\n");
-    return 0;
-  }
-  return ::pick_unlock(player);
-}
-mapping int_query_static_auto_load() {
-  return ([
-           "::" : ::int_query_static_auto_load(),
-           "drawer mess" : _drawer_mess,
-           "drawers" : _drawers,
-           "allowed_positions" : query_allowed_positions(),
-           "trap" : query_trap_data(),
-           "trap armed": query_trap_armed(),
-           ]);
-}
-mapping query_static_auto_load() {
-  return int_query_static_auto_load();
-}
-void init_static_arg( mapping map ) {
-  if ( !mapp( map ) )
-    return;
-  if ( map[ "::" ] )
-    ::init_static_arg( map[ "::" ] );
-  if ( !undefinedp( map[ "drawer mess" ] ) )
-    _drawer_mess = map[ "drawer mess" ];
-  if ( !undefinedp( map[ "drawers" ] ) )
-    _drawers = map[ "drawers" ];
-  if(!undefinedp(map["allowed_positions"]))
-    set_allowed_positions( map["allowed_positions"]);
-  if(!undefinedp(map["trap"]))
-    setup_trap(map["trap"][0],
-                   map["trap"][1],
-                   map["trap"][2],
-                   map["trap"][3],
-                   map["trap"][4]);
-  if(!undefinedp(map["trap armed"]))
-    set_trap_armed(map["trap armed"]);
-}
-void init_dynamic_arg(mapping bing) {
-  object item;
-  ::init_dynamic_arg(bing);
-  foreach(item in all_inventory(this_object())) {
-    if(item->query_property("_on_top"))
-      _on_top += ({ item });
-  }
-}
-string query_help_file_directory() {
-  return "/doc/furniture/";
-}
-mixed *stats() {
-  int i;
-  mixed *ret;
-  ret = ::stats();
-  ret += ({ ({ "surface", _has_surface }) });
-  for ( i = 0; i < sizeof( _drawers ); i += 2 )
-    ret += ({ ({ _drawers[ i ] +" drawer", _drawers[ i + 1 ] }) });
+  ret = "";
+  for (i=0;i<strlen(word);i++)
+    if (word[i] != ' ')
+      ret += "*";
+    else
+      ret += " ";
   return ret;
 }
-
-==================================================
-FILE: room/furniture/mirror.c
-==================================================
-
-#include <effect.h>
-inherit "/std/room/furniture/basic";
-int _in_extra;
-void create(){
-	::create();
-	add_extra_look(this_object());
+void check_level_increase(object player, int difficulty, int level,
+                          string skill, string mess) {
+   int chance;
+   if(query_verb() == "shout" || player->query_property("dead") ||
+      player->query_property(PASSED_OUT) ||
+      (userp(player) && !interactive(player)))
+     return;
+   if(player->query_current_language() !=
+      lower_case(this_object()->query_name()))
+     return;
+   if (player->query_property("last message:" + skill) == mess ||
+       player->query_property("dead")) {
+      return ;
+   }
+   if(player->query_specific_gp("other") < difficulty) {
+     return;
+   } else {
+     player->adjust_gp(-(difficulty*2));
+   }
+   player->add_property("last message:" + skill, mess, 360);
+   if (difficulty <= level && level < 100) {
+        chance = 800 + ((level - 40) * (level - 40)) / 20;
+      chance -= level - difficulty;
+      if (random(1000) > chance) {
+        if(player->add_skill_level(skill, 1)) {
+          tell_object(player, "%^YELLOW%^You feel like the " +
+                      capitalize(_name) +
+                      " language is less confusing.%^RESET%^\n");
+        }
+      }
+   }
 }
-string extra_look(object ob) {
-	int dark;
-	object env;
-	env = environment(ob);
-	if(living(env))
-		return "You can see yourself in the mirror.";
-	dark = (int) this_player()->check_dark((int)env->query_light());
-	if(dark)
-		return "It is too dark to see much in the room.";
-	return "Reflected in the mirror is " +
-		query_multiple_short(all_inventory(env) - ({ ob }), "a", 0, 1, dark) +
-		".";
+string garble_message(string mess, object player, object speaker,
+                      string type, string skill, int no_increase) {
+  int i, level, num;
+  int max_difficulty, diff, difference;
+  string *bits;
+  int something_garbled;
+  level = player->query_skill(skill);
+  if (level > 100) {
+    player->add_skill_level(skill, 100 - level, 1);
+  }
+  num = speaker->query_skill(skill);
+  if (num > 100) {
+    speaker->add_skill_level(skill, 100 - num, 1);
+  }
+  difference = speaker->query_skill(skill) - player->query_skill(skill);
+  if (num < level)
+    level = num;
+  if (level >= 100) {
+    return mess;
+  }
+  if (level == 0) {
+    max_difficulty = 0;
+  } else {
+    max_difficulty = 1000;
+  }
+  RANDOM_OBJ->set_seed(crc32(mess));
+  bits = explode(mess, " ");
+  for (i=0;i<sizeof(bits);i++) {
+    if (strlen(mess)) {
+      if (level > 0) {
+         num = (int)RANDOM_OBJ->random(100);
+         if (strlen(mess) < 8) {
+           diff = (level*100) / (strlen(mess)*10);
+           if (num >= (level*100 / strlen(mess)*10)) {
+             if (max_difficulty > diff)
+               max_difficulty = diff;
+             if (interactive(player)) {
+               bits[i] = do_garble(bits[i], type);
+               something_garbled = 1;
+             } else {
+               bits[i] = "";
+             }
+           }
+         } else {
+           diff = (level*100) / 90;
+           if (num >= diff) {
+             max_difficulty = level*100 / 100;
+             if (interactive(player)) {
+               bits[i] = do_garble(bits[i], type);
+               something_garbled = 1;
+             } else {
+               bits[i] = "";
+             }
+           }
+         }
+      } else {
+         if (interactive(player)) {
+           bits[i] = do_garble(bits[i], type);
+           something_garbled = 1;
+         } else {
+           bits[i] = "";
+         }
+      }
+    }
+  }
+  if (something_garbled && (difference > -10) && !no_increase) {
+    check_level_increase(player, max_difficulty, level, skill, mess);
+  }
+  return implode(bits, " ");
+}
+mixed garble_say(string start, string mess, object player,
+                 object from, string type, string skill, int no_increase) {
+  return ({ start, garble_message(mess, player, from, "speech", skill,
+                                  no_increase) });
+}
+string garble_text( mixed text, object thing, object player, string skill) {
+  string bing;
+  if (stringp(text)) {
+    if (player->query_default_language() != query_name()) {
+      return _start_text_bit +
+        garble_message(text, player, player, "text", skill, 0);
+    } else {
+      return garble_message(text, player, player, "text", skill, 0);
+    }
+  }
+  if ( pointerp( text ) ) {
+    if ( ( bing = (string)text[ 0 ]->garble_text( text, thing, player ) ) ) {
+      if (player->query_default_language() != query_name()) {
+        return _start_text_bit + bing;
+      } else {
+        return bing;
+      }
+    }
+  }
+  return "You cannot read the spidery writing.\n";
+}
+void dest_me() {
+  destruct(this_object());
+}
+
+==================================================
+FILE: languages/rabbit.c
+==================================================
+
+#include <language.h>
+inherit LANGUAGE_INHERIT;
+void setup() {
+   set_long( "This is the local language of Rabbit.\n" );
+   set_name( "Rabbitian" );
+   set_start_text_bit( "Some carefully constructed characters "
+                       "that might mean:\n" );
+}
+mixed do_garble_text( string text ) {
+    return ({ "whats", "up", "doc", "carrot" })[random(4)];
+}
+string do_garble( string text, string text_type )  {
+    return ({ "whats", "up", "doc", "carrot" })[random(4)];
+}
+
+==================================================
+FILE: languages/wommon.c
+==================================================
+
+string long() {
+  return
+"International womens day language.\n";
+}
+string filter_string(string str) {
+  return replace(" "+str,
+      ({ " he ", " they ",
+         " He ", " They ",
+         " HE ", " THEY ",
+         " his ", " theirs ",
+         " His ", " Theirs ",
+         " HIs ", " THEIrs ",
+         " HIS ", " THEIRS ",
+         " him ", " them ",
+         " Him ", " Them ",
+         " HIm ", " THem ",
+         " HIM ", " THEM ",
+         "man", "person",
+         "Man", "Person",
+         "MAn", "PERson",
+         "MAN", "PERSON", }))[1..10000];
+}
+mixed garble_tell(string start, string mess) {
+  return ({ start, filter_string(mess) });
+}
+mixed garble_shout(string start, string mess) {
+  return ({ start, filter_string(mess) });
+}
+mixed garble_say(string start, string mess) {
+  return ({ start, filter_string(mess) });
+}
+mixed garble_text(string str, object ob) {
+  return filter_string(str);
 }

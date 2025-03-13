@@ -16,8 +16,8 @@ def count_chars(content):
     """Count characters excluding newlines."""
     return len(content.replace('\n', ''))
 
-def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=60000, token_limit=80000, separator="=" * 50):
-    """Merge files into output_file(s) in output_dir, splitting when approaching char_limit."""
+def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=75000, token_limit=100000, separator="=" * 50):
+    """Merge files into output_file(s) in output_dir, splitting when approaching limits."""
     dir_path = Path(source_dir)
     if not dir_path.exists():
         print(f"Directory {source_dir} does not exist!")
@@ -99,32 +99,50 @@ def main():
         print(f"Base directory {base_dir} does not exist!")
         return
     
-    extensions = ('.c', '.h', '.s')
-    
-    directories = {
+    # .c files from multiple directories
+    c_directories = {
         'cmds': 'cmds_merged.txt',
         'd': 'd_merged.txt',
         'global': 'global_merged.txt',
         'obj': 'obj_merged.txt',
         'std': 'std_merged.txt',
-        'secure': 'secure_merged.txt',
-        'soul': 'soul_merged.txt'
+        'secure': 'secure_merged.txt'
     }
+    # .h files from include
+    h_directories = {'include': 'include_merged.txt'}
+    # .s files from soul
+    s_directories = {'soul': 'soul_merged.txt'}
     
     print("File Extraction and Merging Tool (Optimized for Grok)")
     print("====================================================")
     print("Grok Limits:")
     print("- Maximum Context Window: 128,000 tokens")
-    print("- Safe Cutoff Used: 60,000 chars or 80,000 tokens per file")
+    print("- Safe Cutoff Used: 75,000 chars or 100,000 tokens per file")
     print("- No strict line limit, but monitored")
     print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
     print(f"Output Directory: {output_dir}")
     print("====================================================")
     
-    for dir_name, output_file in directories.items():
+    # Process .c files
+    print("\nProcessing .c files:")
+    for dir_name, output_file in c_directories.items():
         folder_path = os.path.join(base_dir, dir_name)
         print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, extensions, output_file, output_dir, char_limit=60000, token_limit=80000)
+        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=75000, token_limit=100000)
+    
+    # Process .h files
+    print("\nProcessing .h files:")
+    for dir_name, output_file in h_directories.items():
+        folder_path = os.path.join(base_dir, dir_name)
+        print(f"\nProcessing directory: {folder_path}")
+        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=75000, token_limit=100000)
+    
+    # Process .s files
+    print("\nProcessing .s files:")
+    for dir_name, output_file in s_directories.items():
+        folder_path = os.path.join(base_dir, dir_name)
+        print(f"\nProcessing directory: {folder_path}")
+        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=75000, token_limit=100000)
     
     print("\nExtraction and merging complete! All files are in", output_dir)
 
