@@ -1,1 +1,0 @@
-#include "/cmds/living/sa_y.c"

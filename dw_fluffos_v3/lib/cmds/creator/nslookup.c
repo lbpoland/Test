@@ -1,1 +1,0 @@
-inherit "/cmds/creator/host";

@@ -1,1 +1,0 @@
-inherit "/cmds/living/em_ote";
