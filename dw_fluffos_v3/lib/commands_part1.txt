@@ -1,0 +1,2106 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/bright.c ===
+inherit "/cmds/base";
+#include <dirs.h>
+#define THRESHOLDS ({ 10, 30, 200, 300 })
+string illumination( int number ) {
+   if ( number < 0 ) {
+      return "in the darkness that lies beyond darkness";
+   }
+   if ( number < THRESHOLDS[ 0 ] ) {
+      return "in pitch darkness";
+   }
+   if ( number < THRESHOLDS[ 1 ] ) {
+      return "in near darkness";
+   }
+   if ( number > THRESHOLDS[ 3 ] ) {
+      return "too brightly lit to see";
+   }
+   if ( number > THRESHOLDS[ 2 ] ) {
+      return "too brightly lit to see clearly";
+   }
+   number = ( 100 * ( number - THRESHOLDS[ 1 ] ) ) /
+      ( THRESHOLDS[ 2 ] - THRESHOLDS[ 1 ] );
+   switch ( number ) {
+   case 0 .. 5 :
+      return "very poorly lit";
+   case 6 .. 10 :
+      return "poorly lit";
+   case 11 .. 20 :
+      return "dimly lit";
+   case 21 .. 30 :
+      return "quite well lit";
+   case 31 .. 40 :
+      return "well lit";
+   case 41 .. 50 :
+      return "brightly lit";
+   default :
+      return "very brightly lit";
+   }
+}
+string intensity(int number, object thing) {
+   int flag = (thing == this_player());
+   if (number < 0) {
+      return (flag?"are":"is") + " dark beyond darkness";
+   }
+   if (number < THRESHOLDS[0]) {
+      return "produce" + (flag?"":"s") + " a faint light";
+   }
+   if ( number < THRESHOLDS[ 1 ] ) {
+      return "produce" + (flag?"":"s") + " a bit of light";
+   }
+   if ( number > THRESHOLDS[ 3 ] ) {
+      return (flag?"are":"is") + " so bright you can't bear to look";
+   }
+   if ( number > THRESHOLDS[ 2 ] ) {
+      return (flag?"are":"is") + " so bright it hurts to look";
+   }
+   number = ( 100 * ( number - THRESHOLDS[ 1 ] ) ) /
+      ( THRESHOLDS[ 2 ] - THRESHOLDS[ 1 ] );
+   switch ( number ) {
+   case 0 .. 24 :
+      return "produce" + (flag?"":"s") + " quite a bit of light";
+   case 25 .. 49 :
+      return (flag?"are":"is") + " very bright";
+   default :
+      return (flag?"are":"is") + " extremely bright";
+   }
+}
+int check_exists(string file) {
+  int retval;
+  if ( objectp( find_object( file ) ) )
+    return 1;
+  if (file_size(file+".c") > 0) {
+    retval = 1;
+  } else {
+    retval = 0;
+  }
+  return retval;
+}
+mixed cmd(object *things) {
+   int its_light;
+   string results;
+   string no_light_results;
+   object thing;
+   object* no_light;
+   int result_light;
+   results = "";
+   if (environment(this_player())->query_light() < THRESHOLDS[0]) {
+      results += "Wherever you are, it's ";
+   } else {
+      results += "$C$"+ environment(this_player())->the_short(1) + " is ";
+   }
+   results += illumination(environment(this_player())->query_light()) + ".\n";
+   if (!things) {
+      write(results);
+      return 1;
+   }
+   no_light_results = "";
+   no_light = ({ });
+   foreach(thing in things) {
+      its_light = (int)thing->query_light();
+      if (its_light) {
+        results += "$C$" + thing->the_short(1) + " " +
+          intensity(its_light, thing) + ".\n";
+        result_light = 1;
+      } else {
+         no_light += ({ thing });
+      }
+   }
+   if (sizeof(no_light) && !result_light) {
+      write("$C$" + query_multiple_short(no_light, "one", 0, 1) +
+            ((sizeof(no_light) == 1  &&  no_light[0] != this_player()) ?
+               " produces" : " produce") + " no light at all.\n");
+   }
+   write(results);
+   return 1;
+}
+int cmd_exit(string arg) {
+   object room;
+   string other;
+   room = environment(this_player());
+   if (room->query_mirror_room()) {
+      room = room->query_mirror_room();
+   }
+   if (LENGTHEN[arg]) {
+      arg = LENGTHEN[arg];
+   }
+   if(!room->query_exit(arg)) {
+     arg = (string)this_player()->find_abs(arg);
+   }
+   if ( room->query_exit( arg ) ) {
+      other = room->query_destination(arg);
+      if ( check_exists( other )) {
+         object door;
+         door = room->query_door_control(arg);
+         if(room->query_door_open(arg) ||
+            door->query_transparent()) {
+            write(other->the_short(1) + " is " +
+                       illumination(other->query_light()) + ".\n");
+            return 1;
+         } else {
+            add_failed_mess("The exit " + arg + " is not open.\n");
+            return 0;
+         }
+      } else {
+         add_failed_mess("The exit " + arg + " does not exist.\n");
+         return 0;
+      }
+   }
+   add_failed_mess("Unable to find the exit " + arg + ".\n");
+   return 0;
+}
+mixed *query_patterns() {
+   return ({ "<indirect:object>", (: cmd($1) :),
+             "exit <string'exit name'>", (: cmd_exit($4[0]) :),
+             "", (: cmd(0) :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/score.c ===
+inherit "/cmds/base";
+#include <config.h>
+#include <library.h>
+#include <quest_handler.h>
+#ifndef __DISTRIBUTION_LIB__
+#include <deity.h>
+#endif
+#include <top_ten_tables.h>
+#include <player_handler.h>
+#include <clubs.h>
+#include <player.h>
+#include <nomic_system.h>
+#include <tune.h>
+#include <skills.h>
+#include <combat.h>
+#define essify(x,y) (x > 1  ||  x == 0 ? " " y "s" : " " y)
+#define LIMIT 150
+int score_quests(object ob, int sorted) {
+   string *quests;
+   mixed *quest_info;
+   if ( !this_player()->query_creator() && ob->query_property("dead")) {
+      write( "You are just a disembodied spirit.  What use does a wispy thing "
+             "like you have for a collection of meaningless numbers?\n" );
+      return 1;
+   }
+   if(this_player()->query_role_playing()) {
+     write("Sorry, you're roleplaying.\n");
+     return 1;
+   }
+   quests = LIBRARY->query_quests( ob->query_name() );
+   if ( !sizeof( quests ) ) {
+      printf( "You have not completed any quests.\n" );
+      return 1;
+   }
+   quest_info = map(quests, (: ({ QUEST_HANDLER->query_quest_title($1),
+                                  QUEST_HANDLER->query_quest_story($1) }) :));
+   if (sorted) {
+      quest_info = sort_array(quest_info, (: strcmp($1[0], $2[0]) :));
+   }
+   write( "$P$Quests$P$You have completed the following quests:\n"+
+         implode( map_array( map_array( quest_info, (: "     \""+
+         $1[0] +"\", in which you "+
+         replace( $1[1],
+         "was", "were" ) :) ), (: sprintf( $1[ 0 .. 24 ] +"%*-=s",
+         $(ob)->query_cols() - 30, $1[ 25 .. ] ) :) ), ",\n" ) +".\n" );
+   return 1;
+}
+int query_verbose(object ob, string verbose)  {
+   if (!verbose) {
+      return ob->query_verbose("score");
+   }
+   if (verbose == "verbose") {
+      return 1;
+   }
+   return 0;
+}
+int score_stats(object ob, string verbose)  {
+   string word;
+   int stat;
+   string ret;
+   if ( !this_player()->query_creator() && ob->query_property("dead")) {
+     write( "You are just a disembodied spirit.  What use does a wispy thing "
+            "like you have for a collection of meaningless numbers?\n" );
+     return 1;
+   }
+   if(this_player()->query_role_playing()) {
+     ret = "";
+     if(stat = (this_player()->query_tmp_str() +
+                this_player()->query_bonus_str())) {
+       if ( stat > 0 ) {
+         ret += "You feel stronger than usual.\n";
+       } else {
+         ret += "You feel weaker than usual.\n";
+       }
+     }
+     if ( stat = ( this_player()->query_tmp_int() +
+                   this_player()->query_bonus_int() ) ) {
+       if ( stat > 0 ) {
+         ret += "You feel smarter than normal.\n";
+       } else {
+         ret += "You feel less smart than normal.\n";
+       }
+     }
+     if ( stat = ( this_player()->query_tmp_con() +
+                   this_player()->query_bonus_con() ) ) {
+       if ( stat > 0 ) {
+         ret += "You feel more healthy than usual.\n";
+       } else {
+         ret += "You feel a bit sickly.\n";
+       }
+     }
+     if ( stat = ( this_player()->query_tmp_dex() +
+                   this_player()->query_bonus_dex() ) ) {
+       if ( stat > 0 ) {
+         ret += "You feel more nimble than usual.\n";
+       } else {
+         ret += "You feel more clumsy than you normally do.\n";
+       }
+     }
+     if ( stat = ( this_player()->query_tmp_wis() +
+                   this_player()->query_bonus_wis() ) ) {
+       if ( stat > 0 ) {
+         ret += "You feel mentally attuned.\n";
+       } else {
+         ret += "You feel a bit vague.\n";
+       }
+     }
+     if ( !strlen( ret ) ) {
+       ret += "You feel fine.\n";
+     }
+     printf( "%s", ret );
+   } else {
+     word = ( ob->query_weight() / 20 ) +"."+ ( ob->query_weight() % 10 );
+     if (query_verbose(ob, verbose))  {
+       printf( "%-#*s\n", ob->query_cols(),
+               "Constitution ... "+ ob->query_con() +"\n"+
+               "Dexterity ...... "+ ob->query_dex() +"\n"+
+               "Intelligence ... "+ ob->query_int() +"\n"+
+               "Strength ....... "+ ob->query_str() +"\n"+
+               "Wisdom ......... "+ ob->query_wis() +"\n"+
+               "Height ......... "+ ob->query_height() +" cm\n"+
+               "Weight ......... "+ word +"kg\n" );
+     } else  {
+       printf( "%-#*s\n", ob->query_cols(),
+               "Con: "+ ob->query_con() +"\nDex: "+ ob->query_dex() +"\n"+
+               "Int: "+ ob->query_int() +"\nStr: "+ ob->query_str() +"\n"+
+               "Wis: "+ ob->query_wis() +"\nHgt: "+ ob->query_height() +" cm\n"+
+               "Wgt: "+ word +"kg\n" );
+     }
+   }
+   return 1;
+}
+int calc_percent( float x, float y ) {
+   return to_int( ( to_float( x ) / to_float( y ) ) * 100 );
+}
+string find_hp_string( int current, int max ) {
+   if ( this_player()->query_property( "dead" ) ) {
+      return "you are dead\n";
+   }
+   switch( calc_percent( current, max ) ) {
+   case 90..100:
+      return "you are in perfect health";
+   case 70..89:
+      return "you are slightly wounded";
+   case 50..69:
+      return "you are moderately wounded";
+   case 30..49:
+      return "you are seriously wounded";
+   case 15..29:
+      return "you are critically wounded";
+   case 6..14:
+      return "you are fatally wounded";
+   case 0..5:
+      return "you are near death";
+   default:
+      return "you are broken";
+   }
+}
+string find_gp_string( int current, int max ) {
+   if ( this_player()->query_property( "dead" ) ) {
+      return "you are dead\n";
+   }
+   switch( calc_percent( current, max ) ) {
+   case 90..100:
+      return "you are full of energy";
+   case 70..89:
+      return "you are enthusiastic";
+   case 50..69:
+      return "you are not quite so full of beans";
+   case 30..49:
+      return "you are weary";
+   case 15..29:
+      return "you are tired";
+   case 6..14:
+      return "you are exhausted";
+   case 0..5:
+      return "you are nearly unconscious";
+   default:
+      return "you are broken";
+   }
+}
+int calc_xp_cost( string skill ) {
+   int lvl;
+   int my_lvl;
+   int cost;
+   int j;
+   int total;
+   int total2;
+   int num = 1;
+   my_lvl = this_player()->query_skill_bonus( skill, 1 );
+   lvl = this_player()->query_skill(skill);
+   cost = DEFAULT_COST;
+   if( SKILL_OB->query_skill_cost(skill) > 0 ) {
+      cost *= SKILL_OB->query_skill_cost(skill);
+   }
+   cost *= STD_COST/5;
+   total2 = 0;
+   total = 0;
+   if ( !my_lvl ) {
+      my_lvl = 1;
+   }
+   for ( j = 0; j < num; j++) {
+      int k;
+      k = 2 * this_player()->calc_bonus( lvl + j, skill, 1 ) / my_lvl + 1;
+      total2 += cost * ( ( lvl + j ) / LEVEL_DIV + 1 ) * k * k / 2;
+      if ( total > total2 ) {
+         num = j;
+         break;
+      } else {
+         total = total2;
+      }
+   }
+   if (!total) {
+      total = cost;
+   }
+   return total;
+}
+string find_xp_string( int current ) {
+   string *skills = ({ "magic", "faith", "fighting", "covert", "crafts" });
+   int xptotal;
+   foreach( string skill in skills ) {
+      xptotal += calc_xp_cost( skill );
+   }
+   xptotal /= sizeof( skills );
+   switch( calc_percent( current, xptotal ) ) {
+   case 0..20:
+      return "you don't think you can learn much at the moment";
+   case 21..59:
+      return "by the luck of a coin, you might be able to learn something new";
+   case 60..100:
+      return "if you squeezed it, you could gain some insight";
+   case 101..300:
+      return "you might be able to learn something new, if you found the right teacher";
+   case 301..400:
+      return "a small amount could be learned with training";
+   case 401..800:
+      return "a bit of training might be in order";
+   case 801..1200:
+      return "you could very well learn something new from training";
+   case 1201..1500:
+      return "you could benefit from training";
+   case 1501..2000:
+      return "you feel like training might help";
+   case 2001..2500:
+      return "you should consider training your skills";
+   case 2501..4000:
+      return "your skills could be greatly improved with training";
+   default:
+      return "certainly a hearty training session is in order";
+   }
+}
+string find_wimpy_string( int wimpy ) {
+   if ( wimpy ) {
+      return "you will flee when "+ find_hp_string( wimpy, 100 );
+   }
+   return "you will not flee";
+}
+string find_surrender_string( int surr ) {
+   if ( surr ) {
+      return "you will surrender when "+ find_hp_string( surr, 100 );
+   }
+   return "you will not surrender";
+}
+string find_align_string( object tp ) {
+   string ret = "";
+   string word = tp->query_deity();
+   ret = "";
+   word = tp->query_deity();
+   if ( !tp ) {
+      return "";
+   }
+   ret += "you are ";
+   ret += tp->align_string();
+   if ( stringp( word ) ) {
+      ret += " and in the service of ";
+      ret += capitalize( word );
+      ret += ", ";
+#ifndef __DISTRIBUTION_LIB__
+      ret += DEITY->query_title( word );
+#endif
+   }
+   return ret;
+}
+string find_death_string( int remaining ) {
+   if ( !this_player()->query_deaths() ) {
+      return "Death has never visited you in a professional capacity";
+   }
+   switch ( remaining ) {
+   case 0..0:
+      return "Death has a special interest in your next appointment";
+   case 1..3:
+      return "Death is starting to lose patience with you";
+   case 4..7:
+      return "You and Death are on good terms";
+   default:
+      return "You have an \"arrangement\" with Death";
+   }
+}
+int score_rp(object me, string verbose) {
+  if(query_verbose(me, verbose)) {
+    printf( "%s.\n%s and %s.\n%s.\n%s.\n%s.\n%s.\n%s.\n",
+            "You are "+ me->query_cap_name() +" "+me->query_gtitle(),
+            capitalize( find_hp_string( me->query_hp(), me->query_max_hp() ) ),
+            find_gp_string( me->query_gp(), me->query_max_gp() ),
+            capitalize( find_xp_string( me->query_xp() ) ),
+            capitalize( find_align_string( me ) ),
+            capitalize( find_wimpy_string( me->query_wimpy() ) ),
+            "You are "+ me->burden_string() + " and " +
+               this_player()->query_temp_str(),
+            find_death_string( me->query_max_deaths() - me->query_deaths() ) );
+  } else {
+    printf( "%s and %s.\n%s.\n",
+            capitalize( find_hp_string( me->query_hp(), me->query_max_hp() ) ),
+            find_gp_string( me->query_gp(), me->query_max_gp() ),
+            capitalize( find_xp_string( me->query_xp() ) ) );
+  }
+  return 1;
+}
+int score_burden(object me, string verbose) {
+  write( sprintf("You are %s (%d%%).\n", me->burden_string(),
+          me->query_burden()));
+  return 1;
+}
+int score_normal(object ob, string verbose)  {
+   string word;
+   string guild_ob;
+   string area;
+   string* magistrates;
+   string* citizens;
+   int age, temp1, temp2, temp3, temp4;
+   int no_title;
+   if ( !this_player()->query_creator() && ob->query_property("dead")) {
+      write( "You are just a disembodied spirit.  What use does a wispy thing "
+             "like you have for a collection of meaningless numbers?\n" );
+      return 1;
+   }
+   if(ob->query_role_playing())
+     return score_rp(ob, verbose);
+   if (query_verbose(ob, verbose))  {
+      guild_ob = ob->query_guild_ob();
+      if (!guild_ob) {
+         guild_ob = "/std/guilds/warrior";
+         no_title = 1;
+      }
+      temp1 = ob->query_hp();
+      temp2 = ob->query_gp();
+      temp3 = (int)LIBRARY->query_quest_points( ob->query_name() );
+      temp4 = ob->query_sp();
+      printf( "%-=*s", ob->query_cols(), "You have " +
+            temp1 + " (" + ob->query_max_hp() + ") hit" +
+            essify(temp1, "point") + ", " +
+            temp2 + " (" + ob->query_max_gp() + ") guild" +
+            essify(temp2, "point") + ", " +
+            temp3 + " (" + (int)QUEST_HANDLER->query_total_qp() + ") quest" +
+            essify(temp3, "point") + " and " +
+            temp4 + " (" + ob->query_max_sp() + ") social" +
+            essify( temp4, "point") + ".\n" );
+      if ( guild_ob && find_object( guild_ob ) )  {
+         printf( "%-=*s", ob->query_cols(), "Your current experience is " +
+               ob->query_xp() + " and you are level " +
+               (int)ob->query_level() + " in the " +
+               (no_title?"Adventurers' Guild":guild_ob->query_short()) +
+               ((ob->query_guild_ob() == "/std/guilds/thief" &&
+               !(ob->query_guild_data() == 0)) ?
+               ", specialised as a " + ob->query_guild_data() : "") +
+               "; your overall rating is " + (int)TOP_TEN_HANDLER->
+               calculate_rating( ob ) + ".\n" );
+      }  else  {
+         printf( "%-=*s", ob->query_cols(), "Your current experience is " +
+               ob->query_xp() +".\n" );
+      }
+      temp1 = ob->query_deaths();
+      temp2 = ob->query_max_deaths() - temp1;
+      printf( "%-=*s", ob->query_cols(), "You have died " +
+            temp1 + essify(temp1, "time") + " and can die " +
+            temp2 + essify(temp2, "time") + " before you are completely "
+            "dead.\n" );
+      if ( ob->query_wimpy() )  {
+         printf( "Your wimpy is set to %d%%.\n", ob->query_wimpy() );
+      } else  {
+         printf( "You are in brave mode.\n" );
+      }
+#ifdef USE_SURRENDER
+      if (ob->query_surrender())  {
+         printf("You will surrender at %d%% of your maximum hit points.\n",
+            ob->query_surrender());
+      } else  {
+         printf("You won't surrender.\n");
+      }
+#endif
+      printf( "You are %s (%d%%) and %s.\n", ob->burden_string(),
+              ob->query_burden(),
+               this_player()->query_temp_str());
+      word = ob->query_deity();
+#ifndef __DISTRIBUTION_LIB__
+      if ( stringp( word ) )  {
+         printf( "You are %s, worshipping %s.\n", ob->align_string(),
+               capitalize( word ) +", "+ (string)DEITY->query_title( word ) );
+      } else  {
+         printf( "You are %s, worshipping no god.\n", ob->align_string() );
+      }
+#endif
+      citizens = ({ });
+      magistrates = ({ });
+      word = ob->query_name();
+      foreach (area in NOMIC_HANDLER->query_citizenship_areas()) {
+         if (NOMIC_HANDLER->is_magistrate_of(area, word)) {
+            magistrates += ({ area });
+         } else if (NOMIC_HANDLER->is_citizen_of(area, word)) {
+            citizens += ({ area });
+         }
+      }
+      if (sizeof(magistrates)) {
+          printf("You are a magistrate of: " +
+                 query_multiple_short(magistrates) + ".\n");
+      }
+      if (sizeof(citizens)) {
+          printf("You are a citizen of: " +
+                 query_multiple_short(citizens) + ".\n");
+      }
+      if ( ob->query_property( PKER ) )  {
+         printf( "You are registered as a player killer.\n" );
+      }
+      if ( m_sizeof( ob->query_hide_invis() ) )  {
+         printf( "%-=*s\n", ob->query_cols(), "You are " +
+               query_multiple_short( m_indices( ob->query_hide_invis() ) +
+                                     ({ }) ) + "." );
+      }
+      printf( "%-=*s", ob->query_cols(), (string)ob->extra_score() );
+      age = -ob->query_time_on();
+      temp3 = ob->query_no_logins();
+      word = sprintf("You are %s old and have logged in %d %s.\n",
+                     query_time_string(age, -1),
+                     temp3, (temp3 == 1 ? "time" : "times"));
+      printf("%-=*s", ob->query_cols(), word);
+   } else {
+      printf( "%-=*s", ob->query_cols(), "Hp: " + ob->query_hp() + "(" +
+            ob->query_max_hp() + ")  Gp: " + ob->query_gp() + "(" +
+            ob->query_max_gp() + ")  Xp: "+ ob->query_xp() + "\n" );
+   }
+   return 1;
+}
+string create_relationship_text( string relationship, mapping data ) {
+    string *relatives;
+    int size;
+    if ( !( relatives = data[ relationship ] ) )
+        return "";
+    if ( !size = sizeof( relatives ) )
+        return "";
+    if ( size == 1 ) {
+        return capitalize( relatives[0] ) + " is your " +
+            relationship;
+    }
+    return query_multiple_short( map( sort_array( relatives, 1 ),
+        (: capitalize( $1 ) :) ) ) + " are your " +
+        pluralize( relationship );
+}
+int get_gender( string name ) {
+    int gender;
+    gender = PLAYER_HANDLER->test_gender( name );
+    if ( gender )
+        gender -= 1;
+    return gender;
+}
+int score_relationships( object ob, int verbose ) {
+    string txt, family;
+    string *sorted;
+    class relationship_data *bing;
+    mapping grouped;
+    family = ob->query_family_name();
+    if ( !family || !CLUB_HANDLER->is_family( family ) ) {
+        add_failed_mess( "You're not in a family!\n" );
+        return 0;
+    }
+    bing = CLUB_HANDLER->query_relationships( family, ob->query_name() );
+    if ( !sizeof( bing ) ) {
+        add_failed_mess( "You have no relatives.\n" );
+        return 0;
+    }
+    grouped = unique_mapping( bing,
+        (: CLUB_HANDLER->query_relationship_gender(
+           CLUB_HANDLER->query_opposite_relationship( $1->relationship ),
+           get_gender( $1->related_to ) )  :) );
+    grouped = map( grouped, (: map( $2, (: $1->related_to :) ) :) );
+    sorted = sort_array( keys( grouped ), 1 );
+    txt = implode( map( sorted,
+        (: create_relationship_text( $1, $(grouped) ) :) ), ".\n" );
+    tell_object( ob, "$P$Relationships$P$" + txt + ".\n" );
+    return 1;
+}
+int score_align( object ob, int verbose ) {
+  int upper, lower, middle, align;
+  string god, opinion;
+  if (ob->query_property( "dead" )) {
+     write( "You're dead.  Things such as 'good' and 'evil' are no longer of
+      your concern.\n" );
+     return 1;
+  }
+   if( !ob->query_deity() ) {
+    write( "You are " + ob->align_string() + ", and not worried about "
+        "the approval of any deity at all.\n" );
+    }
+  else {
+    god = ob->query_deity();
+    align = ob->query_al();
+#ifndef __DISTRIBUTION_LIB__
+    lower = DEITY->query_al_lower( god );
+    upper = DEITY->query_al_upper( god );
+    middle = DEITY->query_al_middle( god );
+    opinion = "pleased with";
+    if( align <= lower - LIMIT || align >= upper + LIMIT )
+      opinion = "very angry with";
+    if( ( align < lower && align > lower - LIMIT ) ||
+        ( align > upper && align < upper + LIMIT ) )
+      opinion = "quite annoyed with";
+    if( ( align >= lower && align <= lower + LIMIT ) ||
+        ( align <= upper && align >= upper - LIMIT ) )
+      opinion = "a little concerned about";
+    if( align > middle - ( LIMIT / 2 ) && align < middle + ( LIMIT / 2 ) )
+      opinion = "very happy with";
+    write( "You are " + ob->align_string() + ".  " + capitalize( god ) +
+      " is " + opinion + " you.\n" );
+#else
+    write( "You are " + ob->align_string() + ", and not worried about "
+        "the approval of any deity at all.\n" );
+#endif
+  }
+  return 1;
+}
+int score_fighting( object player, int verbose ) {
+    object *attacker_list;
+    object *attacker_list_here;
+    string ret;
+    class tactics tactics;
+    attacker_list = player->query_attacker_list() - ({ 0 });
+    ret = "";
+    if ( attacker_list ) {
+       attacker_list_here = filter( attacker_list, (: $1 && living( $1 ) &&
+           environment( $1 ) == environment( $(player) ) :) );
+       if ( !sizeof( attacker_list ) ) {
+           ret += "You are not fighting anything!\n";
+       } else {
+          attacker_list -= attacker_list_here;
+          if (sizeof(attacker_list_here)) {
+             ret += "$I$5=You are currently fighting " +
+                 query_multiple_short( attacker_list_here ) + " here.\n";
+          }
+          if (sizeof(attacker_list)) {
+             ret += "$I$5=You are currently fighting " +
+                 query_multiple_short( attacker_list ) + " (these are "
+                 "people you will auto attack on sight).\n" ;
+          }
+       }
+    }
+    tactics = (class tactics) this_player()->query_tactics();
+    ret += "$I$0=Your current tactics are:\n"
+      "   Attitude       :   "+ tactics->attitude +"\n"
+      "   Response       :   "+ tactics->response +"\n"
+#ifdef USE_SURRENDER
+      "   Mercy          :   "+ (tactics->mercy?tactics->mercy:"none") + "\n"
+#endif
+      "   Focus          :   "+
+      (tactics->focus_zone?tactics->focus_zone:"none") + "\n"
+#ifdef USE_DISTANCE
+      "   Target distance:   "+
+      (tactics->ideal_distance?tactics->ideal_distance:"none") + "\n"
+#endif
+      "   Attack         :   "+ (tactics->attack == "both" ? "both" :
+                     (tactics->attack?tactics->attack:"both")) + "\n"
+      "   Parry          :   " + (tactics->parry == "both" ? "both" :
+                      (tactics->parry?tactics->parry:"both")) + "\n"
+      "   Unarmed Parry  :   " + (tactics->parry_unarmed ? "yes" : "no") + "\n";
+    write(ret);
+    return 1;
+}
+int score_temperature( object player, int verbose ) {
+   return "/cmds/player/temp_erature"->cmd();
+}
+mixed *query_patterns() {
+   return ({
+             "quests", (: score_quests(this_player(), 0) :),
+             "quests sorted", (: score_quests(this_player(), 1) :),
+             "{brief|verbose} stats", (: score_stats(this_player(), $4[0]) :),
+             "stats", (: score_stats(this_player(), 0) :),
+             "{brief|verbose}", (: score_normal(this_player(), $4[0]) :),
+             "relationships", (: score_relationships( this_player(), 0 ) :),
+             "temperature", (: score_temperature( this_player(), 0 ) :),
+             "burden", (: score_burden( this_player(), 0 ) :),
+             "", (: score_normal(this_player(), 0) :),
+             "{align|alignment}", (: score_align(this_player(), 0) :),
+             "fighting", (: score_fighting( this_player(), 0 ) :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/help.c ===
+inherit "/cmds/base";
+#include <nroff.h>
+#include <soul.h>
+#include <log.h>
+#include <autodoc.h>
+#include <login_handler.h>
+#include <player_handler.h>
+#include <command.h>
+#define SYNONYMS "/doc/SYNONYMS"
+#define MATCH_THRESHOLD 55
+void do_help(mixed *stuff);
+private void list_help(string title, string dir);
+private mixed *help_list(string name);
+int command_cmd(string name);
+int here_cmd();
+int object_cmd(object ob);
+int spell_cmd(string name, int spell);
+int file_help(string name);
+void rehash_dirs();
+mixed *query_help_on(string name, int creator, int, int);
+mixed *create_help_files(string *names, string nroff_dir);
+private mapping read_directories(string *directories, int recurse);
+private mapping read_synonyms();
+private string letter_name(int letter, mixed *things);
+private string start_letter( mixed *things );
+private string end_letter( mixed *things );
+private int query_number_from_string(string name, mixed *things );
+private nosave mapping _help_files_player;
+private nosave mapping _help_files_creator;
+private nosave mapping _help_files_playtester;
+private nosave mapping _help_files_lord;
+private nosave mapping _synonyms;
+private nosave string *_player_dirs;
+private nosave string *_creator_dirs;
+private nosave string *_lord_dirs;
+private nosave string *_playtester_dirs;
+void create() {
+   ::create();
+   _player_dirs = ({ "/doc/helpdir/",
+                    "/doc/concepts/",
+                    "/doc/known_command/",
+                    "/doc/room/",
+                    "/doc/spells/",
+                    "/doc/object/" });
+   _creator_dirs = ({"/doc/creator/",
+                    "/doc/driver/",
+                    "/doc/policy/",
+                    "/doc/new/" });
+   _playtester_dirs = ({ "/doc/playtesters/" });
+   _lord_dirs = ({"/doc/lord/"});
+   unguarded((: rehash_dirs() :));
+}
+int *find_match_in_array( string entry, string *items )  {
+   int i;
+   int j;
+   int elength;
+   int ilength;
+   int this_match;
+   int best_match;
+   int best_try;
+   elength = strlen( entry );
+   best_match = this_match = -1;
+   for ( i = sizeof( items ) - 1; i >= 0; i--, this_match = 0 )  {
+      ilength = strlen( items[ i ] );
+      for ( j = 0; j < elength  &&  j < ilength; j++ )
+        if ( entry[ j ] == items[ i ][ j ] ||
+             entry[ j ] == items[ i ][ j - 1 + ( j == 0 ) ]  ||
+             entry[ j ] == items[ i ][ j + 1 - ( j + 1 == ilength ) ] )
+          ++this_match;
+      this_match = 100 * this_match / ( j == elength ? ilength : elength );
+      if ( this_match > best_match )  {
+        best_match = this_match;
+        best_try = i;
+      }
+   }
+   return ({ best_try, best_match });
+}
+int cmd(string name) {
+  class command cmd;
+   mixed *list;
+   string str;
+   string suggestion;
+   int i;
+   int *matches;
+   list = help_list(name);
+   if (sizeof(list) == 0 &&
+       mapp(_synonyms) &&
+       _synonyms[name]) {
+      list = help_list(_synonyms[name]);
+   }
+   if (sizeof(list) == 0) {
+      if (PLAYER_HANDLER->test_user(name)) {
+         add_failed_mess("That is a player, silly.\n");
+         return 0;
+      }
+      list = keys(_help_files_player) + ({ "command_list", "concepts"});
+      matches = find_match_in_array(name, list);
+      if (matches[1] > MATCH_THRESHOLD) {
+         suggestion = list[matches[0]];
+      } else {
+         list = keys(_synonyms);
+         matches = find_match_in_array(name, list);
+         if(matches[1] > MATCH_THRESHOLD) {
+            suggestion = _synonyms[list[matches[0]]];
+         }
+      }
+      if (!this_player()->query_creator()) {
+         log_file("MISSING_HELP", "%s %s looked for help on %s, "
+                  "recommended %s\n",
+                  ctime(time()), this_player()->query_name(),
+                  name, suggestion);
+      }
+      str = "Could not find any help on '" + name + "'.  ";
+      if (!suggestion && this_player()->query_known_command("newbie"))
+        str += "Many useful commands are explained in 'help essentials'.  ";
+      else if(suggestion)
+        str += "Perhaps you are looking for 'help " +suggestion + "'?  ";
+      cmd = new(class command, verb : name);
+      if((CMD_D->IsGRCommand(name) &&
+          this_player()->query_known_command(name)) ||
+         (CMD_D->HandleStars(cmd) &&
+          sizeof(((mixed *)CMD_D->GetPaths(cmd->verb) &
+                  (mixed *)this_player()->GetSearchPath()))) ||
+         sizeof(this_player()->query_parse_command_objects(name)))
+        str += "The syntax for the command '" + name + "' can be found by "
+          "entering 'syntax " + name + "'.  ";
+      if (environment(this_player()) &&
+          environment(this_player())->help_function())
+         str += "Type 'help here' for help on how to use this room.";
+      return notify_fail(str + "\n");
+   }
+   if (sizeof(list) == 1) {
+      do_help(list[0]);
+      return 1;
+   }
+   str = "";
+   for (i = 0; i < sizeof(list); i++) {
+      str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+   }
+   printf("Discworld help found multiple matches, please choose one of:\n"
+          "%-*#s\nChoice: ", this_player()->query_cols(), str);
+   input_to("help_input", 0, list);
+   return 1;
+}
+void help_input(string str, mixed *list) {
+   int num;
+   str = lower_case(str);
+   if (str == "quit" || str == "**" || str == "." || str == "") {
+      write("OK, exiting help.\n");
+      return ;
+   }
+   if ( ( num = query_number_from_string( str, list ) ) == -1 ) {
+       printf("Incorrect choice, must be between %s and %s.\nChoice: ",
+        start_letter( list ), end_letter( list ) );
+      input_to("help_input", 0, list);
+      return ;
+   }
+   do_help(list[num]);
+}
+void do_help(mixed *stuff) {
+   string str;
+   str = evaluate(stuff[1]);
+   if (!str || !strlen(str)) {
+      write("Broken help file!\n");
+   } else {
+      write("$P$" + stuff[0] + "$P$" + str);
+   }
+}
+int here_cmd() {
+  mixed str;
+  mixed *list;
+  int i;
+  str = environment(this_player())->help_function();
+  if(pointerp(str))
+    list = str;
+  else if(str)
+    list += ({ ({ environment(this_player())->short(), str }) });
+  else {
+    write("There is no help available for this room.\n");
+    return 1;
+  }
+  if (sizeof(list) == 1) {
+    do_help(list[0]);
+    return 1;
+  }
+  str = "";
+  for (i = 0; i < sizeof(list); i++) {
+    str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+  }
+  printf("Discworld help found multiple matches, please choose one of:\n"
+         "%-*#s\nChoice: ", this_player()->query_cols(), str);
+  input_to("help_input", 0, list);
+  return 1;
+}
+int object_cmd(object ob) {
+  mixed str;
+  mixed *list;
+  int i;
+  str = ob->help_function();
+  if(pointerp(str))
+    list = str;
+  else if(str)
+    list += ({ ({ environment(this_player())->short(), str }) });
+  else {
+    add_failed_mess("There is no help available for $I.\n", ({ob}));
+    return -1;
+  }
+  if (sizeof(list) == 1) {
+    do_help(list[0]);
+    return 1;
+  }
+  str = "";
+  for (i = 0; i < sizeof(list); i++) {
+    str += sprintf("%s) %s\n", letter_name(i, list), list[i][0]);
+  }
+  printf("Discworld help found multiple matches, please choose one of:\n"
+         "%-*#s\nChoice: ", this_player()->query_cols(), str);
+  input_to("help_input", 0, list);
+  return 1;
+}
+int command_cmd(string name) {
+   mixed help;
+   help = this_player()->help_command(name);
+   if (!help) {
+      notify_fail("No such command as '" + name + "'.\n");
+      return 0;
+   } else {
+      if (functionp(help)) {
+         help = evaluate(help);
+      }
+      write("$P$" + name + "$P$P" + help);
+      return 1;
+   }
+}
+int soul_cmd(string name) {
+   string help;
+   help = SOUL_OBJECT->help_string(name);
+   if (!help) {
+      notify_fail("No such soul as '" + name + "'.\n");
+      return 0;
+   } else {
+      write("$P$" + name + "$P$P" + help);
+      return 1;
+   }
+}
+int spell_cmd(string name, int spell) {
+   mixed help;
+   help = this_player()->help_spell(name);
+   if (!help) {
+      notify_fail("No such spell as '" + name + "'.\n");
+      return 0;
+   } else {
+      if (functionp(help)) {
+         this_player()->move_string(evaluate(help), name);
+      } else {
+         write("$P$" + name + "$P$P" + help);
+      }
+      return 1;
+   }
+}
+int command_list_cmd() {
+   list_help("Command list, try 'help concepts' for a list of concepts.",
+       "/doc/helpdir/");
+   return 1;
+}
+int concepts_list_cmd() {
+   list_help("Concepts list, try 'help command_list' for a list of commands.",
+       "/doc/concepts/");
+   return 1;
+}
+int error_log_cmd() {
+   notify_fail("Unable to get help on '" + ERROR_LOG + "'.\n");
+   return 0;
+}
+private void list_help(string title, string dir) {
+   string *files;
+   files = get_dir(dir + "*") - ({ ".", "..", "ERROR_REPORTS", "RCS", "old" });
+   write("$P$Help$P$" + sprintf("%s\n%-#*s\n", title,
+                                     (int)this_player()->query_cols(),
+                                     implode(files, "\n")));
+}
+ mixed *help_list(string name) {
+   string* stuff;
+   mixed str;
+   object* fluff;
+   object blue;
+   stuff = query_help_on(name, this_player()->query_creator(),
+                         this_player()->query_lord(),
+                         this_player()->query_playtester());
+   if (name == "room" || name == "here") {
+      str = environment(this_player())->help_function();
+      if (pointerp(str)) {
+         stuff += str;
+      } else if (str) {
+         stuff += ({ ({ environment(this_player())->short(),
+                        str }) });
+      } else {
+         add_failed_mess("There is no help available for this room.\n");
+         return 0;
+      }
+   }
+   str = this_player()->help_spell(name);
+   if (stringp(str)) {
+      stuff += ({ ({ name + " (Spell)",
+                    (: $(str) :) }) });
+   }
+   if (functionp(str)) {
+      stuff += ({ ({ name + " (Spell)", str }) });
+   }
+   str = SOUL_OBJECT->help_string(name);
+   if (str) {
+      stuff += ({ ({ name + " (Soul)",
+                    (: $(SOUL_OBJECT)->help_string($(name)) :) }) });
+   }
+   fluff = filter(match_objects_for_existence(name, ({ this_player(),
+                                      environment(this_player()) })),
+                    (: $1 && $1->help_function() :));
+   if (sizeof(fluff)) {
+      foreach (blue in fluff) {
+         stuff += blue->help_function();
+      }
+   }
+   return stuff;
+}
+private string letter_name(int letter, mixed *things) {
+   string bing;
+   if (sizeof(things) > 26) {
+      bing = "aa";
+      bing[0] = 'a' + (letter / 26);
+      bing[1] = 'a' + (letter % 26);
+      return bing;
+   }
+   bing = "a";
+   bing[0] = 'a' + letter;
+   return bing;
+}
+private string start_letter( mixed *things ) {
+   return letter_name(0, things);
+}
+private string end_letter( mixed *things ) {
+   return letter_name(sizeof(things) - 1, things);
+}
+private int query_number_from_string(string name, mixed *things ) {
+   int pos;
+   if (sizeof(things) > 26) {
+      if (strlen(name) != 2) {
+         return -1;
+      }
+      name = lower_case(name);
+      if (name[0] < 'a' || name[0] > 'z') {
+         return -1;
+      }
+      if (name[1] < 'a' || name[1] > 'z') {
+         return -1;
+      }
+      pos = (name[0] - 'a') * 26 + name[1] - 'a';
+      if (pos >= sizeof(things)) {
+         return -1;
+      }
+      return pos;
+   }
+   if (strlen(name) != 1) {
+      return -1;
+   }
+   name = lower_case(name);
+   if (name[0] < 'a' || name[0] > 'z') {
+      return -1;
+   }
+   pos = name[0] - 'a';
+   if (pos >= sizeof(things)) {
+      return -1;
+   }
+   return pos;
+}
+mixed *query_patterns() {
+   return ({ "<string>", (: cmd($4[0]) :),
+               "here", (: here_cmd() :),
+               "object <indirect:object:me-here'item'>", (: object_cmd($1[0]) :),
+               "command <string>", (: command_cmd($4[0]) :),
+               "spell <string>", (: spell_cmd($4[0], 0) :),
+               "ritual <string>", (: spell_cmd($4[0], 1) :),
+               "soul <string>", (: soul_cmd($4[0]) :),
+               "command_list", (: command_list_cmd() :),
+               "concepts", (: concepts_list_cmd() :),
+               "", (: concepts_list_cmd() :) });
+}
+void rehash_dirs() {
+   _help_files_player = read_directories(_player_dirs, 1);
+   _help_files_creator = read_directories(_creator_dirs, 1);
+   _help_files_lord = read_directories(_lord_dirs, 1);
+   _help_files_playtester = read_directories(_playtester_dirs, 1);
+   _synonyms = read_synonyms();
+}
+void rehash_specific_dir(string dir) {
+   string start;
+   mapping ret;
+   string name;
+   string* files;
+   if (dir[<1] != '/') {
+      dir += "/";
+   }
+   start = "/" + implode(explode(dir, "/")[0..1], "/") + "/";
+   if (member_array(start, _player_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_player[name]) {
+            _help_files_player[name] &= files;
+         } else {
+            _help_files_player[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _creator_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_creator[name]) {
+            _help_files_creator[name] &= files;
+         } else {
+            _help_files_creator[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _lord_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_lord[name]) {
+            _help_files_lord[name] &= files;
+         } else {
+            _help_files_lord[name] = files;
+         }
+      }
+   }
+   if (member_array(start, _playtester_dirs) != -1) {
+      ret = read_directories(({ dir }), 0);
+      foreach (name, files in ret) {
+         if (_help_files_playtester[name]) {
+            _help_files_playtester[name] &= files;
+         } else {
+            _help_files_playtester[name] = files;
+         }
+      }
+   }
+}
+private mapping read_synonyms() {
+  string *bits, *bits2;
+  int i;
+  mapping tmp;
+  tmp = ([ ]);
+  bits = explode(read_file(SYNONYMS), "\n");
+  for(i=0; i<sizeof(bits); i++) {
+    bits2 = explode(bits[i], " ");
+    tmp[bits2[0]] = bits2[1];
+  }
+  return tmp;
+}
+private mapping read_directories(string *directories, int recurse) {
+   string *files;
+   string fname;
+   int i;
+   string dir;
+   mapping ret;
+   ret = ([ ]);
+   for (i = 0; i < sizeof(directories); i++) {
+     dir = directories[i];
+     files = get_dir(dir + "*") - ({ "ERROR_REPORTS" });
+     foreach (fname in files) {
+       if (file_size( dir + fname) == -2) {
+         if (fname != "." &&
+             fname != ".." &&
+             fname != "old" &&
+             fname != "RCS") {
+           directories += ({ dir + fname + "/" });
+         }
+       } else if (fname != "." &&
+                  fname != ".." &&
+                  fname != "old") {
+         if (!ret[fname]) {
+           ret[fname] = ({ dir + fname });
+         } else {
+           ret[fname] += ({ dir + fname });
+         }
+         if (strsrch(fname, "_") > 0) {
+           fname = replace(fname, "_", " ");
+           if (!ret[fname]) {
+             ret[fname] = ({ dir + fname });
+           } else {
+             ret[fname] += ({ dir + fname });
+           }
+         }
+       }
+     }
+   }
+   return ret;
+}
+mixed *query_help_on(string name, int creator, int lord, int pt) {
+   string *files;
+   mapping map;
+   files = ({ });
+   name = replace_string(name, " ", "_");
+   if (_help_files_player[name]) {
+      files += create_help_files(_help_files_player[name], NROFF_DIR);
+   }
+   if (lord || creator || pt) {
+     if(_help_files_playtester && _help_files_playtester[name]) {
+         files += create_help_files(_help_files_playtester[name], NROFF_DIR);
+      }
+   }
+   if (lord || creator) {
+     if(_help_files_creator && _help_files_creator[name]) {
+         files += create_help_files(_help_files_creator[name], NROFF_DIR);
+      }
+      map = AUTODOC_HANDLER->query_help_map();
+      if (map && map[name]) {
+         files += create_help_files(map[name], NROFF_DIR);
+      }
+   }
+   if (lord) {
+     if(_help_files_lord && _help_files_lord[name]) {
+         files += create_help_files(_help_files_lord[name], NROFF_DIR);
+      }
+      map = AUTODOC_HANDLER->query_help_map();
+      if (map && map[name]) {
+         files += create_help_files(map[name], NROFF_DIR);
+      }
+  }
+   return files;
+}
+string query_synonym(string name) {
+  if(mapp(_synonyms) && _synonyms[name])
+    return _synonyms[name];
+  return "";
+}
+private string nroff_file(string name, string nroff_dir) {
+   string nroff_fn;
+   string str;
+   nroff_fn = nroff_dir + replace(name, "/", ".");
+   str = NROFF_HAND->cat_file(nroff_fn, 1);
+   if (!str) {
+      NROFF_HAND->create_nroff(name, nroff_fn);
+      str = NROFF_HAND->cat_file(nroff_fn, 0);
+   }
+   return str;
+}
+mixed *create_help_files(string *names, string nroff_dir) {
+   int i;
+   mixed *ret;
+   string *bits;
+   ret = ({ });
+   for (i = 0; i < sizeof(names); i++) {
+      bits = explode(names[i], "/");
+      ret += ({ ({ bits[<1] + " (" +
+                   names[i] + ")",
+                   (: nroff_file($(names[i]), $(nroff_dir)) :) }) });
+   }
+   return ret;
+}
+mapping query_help_files_player() { return _help_files_player; }
+mapping query_help_files_creator() { return _help_files_creator; }
+mixed *stats() {
+  mapping map;
+  map = AUTODOC_HANDLER->query_help_map();
+  return ({
+      ({ "player help files", sizeof( keys(_help_files_player) ) }),
+      ({ "creator help files", sizeof( keys(_help_files_creator) ) }),
+        ({ "autodoc help map", sizeof(keys(map)) }) ,
+          });
+}
+int clean_up() {
+  return 0;
+}
+void dest_me() {
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/inv_entory.c ===
+inherit "/cmds/base";
+mixed cmd()
+{
+   if (this_player()->query_property("dead")) {
+      object *obs;
+      write("You are just a disembodied spirit.  "
+            "You have mist; what else do you want?\n");
+      obs = all_inventory(this_player());
+      obs = filter_array(obs, (: $1->query_property("dead usable") :));
+      if (sizeof(obs)) {
+         write("Hang on!  You appear to have " +
+               query_multiple_short(obs) + ".  Amazing.\n");
+      }
+      return 1;
+   }
+   write(sprintf("You are %s by:\n", this_player()->burden_string()) +
+	 this_player()->query_living_contents(1));
+   if (this_player()->query_auto_loading()) {
+      write("\n%^YELLOW%^Please note that your inventory is still being "
+            "generated.%^RESET%^\n");
+   }
+   return 1;
+}
+mixed *query_patterns()
+{
+   return ({ "", (: cmd() :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/removeg_roup.c ===
+inherit "cmds/base";
+#define TEAM_HANDLER "/obj/handlers/team"
+int do_leave(string group, object member);
+mixed cmd(string str) {
+  string group;
+  object player, *members, member;
+  notify_fail("Syntax: removegroup <member>\n");
+  player = find_player(str);
+  if(!(group = TEAM_HANDLER->query_group(this_player())))
+    return notify_fail("You are not a member of a group.\n");
+  if(TEAM_HANDLER->query_owner(group) != player)
+    return notify_fail("Sorry, you are not the leader of " + group + ".\n");
+  if(member_array(player, TEAM_HANDLER->query_members(group)) == -1)
+    return notify_fail("Sorry, " + str + " is not a member of " + group +
+                       ".\n");
+  members = TEAM_HANDLER->query_members( group );
+  if ( !members) {
+    TEAM_HANDLER->leave_group(group, this_player());
+    TEAM_HANDLER->end_group( group );
+    write( "Somehow your group has no members.  "
+           "Your group has been ended.  "
+           "I hope this is okay.\n" );
+    return 1;
+  } else if(!(TEAM_HANDLER->query_owner(group))) {
+    TEAM_HANDLER->leave_group( group, member );
+    TEAM_HANDLER->end_group( group );
+    write( "Somehow your group has no leader.  "
+           "Your group has been ended.  "
+           "I hope this is okay.\n" );
+    return 1;
+  }
+  foreach( member in members ) {
+    if ( !member )
+      continue;
+    tell_object(member, player->short()+" is removed from the "
+                "group.\n");
+  }
+  do_leave(group, player);
+  return 1;
+}
+int do_leave(string group, object member) {
+   object person;
+   if(!TEAM_HANDLER->leave_group(group, member))
+      return notify_fail("Ack, something went wrong.\n");
+   if ( !sizeof( (object *)TEAM_HANDLER->query_members( group ) ) )
+      return 0;
+   foreach(person in TEAM_HANDLER->query_members(group)) {
+      if(person) {
+         member->remove_protector(person);
+         person->remove_protector(member);
+         member->remove_follower(person);
+         person->remove_follower(member);
+      }
+   }
+   return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/relationship.c ===
+#include <clubs.h>
+inherit "/cmds/base";
+string show_relationship(object from, object to, string rel, object telling);
+int do_relationship(string relationship, object *players, int force) {
+   object player;
+   string family;
+   string my_family;
+   string their_family;
+   string rel;
+   class family_response_data frog;
+   int ok;
+   string *relations;
+   my_family = this_player()->query_family_name();
+   if (!my_family) {
+      add_failed_mess("You must be in a family to form a relationship with "
+                      "someone.\n");
+      return 0;
+   }
+   my_family = CLUB_HANDLER->query_club_name(my_family);
+   rel = CLUB_HANDLER->query_ungendered_relationship(relationship);
+   if (!rel) {
+      add_failed_mess("The relationship '" + relationship +
+                      "' is not valid.  The valid relationships are " +
+                      query_multiple_short(
+                              CLUB_HANDLER->query_all_relationships()) +
+                      ".\n");
+      return 0;
+   }
+   relationship = rel;
+   foreach (player in players) {
+      player->check_family_name();
+      their_family = player->query_family_name();
+      relations = CLUB_HANDLER->query_relationships_to(my_family,
+                                                      this_player()->query_name(),
+                                                      player->query_name());
+      if (!their_family && sizeof(relations)) {
+         foreach (rel in relations) {
+            CLUB_HANDLER->remove_relationship(my_family,
+                                              this_player()->query_name(),
+                                              their_family,
+                                              player->query_name(),
+                                              rel);
+         }
+      }
+      rel = CLUB_HANDLER->query_relationship_gender(relationship,
+                                                    player->query_female());
+      if (sizeof(relations)) {
+         if (member_array(relationship, relations) != -1 &&
+             force) {
+            family = my_family;
+	    tell_object(player, this_player()->the_short() +
+                             " offers to use "
+                             "the relationship of " + rel + " with "
+                             "you in the family " + my_family + " to allow "
+                             "you to join the family.  WARNING! "
+                             "This "
+                             "will cause you to join the family.\n" +
+                             "This will setup the relationships of: " +
+                             show_relationship(this_player(), player,
+                                               relationship, player) + "\n" +
+                             "To accept the offer type:\n"
+                             "accept relationship from " +
+                             this_player()->query_name() + " to " +
+                             my_family + " as " + rel + "\n");
+            frog = new(class family_response_data);
+            frog->family = family;
+            frog->relationship = relationship;
+            player->add_respond_command(CLUB_FAMILY_RESPOND_TYPE,
+                                        this_player(),
+                                        frog);
+            ok++;
+            add_succeeded_mess(({
+                               "$N offer$s to setup a relationship of " +
+                               rel + " with $I.\nThis will setup the "
+                               "relationships of: " +
+                               show_relationship(this_player(), player,
+                                                 relationship, this_player()) + "\n",
+                               "$N offer$s to setup a relationship of " +
+                               rel + " with $I.\n",
+                                }),
+                               ({ player }));
+         } else {
+            add_failed_mess("You are already related to $I, you can only force "
+                            "them to join your family.\n", ({ player }) );
+         }
+      } else if (player->query_family_name()) {
+         if (!force) {
+	    if (!CLUB_HANDLER->is_valid_interfamily_relationship(relationship)) {
+	       add_failed_mess("$I is in a family already and '" +
+                               rel +
+			       "' is not a valid interfamily relationship.\n");
+	       continue;
+	    }
+	    family = player->query_family_name();
+	    tell_object(player, this_player()->the_short() +
+                             " offers to setup "
+                             "a relationship of " + rel + " with "
+                             "you.  This will not cause you to change the "
+                             "family.\n" +
+                             "This will setup the relationships of: " +
+                             show_relationship(this_player(), player,
+                                               relationship, player) + "\n" +
+                             "To accept the offer type:\n"
+                             "accept relationship from " +
+                             this_player()->query_name() +
+                             " as " + rel + "\n");
+	 } else {
+            if (!CLUB_HANDLER->is_valid_join_family_relationship(relationship)) {
+               add_failed_mess("$I is in a family already and the "
+                               "relationship '" + rel +
+                               "' is not valid to cause them to join "
+                               "your family.\n");
+               continue;
+            }
+            family = my_family;
+	    tell_object(player, this_player()->the_short() +
+                             " offers to setup "
+                             "a relationship of " + rel + " with "
+                             "you in the family " + my_family + ".  WARNING! "
+                             "This "
+                             "will cause you to join the family.\n" +
+                             "This will setup the relationships of: " +
+                             show_relationship(this_player(), player,
+                                               relationship, player) + "\n" +
+                             "To accept the offer type:\n"
+                             "accept relationship from " +
+                             this_player()->query_name() + " to " +
+                             my_family + " as " + rel + "\n");
+	 }
+         frog = new(class family_response_data);
+         frog->family = family;
+         frog->relationship = relationship;
+         player->add_respond_command(CLUB_FAMILY_RESPOND_TYPE,
+                                     this_player(),
+                                     frog);
+         ok++;
+         add_succeeded_mess(({
+                            "$N offer$s to setup a relationship of " +
+                            rel + " with $I.\nThis will setup the "
+                            "relationships of: " +
+                            show_relationship(this_player(), player,
+                                              relationship, this_player()) + "\n",
+                            "$N offer$s to setup a relationship of " +
+                            rel + " with $I.\n",
+                             }),
+                            ({ player }));
+      } else {
+         tell_object(player, this_player()->the_short() + " offers to setup "
+                             "a relationship of " + rel + " with "
+                             "you in the family " + my_family + ".  WARNING! "
+                             "This "
+                             "will cause you to join the family.\n" +
+                             "This will setup the relationships of: " +
+                             show_relationship(this_player(), player,
+                                               relationship, player) + "\n" +
+                             "To accept the offer type:\n"
+                             "accept relationship from " +
+                             this_player()->query_name() + " to " +
+                             my_family + " as " + rel + "\n");
+         frog = new(class family_response_data);
+         frog->family = my_family;
+         frog->relationship = relationship;
+         player->add_respond_command(CLUB_FAMILY_RESPOND_TYPE,
+                                     this_player(),
+                                     frog);
+         ok++;
+         add_succeeded_mess(({
+                            "$N offer$s to setup a relationship of " +
+                            rel + " with $I.\nThis will setup the "
+                            "relationships of: " +
+                            show_relationship(this_player(), player,
+                                              relationship, this_player()) + "\n",
+                            "$N offer$s to setup a relationship of " +
+                            rel + " with $I.\n",
+                             }),
+                            ({ player }));
+      }
+   }
+   return ok;
+}
+string show_relationship(object from, object to, string rel, object telling) {
+   string opp;
+   string from_arg;
+   string to_arg;
+   opp = CLUB_HANDLER->query_opposite_relationship(rel);
+   if (from == telling) {
+      from_arg = "are";
+   } else {
+      from_arg = "is";
+   }
+   if (to == telling) {
+      to_arg = "are";
+   } else {
+      to_arg = "is";
+   }
+   return from->the_short() + " " + from_arg + " the " +
+          CLUB_HANDLER->query_relationship_gender(rel, from->query_female()) +
+          " of " + to->the_short() + " and " +
+          to->the_short() + " " + to_arg + " the " +
+          CLUB_HANDLER->query_relationship_gender(opp, to->query_female()) +
+          " of " + from->the_short() + ".";
+}
+int list_relationships() {
+   string *relationships;
+   relationships = CLUB_HANDLER->query_all_relationships();
+   relationships = map(sort_array(relationships, 1), (: capitalize($1) :));
+   printf("The currently allowed relationships are:\n   %-=*s\n",
+          this_player()->query_cols() - 4,
+          query_multiple_short(relationships) + ".");
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<string'relationship'> with <indirect:player:here>",
+                (: do_relationship($4[0], $1, 0) :),
+             "<string'relationship'> with <indirect:player:here> and join family",
+                (: do_relationship($4[0], $1, 1) :),
+             "list",
+               (: list_relationships() :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/locate.c ===
+inherit "/cmds/base";
+#define TP this_player()
+object *look_in_container(object fluff,
+                          string word) {
+   object frog;
+   object *obs;
+   object *things;
+   things = match_objects_for_existence(word, ({ fluff }));
+   obs = all_inventory(fluff);
+   foreach (frog in obs) {
+      if (sizeof(all_inventory(frog))) {
+         things += look_in_container(frog, word);
+      }
+   }
+   return things;
+}
+mixed cmd( string word ) {
+   int i;
+   int base_num;
+   string list;
+   object thing;
+   object *things;
+   object *extra_things;
+   debug_printf("%s", word);
+   if (environment(TP)) {
+      switch(TP->check_dark(environment(TP)->query_light())) {
+      case -2:
+      case -1:
+        if (this_player()->query_creator()) {
+          write("It is too dark to locate anything, but since you are a cre...\n");
+        } else {
+          return notify_fail("It's too dark to locate anything.\n");
+        }
+        break;
+      case 1:
+      case 2:
+        if (this_player()->query_creator()) {
+          write("It is too bright to locate anything, but since you are a cre...\n");
+        } else {
+           return notify_fail("It's too bright to locate anything.\n");
+        }
+        break;
+      }
+   }
+   things = match_objects_for_existence( word, ({ environment( TP ) }) );
+   things = filter(things, (: environment($1) == environment(TP) ||
+                             environment($1) == TP :));
+   extra_things = look_in_container(this_player(), word) - things;
+   base_num = sizeof(things);
+   things += extra_things;
+   if ( !sizeof( things ) ) {
+      return notify_fail( "There is nothing here matching \""+ word +"\".\n" );
+   }
+   if ( sizeof( things ) == 1 ) {
+     if ( things[0] == TP ) {
+       write("You are here! :)\n");
+       return 1;
+     }
+     list = "$C$"+ (string)things[ 0 ]->the_short();
+     if ( (object)things[ 0 ]->query_wielded() == TP ) {
+       list += " (held in " + query_multiple_short(TP->query_holding_limbs(things[0])) + ")";
+     }
+     if ( (object)things[ 0 ]->query_worn_by() == TP ) {
+       list += " (worn)";
+     }
+     if ( things[ 0 ]->query_keep() ) {
+       list += " (keeping)";
+     }
+     word = (string)things[ 0 ]->query_full_identifier();
+     if ( stringp( word ) ) {
+       list += " (\""+ word +"\")";
+     }
+     if (environment(things[0]) == this_player()) {
+       list += (things[0]->group_object() ? " are" : " is") +
+         " in your inventory.\n";
+     } else {
+       list += (things[0]->group_object() ? " are in " : " is in ");
+       list += inside_the_short(environment( things[ 0 ] )) + ".\n";
+     }
+     write( list );
+     return 1;
+   }
+   list = "";
+   foreach ( thing in things ) {
+      i++;
+      if ( thing == TP ) {
+         list += "You (" + i + ") are here :)\n";
+         continue;
+      }
+      if (i > 30) {
+         list += "Truncated list!  Cannot list more than 30 items.\n";
+         break;
+      }
+      list += "$C$" + (string)thing->the_short();
+      if (i <= base_num) {
+         list += " (" + i + ")";
+      }
+      if ( (object)thing->query_wielded() == TP ) {
+         list += " (held in " + query_multiple_short(TP->query_holding_limbs(thing)) + ")";
+      }
+      if ( (object)thing->query_worn_by() == TP ) {
+         list += " (worn)";
+      }
+      if ( thing->query_keep() ) {
+         list += " (keeping)";
+      }
+      word = (string)thing->query_full_identifier();
+      if ( stringp( word ) ) {
+         list += " (\""+ word +"\")";
+      }
+      if (environment(thing) == this_player()) {
+         list += (thing->group_object() ? " are " : " is ") +
+           "in your inventory.\n";
+      } else {
+        list += (thing->group_object() ? " are in " : " is in ");
+         list += inside_the_short(environment( thing )) + ".\n";
+      }
+   }
+   write( "$P$Locate$P$"+ list );
+   return 1;
+}
+mixed *query_patterns() {
+   return ({ "<string'object name'>", (: cmd($4[0]) :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/accept.c ===
+#include <clubs.h>
+#include <broadcaster.h>
+inherit "/cmds/base";
+mixed do_surrender(object player) {
+  object *victims;
+  victims = this_player()->query_surrenderers();
+  if (!victims  ||  member_array(player, victims) == -1) {
+    add_failed_mess("Sorry, but $I has not offered to surrender to you.\n",
+                    ({ player }) );
+    return 0;
+  }
+  this_player()->remove_surrenderer(player);
+  player->accepted_surrender(this_player());
+  write("Good show!\n");
+  return 1;
+}
+mixed do_club(string club_name, object *players) {
+   object ob;
+   string club;
+   int ok;
+   foreach (ob in players) {
+      club = this_player()->query_respond_command(CLUB_RESPOND_TYPE, ob);
+      if (club) {
+         if (lower_case(club) == lower_case(club_name)) {
+            if (CLUB_HANDLER->is_member_of(club_name,
+                                           this_player()->query_name())) {
+               add_failed_mess("You are already a member of '" +
+                               CLUB_HANDLER->query_club_name(club_name) +
+                               "'.\n");
+            } else {
+               CLUB_HANDLER->add_member(club_name,
+                                        this_player()->query_name());
+               add_succeeded_mess("$N join$s '" +
+                               CLUB_HANDLER->query_club_name(club_name) +
+                               "' with an invite from $I.\n",
+                               ({ ob }) );
+	       ob->remove_respond_command(CLUB_RESPOND_TYPE, ob);
+               ok++;
+               all_inventory(this_player())->event_joined_club(this_player(),
+                                                               club_name);
+            }
+         } else {
+            add_failed_mess("$I is inviting you to join '" +
+                            CLUB_HANDLER->query_club_name(club) +
+                            "' not '" + club_name + "'.\n", ({ ob }));
+         }
+      } else {
+         add_failed_mess("$I is not inviting you to join any clubs.\n",
+                         ({ ob }));
+      }
+   }
+   return ok;
+}
+int do_family(string family,
+              string relationship,
+              object *players) {
+   object ob;
+   int ok;
+   string curr_family;
+   class family_response_data frog;
+   curr_family = this_player()->query_family_name();
+   if (curr_family) {
+      curr_family = CLUB_HANDLER->query_club_name(curr_family);
+   }
+   relationship = CLUB_HANDLER->query_ungendered_relationship(relationship);
+   if (!relationship) {
+      add_failed_mess("Could not figure out the relationship.\n");
+      return 0;
+   }
+   foreach (ob in players) {
+      frog = this_player()->query_respond_command(CLUB_FAMILY_RESPOND_TYPE,
+                                                  ob);
+      if (!family) {
+         family = frog->family;
+      }
+      if (frog && frog->family) {
+         if (lower_case(frog->family) == lower_case(family)) {
+  	    if (lower_case(frog->relationship) != lower_case(relationship)) {
+               add_failed_mess("You were asked to have the relationship of '" +
+                     CLUB_HANDLER->query_relationship_gender(frog->relationship,
+                                     this_player()->query_female()) +
+                               "', not '" +
+                     CLUB_HANDLER->query_relationship_gender(relationship,
+                                     this_player()->query_female()) +
+                               "' in the family '" +
+                               CLUB_HANDLER->query_club_name(frog->family) +
+                               "'.\n");
+	    } else if (CLUB_HANDLER->is_relationship(frog->family,
+                                                     this_player()->query_name(),
+                                                     ob->query_name(),
+                                                     relationship) &&
+                       frog->family == curr_family) {
+               add_failed_mess("You have already setup a relationship of '" +
+                     CLUB_HANDLER->query_relationship_gender(relationship,
+                                     this_player()->query_female()) +
+                               "' with $I.\n", ({ ob }) );
+            } else {
+               if (!CLUB_HANDLER->is_member_of(frog->family,
+                                               this_player()->query_name())) {
+                  if (frog->family != curr_family &&
+                      curr_family) {
+                     if (!CLUB_HANDLER->move_family_member(curr_family,
+                                                           this_player()->query_name(),
+                                                           frog->family)) {
+                       add_failed_mess("Unable to move you into the family " +
+                                       frog->family + " for some reason.\n");
+                       continue;
+                     }
+                  } else {
+                     if (!CLUB_HANDLER->add_member(frog->family,
+                                                  this_player()->query_name())){
+                       add_failed_mess("Unable to add you into the family " +
+                                       frog->family + " for some reason.\n");
+                       continue;
+                     }
+                  }
+                  this_player()->set_family_name(frog->family);
+               }
+	       if (!CLUB_HANDLER->is_relationship(frog->family,
+                                                  this_player()->query_name(),
+                                                  ob->query_name(),
+                                                  relationship)) {
+                  if (!CLUB_HANDLER->add_relationship(ob->query_family_name(),
+                                                     ob->query_name(),
+                                                     frog->family,
+                                                     this_player()->query_name(),
+                                                     relationship)) {
+                     add_failed_mess("Unable to add the relationship to $I for "
+                                     "some reason.\n");
+                  } else {
+                     add_succeeded_mess("$N set$s up a relationship with $I " +
+                                        "in '" +
+                                        CLUB_HANDLER->query_club_name(frog->family) +
+                                        "'.\n",
+                                        ({ ob }) );
+                     ok++;
+                  }
+               } else {
+                  add_succeeded_mess("$N set$s up a relationship with $I " +
+                                     "in '" +
+                                     CLUB_HANDLER->query_club_name(frog->family) +
+                                     "'.\n",
+                                     ({ ob }) );
+                  ok++;
+               }
+               ob->remove_respond_command(CLUB_FAMILY_RESPOND_TYPE, ob);
+            }
+         } else {
+            add_failed_mess("$I is inviting you to a relationship in '" +
+                            CLUB_HANDLER->query_club_name(frog->family) +
+                            "' not '" + family + "'.\n", ({ ob }));
+         }
+      } else {
+         add_failed_mess("$I is not inviting you to setup any relationships.\n",
+                         ({ ob }));
+      }
+   }
+   return ok;
+}
+mixed *query_patterns() {
+  return ({ "<indirect:living:here>", (: do_surrender($1[0]) :),
+            "invite from <indirect:living:here> to <string'club name'>",
+                (: do_club($4[1], $1) :),
+            "relationship from <indirect:living:here> to <string'family'> as <string'relationship'>",
+                (: do_family($4[1], $4[2], $1) :),
+            "relationship from <indirect:living:here> as <string'relationship'>",
+	       (: do_family(this_player()->query_family_name(), $4[1], $1) :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/map.c ===
+inherit "/cmds/base";
+int do_map() {
+   string map;
+   int* coords;
+   object env;
+   string handler;
+   env = environment(this_player());
+   if (!env)  {
+      add_failed_mess("You are somewhere not on any map.\n");
+      return 0;
+   }
+   if (this_player()->query_blinded()) {
+      add_failed_mess("You are blind and cannot see.\n");
+      return 0;
+   }
+   switch(this_player()->check_dark(environment(this_player())->query_light()))
+   {
+   case -2:
+   case -1:
+     return add_failed_mess("It is too dark to see anything.\n");
+   case 2:
+   case 1:
+     return add_failed_mess("It is too bright to see anything.\n");
+   }
+   coords = env->query_terrain_coords();
+   handler = env->query_terrain_handler();
+   if (!coords  ||  !handler) {
+      add_failed_mess("You can only do this in a terrain.\n");
+      return 0;
+   }
+   map = handler->query_player_map(coords[0], coords[1], coords[2],
+                                   env->query_visibility(env));
+   if (!map) {
+      add_failed_mess("There is no map available here.\n");
+      return 0;
+   }
+   write(map);
+   return 1;
+}
+mixed* query_patterns() {
+   return ({ "", (: do_map :) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/player/access.c ===
+#include <drinks.h>
+#include <language.h>
+#include <player.h>
+#include <player_handler.h>
+#define TP this_player()
+inherit "/cmds/base";
+int cmd_list() {
+   string *ips;
+   ips = TP->query_rhosts();
+   if(!ips) {
+      ips = ({ });
+   }
+   if ( !sizeof(ips) )  {
+     write( "You are allowed to login from anywhere.\n" );
+   } else  {
+     ips = sort_array(ips, 1);
+     write( "You are currently allowed to login from: " +
+            query_multiple_short(ips) + ".\n" );
+   }
+   return 1;
+}
+int enable( string str) {
+   string *ips;
+   if(TP->query_property("access_restricted"))
+     return notify_fail("Sorry, you are not allowed to change your "
+                        "access list.\n");
+   ips = TP->query_rhosts();
+   if(!ips) {
+      ips = ({ });
+   }
+   if(member_array(str, ips) == -1 )  {
+     ips += ({ str });
+     TP->set_rhosts(ips);
+   } else  {
+     write( "You are already allowed to login from  " + str + ".\n" );
+   }
+   write("You are now allowed to login from "+str+".\n");
+   return 1;
+}
+int disable( string str) {
+   string *ips;
+   if(TP->query_property("access_restricted"))
+     return notify_fail("Sorry, you are not allowed to change your "
+                        "access list.\n");
+   ips = TP->query_rhosts();
+   if(!ips) {
+      ips = ({ });
+   }
+   if ( member_array( str, ips ) != -1 )  {
+     ips -= ({ str });
+     if(!sizeof(ips))
+       TP->set_rhosts(0);
+     else
+       TP->set_rhosts(ips);
+   } else  {
+     write( "You are already not allowed to login from  " + str + ".\n" );
+   }
+   if(!sizeof(ips))
+     write("You are now allowed to login from anywhere.\n");
+   else
+     write("You are not now allowed to login from "+str+".\n");
+   return 1;
+}
+int authorise_for (string name, string address) {
+  string fname;
+  string file,  *bits;
+  string var_name = "player_info ";
+  mapping info = ([ ]);
+  int i, found = 0;
+  if (!this_player()->query_lord()) {
+    return notify_fail ("You may not do this.\n");
+  }
+  if (find_player (name)) {
+    return notify_fail ("This player is online.\n");
+  }
+  if (!PLAYER_HANDLER->test_user(name)) {
+    return notify_fail ("No such player.\n");
+  }
+  seteuid("Root");
+  fname = "/save/players/" + name[0..0] + "/" + name;
+  uncompress_file (fname+ ".o.gz");
+  file = unguarded( (: read_file($(fname)+".o") :));
+  if (!file) {
+    return notify_fail ("Error reading file.\n");
+  }
+   bits = explode(file, "\n");
+   for (i = 0; i < sizeof(bits); i++) {
+     if (bits[i][0..strlen(var_name)-1] == var_name) {
+       info = restore_variable(bits[i][strlen(var_name)..]);
+       found = 1;
+       break;
+     }
+   }
+  if(!found) {
+    return notify_fail ("Cannot find mapping.\n");
+  }
+  if (address == "reset") {
+    info["allowed_ips"] = ({ });
+  }
+  else if (sizeof (info ["allowed_ips"])) {
+    if (member_array (address, info["allowed_ips"]) == -1) {
+      info["allowed_ips"] += ({ address });
+    }
+  }
+  else {
+    info["allowed_ips"] = ({ address });
+  }
+  if (i < sizeof(bits)) {
+     bits[i] = var_name + save_variable(info);
+   } else {
+     bits += ({ var_name + save_variable(info) });
+  }
+  unguarded( (: rm($(fname) + ".old") :) );
+  unguarded( (: rename($(fname)+".o", $(fname)+".old") :) );
+  unguarded( (: write_file($(fname) + ".o",
+    implode($(bits), "\n") + "\n") :));
+  compress_file (fname + ".o");
+  unguarded( (: rm($(fname) + ".o") :) );
+  PLAYER_HANDLER->remove_cache_entry(name);
+  tell_object (this_player(), "Access for " + name + " changed.\n");
+  return 1;
+}
+mixed *query_patterns() {
+  return ({ "enable <string'address'>", (: enable($4[0]) :),
+              "disable <string'address'>", (: disable($4[0]) :),
+              "for <string'name'> <string'address'>",
+                (: authorise_for ($4[0], $4[1]) :),
+              "reset for <string'name'>", (: authorise_for ($4[0],
+              "reset") :),
+              "", (: cmd_list() :) });
+}
