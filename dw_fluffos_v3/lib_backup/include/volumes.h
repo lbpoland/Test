@@ -1,0 +1,19 @@
+#ifndef __VOLUMES_H
+#define __VOLUMES_H
+#define VOLUME_MINIMUM_DRINKABLE      50
+#define VOLUME_PINT      2400
+#define VOLUME_GILL      600
+#define VOLUME_QUART     4800
+#define VOLUME_GALLON    19200
+#define VOLUME_HALFPINT  (VOLUME_PINT / 2)
+#define VOLUME_LITRE     4200
+#define VOLUME_SHOT      100
+#define VOLUME_WINE      750
+#define VOLUME_FLUTE     750
+#define VOLUME_WINEBOTTLE  3100
+#define VOLUME_BRANDY    1450
+#define VOLUME_TUMBLER   1350
+#define VOLUME_COCKTAIL  750
+#define VOLUME_TEACUP    960
+#define VOLUME_MUG       1450
+#endif

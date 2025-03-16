@@ -1,0 +1,1 @@
+#define FIXED_SHADOW "/std/room/basic/topography/fixed_shadow"

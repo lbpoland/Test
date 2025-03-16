@@ -1,0 +1,10 @@
+#ifndef __ROOM_CLUB_ROOM_H
+#define __ROOM_CLUB_ROOM_H
+#define CLUB_ROOM_CONTROLLER_DISCUSSED 0
+#define CLUB_ROOM_CONTROLLED_FIXED     1
+#define CLUB_ROOM_OWNED_PERSON   0
+#define CLUB_ROOM_OWNED_POSITION 1
+#define CLUB_ROOM_BOARD_COUNT "board count"
+#define CLUB_ROOM_POSITION_START "position "
+#define CLUB_ROOM_CONTROLLER_SAVE_FILE "club_controller"
+#endif

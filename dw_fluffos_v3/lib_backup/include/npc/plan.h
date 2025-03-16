@@ -1,0 +1,10 @@
+#ifndef __NPC_PLAN_H__
+#define __NPC_PLAN_H__
+#define PLAN_DIR "/std/npc/plans/"
+#define PLAN_BASE_INHERIT (PLAN_DIR "base")
+#define PLAN_INVALID_SUTABILITY -1
+#define PLAN_LOWEST_SUTABILITY 0
+#define PLAN_LOW_SUTABILITY 100
+#define PLAN_MEDIUM_SUTABILITY 200
+#define PLAN_HIGH_SUTABILTIY 300
+#endif

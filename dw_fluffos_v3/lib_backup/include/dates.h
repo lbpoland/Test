@@ -1,0 +1,17 @@
+#define OFFLE -1
+#define FEBRUARY 30
+#define MARCH 60
+#define APRIL 91
+#define MAY 122
+#define JUNE 153
+#define GRUNE 183
+#define AUGUST 214
+#define SPUNE 245
+#define SEKTOBER 276
+#define EMBER 306
+#define DECEMBER 337
+#define ICK 368
+#define HOGSWATCH 0
+#define SMALLGODS 200
+#define SOULCAKE 237
+#define SEKTOBERFOOL 277

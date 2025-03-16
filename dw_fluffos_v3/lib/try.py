@@ -1,154 +1,62 @@
 import os
-from pathlib import Path
+import re
 
-def estimate_tokens(content):
-    """Estimate token count with a conservative heuristic."""
-    words = len(content.split())
-    chars = len(content.replace('\n', ''))
-    token_estimate = max(int(words / 0.75), int(chars / 4)) * 1.2
-    return int(token_estimate)
+# Configuration
+BASE_PATH = "/mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/"
+DIRS = ["player", "living", "guild-race"]
+OUTPUT_BASE = "commands_part"
+CHAR_LIMIT = 80000  # Cap at 80,000 characters
+TOKEN_LIMIT = 120000  # Cap at 120,000 tokens (words)
+BUFFER = 0.95  # 95% of limits as threshold (76,000 chars, 114,000 tokens)
 
-def count_lines(content):
-    """Count lines in content."""
-    return len(content.splitlines())
+def count_tokens(text):
+    """Count tokens as words split by whitespace."""
+    return len(re.split(r'\s+', text.strip()))
 
-def count_chars(content):
-    """Count characters excluding newlines."""
-    return len(content.replace('\n', ''))
+def process_files():
+    # Collect all files
+    all_files = []
+    for dir_name in DIRS:
+        dir_path = os.path.join(BASE_PATH, dir_name)
+        for root, _, files in os.walk(dir_path):
+            for file in files:
+                all_files.append(os.path.join(root, file))
 
-def merge_files(source_dir, extensions, base_output_name, output_dir, char_limit=85000, token_limit=125000, separator="=" * 50):
-    """Merge files into output_file(s) in output_dir, splitting when approaching limits."""
-    dir_path = Path(source_dir)
-    if not dir_path.exists():
-        print(f"Directory {source_dir} does not exist!")
-        return
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    base_name, ext = os.path.splitext(base_output_name)
-    lib_base = os.path.dirname(source_dir)  # e.g., /mnt/home2/test/Test/dw_fluffos_v3/lib/
-    
-    current_file_num = 1
-    current_token_count = 0
-    current_char_count = 0
-    file_count = 0
-    outfile = None
-    files_in_current = []
-    
-    output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
-    # Force overwrite by opening in write mode immediately
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("\n\n\n\n")  # Reserve header space
-    outfile = open(output_file, 'a', encoding='utf-8')  # Append mode for content
-    print(f"Initialized new file: {output_file}")
-    
-    for root, dirs, files in os.walk(source_dir):
-        for filename in sorted(files):
-            if filename.lower().endswith(extensions) and filename.strip() and filename != '.c':
-                filepath = os.path.join(root, filename)
-                
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as infile:
-                        content = infile.read()
-                        rel_path = os.path.relpath(filepath, lib_base)
-                        header = f"\n{separator}\nFILE: /lib/{rel_path}\n{separator}\n\n"
-                        full_entry = header + content + "\n"
-                        tokens_in_file = estimate_tokens(full_entry)
-                        lines_in_file = count_lines(full_entry)
-                        chars_in_file = count_chars(full_entry)
-                except Exception as e:
-                    print(f"Error reading {filepath}: {str(e)}")
-                    continue
-                
-                print(f"Processing {filepath}: ~{tokens_in_file} tokens, {lines_in_file} lines, {chars_in_file} chars")
-                
-                if current_char_count + chars_in_file > char_limit or current_token_count + tokens_in_file > token_limit:
-                    outfile.seek(0)
-                    outfile.write(f"# Total Tokens: {current_token_count}\n"
-                                  f"# Total Files Merged: {len(files_in_current)}\n"
-                                  f"# Total Characters: {current_char_count}\n\n")
-                    outfile.close()
-                    print(f"Closed {output_file}: {len(files_in_current)} files, "
-                          f"~{current_token_count} tokens, {current_char_count} chars")
-                    current_file_num += 1
-                    current_token_count = 0
-                    current_char_count = 0
-                    files_in_current = []
-                    output_file = os.path.join(output_dir, f"{base_name}{'' if current_file_num == 1 else current_file_num}{ext}")
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write("\n\n\n\n")
-                    outfile = open(output_file, 'a', encoding='utf-8')
-                    print(f"Initialized new file: {output_file}")
-                
-                outfile.write(full_entry)
-                current_token_count += tokens_in_file
-                current_char_count += chars_in_file
-                file_count += 1
-                files_in_current.append(filename)
-                print(f"Wrote {filename} with header: FILE: /lib/{rel_path}")
-            else:
-                print(f"Skipped invalid filename: {filename}")
-    
-    if outfile:
-        outfile.seek(0)
-        outfile.write(f"# Total Tokens: {current_token_count}\n"
-                      f"# Total Files Merged: {len(files_in_current)}\n"
-                      f"# Total Characters: {current_char_count}\n\n")
-        outfile.close()
-        print(f"Closed {output_file}: {len(files_in_current)} files, "
-              f"~{current_token_count} tokens, {current_char_count} chars")
-    print(f"Total: Merged {file_count} files across {current_file_num} output file(s) for {source_dir}")
+    # Process files into output files
+    part_num = 1
+    current_file = f"{OUTPUT_BASE}{part_num}.txt"
+    char_count = 0
+    token_count = 0
+    with open(current_file, 'w', encoding='utf-8') as out_f:
+        for file_path in all_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as in_f:
+                    content = in_f.read()
+                    chars = len(content)
+                    tokens = count_tokens(content)
+                    
+                    # Check if adding this file exceeds limits (with buffer)
+                    if (char_count + chars > CHAR_LIMIT * BUFFER) or (token_count + tokens > TOKEN_LIMIT * BUFFER):
+                        print(f"File {current_file} reached limits: {char_count} chars, {token_count} tokens")
+                        part_num += 1
+                        current_file = f"{OUTPUT_BASE}{part_num}.txt"
+                        char_count = 0
+                        token_count = 0
+                        out_f.close()
+                        out_f = open(current_file, 'w', encoding='utf-8')
 
-def main():
-    base_dir = "/mnt/home2/test/Test/dw_fluffos_v3/lib/"
-    output_dir = os.path.join(base_dir, "merged")
-    
-    if not os.path.exists(base_dir):
-        print(f"Base directory {base_dir} does not exist!")
-        return
-    
-    c_directories = {
-        'cmds': 'cmds_merged.txt',
-        'd': 'd_merged.txt',
-        'global': 'global_merged.txt',
-        'obj': 'obj_merged.txt',
-        'std': 'std_merged.txt',
-        'secure': 'secure_merged.txt'
-    }
-    h_directories = {'include': 'include_merged.txt'}
-    s_directories = {'soul': 'soul_merged.txt'}
-    
-    print("File Extraction and Merging Tool (Optimized for Grok)")
-    print("====================================================")
-    print("Grok Limits:")
-    print("- Maximum Context Window: 128,000 tokens")
-    print("- Safe Cutoff Used: 85,000 chars or 125,000 tokens per file")
-    print("- No strict line limit, but monitored")
-    print("- Token estimation: Conservative (max(words/0.75, chars/4) * 1.2)")
-    print(f"Output Directory: {output_dir}")
-    print("HELP: Headers show paths relative to /lib/ (e.g., /lib/std/armour.c) for 2003 Discworld MUD lib.")
-    print("      Check terminal output if first file lacks 'FILE:' prefix.")
-    print("====================================================")
-    
-    print("\nProcessing .c files:")
-    for dir_name, output_file in c_directories.items():
-        folder_path = os.path.join(base_dir, dir_name)
-        print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.c',), output_file, output_dir, char_limit=85000, token_limit=125000)
-    
-    print("\nProcessing .h files:")
-    for dir_name, output_file in h_directories.items():
-        folder_path = os.path.join(base_dir, dir_name)
-        print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.h',), output_file, output_dir, char_limit=85000, token_limit=125000)
-    
-    print("\nProcessing .s files:")
-    for dir_name, output_file in s_directories.items():
-        folder_path = os.path.join(base_dir, dir_name)
-        print(f"\nProcessing directory: {folder_path}")
-        merge_files(folder_path, ('.s',), output_file, output_dir, char_limit=85000, token_limit=125000)
-    
-    print("\nExtraction and merging complete! All files are in", output_dir)
+                    # Write file path and content
+                    out_f.write(f"\n=== {file_path} ===\n")
+                    out_f.write(content)
+                    out_f.write("\n")
+                    char_count += chars + len(file_path) + 10  # Approx overhead for path and separators
+                    token_count += tokens
+
+            except Exception as e:
+                print(f"Error reading {file_path}: {e}")
+
+    print(f"Final file {current_file}: {char_count} chars, {token_count} tokens")
+    out_f.close()
 
 if __name__ == "__main__":
-    main()
+    process_files()

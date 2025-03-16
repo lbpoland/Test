@@ -1,0 +1,6 @@
+#ifndef __DOCUMENT_HANDLER_H
+#define __DOCUMENT_HANDLER_H
+#define DOCUMENT_HTML  2
+#define DOCUMENT_NROFF 1
+#define DOCUMENT_PLAIN 0
+#endif

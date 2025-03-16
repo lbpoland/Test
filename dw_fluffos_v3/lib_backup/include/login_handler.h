@@ -1,0 +1,20 @@
+#ifndef __SYS__LOGIN_HANDLER
+#define __SYS__LOGIN_HANDLER
+#include <player_handler.h>
+#define LOGIN_HANDLER "/obj/handlers/login_handler"
+#define LOGIN "login"
+#define LOGOUT "logout"
+#define NETDEATH "netdeath"
+#define RECONNECT "reconnect"
+#define MAX_COMPRESSED_PLAYERS 200
+#define MAX_UNCOMPRESSED_PLAYERS 100
+#define MAX_PLAYERS (MAX_COMPRESSED_PLAYERS + MAX_UNCOMPRESSED_PLAYERS)
+#define WITHOUT_LOGINS_NOT_IN_QUEUE 3
+#define WITHOUT_ANY_LOGINS 2
+#define WITHOUT_LOGIN_QUEUE 1
+#define WITH_LOGIN_QUEUE    0
+#define DISCWORLD_IS_EMPTY 0
+#define COMPRESSED_FULL 1
+#define UNCOMPRESSED_FULL 2
+#define DISCWORLD_IS_FULL (COMPRESSED_FULL | TELNET_FULL)
+#endif
