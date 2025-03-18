@@ -1,0 +1,2278 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/craft_shop_category_modify.c ===
+#include <money.h>
+#include <shops/craft_shop.h>
+inherit "/std/shops/inherit/craft_shop_category";
+private nosave int _minimum_age_to_vote;
+private nosave int _minimum_age_to_nominate;
+private nosave int _minimum_number_nominated;
+private nosave int _minimum_number_voted;
+private nosave int _percentage_needed_creation;
+private nosave int _percentage_needed_deletion;
+private nosave int _nomination_time;
+private nosave int _election_time;
+private nosave int _deletion_time;
+#define DAY (24 * 60 * 60)
+protected void setup_category(function func,
+                              int value,
+                              string name,
+                              object* sellables);
+protected void choose_category(string category,
+                              function func,
+                              int value,
+                              string name,
+                              object* sellables,
+                              string* categories);
+void create() {
+   if (!_minimum_age_to_vote) {
+      _minimum_age_to_vote = 2 * DAY;
+   }
+   if (!_minimum_age_to_nominate) {
+      _minimum_age_to_nominate = 10 * DAY;
+   }
+   if (!_minimum_number_nominated) {
+      _minimum_number_nominated = 4;
+   }
+   if (!_nomination_time) {
+      _nomination_time = 7 * DAY;
+   }
+   if (!_election_time) {
+      _election_time = 7 * DAY;
+   }
+   if (!_deletion_time) {
+      _deletion_time = 7 * DAY;
+   }
+   if (!_minimum_number_voted) {
+      _minimum_number_voted = 20;
+   }
+   if (!_percentage_needed_creation) {
+      _percentage_needed_creation = 75;
+   }
+   if (!_percentage_needed_deletion) {
+      _percentage_needed_deletion = 75;
+   }
+   ::create();
+}
+protected int category_function(string name,
+                      int state,
+                      string* voted,
+                      int yes,
+                      int no,
+                      int abstain) {
+   switch (state) {
+   case CRAFT_CATEGORY_STATE_NOMINATING :
+      if (sizeof(voted) > _minimum_number_nominated) {
+         return _election_time;
+      }
+      break;
+   case CRAFT_CATEGORY_STATE_VOTING :
+      if (sizeof(voted) > _minimum_number_voted) {
+         if (yes * 100 / (no + yes) >= _percentage_needed_creation) {
+            return 1;
+         }
+      }
+      break;
+   case CRAFT_CATEGORY_STATE_DELETEING :
+      if (sizeof(voted) > _minimum_number_voted) {
+         if (yes * 100 / (no + yes) >= _percentage_needed_deletion) {
+            return 1;
+         }
+      }
+   }
+   return 0;
+}
+void set_minimum_age_to_vote(int age) {
+   _minimum_age_to_vote = age;
+}
+void set_minimum_age_to_nominate(int age) {
+   _minimum_age_to_nominate = age;
+}
+void set_minimum_nomination_number(int num) {
+   _minimum_number_nominated = num;
+}
+void set_nomination_time(int tim) {
+   _nomination_time = tim;
+}
+void set_election_time(int tim) {
+   _election_time = tim;
+}
+void set_deletion_time(int tim) {
+   _deletion_time = tim;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/commercial.c ===
+#include <player.h>
+#include <move_failures.h>
+#include <expressions.h>
+#include <money.h>
+#include <player_handler.h>
+#include <mail.h>
+inherit "/std/room/player_housing";
+inherit "/std/shops/inherit/expression_util";
+inherit "/std/shops/inherit/person_expressions";
+#define COMMERCIAL_WEEKLY_STATS_TIME (7 * 24 * 60 * 60)
+#define COMMERCIAL_ROYALTY_TIMEOUT_PERIOD (7 * 24 * 60 * 60)
+class float_withdrawls {
+   string person;
+   int amount;
+   int withdrawl_time;
+}
+class weekly_status {
+   int total_incoming;
+   int total_outgoing;
+   class float_withdrawls* withdrawls;
+}
+class royalty_data {
+   int value;
+   int last_withdrawl;
+}
+private string* _auto_load_sign_str;
+private int _broken_sign;
+private string _property_name;
+private mapping _royalties;
+private class parse_node* _use_expression;
+private class parse_node* _entry_cost;
+private int _entry_time_limit;
+private mapping _use_type_expressions;
+private string* _black_list;
+private int _last_stats;
+private class weekly_status _weekly_status;
+private int _commercial_id;
+private nosave object _sign_ob;
+private nosave string _parcel_post;
+private nosave object* _commercial_things;
+private nosave string _use_type;
+private nosave string _commercial_type;
+private nosave string _save_dir;
+private nosave int _property_size;
+private nosave string _language;
+#define COMMERCIAL_SALESPERSON "/obj/monster/commercial"
+private string variable_use_type(string seller);
+void create() {
+    _commercial_things = ({ });
+    _royalties = ([ ]);
+    _use_type_expressions = ([ ]);
+    _property_size = 25;
+    _black_list = ({ });
+    _last_stats = time();
+    _weekly_status = new(class weekly_status);
+    _weekly_status->withdrawls = ({ });
+    _language = "common";
+    expression_util::create();
+    player_housing::create();
+    person_expressions::create();
+    add_allowed_variable("type", EXPRESSION_TYPE_STRING,
+                        (: variable_use_type :));
+    set_expression_type("room");
+    add_help_file("commercial");
+    if (!_use_expression) {
+        _use_expression = parse_boolean_string("false");
+    }
+    if (!_black_list) {
+        _black_list = ({ });
+    }
+    if (!_last_stats) {
+        _last_stats = time();
+    }
+    if (_last_stats + COMMERCIAL_WEEKLY_STATS_TIME - time() < 0) {
+        call_out("mail_weekly_status", 0);
+    }
+    else {
+        call_out("mail_weekly_status", _last_stats +
+            COMMERCIAL_WEEKLY_STATS_TIME - time());
+    }
+}
+string short() {
+    if (_property_name) {
+        set_short(_property_name);
+        add_property("determinate", "");
+    }
+    return ::short();
+}
+string long(string word, int dark) {
+    if (_property_name) {
+        set_short(_property_name);
+        add_property("determinate", "");
+    }
+    return ::long(word, dark);
+}
+int is_open_for(string type, string person) {
+   class parse_node ret;
+   if (is_allowed(person)) {
+      return 1;
+   }
+   if (member_array(person, _black_list) != -1) {
+      return 0;
+   }
+   _use_type = type;
+   ret = evaluate_expression(_use_expression, this_player()->query_name());
+   if (ret->value) {
+      if (_use_type_expressions[type]) {
+         ret = evaluate_expression(_use_type_expressions[type],
+                                   this_player()->query_name());
+      }
+   }
+   return ret->value;
+}
+object query_main_room() {
+   return this_object();
+}
+void add_commercial_thing(object ob) {
+   _commercial_things += ({ ob });
+   ob->load_me();
+}
+void remove_commercial_thing(object thing) {
+   thing->save_me();
+   _commercial_things -= ({ thing });
+}
+object* query_commercial_things() {
+   return _commercial_things;
+}
+int query_owners_money() {
+   if (classp(_royalties[query_owner()])) {
+      return ((class royalty_data)_royalties[query_owner()])->value;
+   }
+   return 0;
+}
+void adjust_royalty(string person, int amount) {
+   if (is_allowed(person)) {
+      if (!_weekly_status) {
+         _weekly_status = new(class weekly_status);
+         _weekly_status->withdrawls = ({ });
+      }
+      if (amount > 0) {
+         _weekly_status->total_incoming += amount;
+      } else {
+         _weekly_status->total_outgoing += -amount;
+      }
+      if (!classp(_royalties[query_owner()])) {
+         _royalties[query_owner()] = new(class royalty_data,
+                      value : amount + _royalties[query_owner()],
+                      last_withdrawl : time());
+      } else {
+         if (((class royalty_data)_royalties[query_owner()])->value == 0) {
+            ((class royalty_data)_royalties[query_owner()])->last_withdrawl = time();
+         }
+         ((class royalty_data)_royalties[query_owner()])->value += amount;
+      }
+   } else {
+      if (!classp(_royalties[person])) {
+         _royalties[person] = new(class royalty_data,
+                      value : amount + _royalties[person],
+                      last_withdrawl : time());
+      } else {
+         if (((class royalty_data)_royalties[person])->value == 0) {
+            ((class royalty_data)_royalties[person])->last_withdrawl = time();
+         }
+         ((class royalty_data)_royalties[person])->value += amount;
+      }
+   }
+   event_save(this_object());
+}
+int query_royalty(string person) {
+   if (classp(_royalties[person])) {
+      return ((class royalty_data)_royalties[person])->value;
+   }
+   return 0;
+}
+int query_float() {
+   return query_owners_money();
+}
+int query_commercial_property() {
+   return 1;
+}
+void set_parcel_post(string parcel) {
+   _parcel_post = parcel;
+}
+string query_parcel_post() {
+   return _parcel_post;
+}
+void set_language(string language) {
+   _language = language;
+}
+string query_language() {
+   return _language;
+}
+void set_commercial_type(string name) {
+   _commercial_type = name;
+}
+string query_commercial_type() {
+   return _commercial_type;
+}
+void set_property_name(string name) {
+  if(strsrch(name, "%^") != -1)
+    return 0;
+   _property_name = name;
+   add_property("determinate", "");
+   set_short(_property_name);
+}
+string query_property_name() {
+   return _property_name;
+}
+void event_dest_me(object ob) {
+   if (_sign_ob) {
+      _sign_ob->dest_me();
+   }
+}
+object query_sign_object() {
+   object* obs;
+   if (!_sign_ob && _auto_load_sign_str && !_broken_sign) {
+      if (catch(obs = (PLAYER_OB)->load_auto_load_to_array(_auto_load_sign_str))) {
+         _broken_sign = 1;
+      } else {
+         if (sizeof(obs)) {
+            _sign_ob = obs[0];
+            _sign_ob->reset_get();
+         } else {
+            _broken_sign = 1;
+         }
+      }
+   }
+   return _sign_ob;
+}
+void set_sign_object(object ob) {
+   if (ob) {
+      _auto_load_sign_str = (PLAYER_OB)->create_auto_load(({ ob }));
+      ob->reset_get();
+   } else {
+      _auto_load_sign_str = 0;
+   }
+   _sign_ob = ob;
+   event_save(this_object());
+}
+void set_save_file(string str) {
+   printf("ERROR!  Do not use set_save_file.\n");
+}
+void set_save_dir(string dir) {
+   if (dir[<1] != '/') {
+      dir += "/";
+   }
+   _save_dir = dir;
+   ::set_save_file(dir + "_main");
+}
+string query_save_dir() {
+   return _save_dir;
+}
+int find_next_commercial_id() {
+   object *obs;
+   obs = all_inventory();
+   while (file_size(query_save_dir() + _commercial_id) >= 0 ||
+          file_size(query_save_dir() + _commercial_id + ".o") >= 0 ||
+          file_size(query_save_dir() + _commercial_id + ".o.gz") >= 0 ||
+          sizeof(filter(obs,
+                        (: $1->query_commercial_id() == _commercial_id :)))) {
+      _commercial_id++;
+   }
+   event_save(this_object());
+   return _commercial_id;
+}
+void set_property_size(int size) {
+   _property_size = size;
+}
+int query_property_size() {
+   return _property_size;
+}
+void reset_weekly_status() {
+   object ob;
+   _weekly_status = new(class weekly_status);
+   _weekly_status->withdrawls = ({ });
+   foreach (ob in _commercial_things) {
+      if (ob) {
+         ob->reset_weekly_status();
+      }
+   }
+}
+string query_weekly_status_string() {
+   string place;
+   string ret;
+   string str;
+   object ob;
+   class float_withdrawls withdrawl;
+   place = query_property("place");
+   if (!_weekly_status) {
+      _weekly_status = new(class weekly_status);
+      _weekly_status->withdrawls = ({ });
+   }
+   ret = "";
+   ret += "\n$I$0=---=== " + the_short() + " ===---\n";
+   ret += "Total outgoing   : " +
+          MONEY_HAND->money_value_string(_weekly_status->total_outgoing, place) + "\n";
+   ret += "Total incoming   : " +
+          MONEY_HAND->money_value_string(_weekly_status->total_incoming, place) + "\n";
+   if (sizeof(_weekly_status->withdrawls)) {
+      ret += "Float withdrawls:\n";
+      foreach (withdrawl in _weekly_status->withdrawls) {
+         ret += "$I$6=   " + ctime(withdrawl->withdrawl_time)[0..11] + " " +
+                withdrawl->person + " for " +
+                MONEY_HAND->money_value_string(withdrawl->amount, place) + "\n";
+      }
+   } else {
+      ret += "No withdrawls from the float.\n";
+   }
+   foreach (ob in _commercial_things) {
+      if (ob) {
+         str = ob->query_weekly_status_string();
+         if (str) {
+            ret += "\n$I$0=---=== " + ob->the_short() + " ===---\n";
+            ret += str;
+         }
+      }
+   }
+   return ret;
+}
+protected void mail_weekly_status() {
+   string str;
+   string ret;
+   class royalty_data data;
+   string person;
+   if(!query_owner()) {
+      return;
+   }
+   foreach (person, data in _royalties) {
+      if (classp(data)) {
+         if (person != query_owner() &&
+             data->value > 0 &&
+             data->last_withdrawl +
+                  COMMERCIAL_ROYALTY_TIMEOUT_PERIOD - time() < 0) {
+            AUTO_MAILER->auto_mail(person,
+                                   the_short(),
+                                   "Lost royalties.",
+                                   0,
+                                   "You took too long to collect your "
+                                   "royalties and they vanished.\n\n"
+                                   "Good luck!\n"
+                                   "Administrator.");
+            map_delete(_royalties, person);
+         }
+      }
+   }
+   ret = catch(str = query_weekly_status_string());
+   if (ret) {
+      AUTO_MAILER->auto_mail(query_owner(),
+                        the_short(),
+                        "Weekly Statistics " + ctime(time()),
+                        implode(query_allowed(), ","),
+                        "The weekly stats generated an error: " + ret + "\n");
+      AUTO_MAILER->auto_mail("pinkfish",
+                        the_short(),
+                        "Weekly Statistics " + ctime(time()),
+                        0,
+                        "The weekly stats generated an error: " +
+                        ret + "\nin room: " + file_name(this_object()) + "\n");
+   } else {
+      str = PLAYER_OB->convert_message(str);
+      AUTO_MAILER->auto_mail(query_owner(),
+                        the_short(),
+                        "Weekly Statistics " + ctime(time()),
+                        implode(query_allowed(), ","),
+                        str);
+   }
+   _last_stats = time();
+   foreach (object ob in _commercial_things) {
+      adjust_royalty(query_owner(), -ob->query_weekly_upkeep_cost());
+   }
+   event_save(this_object());
+   reset_weekly_status();
+   event_save(this_object());
+}
+object* find_commercial_items(string type) {
+   object* obs;
+   obs = filter(all_inventory(this_object()),
+                (: $1->query_commercial_name() == $2 :), type);
+   return obs;
+}
+void register_use_types(string* types) {
+   string bing;
+   if (!_use_type_expressions) {
+      _use_type_expressions = ([ ]);
+   }
+   foreach (bing in types) {
+      if (!_use_type_expressions[bing]) {
+         _use_type_expressions[bing] = parse_boolean_string("true");
+      }
+   }
+}
+int do_name_property(string name) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You cannot set the name of " + the_short() + ".\n");
+      return 0;
+   }
+   set_property_name(name);
+   add_succeeded_mess("$N set$s the property name to '" + name + "'.\n");
+   return 1;
+}
+int do_set_sign(object* obs) {
+   object ob;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You cannot set the sign for the property.\n");
+      return 0;
+   }
+   if (sizeof(obs) > 1) {
+      add_failed_mess("You must only specifiy one sign.\n");
+      return 0;
+   }
+   if (living(obs[0])) {
+      add_failed_mess("You have to wait till " + obs[0]->the_short() +
+                      " dies first.\n");
+      return 0;
+   }
+   if (obs[0]->get()) {
+      add_failed_mess("Cannot set something as a sign that you cannot get.\n");
+      return 0;
+   }
+   ob = query_sign_object();
+   if (obs[0]->move("/room/rubbish") == MOVE_OK) {
+      set_sign_object(obs[0]);
+   } else {
+      add_failed_mess("Unable to move $I off you.\n", obs[0..0]);
+      return 0;
+   }
+   if (query_sign_object() != ob) {
+      if (ob) {
+         ob->set_get();
+         if (ob->move(this_player()) != MOVE_OK) {
+            ob->move(this_object());
+         }
+         add_succeeded_mess(({ "You remove the sign " +ob->the_short() +
+                               " and set " + obs[0]->the_short() +
+                               " as your property sign.\n",
+                               "$N sets the sign for outside " + the_short() +
+                               ".\n" }));
+      } else {
+         add_succeeded_mess(({ "You set " + obs[0]->the_short() +
+                               " as your property sign.\n",
+                               "$N sets the sign for outside " + the_short() +
+                               ".\n" }));
+      }
+      return 1;
+   } else {
+      obs[0]->move(this_player());
+      add_failed_mess("You cannot set the sign for some reason.\n");
+      return 0;
+   }
+}
+int do_remove_sign() {
+   object ob;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You cannot set the sign for the property.\n");
+      return 0;
+   }
+   if (!query_sign_object()) {
+      add_failed_mess("You cannot remove the sign since there is no sign.\n");
+      return 0;
+   }
+   ob = query_sign_object();
+   ob->set_get();
+   if (ob->move(this_player()) == MOVE_OK) {
+      add_succeeded_mess("$N $V $I from " + the_short() +
+                         ".\n", ({ ob }));
+      set_sign_object(0);
+      return 1;
+   } else {
+      ob->reset_get();
+      add_failed_mess("You cannot remove the sign, unable to hold it?\n");
+      return 0;
+   }
+}
+int do_status(int hint) {
+   string ret;
+   object ob;
+   string str;
+   string place;
+   string fluff;
+   class parse_node* expr;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to see the status of this store.\n");
+      return 0;
+   }
+   place = query_property("place");
+   ret = "";
+   ret += "$I$5=The owner of the property is " + query_owner() + ".\n";
+   ret += "$I$5=The name of the property is " + _property_name + ".\n";
+   if (hint) {
+      ret += "$I$0=       Hint: name property <name>\n";
+   }
+   if (sizeof(_black_list)) {
+      ret += "$I$5=The black list is " +
+             query_multiple_short(_black_list) + ".\n";
+   } else {
+      ret += "$I$5=The black list is empty.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: blacklist add <name>\n";
+      ret += "$I$0=       Hint: blacklist add ignore\n";
+      ret += "$I$0=       Hint: blacklist remove <name>\n";
+   }
+   if (query_sign_object()) {
+      ret += "$I$5=The property currently has a sign set.\n";
+   } else {
+      ret += "$I$5=The property does not currently have a sign set.\n";
+   }
+   if (hint) {
+      ret += "$I$0=       Hint: set sign <object>\n";
+      ret += "$I$0=       Hint: remove sign\n";
+   }
+   if (sizeof(query_allowed())) {
+      ret += "$I$5=People allowed to change the property are " +
+             query_multiple_short(sort_array(query_allowed(), 0)) + ".\n";
+   } else if (hint) {
+      ret += "$I$5=Only the owner can change the property.\n";
+   }
+   ret += "$I$5=Current float is " +
+          MONEY_HAND->money_value_string(query_float(), place) + ".\n";
+   if (sizeof(_use_expression)) {
+      ret += "$I$5=Use condition: " + query_expression_string(_use_expression, 0) +
+             ".\n";
+   } else {
+      ret += "$I$5=Anyone can use the shop.\n";
+   }
+   foreach (fluff, expr in _use_type_expressions) {
+      ret += "$I$5=  Use " + fluff + " condition: " +
+             query_expression_string(expr, 0) + ".\n";
+   }
+   ret += "$I$0=\n";
+   foreach (ob in _commercial_things) {
+      if (ob) {
+         str = ob->query_main_status(hint);
+         if (str) {
+            ret += str;
+         }
+      }
+   }
+   write("$P$Status$P$" + ret);
+   return 1;
+}
+int do_weekly_status() {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to see the status of this store.\n");
+      return 0;
+   }
+   write("$P$Weekly Status$P$" + query_weekly_status_string());
+   return 1;
+}
+int do_use_expression(string str) {
+   class parse_node* expr;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to add restrictions to the property.\n");
+      return 0;
+   }
+   if (str == "disable")  {
+      _use_expression = ({ });
+      add_succeeded_mess(({ "You disable checking to see if "
+         "someone can use the property.\n",
+         "$N fiddle$s about with " + the_short() + " a bit.\n" }));
+      return 1;
+   }
+   expr = parse_boolean_string(str);
+   if (!sizeof(expr)) {
+      add_failed_mess(query_last_expression_error() + ".\n");
+      return 0;
+   } else {
+      _use_expression = expr;
+      add_succeeded_mess(({ "You set the expression to use when checking "
+                            "to see if someone can use the property to " +
+                            query_expression_string(expr, 1) +
+                            ".\n",
+                            "$N fiddle$s about with " + the_short() +
+                                " a bit.\n" }));
+      event_save(this_object());
+   }
+   return 1;
+}
+int do_use_expression_type(string type, string str) {
+   class parse_node* expr;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to add restrictions to the property.\n");
+      return 0;
+   }
+   if (!_use_type_expressions[type]) {
+      add_failed_mess("The type '" + type + "' is invalid, must be one "
+                      "of " +
+                      query_multiple_short(keys(_use_type_expressions)) +
+                      ".\n");
+      return 0;
+   }
+   if (str == "disable")  {
+      _use_type_expressions[type] = ({ });
+      add_succeeded_mess(({ "You disable checking to see if "
+         "someone can use the property for " + type + ".\n",
+         "$N fiddle$s about with " + the_short() + " a bit.\n" }));
+      return 1;
+   }
+   expr = parse_boolean_string(str);
+   if (!sizeof(expr)) {
+      add_failed_mess(query_last_expression_error() + ".\n");
+      return 0;
+   } else {
+      _use_type_expressions[type] = expr;
+      add_succeeded_mess(({ "You set the expression to use when checking "
+                            "to see if someone can use the property for " +
+                            type + " to " +
+                            query_expression_string(expr, 1) +
+                            ".\n",
+                            "$N fiddle$s about with " + the_short() +
+                                " a bit.\n" }));
+      event_save(this_object());
+   }
+   return 1;
+}
+int do_royalties() {
+   string place;
+   class royalty_data data;
+   if (!is_open_for("royalty", this_player()->query_name())) {
+      add_failed_mess(the_short() + " is not currently open for "
+                      "customers.\n");
+      return 0;
+   }
+   if (!classp(_royalties[this_player()->query_name()]) &&
+       _royalties[this_player()->query_name()] != 0) {
+      data = new(class royalty_data,
+                 value : _royalties[this_player()->query_name()],
+                 last_withdrawl : time());
+     _royalties[this_player()->query_name()] = data;
+   }
+   data = _royalties[this_player()->query_name()];
+   if (!data) {
+      add_failed_mess("You have no money owed to you here.\n");
+      return 0;
+   }
+   if (this_player()->query_name() != query_owner() && data->value > 0) {
+      if (data->last_withdrawl + COMMERCIAL_ROYALTY_TIMEOUT_PERIOD - time() < 0) {
+         write("Your royalties timed out before you could claim them.\n");
+         map_delete(_royalties, this_player()->query_name());
+      }
+   }
+   if (data->value < 0) {
+      add_failed_mess("You owe money to " + the_short() + ".\n");
+      return 0;
+   }
+   if (data->value == 0) {
+      map_delete(_royalties, this_player()->query_name());
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   add_succeeded_mess(({ "You have " +
+                      MONEY_HAND->money_value_string(data->value, place) +
+                      " in royalties currently which will timeout in " +
+                      query_time_string(data->last_withdrawl + COMMERCIAL_ROYALTY_TIMEOUT_PERIOD - time(), 2) + ".\n",
+                      "$N checks $p royalties.\n" }));
+   return 1;
+}
+int do_royalty_list() {
+   string place;
+   mixed value;
+   class royalty_data data;
+   string person;
+   string ret;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("Only the property owners can do this.\n");
+      return 0;
+   }
+   if (!sizeof(_royalties)) {
+      add_failed_mess("No one has royalties here currently.\n");
+      return 0;
+   }
+   place = query_property("place");
+   ret = "";
+   foreach (person in sort_array(keys(_royalties), 0)) {
+      value = _royalties[person];
+      if (!classp(value)) {
+         data = new(class royalty_data, value : value, last_withdrawl : time());
+      } else {
+         data = value;
+      }
+      if (PLAYER_HANDLER->test_user(person)) {
+         ret += capitalize(person) + " " +
+                MONEY_HAND->money_value_string(data->value, place);
+         if (person != query_owner()) {
+            ret += " (Timeout: " + query_time_string(data->last_withdrawl +
+                     COMMERCIAL_ROYALTY_TIMEOUT_PERIOD - time(), 2) + ")\n";
+         } else {
+            ret += "\n";
+         }
+      } else {
+         map_delete(_royalties, person);
+      }
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   write("$P$Royalties$P$" + ret);
+   return 1;
+}
+int do_collect() {
+   string place;
+   string name;
+   class royalty_data data;
+   if (!is_open_for("royalty", this_player()->query_name())) {
+      add_failed_mess(the_short() + " is not currently open for "
+                      "customers.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   name = this_player()->query_name();
+   if (!classp(_royalties[this_player()->query_name()]) &&
+       _royalties[this_player()->query_name()] != 0) {
+      data = new(class royalty_data,
+                 value : _royalties[this_player()->query_name()],
+                 last_withdrawl : time());
+     _royalties[this_player()->query_name()] = data;
+   }
+   data = _royalties[name];
+   if (!data) {
+      add_failed_mess("You have no royalties to collect.\n");
+      return 0;
+   }
+   if (name != query_owner() && data->value > 0) {
+      if (data->last_withdrawl + COMMERCIAL_ROYALTY_TIMEOUT_PERIOD - time() < 0) {
+         write("Your royalties timed out before you could claim them.\n");
+         map_delete(_royalties, name);
+         return 1;
+      }
+   }
+   if (data->value == 0) {
+      map_delete(_royalties, this_player()->query_name());
+   }
+   if (this_player()->query_refresh_time() &&
+       this_player()->query_refresh_time() > data->last_withdrawl) {
+      add_failed_mess("You have refreshed since your last collection.\n");
+      map_delete(_royalties, name);
+      return 0;
+   }
+   if ((!data || !data->value) && is_allowed(this_player()->query_name())) {
+      name = query_owner();
+      data = _royalties[name];
+   }
+   if (data->value > 0) {
+      this_player()->adjust_money(MONEY_HAND->create_money_array(data->value, place));
+      if (name == query_owner()) {
+         _weekly_status->withdrawls += ({ new(class float_withdrawls, amount : data->value,
+                               person : name,
+                               withdrawl_time : time() ) });
+      }
+      event_save(this_object());
+      add_succeeded_mess(({ "You collect " +
+                            MONEY_HAND->money_value_string(data->value, place) +
+                            " in royalties.\n",
+                            "$N collects some royalties.\n" }));
+      data->value = 0;
+      if (!data->value && name != query_owner()) {
+         map_delete(_royalties, name);
+      }
+      return 1;
+   } else if (!data->value) {
+      add_failed_mess("You have no royalties to collect.\n");
+   } else {
+      if (this_player()->query_value_in(place) < -data->value) {
+         add_failed_mess("You do not have enough money to pay off "
+                         "your debts.\n");
+         return 0;
+      }
+      this_player()->pay_money(MONEY_HAND->create_money_array(-data->value, place),
+                               place);
+      add_succeeded_mess(({ "You pay off " +
+                            MONEY_HAND->money_value_string(data->value, place) +
+                            " in debt.\n",
+                            "$N pays off some debt.\n" }));
+      if (name != query_owner()) {
+         map_delete(_royalties, name);
+      } else {
+         data->value = 0;
+      }
+      return 1;
+   }
+}
+int do_collect_partial_royalties(string amount) {
+   int amt;
+   string place;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("Only the owners can do this.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   amt = MONEY_HAND->value_from_string(amount, place);
+   if (!amt) {
+      add_failed_mess("The value " + amount + " is not a valid money "
+                      "amount.\n");
+      return 0;
+   }
+   if (amt > query_owners_money()) {
+      add_failed_mess("You cannot collect more money than you have.\n");
+      return 0;
+   }
+   this_player()->adjust_money(MONEY_HAND->create_money_array(amt, place));
+   ((class royalty_data)_royalties[query_owner()])->value -= amt;
+   if (!((class royalty_data)_royalties[query_owner()])->value) {
+      map_delete(_royalties, query_owner());
+   }
+   if (!_weekly_status) {
+      _weekly_status = new(class weekly_status);
+      _weekly_status->withdrawls = ({ });
+   }
+   _weekly_status->withdrawls += ({ new(class float_withdrawls, amount : amt,
+                                        person : this_player()->query_name(),
+                                        withdrawl_time : time() ) });
+   event_save(this_object());
+   add_succeeded_mess(({ "You collect " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " in royalties.\n",
+                      "$N collects some money in royalties.\n" }));
+   return 1;
+}
+int do_pay_entry() {
+   string place;
+   class parse_node ret;
+   if (!_entry_cost) {
+      add_failed_mess("Entry into " + the_short() + " is free.\n");
+      return 0;
+   }
+   if (!is_open_for("entry", this_player()->query_name())) {
+      add_failed_mess(the_short() + " is not currently open for "
+                      "customers.\n");
+      return 0;
+   }
+   ret = evaluate_expression(_entry_cost, this_player()->query_name());
+   if (this_player()->query_value_in(place) < ret->value) {
+      add_failed_mess("You do not have the " +
+                      MONEY_HAND->money_value_string(ret->value, place) +
+                      " needed to enter.\n");
+      return 0;
+   }
+   this_player()->pay_money(MONEY_HAND->create_money_array(ret->value, place),
+                            place);
+   this_player()->add_property(file_name(this_object()),
+                               _entry_time_limit * 60 * 60);
+   add_succeeded_mess("$N pay$s " +
+                      MONEY_HAND->money_value_string(ret->value, place) +
+                      " for entry into " + the_short() + ".\n");
+   return 1;
+}
+int do_add_royalties(string amount) {
+   int amt;
+   string place;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You cannot add to the float.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   amt = MONEY_HAND->value_from_string(amount, place);
+   if (!amt) {
+      add_failed_mess("The value " + amount + " is not a valid money "
+                      "amount.\n");
+      return 0;
+   }
+   if (this_player()->query_value_in(place) < amt) {
+      add_failed_mess("You do not have " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " to add to the float.\n");
+      return 0;
+   }
+   this_player()->pay_money(MONEY_HAND->create_money_array(amt, place),
+                            place);
+   if (!classp(_royalties[query_owner()])) {
+       int value;
+       value = _royalties[query_owner()];
+       _royalties[query_owner()] = new(class royalty_data,
+            value : value,
+            last_withdrawl : time());
+   }
+   ((class royalty_data)_royalties[query_owner()])->value += amt;
+   add_succeeded_mess(({ "You add " +
+                      MONEY_HAND->money_value_string(amt, place) +
+                      " to " + poss_short() + " float.\n",
+                      "$N fiddles about in " + the_short() + ".\n" }));
+   return 1;
+}
+int do_purchase() {
+   object ob;
+   ob = clone_object(COMMERCIAL_SALESPERSON);
+   ob->move(this_object(), "$N arrives in a flash.\n");
+   ob->set_commercial_type(query_commercial_type());
+   ob->do_start_speil(this_player());
+   return 1;
+}
+int do_deposit(object* obs) {
+   object* monies;
+   object money;
+   string place;
+   monies = filter(obs, (: $1->id(MONEY_ALIAS) :));
+   if (!sizeof(monies)) {
+      add_failed_mess("YOu cannot deposit any of $I.\n", obs);
+      return 0;
+   }
+   money = monies[0];
+   place = query_property("place");
+   monies = MONEY_HAND->filter_legal_tender(money, place);
+   if (monies[1]) {
+      monies[1]->move(this_player());
+   }
+   if (!monies[0]) {
+      add_failed_mess("You must use legal tender.\n");
+      return 0;
+   }
+   adjust_royalty(query_owner(), monies[0]->query_value_in(place));
+   monies[0]->move("/room/rubbish");
+   add_succeeded_mess(({ "$N $V $I into " + the_short() + ".\n",
+                         "$N $V some money into " + the_short() + ".\n" }),
+                      monies[0..0]);
+   event_save(this_object());
+   return 1;
+}
+int do_black_list_add(string name) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to add people to the black list.\n");
+      return 0;
+   }
+   name = lower_case(name);
+   if (!PLAYER_HANDLER->test_user(name)) {
+      add_failed_mess("Sorry, " + name + " does not play here.\n");
+      return 0;
+   }
+   if (is_allowed(name)) {
+      add_failed_mess("This person is in the list of people allowed to use "
+                      "the shop.  They cannot be put on a black list.\n");
+      return 0;
+   }
+   if (member_array(name, _black_list) != -1) {
+      add_failed_mess("The person " + name + " is already in the "
+                      "black list.\n");
+      return 0;
+   }
+   _black_list += ({ name });
+   event_save(this_object());
+   add_succeeded_mess(({ "You add " + name + " to the black list.\n",
+                         "$N fiddle$s with something in the shop.\n" }) );
+   return 1;
+}
+int do_black_list_add_ignore() {
+   string *people;
+   string *bad;
+   string *ok;
+   string name;
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to add people to the black list.\n");
+      return 0;
+   }
+   people = this_player()->query_property("ignoring");
+   if (!people) {
+      add_failed_mess("You are not ignoring anyone.\n");
+      return 0;
+   }
+   bad = ({ });
+   ok = ({ });
+   foreach (name in people) {
+      name = lower_case(name);
+      if (!PLAYER_HANDLER->test_user(name)) {
+         bad += ({ name });
+      } else if (member_array(name, _black_list) != -1) {
+         bad += ({ name });
+      } else {
+         _black_list += ({ name });
+         ok += ({ name });
+      }
+   }
+   event_save(this_object());
+   if (!sizeof(ok)) {
+      add_failed_mess("Your ignore list is already added to the black list.\n");
+      return 0;
+   }
+   add_succeeded_mess(({ "You add " + query_multiple_short(ok) + " to the "
+                         "black list.\n",
+                         "$N fiddle$s with something in the shop.\n" }) );
+   return 1;
+}
+int do_black_list_remove(string name) {
+   if (!is_allowed(this_player()->query_name())) {
+      add_failed_mess("You are not allowed to remove people from "
+                      "the black list.\n");
+      return 0;
+   }
+   name = lower_case(name);
+   if (member_array(name, _black_list) == -1) {
+      add_failed_mess("The person " + name + " is not in the black list.\n");
+      return 0;
+   }
+   _black_list -= ({ name });
+   event_save(this_object());
+   add_succeeded_mess(({ "You remove " + name + " from the black list.\n",
+                         "$N fiddle$s with something in the shop.\n" }) );
+   return 1;
+}
+private string variable_use_type(string seller) {
+   return _use_type;
+}
+int do_measure() {
+    this_player()->add_succeeded_mess( this_object(),
+        ({
+            "$N $V up the size of the property and calculate that it is "
+            "about " + query_num(query_property_size()) + " square yards.\n",
+            "$N $V up the size of the property.\n"
+        }), ({ }) );
+    return 1;
+}
+void init() {
+   if (!_royalties) {
+      _royalties = ([ ]);
+   }
+   player_housing::init();
+   expression_util::init();
+   add_command("collect", "royalties", (: do_collect() :));
+   add_command("royalties", "", (: do_royalties() :));
+   add_command("royalty", "", (: do_royalties() :));
+   add_command("measure", "property", (: do_measure() :) );
+   if (!is_allowed(this_player()->query_name())) {
+      return ;
+   }
+   add_command("royalty", "list", (: do_royalty_list() :));
+   add_command("royalties", "list", (: do_royalty_list() :));
+   add_command("collect", "royalties of <string'amount'>",
+               (: do_collect_partial_royalties($4[0]) :));
+   add_command("royalty", "add <string'amount'> to float",
+               (: do_add_royalties($4[0]) :));
+   add_command("deposit", "[to] float <indirect:object>",
+               (: do_deposit :));
+   add_command("status", "room",
+               (: do_status(0) :));
+   add_command("status", "room {hint|hints}",
+               (: do_status(1) :));
+   add_command("status", "room weekly",
+               (: do_weekly_status() :));
+   add_command("name", "property <string'property name'>",
+               (: do_name_property($4[0]) :));
+   add_command("set", "use expression <string'expression'>",
+               (: do_use_expression($4[0]) :));
+   add_command("set",
+               "use expression for <string'type'> as <string'expression'>",
+               (: do_use_expression_type($4[0], $4[1]) :));
+   add_command("set", "sign <indirect:object'sign'>",
+               (: do_set_sign($1) :) );
+   add_command("remove", "sign",
+               (: do_remove_sign() :) );
+   add_command("blacklist", "add <string'person'>",
+               (: do_black_list_add($4[0]) :));
+   add_command("blacklist", "add ignore",
+               (: do_black_list_add_ignore() :));
+   add_command("blacklist", "remove <string'person'>",
+               (: do_black_list_remove($4[0]) :));
+   add_command("purchase", "stuff", (: do_purchase() :));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/vault_entry.c ===
+#include <money.h>
+#include <vault.h>
+#define PTS proprietor->the_short()
+#define TIME_LIMIT 500
+#define SPAM_GUARD (60 * 3)
+void add_exit(string name, string dest, string type);
+void modify_exit(string name, mixed* stuff);
+mixed query_property(string name);
+void add_property(string name, mixed value);
+void remove_property(string name);
+string location, vault_name, vault_room;
+int visit_cost, open_cost;
+object proprietor;
+void set_location(string str) { location = str; }
+void set_open_cost(int i) { open_cost = i; }
+void set_visit_cost(int i) { visit_cost = i; }
+void set_proprietor(object ob) { proprietor = ob; }
+void set_vault_name(string str) { vault_name = str; }
+void set_vault_exit(string direc, mixed dest, string type) {
+  vault_room = dest;
+  add_exit(direc, dest, type);
+  modify_exit( direc, ({ "function", "check_customer" }) );
+  modify_exit( direc, ({ "closed", 1}));
+}
+int apply_for_account() {
+  string owner;
+  object container;
+  if(!proprietor || environment(proprietor) != this_object())
+    return notify_fail("The vault is closed since the proprietor is "
+                       "missing.\n");
+  this_player()->add_succeeded_mess( this_object(), "", ({ }) );
+  write("You ask for an account.\n");
+  say((string)this_player()->one_short() +" asks for an account.\n");
+  owner = (string)this_player()->query_name();
+  if ( master()->file_exists( VAULT_SAVE +vault_name+ "/"+ owner +".o" ) ||
+       query_property( owner ) )
+  {
+    if ( this_player()->query_property( "vault warned" ) ) {
+      proprietor->do_command( "glare "+ this_player()->query_name() );
+      proprietor->do_command( "say I just said, you already have an "
+         "account." );
+      return notify_fail("");
+    }
+    proprietor->do_command( "say You already have an account!" );
+    this_player()->add_property( "vault warned", 1, SPAM_GUARD );
+    return 1;
+  }
+  if ( this_player()->query_value_in( location) < open_cost ) {
+    if ( this_player()->query_property( "vault warned" ) ) {
+      proprietor->do_command( "glare "+ this_player()->query_name() );
+      proprietor->do_command( "say I just said, you don't have enough money!" );
+      return notify_fail("");
+    }
+    proprietor->do_command("say You do not have the "+
+                           (string)MONEY_HAND->money_value_string(open_cost,
+                                                                  location) +
+                           " that it costs to open an account." );
+    this_player()->add_property( "vault warned", 1, SPAM_GUARD );
+    return 1;
+  }
+  proprietor->do_command("say Very well, that'll be "+
+                         (string)MONEY_HAND->money_value_string( open_cost,
+                                                                 location) +
+                         ", please." );
+  this_player()->pay_money( (mixed *)MONEY_HAND->create_money_array( open_cost,
+                                                                     location),
+                            location);
+  write( "You pay "+PTS+".\n" );
+  say( (string)this_player()->the_short() +" pays "+proprietor->the_short()+
+       ".\n" );
+  proprietor->do_command("say As a new account holder, "
+                         "your first use of the facility will be free.  "
+                         "Thereafter, it will cost "+
+                         (string)MONEY_HAND->money_value_string( visit_cost,
+                                                                 location) +
+                         " each time.");
+  add_property( owner, 1 );
+  container = vault_room->init_container(this_player());
+  container->dest_me();
+  return 1;
+}
+void init() {
+  add_command( "apply", "for [an] account", (: apply_for_account :) );
+}
+int check_customer( string verb, object thing, string special ) {
+  string owner;
+  object vroom;
+  if(!proprietor || environment(proprietor) != this_object())
+    return notify_fail("The vault is closed since the proprietor is "
+                       "missing.\n");
+  if( !interactive(thing) )
+    return 0;
+  owner = (string)thing->query_name();
+  if ( !master()->file_exists( VAULT_SAVE +vault_name+ "/" + owner +".o" ) &&
+       !query_property( owner ) )
+  {
+    tell_object( thing, PTS+
+                 " intercepts you.\n" );
+    tell_room( this_object(), PTS+" intercepts "+
+               (string)thing->the_short() +".\n",
+               thing );
+    if ( thing->query_property( "vault warned" ) ) {
+      proprietor->do_command( "glare "+ thing->query_name() );
+      proprietor->do_command( "say I just said, you don't have an account "
+         "so I won't let you in!" );
+      return notify_fail("");
+    }
+    proprietor->do_command("say You do not have an account!");
+    if( interactive(thing) )
+      proprietor->do_command("say For "+
+                             (string)MONEY_HAND->money_value_string(open_cost,
+                                                                    location)+
+                             ", you could apply for an account.\n" );
+    thing->add_property( "vault warned", 1, SPAM_GUARD );
+    return notify_fail( "" );
+  }
+  if ( !( vroom = find_object( vault_room ) ) ) {
+    vault_room->load_me();
+    vroom = find_object( vault_room );
+  }
+  if( sizeof( filter_array( all_inventory( vroom ), (: userp( $1 ) :) ) ) ) {
+    tell_object( thing, PTS+" intercepts you.\n" );
+    tell_room( this_object(), PTS+" intercepts "+ (string)thing->the_short()
+       +".\n", thing );
+    if( thing->query_property( "vault warned" ) ) {
+      proprietor->do_command( "glare "+ thing->query_name() );
+      proprietor->do_command( "say I just told you, someone is using the "
+         "facility at the moment!" );
+      return notify_fail("");
+    }
+    proprietor->do_command("say Someone is using the facility at the moment!");
+    thing->add_property( "vault warned", 1, SPAM_GUARD );
+    return notify_fail( "" );
+  }
+  if( query_property( owner ) ) {
+    remove_property(owner);
+    tell_object(thing, PTS+" waves you through.\n" );
+    tell_room( this_object(), PTS+" waves "+(string)thing->the_short() +
+      " through.\n", thing );
+    call_out( "check_idler", TIME_LIMIT, thing );
+    return 1;
+  }
+  if ( (int)thing->query_value_in( location ) < visit_cost ) {
+    tell_object( thing, PTS+" intercepts you.\n" );
+    tell_room( this_object(), PTS+" intercepts "+ (string)thing->the_short()
+      +".\n", thing );
+    if ( thing->query_property( "vault warned" ) ) {
+      proprietor->do_command( "glare "+ thing->query_name() );
+      proprietor->do_command( "say I just said, you don't have enough "
+         "money to use the facility!" );
+      return notify_fail("");
+    }
+    proprietor->do_command("say It costs "+
+                           (string)MONEY_HAND->money_value_string( visit_cost,
+                                                                   location ) +
+                           " to use the facility!" );
+    thing->add_property( "vault warned", 1, SPAM_GUARD );
+    return notify_fail( "" );
+  }
+  thing->pay_money((mixed *)MONEY_HAND->create_money_array(visit_cost,
+                                                           location),
+                   location);
+  tell_object( thing, "You pay "+PTS+" who waves you through.\n" );
+  tell_room( this_object(), (string)thing->the_short() +
+             " pays "+PTS+" who waves "+ (string)thing->query_objective() +
+             " through.\n", thing );
+  remove_call_out("check_idler");
+  call_out("check_idler", TIME_LIMIT, thing);
+  return 1;
+}
+void check_idler(object who) {
+  if(who && base_name(environment(who)) == vault_room) {
+    tell_object(who, "You've been in here too long so " + PTS + " comes and "
+              "drags you out.\n");
+    who->move_with_look(this_object(),
+                      "$N is dragged out of the vault by the hair.",
+                      "$N is dragged out of the vault by the hair.");
+  }
+}
+void player_quitting(object who, object env) {
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/auction_house.c ===
+#include <room/auction.h>
+#include <player.h>
+#include <money.h>
+#include <move_failures.h>
+#include <mail.h>
+#include <player_handler.h>
+#include <am_time.h>
+inherit "/std/shops/inherit/shop_event";
+inherit "/std/shops/inherit/open_shop";
+#define DEFAULT_QUICK_AUCTION_LENGTH (15 * 60)
+#define DEFAULT_SHORT_AUCTION_LENGTH (60 * 60)
+#define DEFAULT_MEDIUM_AUCTION_LENGTH (AM_SECONDS_PER_DAY)
+#define DEFAULT_LONG_AUCTION_LENGTH (AM_SECONDS_PER_DAY * 3)
+#define DEFAULT_VERY_LONG_AUCTION_LENGTH (AM_SECONDS_PER_DAY * 14)
+#define DEFAULT_RETRIEVAL_TIME (AM_SECONDS_PER_DAY * 7)
+#define DEFAULT_EXTENSION_TIME (20 * 60)
+class auction {
+   mixed save_stuff;
+   int time_started;
+   int auction_length;
+   string name;
+   string seller;
+   string current_bidder;
+   int bid;
+   int reserve;
+   int retries;
+   string end_function;
+   mixed extra;
+}
+private nosave mixed* _auction_obs;
+private nosave int _callout_id;
+private nosave string _save_file;
+private nosave int _max_auctions;
+private nosave mapping _auction_times;
+private nosave int _retrieval_time;
+private nosave int _max_retries;
+private nosave int _cut;
+private nosave int _minimum_bid_increase;
+private nosave function _can_bid;
+private nosave int _allow_add;
+private nosave string _bid_type_names;
+private class auction* _auctions;
+private class auction* _finished_auctions;
+private mapping _royalties;
+void next_auction_finish();
+mixed query_property(string name);
+class auction query_auction_item(string id);
+void retry_auction(class auction auction);
+void create() {
+   _auctions = ({ });
+   _finished_auctions = ({ });
+   _cut = 10;
+   _max_auctions = 20;
+   _auction_obs = ({ });
+   _royalties = ([ ]);
+   _auction_times = ([
+                      "quick" : DEFAULT_QUICK_AUCTION_LENGTH,
+                      "short" : DEFAULT_SHORT_AUCTION_LENGTH,
+                      "medium" : DEFAULT_MEDIUM_AUCTION_LENGTH,
+                      "long" : DEFAULT_LONG_AUCTION_LENGTH,
+                      "very long" : DEFAULT_VERY_LONG_AUCTION_LENGTH
+                    ]);
+   _retrieval_time = DEFAULT_RETRIEVAL_TIME;
+   _max_retries = 5;
+   _minimum_bid_increase = 10;
+   _allow_add = 1;
+   shop_event::create();
+}
+class auction *query_auctions() { return copy(_auctions); }
+class auction *query_finished_auctions() { return copy(_finished_auctions); }
+void load_me() {
+   unguarded( (: restore_object(_save_file, 1) :));
+   _auction_obs = allocate(sizeof(_auctions));
+   if (!_royalties) {
+      _royalties = ([ ]);
+   }
+   next_auction_finish();
+}
+void save_me() {
+   unguarded( (: save_object(_save_file) :));
+}
+void set_save_file(string fname) {
+   _save_file = fname;
+   load_me();
+}
+string query_save_file() {
+   return _save_file;
+}
+void set_check_can_bid(function f) {
+   _can_bid = f;
+}
+void set_allowed_add(int flag) {
+   _allow_add = flag;
+}
+void set_max_auctions(int i) { _max_auctions = i; }
+void set_auction_time(string index, int i) {
+   if (!i) {
+      map_delete(_auction_times, index);
+   } else {
+      if (!_auction_times[index]) {
+         _bid_type_names = 0;
+      }
+      _auction_times[index] = i;
+   }
+}
+mapping query_auction_times() { return _auction_times; }
+void set_retrieval_time(int i) { _retrieval_time = i; }
+void set_max_retries(int i) { _max_retries = i; }
+void set_min_bid_increase(int i) { _minimum_bid_increase = i; }
+int add_item_to_auction(object* obs, string name, int reserve,
+                        string seller, int length,
+                         string end_function, mixed extra) {
+   class auction new_auct;
+   if (sizeof(_auctions) + sizeof(_finished_auctions) >= _max_auctions) {
+      return 0;
+   }
+   if (!reserve) {
+      reserve = 40;
+   }
+   new_auct = new(class auction);
+   new_auct->save_stuff = AUTO_LOAD_OB->create_auto_load(obs);
+   new_auct->name = name;
+   new_auct->reserve = reserve;
+   new_auct->end_function = end_function;
+   new_auct->time_started = time();
+   if (!length) {
+      new_auct->auction_length = _auction_times["very long"];
+   } else {
+      new_auct->auction_length = length;
+   }
+   new_auct->seller = seller;
+   new_auct->extra = extra;
+   _auctions += ({ new_auct });
+   _auction_obs += ({ obs });
+   save_me();
+   next_auction_finish();
+   _auction_obs -= ({ obs });
+   _auction_obs += ({ 0 });
+   return 1;
+}
+object* query_auction_objects(class auction auct) {
+   int i;
+   for (i = 0; i < sizeof(_auctions); i++) {
+      if (_auctions[i] == auct) {
+         if (!_auction_obs[i]) {
+            _auction_obs[i] = AUTO_LOAD_OB->load_auto_load_to_array(auct->save_stuff);
+         }
+         return _auction_obs[i];
+      }
+   }
+   return ({ });
+}
+void bid_on_item(class auction auct,
+                 int bid, string person) {
+    if (bid > auct->bid && bid >= auct->reserve) {
+        auct->bid = bid;
+        auct->current_bidder = person;
+        if (auct->auction_length + auct->time_started - time() <
+            DEFAULT_EXTENSION_TIME) {
+            auct->auction_length = time() - auct->time_started +
+                DEFAULT_EXTENSION_TIME;
+        }
+    }
+}
+int reset_bid(string id, int bid, string person) {
+  class auction auct;
+  if(!(this_player()->query_lord()))
+    return 0;
+  auct = query_auction_item(id);
+  if(!auct)
+    return 0;
+  auct->bid = bid;
+  auct->current_bidder = person;
+  return 1;
+}
+void remove_finished_auction_item(class auction auction) {
+   int i;
+   for (i = 0; i < sizeof(_finished_auctions); i++) {
+      if (_finished_auctions[i] == auction) {
+         _finished_auctions = _finished_auctions[0..i-1] + _finished_auctions[i+1..];
+      }
+   }
+}
+void remove_auction_item(class auction auction) {
+   int i;
+   for (i = 0; i < sizeof(_auctions); i++) {
+      if (_auctions[i] == auction) {
+         if (i < sizeof(_auction_obs) && _auction_obs[i]) {
+            ((_auction_obs[i]) - ({ 0 }))->move("/room/rubbish");
+         }
+         _auctions = _auctions[0..i-1] + _auctions[i+1..];
+         _auction_obs = _auction_obs[0..i-1] + _auction_obs[i+1..];
+      }
+   }
+}
+void finish_auction(class auction auction) {
+   string place;
+   if (auction->end_function) {
+      call_other(this_object(), auction->end_function,
+                 AUCTION_FINISH_PHASE, auction, auction->extra,
+                 auction->current_bidder, auction->bid);
+   }
+   place = query_property("place");
+   remove_auction_item(auction);
+   if (!auction->current_bidder) {
+      auction->current_bidder = auction->seller;
+      auction->bid = 4000;
+   }
+   _finished_auctions += ({ auction });
+   save_me();
+   if (auction->current_bidder &&
+       PLAYER_HANDLER->test_user(lower_case(auction->current_bidder))) {
+      AUTO_MAILER->auto_mail(lower_case(auction->current_bidder),
+                              this_object()->query_short(),
+                              "Results of auction for " + auction->name,
+                              "",
+                              "Your auction for " + auction->name +
+                              " has completed.\nPlease pay the " +
+                              MONEY_HAND->money_value_string(auction->bid, place) +
+                              " as soon as you can.\n", 0, auction->current_bidder);
+   } else {
+      retry_auction(auction);
+   }
+   return ;
+}
+void force_finish_auction(string id) {
+   string place;
+   class auction auction;
+   auction = query_auction_item(id);
+   if (auction->end_function) {
+      call_other(this_object(), auction->end_function,
+                 AUCTION_FINISH_PHASE, auction, auction->extra,
+                 auction->current_bidder, auction->bid);
+   }
+   place = query_property("place");
+   remove_auction_item(auction);
+   if (!auction->current_bidder) {
+      auction->current_bidder = auction->seller;
+      auction->bid = 4000;
+   }
+   _finished_auctions += ({ auction });
+   save_me();
+   if (auction->current_bidder &&
+       PLAYER_HANDLER->test_user(lower_case(auction->current_bidder))) {
+      AUTO_MAILER->auto_mail(lower_case(auction->current_bidder),
+                              this_object()->query_short(),
+                              "Results of auction for " + auction->name,
+                              "",
+                              "Your auction for " + auction->name +
+                              " has completed.\nPlease pay the " +
+                              MONEY_HAND->money_value_string(auction->bid, place) +
+                              " as soon as you can.\n");
+   }
+   return ;
+}
+void retry_auction(class auction auction) {
+   string place;
+   if (auction->end_function) {
+      call_other(this_object(), auction->end_function,
+                 AUCTION_RETRY_PHASE, auction, auction->extra);
+   }
+   place = query_property("place");
+   remove_finished_auction_item(auction);
+   auction->bid = 0;
+   auction->current_bidder = 0;
+   auction->retries++;
+   auction->time_started = time();
+   if (auction->retries > _max_retries) {
+   } else {
+      _auctions += ({ auction });
+      _auction_obs += ({ 0 });
+   }
+   save_me();
+   if (auction->seller &&
+       PLAYER_HANDLER->test_user(lower_case(auction->seller))) {
+      AUTO_MAILER->auto_mail(lower_case(auction->seller),
+                              this_object()->query_short(),
+                              "Default on auction of " + auction->name,
+                              "",
+                              "Your auction for " + auction->name +
+                              " has completed and the payee defaulted.\n"
+                              "The item has been put up for reauctioning.\n");
+   }
+   return ;
+}
+class auction query_auction_item(string id) {
+   id = lower_case(id);
+   if (strlen(id) == 1 &&
+       id[0] >= 'a' && id[0] < 'a' + sizeof(_auctions)) {
+      return _auctions[id[0] - 'a'];
+   }
+   return 0;
+}
+string query_time_end_string(int left) {
+   string str;
+   string extra;
+   if (left >= AM_SECONDS_PER_DAY) {
+      str = (left / AM_SECONDS_PER_DAY) + " day";
+      if ((left / AM_SECONDS_PER_DAY) > 1) {
+         str += "s";
+      }
+      left = left % (AM_SECONDS_PER_DAY);
+      if (left >= (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) {
+         if ((left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) > 1) {
+             extra = "s";
+          } else {
+             extra = "";
+         }
+         return str + " and " +
+           (left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) + " hour" +
+           extra;
+      }
+      return str;
+   } else if (left >= AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR) {
+      if ((left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) > 1) {
+          extra = "s";
+       } else {
+          extra = "";
+      }
+      str = (left / (AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR)) + " hour" +
+            extra;
+      left %= AM_SECONDS_PER_MINUTE * AM_MINUTES_PER_HOUR;
+      if ((left / (AM_SECONDS_PER_MINUTE)) > 1) {
+          extra = "s";
+       } else {
+          extra = "";
+      }
+      if (left > AM_SECONDS_PER_MINUTE) {
+         return str + " and " + (left / AM_SECONDS_PER_MINUTE) + " minute" +
+                extra;
+      }
+      return str;
+   } else if (left <= 0) {
+      return "already finished";
+   }
+    if( !(left/60) ) {
+        return "less than a minute";
+    }
+    else {
+        str = "";
+        str += ( left / 60) + " minute";
+        if (left / 60 > 1) {
+            str += "s";
+        }
+        return str;
+    }
+}
+string query_auction_end_string(class auction auction) {
+   return query_time_end_string(auction->time_started +
+                                auction->auction_length - time());
+}
+int query_last_auction_finish_time() {
+   int tim;
+   class auction auction;
+   foreach (auction in _auctions) {
+      if (tim < auction->time_started + auction->auction_length) {
+         tim = auction->time_started + auction->auction_length;
+      }
+   }
+   return tim;
+}
+void next_auction_finish() {
+   class auction auct;
+   int next;
+   int tmp;
+   next = 0;
+   foreach (auct in _auctions) {
+      tmp = auct->time_started + auct->auction_length - time();
+      if (tmp <= 0) {
+         finish_auction(auct);
+      } else if (tmp < next || !next) {
+         next = tmp;
+      }
+   }
+   foreach (auct in _finished_auctions) {
+      tmp = auct->time_started + auct->auction_length + _retrieval_time -
+        time();
+      if (tmp <= 0) {
+         retry_auction(auct);
+         tmp = auct->time_started + auct->auction_length - time();
+         if (tmp < next || !next) {
+            next = tmp;
+         }
+      } else if (tmp < next || !next) {
+         next = tmp;
+      }
+   }
+   if (_callout_id) {
+      remove_call_out(_callout_id);
+      _callout_id = 0;
+   }
+   if (next) {
+      _callout_id = call_out("next_auction_finish", next);
+   }
+}
+int do_list() {
+   string str;
+   class auction bing;
+   int pos;
+   string place;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   if (!sizeof(_auctions)) {
+      add_failed_mess("Nothing currently on auction.\n");
+      return 0;
+   }
+   place = query_property("place");
+   str = "Items currently up for auction:\n";
+   foreach (bing in _auctions) {
+      str += sprintf("%c) %s", pos + 'A', bing->name);
+      if (bing->current_bidder) {
+         str += "; " +
+                MONEY_HAND->money_value_string(bing->bid, place) +
+                " by " + bing->current_bidder + "; finishes in " +
+                query_auction_end_string(bing) + ".\n";
+      } else {
+         str += "; no current bid; finishes in " +
+                query_auction_end_string(bing) + ".\n";
+      }
+      pos++;
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_LIST,
+                             this_player(), str)) {
+      write("$P$Auctions$P$" + str);
+   }
+   return 1;
+}
+int do_browse(string id) {
+   class auction bing;
+   string place;
+   string str;
+   object* obs;
+   object ob;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   bing = query_auction_item(id);
+   if (!bing) {
+      add_failed_mess("There is no auction item " + id + ".\n");
+      return 0;
+   }
+   place = query_property("place");
+   str = "Auction called " + bing->name + " started at " +
+        amtime(bing->time_started) + " finishes at " +
+        amtime(bing->time_started + bing->auction_length) + " (in " +
+        query_auction_end_string(bing) + ".\n";
+   str += "Reserve price " +
+          MONEY_HAND->money_value_string(bing->reserve, place);
+   if (bing->bid) {
+      str += "; current bid " +
+             MONEY_HAND->money_value_string(bing->bid, place) +
+             " by " + bing->current_bidder + ".\n";
+   } else {
+      str += "; no current bid.\n";
+   }
+   obs = query_auction_objects(bing);
+   foreach (ob in obs) {
+      str += "\n$I$0=$C$" + ob->the_short() + ":\n$I$3=   " +
+             ob->long();
+      if (ob->query_readable_message(this_player())) {
+         str += "$I$0=Read message:\n$I$3=   " + ob->query_readable_message(this_player()) + "\n";
+      }
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_BROWSE,
+                             this_player(), bing, obs, str)) {
+      write("$P$Browse Auction$P$" + str);
+   }
+   return 1;
+}
+int do_bid(string id, string bid) {
+   class auction auct;
+   string place;
+   int value;
+   int inc;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   auct = query_auction_item(id);
+   if (!auct) {
+      if (!broadcast_shop_event(AUCTION_EVENT_BAD_ITEM,
+                                 this_player(), id)) {
+         add_failed_mess("There is no auction item " + id + ".\n");
+      }
+      return 0;
+   }
+   place = query_property("place");
+   value = MONEY_HAND->value_from_string(bid, place);
+   if (_can_bid) {
+      if (!evaluate(_can_bid, this_player(), auct, value)) {
+         return 0;
+      }
+   }
+   inc = auct->bid + ((auct->bid * _minimum_bid_increase) / 100);
+   if (value < inc) {
+      if (!broadcast_shop_event(AUCTION_EVENT_BID_TOO_SMALL,
+                                 this_player(), auct, value, inc)) {
+         add_failed_mess("You must bid " + _minimum_bid_increase + "% more than "
+                         "the current bid, current bid is " +
+                         MONEY_HAND->money_value_string(auct->bid, place) +
+                         " so " + _minimum_bid_increase + "% more is " +
+                         MONEY_HAND->money_value_string(inc, place) +
+                         ".\n");
+      }
+      return 0;
+   }
+   if (value < auct->reserve) {
+      if (!broadcast_shop_event(AUCTION_EVENT_BID_BELOW_RESERVE,
+                                 this_player(), auct, value, auct->reserve)) {
+         add_failed_mess("You must bid more than the reserve bid, it is " +
+                      MONEY_HAND->money_value_string(auct->reserve, place) + ".\n");
+      }
+      return 0;
+   }
+   bid_on_item(auct, value, this_player()->query_cap_name());
+   save_me();
+   if (!broadcast_shop_event(AUCTION_EVENT_BID,
+                             this_player(), auct, value)) {
+      add_succeeded_mess("$N $V " +
+                         MONEY_HAND->money_value_string(value, place) +
+                         " on " + auct->name + ".\n");
+   }
+   return 1;
+}
+int do_withdraw(string id) {
+   class auction auct;
+   string place;
+   int value;
+   object* obs;
+   object ob;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   auct = query_auction_item(id);
+   if (!auct) {
+      if (!broadcast_shop_event(AUCTION_EVENT_BAD_ITEM,
+                                 this_player(), id)) {
+         add_failed_mess("There is no auction item " + id + ".\n");
+      }
+      return 0;
+   }
+   place = query_property("place");
+   if (lower_case(auct->seller) == this_player()->query_name() ||
+       this_player()->query_creator()) {
+      if (auct->reserve > auct->bid) {
+         value = auct->reserve;
+      } else {
+         value = auct->bid;
+      }
+      if (this_player()->query_value_in(place) < value) {
+         if (!broadcast_shop_event(AUCTION_EVENT_TOO_POOR,
+                              this_player(), auct,
+                              this_player()->query_value_in(place),
+                              auct->bid)) {
+            add_failed_mess("You need at least " +
+                            MONEY_HAND->money_value_string(value, place) +
+                            " to withdraw this item from auction.\n");
+         }
+         return 0;
+      }
+      obs = query_auction_objects(auct);
+      this_player()->pay_money(MONEY_HAND->create_money_array(value, place),
+        place);
+      remove_auction_item(auct);
+      save_me();
+      if (auct->end_function) {
+         call_other(this_object(), auct->end_function,
+                    AUCTION_WITHDRAW_PHASE, auct, auct->extra);
+      }
+      foreach (ob in obs) {
+         if (ob->move(this_player()) != MOVE_OK) {
+             ob->move(this_object());
+             write("Unable to move " + ob->the_short() +
+                   " into your inventory, put on the floor.\n");
+         }
+      }
+      if (!broadcast_shop_event(AUCTION_EVENT_WITHDRAW,
+                                 this_player(), auct)) {
+         add_succeeded_mess("$N remove$s " + auct->name + " from auction.\n");
+      }
+      return 1;
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_CANNOT_WITHDRAW,
+                              this_player(), auct)) {
+      add_failed_mess("You cannot withdraw that item from auction.\n");
+   }
+   return 0;
+}
+int do_claim() {
+   class auction auction;
+   int num;
+   string place;
+   object* obs;
+   object ob;
+   int i;
+   int value;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   place = query_property("place");
+   value = this_player()->query_value_in(place);
+   foreach (auction in _finished_auctions) {
+      if (!auction->current_bidder) {
+         remove_finished_auction_item(auction);
+      } else if (lower_case(auction->current_bidder) == this_player()->query_name()) {
+         if (value < auction->bid) {
+            if (!broadcast_shop_event(AUCTION_EVENT_TOO_POOR,
+                              this_player(), auction, value, auction->bid)) {
+               write("You do not have enough money to pay for " +
+                     MONEY_HAND->money_value_string(auction->bid, place) +
+                     ".\n");
+            }
+         } else {
+            this_player()->pay_money(
+                MONEY_HAND->create_money_array(auction->bid, place), place);
+            value -= auction->bid;
+            _royalties[lower_case(auction->seller)] += auction->bid -
+                                           auction->bid * _cut / 100;
+            obs = AUTO_LOAD_OB->load_auto_load_to_array(auction->save_stuff);
+            foreach (ob in obs) {
+               if (ob->move(this_player()) != MOVE_OK) {
+                  ob->move(this_object());
+                  write("Unable to move " + ob->the_short() +
+                        " into your inventory, put on the floor.\n");
+               }
+            }
+            if (!broadcast_shop_event(AUCTION_EVENT_CLAIM,
+                              this_player(), auction, auction->bid, obs)) {
+               write("You paid " +
+                     MONEY_HAND->money_value_string(auction->bid, place) +
+                     " for " +
+                     query_multiple_short(obs) + ".\n");
+            }
+            remove_finished_auction_item(auction);
+            save_me();
+            if (auction->end_function) {
+               call_other(this_object(), auction->end_function,
+                          AUCTION_CLAIM_PHASE, auction, auction->extra,
+                          auction->current_bidder, auction->bid, obs);
+            }
+         }
+         num++;
+      }
+      i++;
+   }
+   if (!num) {
+      if (!broadcast_shop_event(AUCTION_EVENT_NOTHING_TO_CLAIM,
+                              this_player())) {
+         add_failed_mess("You cannot find anything to claim.\n");
+      }
+   }
+   return num;
+}
+int do_add(string name, object* obs, string res_str, string length) {
+   int reserve;
+   string ret;
+   string place;
+   int len;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   place = query_property("place");
+   len = _auction_times[length];
+   if (sizeof(_auctions) >= _max_auctions) {
+      if (!broadcast_shop_event(AUCTION_EVENT_FULL,
+                             this_player(), name, obs, reserve, len)) {
+         add_failed_mess("The auction house is full.\n");
+      }
+      return 0;
+   }
+   if (res_str) {
+      reserve = MONEY_HAND->value_from_string(res_str, place);
+      if (!reserve) {
+         if (!broadcast_shop_event(AUCTION_EVENT_BAD_MONEY,
+                             this_player(), name, obs, reserve, len)) {
+            add_failed_mess("Unable to figure out how much " + res_str +
+                            " is.\n");
+         }
+         return 0;
+      }
+   }
+   ret = "You are putting " + query_multiple_short(obs) + " up for "
+         "auction as " + name + " for " +
+          query_time_end_string(len);
+   if (reserve) {
+     ret += " with a reserve price of " +
+            MONEY_HAND->money_value_string(reserve, place);
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_ADD_AUCTION,
+                             this_player(), name, obs, reserve, len, ret + ".")) {
+      write(ret + ".\n");
+      write("Are you sure you wish to do this? ");
+   }
+   input_to("confirm_auction", 0, name, obs, reserve, len);
+   add_succeeded_mess(({ "", "$N put$s $I up for auction.\n" }), obs);
+   return 1;
+}
+void confirm_auction(string check, string name, object* obs, int reserve, int len) {
+   string place;
+   string ret;
+   place = query_property("place");
+   check = lower_case(check);
+   if (!strlen(check) || check[0] != 'y') {
+      if (!broadcast_shop_event(AUCTION_EVENT_ADD_ABORT,
+                             this_player(), name, obs, reserve, len)) {
+         write("Ok, Aborting.\n");
+      }
+      return ;
+   }
+   add_item_to_auction(obs, name, reserve,
+                       this_player()->query_cap_name(), len, 0, 0);
+   ret = "You put " + query_multiple_short(obs) + " up for "
+         "auction as " + name + " for " +
+          query_time_end_string(len);
+   if (reserve) {
+     ret += " with a reserve price of " +
+            MONEY_HAND->money_value_string(reserve, place) + "";
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_CONFIRM_AUCTION,
+                             this_player(), name, obs, reserve, len, ret + ".")) {
+      write(ret + ".\n");
+   }
+   obs->move("/room/rubbish");
+}
+int do_info() {
+   string ret;
+   string name;
+   int len;
+   if (!is_open(this_player(), 0)) {
+      add_failed_mess(this_object()->the_short() + " is not open.\n");
+      return 0;
+   }
+   ret = "$I$3=The times for the auction are:\n";
+   foreach (name, len in _auction_times) {
+      ret += name + ": " + query_time_end_string(len) + "\n";
+   }
+   if (!broadcast_shop_event(AUCTION_EVENT_INFO, this_player(), ret)) {
+      write("$P$Auction lengths$P$" + ret);
+   }
+   return 1;
+}
+void init() {
+   add_command("list", "", (: do_list() :));
+   add_command("browse", "<string'auction id'>", (: do_browse($4[0]) :));
+   add_command("bid", "<string'auction id'> for <string'money'>",
+               (: do_bid($4[0], $4[1]) :));
+   add_command("bid", "<string'money'> on <string'auction id'>",
+               (: do_bid($4[1], $4[0]) :));
+   add_command("claim", "", (: do_claim() :));
+   add_command("withdraw", "<string'auction id'> [from auction]",
+                (: do_withdraw($4[0]) :));
+   if (_allow_add) {
+      if (!_bid_type_names) {
+         _bid_type_names = implode(keys(_auction_times), "|");
+      }
+      add_command("info", "", (: do_info() :));
+      add_command("add", "{" + _bid_type_names +
+                   "} auction of <indirect:object:me> as <string'name'>",
+                  (: do_add($4[2], $1, 0, $4[0]) :));
+      add_command("add", "{" + _bid_type_names +
+                  "}  auction of <indirect:object:me> as <string'name'> reserve <string'price'>",
+                  (: do_add($4[2], $1, $4[3], $4[0]) :));
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/newspaper_archive.c ===
+inherit "/std/shops/inherit/shop_event";
+#include <room/newspaper.h>
+#include <shops/newspaper_archive.h>
+#include <money.h>
+#include <move_failures.h>
+private nosave string _area;
+private nosave string _paper;
+mixed query_property(string name);
+void create() {
+   shop_event::create();
+}
+void set_paper_area(string area) {
+   _area = area;
+}
+string query_paper_area() {
+   return _area;
+}
+void set_paper(string paper) {
+   _paper = paper;
+}
+string query_paper() {
+   return _paper;
+}
+int do_list_papers() {
+   string paper;
+   string* papers;
+   string str;
+   int cost;
+   string place;
+   place = query_property("place");
+   if (_paper) {
+      papers = ({ _paper });
+   } else {
+      papers = NEWSPAPER_HANDLER->query_papers_in_area(_area);
+   }
+   if (!sizeof(papers)) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_NO_PAPERS, this_player())) {
+         add_failed_mess("There do appear to be any newspapers to get "
+                         "back issues of.\n");
+      }
+      return 0;
+   }
+   str = "Back issues of the following papers:\n";
+   foreach (paper in papers) {
+      cost = NEWSPAPER_HANDLER->query_paper_cost(paper) * 10;
+      if (NEWSPAPER_HANDLER->query_last_edition_num(paper)) {
+         if (NEWSPAPER_HANDLER->query_last_edition_num(paper) > 1) {
+            str += "$I$5=" + paper + " issues, 1 to " +
+                   NEWSPAPER_HANDLER->query_last_edition_num(paper);
+         } else {
+            str += "$I$5=" + paper + " issue, 1";
+         }
+         str += " for " + MONEY_HAND->money_value_string(cost, place);
+      } else {
+         str += "$I$5=" + paper + " has no back issues.\n";
+      }
+      str += ".\n";
+   }
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_LIST, this_player(),
+                             str, papers)) {
+      write("$P$Archives$P$" + str);
+   }
+   return 1;
+}
+int do_buy(string paper, int edition) {
+   string found_paper;
+   int pos;
+   object ob;
+   string place;
+   string* papers;
+   int cost;
+   int* editions;
+   place = query_property("place");
+   if (_paper) {
+      papers = ({ _paper });
+   } else {
+      papers = NEWSPAPER_HANDLER->query_papers_in_area(_area);
+   }
+   if (strlen(paper) == 1) {
+      pos = lower_case(paper)[0] - 'a';
+      if (pos < 0 || pos >= sizeof(papers)) {
+         found_paper = papers[pos];
+      }
+   } else {
+      for (pos = 0; pos < sizeof(papers); pos++) {
+         if (lower_case(paper) == lower_case(papers[pos])) {
+            found_paper = papers[pos];
+         }
+      }
+   }
+   if (!found_paper) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_INVALID_PAPER,
+                                this_player(), paper)) {
+         add_failed_mess("There is no paper called " + paper + ".\n");
+      }
+      return 0;
+   }
+   if (edition < 0 ||
+       edition > NEWSPAPER_HANDLER->query_last_edition_num(found_paper)) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_INVALID_EDITION,
+                                this_player(), paper, edition)) {
+         add_failed_mess("There is no edition " + edition + " of the "
+                         "paper " + found_paper + ".\n");
+      }
+      return 0;
+   }
+   cost = NEWSPAPER_HANDLER->query_paper_cost(found_paper) * 10;
+   if (this_player()->query_value_in(place) < cost) {
+      if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_TOO_POOR,
+                                this_player(), paper, edition, cost)) {
+         add_failed_mess("You need " +
+                         MONEY_HAND->money_value_string(cost, place) +
+                         " to buy a back issue of " + found_paper + ".\n");
+      }
+      return 0;
+   }
+   ob = clone_object("/obj/misc/newspaper");
+   ob->set_paper(found_paper);
+   ob->set_edition(edition);
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_MOVE_PAPER,
+                             this_player(), paper, edition, cost, ob)) {
+      if (ob->move(this_player()) != MOVE_OK) {
+         ob->move(this_object());
+         write("Unable to move the paper into your inventory, putting it "
+               "on the floor.\n");
+      }
+   }
+   this_player()->pay_money(MONEY_HAND->create_money_array(cost, place), place);
+   if (!broadcast_shop_event(NEWSPAPER_ARCHIVE_EVENT_BOUGHT,
+                             this_player(), paper, edition, cost, ob)) {
+      add_succeeded_mess("$N buy$s edition " + edition + " of " +
+                         found_paper + " for " +
+                         MONEY_HAND->money_value_string(cost, place) + ".\n");
+   }
+   editions = this_player()->query_property("Paper " + found_paper);
+   if (!editions) {
+      editions = ({ });
+   }
+   if (member_array(edition, editions) == -1) {
+      editions += ({ edition });
+      this_player()->add_property("Paper " + found_paper, editions);
+      NEWSPAPER_HANDLER->add_edition_paper_sold(_paper, edition,
+                        cost);
+   }
+   return 1;
+}
+void init() {
+   add_command("list", "[papers]", (: do_list_papers() :));
+   add_command("buy", "<number'edition number'> of <string'paper name'>",
+                (: do_buy($4[1], $4[0]) :));
+}

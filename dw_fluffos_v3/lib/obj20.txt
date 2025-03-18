@@ -1,0 +1,2509 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/new_soul.c ===
+#include <player.h>
+#include <soul.h>
+#include <user_parser.h>
+#define SAVE_FILE "/save/soul"
+#define SOUL_DATA_DIR "/save/soul/data/"
+#define POS_SELF   0
+#define POS_TARGET 1
+#define POS_REST   2
+#define PCACHE_MAX_SIZE 30
+#define SCACHE_MAX_SIZE 100
+#define CLEAN_UP_DELAY 300
+mixed soul_commands;
+mapping soul_command_names;
+nosave mapping pattern_cache;
+nosave mapping soul_cache;
+nosave string *pcache_order,
+ *scache_order;
+nosave int scache_hits, scache_reads, pcache_hits, pcache_reads, cache_callout;
+void load_it();
+void save_it();
+void print_messages(string verb, mixed obs, string arg, string self,
+                    string rest, string target, string force,
+                    mapping position);
+protected void save_soul_command(string name, mixed *data);
+void create() {
+  soul_commands = 0;
+  soul_command_names = ([ ]);
+  pattern_cache = ([ "" : NO_ARGUMENT ]);
+  pcache_order = ({ });
+  scache_order = ({ });
+  soul_cache = ([ ]);
+  seteuid("Room");
+  load_it();
+}
+void clean_cache() {
+  int i;
+  for (i = 0; i < (sizeof(pcache_order) - PCACHE_MAX_SIZE); i++) {
+    map_delete(pattern_cache, pcache_order[i]);
+  }
+  pcache_order = pcache_order[i..];
+  for (i = 0; i < (sizeof(scache_order) - SCACHE_MAX_SIZE); i++) {
+    map_delete(soul_cache, scache_order[i]);
+  }
+  scache_order = scache_order[i..];
+  cache_callout = 0;
+}
+void add_soul_command(string name, mixed data) {
+  if (file_name(previous_object()) != SOUL_COMPILER)
+    return;
+  save_soul_command(name, data);
+  map_delete(soul_cache, name);
+  save_it();
+}
+void delete_soul_command(string name) {
+  map_delete(soul_cache, name);
+  map_delete(soul_command_names, name);
+  unguarded((: rm, SOUL_DATA_DIR + name + ".os" :));
+  save_it();
+}
+string *query_soul_commands() {
+  return keys(soul_command_names);
+}
+protected mixed *query_soul_command_data(string str) {
+  scache_reads++;
+  if (!soul_cache[str] && soul_command_names[str]) {
+    string tmp;
+    tmp = unguarded((: read_file, SOUL_DATA_DIR + str + ".os" :));
+    soul_cache[str] = restore_variable(tmp);
+    if (!cache_callout && (sizeof(scache_order) > SCACHE_MAX_SIZE))
+      cache_callout = call_out("clean_cache", CLEAN_UP_DELAY);
+  } else {
+    scache_order -= ({ str });
+    scache_hits++;
+  }
+  scache_order += ({ str });
+  return soul_cache[str];
+}
+mixed *query_soul_command_stuff(string str) {
+  return query_soul_command_data(str) + ({ });
+}
+protected void save_soul_command(string name, mixed *data) {
+  string str;
+  str = save_variable(data);
+  unguarded((: rm, SOUL_DATA_DIR + name + ".os" :));
+  unguarded((: write_file, SOUL_DATA_DIR + name + ".os", str :));
+  soul_command_names[name] = 1;
+}
+void save_it() {
+  unguarded((: save_object, SAVE_FILE :));
+}
+void load_it() {
+  string *names;
+  int i;
+  unguarded((: restore_object, SAVE_FILE :));
+  if (mapp(soul_commands)) {
+    soul_command_names = ([ ]);
+    names = keys(soul_commands);
+    for (i = 0; i < sizeof(names); i++) {
+      reset_eval_cost();
+      save_soul_command(names[i], soul_commands[names[i]]);
+    }
+    soul_commands = 0;
+    save_it();
+  }
+}
+private mixed create_pattern_cache(string pattern) {
+  mixed *bing, ret;
+  string s1, s2;
+  bing = explode("#" + pattern, "<indirect:");
+  if (sizeof(bing) == 1)
+    if (sscanf(bing[0], "%s<word>%s", s1, s2) ||
+        sscanf(bing[0], "%s<string>%s", s1, s2))
+      ret = ONLY_ARGUMENT;
+    else
+      ret = NO_ARGUMENT;
+  else if (sscanf(bing[0], "%s<word>%s", s1, s2) ||
+           sscanf(bing[0], "%s<string>%s", s1, s2))
+    ret = ARGUMENT_FIRST;
+  else if (sscanf(bing[1], "%s<word>%s", s1, s2) ||
+           sscanf(bing[1], "%s<string>%s", s1, s2))
+    ret = ARGUMENT_SECOND;
+  else
+    ret = ONLY_TARGET;
+  return ret;
+}
+mixed *query_soul_command(string name) {
+  mixed *data;
+  mixed *ret;
+  string pat;
+  int i;
+  if (!soul_command_names[name]) {
+    return 0;
+  }
+  data = query_soul_command_data(name);
+  if (!data) {
+    return 0;
+  }
+  ret = ({ ({ ({ }), "", 0, this_object(), 0 }) });
+  for (i = 0; i < sizeof(data[PATTERNS]); i++) {
+    pat = data[PATTERNS][i];
+    pcache_reads++;
+    if (!pattern_cache[pat]) {
+      pattern_cache[pat] = create_pattern_cache(pat);
+      if (!cache_callout && sizeof(pcache_order) > PCACHE_MAX_SIZE) {
+        cache_callout = call_out("clean_cache", CLEAN_UP_DELAY);
+      }
+    } else {
+      pcache_hits++;
+      pcache_order -= ({ pat });
+    }
+    pcache_order += ({ pat });
+    ret += ({ ({ ((mixed *) PATTERN_OB->query_pattern(pat))[1],
+                   pat, 0, this_object(), 0 }) });
+  }
+  return ret;
+}
+int command_control(string verb, object * obs, string, string in_dir_match,
+                    string *args, string pattern) {
+  int i;
+  int j;
+  string arg;
+  mixed *stuff;
+  object *wom;
+  object *rem;
+  mixed *data;
+  if (!soul_command_names[verb]) {
+    return 0;
+  }
+  if (pattern != "") {
+    stuff = PATTERN_OB->query_pattern(pattern);
+    for (i = 1; i < sizeof(stuff); i++) {
+      switch (stuff[i]) {
+      case INDIRECT_OBJECT:
+        i += 2;
+        wom = obs;
+        if (previous_object()->query_property("no soul")) {
+          previous_object()->add_failed_mess(this_object(),
+                                           "You cannot use directed souls.\n",
+                                             ({ }));
+          return 0;
+        }
+        if ((sizeof(obs) == 1) &&
+            !previous_object()->query_creator() &&
+            obs[0]->query_property("ignoring") &&
+            member_array((string) previous_object()->query_name(),
+                         (string *)obs[0]->query_property("ignoring")) != -1) {
+          return 0;
+        }
+        if (sizeof(obs) > 1) {
+          obs = filter(obs, (: !$1->check_earmuffs("multiple-soul") :));
+          if (!sizeof(obs)) {
+            previous_object()->add_failed_mess(this_object(),
+               "Everyone seems to have their multiple souls earmuffed.  "
+               "I'm depressed, are you depressed?\n",
+                                               ({ }));
+            return 0;
+          }
+        }
+        rem = filter(obs,
+                     (:
+                      (!interactive($1) &&
+                       environment(previous_object(1)) != environment($1)) ||
+                      (interactive($1) && $1->query_role_playing() &&
+                       environment($1) != environment(previous_object(1)))
+                      :));
+        obs -= rem;
+        obs -= previous_object()->query_ignoring(obs);
+         if(previous_object()->query_role_playing())
+           obs -= filter(obs,
+                         (:
+                          environment($1) != environment(previous_object(1)) ||
+                          (interactive($1) &&
+                           !previous_object(1)->is_friend($1->query_name()))
+                          :));
+         if (!sizeof(obs)) {
+           return 0;
+         }
+         if (previous_object()->check_earmuffs("remote-soul")) {
+           if (previous_object()->query_earmuffs() ==
+               PLAYER_ALLOW_FRIENDS_EARMUFF) {
+             rem = filter(obs,
+                          (:
+                          environment(previous_object(1)) != environment($1) &&
+                           !previous_object(1)->is_friend($1->query_name())
+                           :));
+           } else {
+             rem = filter(obs,
+                          (:
+                           environment(previous_object(1)) != environment($1)
+                           :));
+           }
+           if (sizeof(rem) == sizeof(obs)) {
+             previous_object()->add_failed_mess(this_object(),
+               "You cannot do a remote soul when you have remote souls "
+                                                "earmuffed.\n", ({ }));
+             return 0;
+           }
+           obs = obs - rem;
+         } else {
+           obs = filter(obs, (: !$1->check_earmuffs("remote-soul") ||
+                              (environment(previous_object(1)) ==
+                               environment($1)) :));
+           if (!sizeof(obs)) {
+             previous_object()->add_failed_mess(this_object(),
+               "Remote soul earmuffs enabled for $I.\n", wom);
+             return 0;
+           }
+         }
+         j++;
+         break;
+       case STRING:
+       case SINGLE_WORD:
+       case SHORT_STRING:
+         arg = args[j++];
+         break;
+       case NUMBER:
+         j++;
+         break;
+       case FRACTION:
+         j += 2;
+         break;
+       case OPTIONAL:
+       case OPTIONAL_SPACES:
+         i++;
+         break;
+       case WORD_LIST:
+       case WORD_LIST_SPACES:
+         i++;
+         if (pointerp(stuff[i]) && sizeof(stuff[i]) > 1)
+           j++;
+         break;
+       }
+     }
+   }
+   if (!pattern_cache[pattern]) {
+     return 0;
+   }
+   if (!previous_object()->query_creator()) {
+     if ((int) previous_object()->adjust_sp(-SOUL_COST *
+                                            (1 + sizeof(obs))) < 0) {
+       previous_object()->add_failed_mess(this_object(), NO_POWER, ({ }));
+       return 0;
+     }
+   }
+   data = query_soul_command_data(verb);
+   switch (pattern_cache[pattern]) {
+   case NO_ARGUMENT:
+     if (data[SINGLE])
+       if (data[SINGLE][NO_ARGUMENTS]) {
+         if (sizeof(data[SINGLE][NO_ARGUMENTS]) > POSITION_SINGLE) {
+           print_messages(verb, 0, "", data[SINGLE][NO_ARGUMENTS][SELF],
+                          data[SINGLE][NO_ARGUMENTS][REST],
+                          0, 0,
+                          data[SINGLE][NO_ARGUMENTS][POSITION_SINGLE]);
+         } else {
+           print_messages(verb, 0, "", data[SINGLE][NO_ARGUMENTS][SELF],
+                          data[SINGLE][NO_ARGUMENTS][REST], 0, 0, 0);
+         }
+         return 1;
+       } else {
+         if (!data[SINGLE][ARGUMENTS])
+           return 0;
+         arg = data[SINGLE][ARGUMENTS][ARGS][0];
+       } else
+         return 0;
+   case ONLY_ARGUMENT:
+     if (arg == "?") {
+       j = 0;
+       for (i = 0; i < sizeof(data[SINGLE][ARGUMENTS]); i += SMALL_ARG_SIZE)
+         j += sizeof(data[SINGLE][ARGUMENTS][i + ARGS]);
+       j = random(j);
+       for (i = 0; i < sizeof(data[SINGLE][ARGUMENTS]); i += SMALL_ARG_SIZE)
+         if (j < sizeof(data[SINGLE][ARGUMENTS][i + ARGS])) {
+           if (data[SINGLE][ARGUMENTS][i + ARGS][j] == "#") {
+             if (j > 0)
+               j--;
+             else {
+               j++;
+               if (j >= sizeof(data[SINGLE][ARGUMENTS][i + ARGS])) {
+                 j -= sizeof(data[SINGLE][ARGUMENTS][i + ARGS]);
+                 continue;
+               }
+             }
+           }
+           print_messages(verb, 0, data[SINGLE][ARGUMENTS][i + ARGS][j],
+                          data[SINGLE][ARGUMENTS][i + SELF],
+                          data[SINGLE][ARGUMENTS][i + REST], 0, 0,
+                          data[SINGLE][ARGUMENTS][i + POSITION_SINGLE]);
+           return 1;
+         } else {
+           j -= sizeof(data[SINGLE][ARGUMENTS][i + ARGS]);
+         }
+     }
+     for (i = 0; i < sizeof(data[SINGLE][ARGUMENTS]); i += SMALL_ARG_SIZE) {
+       if ((j = member_array(arg, data[SINGLE][ARGUMENTS][i + ARGS], 0, 1))
+           != -1) {
+         print_messages(verb, 0, data[SINGLE][ARGUMENTS][i + ARGS][j],
+                        data[SINGLE][ARGUMENTS][i + SELF],
+                        data[SINGLE][ARGUMENTS][i + REST],
+                        0, 0,
+                        data[SINGLE][ARGUMENTS][i + POSITION_SINGLE]);
+         return 1;
+       }
+     }
+     for (i = 0; i < sizeof(data[SINGLE][ARGUMENTS]); i += SMALL_ARG_SIZE)
+       if ((j = member_array("#", data[SINGLE][ARGUMENTS][i + ARGS], 0, 1))
+           != -1) {
+         print_messages(verb, 0, arg,
+                        data[SINGLE][ARGUMENTS][i + SELF],
+                        data[SINGLE][ARGUMENTS][i + REST], 0, 0,
+                        data[SINGLE][ARGUMENTS][i + POSITION_SINGLE]);
+         return 1;
+       }
+     previous_object()->add_failed_mess(this_object(),
+                                        arg +
+                                        " is not a valid argument to the soul "
+                                        "command \"" + verb + "\".\n",
+                                        ({ }));
+     return 0;
+   case ARGUMENT_FIRST:
+   case ARGUMENT_SECOND:
+     break;
+   case ONLY_TARGET:
+     if (data[TARGET][NO_ARGUMENTS]) {
+       obs->event_soul_command(this_object(), verb, previous_object(),
+                               in_dir_match, 0);
+       print_messages(verb, obs, "",
+                      data[TARGET][NO_ARGUMENTS][SELF],
+                      data[TARGET][NO_ARGUMENTS][REST],
+                      data[TARGET][NO_ARGUMENTS][TARGET],
+                      data[TARGET][NO_ARGUMENTS][FORCE],
+                      data[TARGET][NO_ARGUMENTS][POSITION]);
+       return 1;
+     }
+     if (!data[TARGET][ARGUMENTS]) {
+       return 0;
+     }
+     arg = data[TARGET][ARGUMENTS][ARGS][0];
+     break;
+   }
+   if (arg == "?") {
+     j = 0;
+     for (i = 0; i < sizeof(data[TARGET][ARGUMENTS]); i += ARG_SIZE) {
+       j += sizeof(data[TARGET][ARGUMENTS][i + ARGS]);
+     }
+     j = random(j);
+     for (i = 0; i < sizeof(data[TARGET][ARGUMENTS]); i += ARG_SIZE) {
+       if (j < sizeof(data[TARGET][ARGUMENTS][i + ARGS])) {
+         if (data[TARGET][ARGUMENTS][i + ARGS][j] == "#") {
+           if (j > 0) {
+             j--;
+           } else {
+             j++;
+             if (j >= sizeof(data[TARGET][ARGUMENTS][i + ARGS])) {
+               j -= sizeof(data[TARGET][ARGUMENTS][i + ARGS]);
+               continue;
+             }
+           }
+         }
+         obs->event_soul_command(this_object(), verb, previous_object(),
+                                 in_dir_match, arg);
+         print_messages(verb, obs, data[TARGET][ARGUMENTS][i + ARGS][j],
+                        data[TARGET][ARGUMENTS][i + SELF],
+                        data[TARGET][ARGUMENTS][i + REST],
+                        data[TARGET][ARGUMENTS][i + TARGET],
+                        data[TARGET][ARGUMENTS][i + FORCE],
+                        data[TARGET][ARGUMENTS][i + POSITION]);
+         return 1;
+       } else {
+         j -= sizeof(data[TARGET][ARGUMENTS][i + ARGS]);
+       }
+     }
+   }
+   for (i = 0; i < sizeof(data[TARGET][ARGUMENTS]); i += ARG_SIZE) {
+     if ((j =
+          member_array(arg, data[TARGET][ARGUMENTS][i + ARGS], 0,
+                       1)) != -1) {
+       obs->event_soul_command(this_object(), verb, previous_object(),
+                               in_dir_match, arg);
+       print_messages(verb, obs, data[TARGET][ARGUMENTS][i + ARGS][j],
+                      data[TARGET][ARGUMENTS][i + SELF],
+                      data[TARGET][ARGUMENTS][i + REST],
+                      data[TARGET][ARGUMENTS][i + TARGET],
+                      data[TARGET][ARGUMENTS][i + FORCE],
+                      data[TARGET][ARGUMENTS][i + POSITION]);
+       return 1;
+     }
+   }
+   for (i = 0; i < sizeof(data[TARGET][ARGUMENTS]); i += ARG_SIZE) {
+     if ((j =
+          member_array("#", data[TARGET][ARGUMENTS][i + ARGS], 0,
+                       1)) != -1) {
+       obs->event_soul_command(this_object(), verb, previous_object(),
+                               in_dir_match, arg);
+       print_messages(verb, obs, arg,
+                      data[TARGET][ARGUMENTS][i + SELF],
+                      data[TARGET][ARGUMENTS][i + REST],
+                      data[TARGET][ARGUMENTS][i + TARGET],
+                      data[TARGET][ARGUMENTS][i + FORCE],
+                      data[TARGET][ARGUMENTS][i + POSITION]);
+       return 1;
+     }
+   }
+   return 0;
+}
+string get_name(object ob, int use_name, int type) {
+  if(ob == previous_object())
+    return ob->query_objective() + "self";
+  if(userp(ob) && use_name && environment(ob) != environment(previous_object()))
+    return "$mirror_short:" + file_name(ob) + "$";
+  return ob->one_short(use_name);
+}
+private string create_message(mixed targets, string args, string pattern,
+                              int type, string verb, string position,
+                              string actor_position, mixed me,
+                              int use_name) {
+  string *bits;
+  string *rabbit;
+  string singular;
+  string plural;
+  int i;
+  int word_break;
+  if(arrayp(targets) && sizeof(targets) == 1)
+    targets = targets[0];
+  if (stringp(verb) && type && (sizeof(explode(pattern, "$V$")) < 2)) {
+    if (pointerp(targets) && sizeof(targets) > 0) {
+      pattern = replace_string(pattern, pluralize(verb), "$V$1=" +
+                               pluralize(verb) + "," + verb + "$V$");
+    } else {
+      pattern = replace_string(pattern, pluralize(verb), "$V$0=" +
+                               pluralize(verb) + "," + verb + "$V$");
+    }
+  }
+  if(pattern) {
+    pattern = replace_string(pattern, "$V$", "VERBFROG");
+    bits = explode("%" + replace(pattern, ({ "$arg$", args })), "$");
+  }
+  if (!me) {
+    me = previous_object();
+  }
+  for (i = 1; i < sizeof(bits); i += 2) {
+    switch (bits[i]) {
+    case "article":
+      if (vowel(args[0])) {
+        bits[i] = "an";
+      } else {
+        bits[i] = "a";
+      }
+      break;
+    case "hcname":
+      if (stringp(targets)) {
+        bits[i] = targets;
+        break;
+      }
+      if (objectp(targets)) {
+        if ((targets == me)) {
+          if (type) {
+            bits[i] = (string) targets->query_objective() + "self";
+          } else {
+            bits[i] = "yourself";
+          }
+        } else {
+          bits[i] = (string) get_name(targets, use_name, type);
+        }
+        break;
+      }
+      if(arrayp(targets)) {
+        bits[i] = "$M$" + implode(map(targets, (: get_name :), use_name, type), "") +
+                  "$M$";
+      }
+      break;
+    case "mhcname":
+      if (stringp(targets)) {
+        bits[i] = targets + "'s";
+        break;
+      }
+      if (objectp(targets)) {
+        if ((targets == me))
+          if (type)
+            bits[i] = (string) targets->query_possessive();
+          else
+            bits[i] = "your";
+        else
+          bits[i] = (string) targets->the_poss_short();
+        break;
+      }
+      bits[i] = "$M$" + implode(map(targets,
+        (: objectp($1) ? $1->the_poss_short($(use_name)) : $1 + "'s" :)), "") +
+        "$M$";
+      break;
+    case "hposs":
+      if (objectp(targets))
+        bits[i] = (string) targets->query_possessive();
+      else
+        bits[i] = "their";
+      break;
+    case "hpronoun":
+      if (objectp(targets))
+        bits[i] = (string) targets->query_pronoun();
+      else
+        bits[i] = "they";
+      break;
+    case "hobj":
+      if (objectp(targets))
+        bits[i] = (string) targets->query_objective();
+      else
+        bits[i] = "them";
+      break;
+    case "mcname":
+      if(stringp(me))
+        bits[i] = me;
+      else if (me != previous_object()) {
+        bits[i] = (string) me->short(0, 0);
+      } else if(userp(me) && use_name) {
+        bits[i] = me->short(0, 0);
+      } else
+        bits[i] = me->the_short();
+      break;
+    case "mposs":
+      if (type && objectp(me)) {
+        bits[i] = (string) me->query_possessive();
+      } else {
+        bits[i] = "your";
+      }
+      break;
+    case "mpronoun":
+      bits[i] = (string) me->query_pronoun();
+      break;
+    case "mobj":
+      if(objectp(me))
+        bits[i] = (string) me->query_objective();
+      else
+        bits[i] = "you";
+      break;
+    case "position":
+      if (position) {
+        rabbit = explode("%" + position, "$");
+        rabbit[0] = rabbit[0][1..];
+        if ((sizeof(rabbit) % 2) == 1) {
+          rabbit += ({ "" });
+        }
+        bits = bits[0..i] + rabbit + bits[i + 1..];
+      }
+      bits[i] = "";
+      break;
+    case "aposition":
+      if (actor_position) {
+        rabbit = explode("%" + actor_position, "$");
+        rabbit[0] = rabbit[0][1..];
+        if ((sizeof(rabbit) % 2) == 1) {
+          rabbit += ({ "" });
+        }
+        bits = bits[0..i] + rabbit + bits[i + 1..];
+      }
+      bits[i] = "";
+      break;
+    case "s":
+      if (i == 0)
+        break;
+      word_break = strsrch(bits[i - 1], ' ', -1);
+      if (word_break == -1)
+        break;
+      if (me == previous_object())  {
+        if (use_name)
+          bits[i] = pluralize(bits[i - 1][word_break + 1 .. ]);
+        else  {
+          if (pointerp(targets)  &&  sizeof(targets) > 0)
+            bits[i] = "$V$1=";
+          else
+            bits[i] = "$V$0=";
+          bits[i] +=  pluralize(bits[i - 1][word_break + 1 .. ]) + "," +
+                    bits[i - 1][word_break + 1 .. ] + "$V$";
+        }
+        bits[i - 1] = bits[i - 1][0 .. word_break];
+      }
+      break;
+    case "verb":
+      if (i + 1 < sizeof(bits))  {
+        if (sscanf(bits[i + 1], "%s,%s", singular, plural) == 2)
+        {
+          if (me == previous_object())  {
+            if (use_name)
+              bits[i] = singular;
+            else  {
+              if (pointerp(targets)  &&  sizeof(targets) > 0)
+                bits[i] = "$V$1=";
+              else
+                bits[i] = "$V$0=";
+              bits[i] +=  singular + "," + plural + "$V$";
+            }
+          }
+          else bits[i] = singular;
+          bits = bits[0 .. i] + bits[i + 2 .. ];
+        }
+      }
+      break;
+    case "dollar":
+      bits[i] = "$";
+      break;
+    }
+  }
+  pattern = implode(bits, "")[1..] + "\n";
+  pattern = replace_string(pattern, "VERBFROG", "$V$");
+  return pattern;
+}
+private string position_command(mixed bing) {
+  if (stringp(bing)) {
+    return bing;
+  }
+  if (mapp(bing)) {
+    return bing["cmd"];
+  }
+  return 0;
+}
+private void do_position_stuff(object ob, mapping position) {
+  string cur_pos;
+  string new_pos;
+  if (position) {
+    cur_pos = ob->query_position();
+    if (position[cur_pos]) {
+      new_pos = position_command(position[cur_pos]);
+    } else if (position["default"]) {
+      new_pos = position_command(position["default"]);
+    }
+    if (new_pos && new_pos != "ignore" &&
+        !ob->query_cannot_change_position() &&
+        ("/cmds/living/" + new_pos)->query_position_command()) {
+      ("/cmds/living/" + new_pos)->position(ob, position["silent"]);
+    }
+  }
+}
+private string *position_string(object ob, mapping position, int) {
+  string *str;
+  string cur_pos;
+  mixed new_pos;
+  str = ({ 0, 0, 0 });
+  if (position) {
+    cur_pos = ob->query_position();
+    if (position[cur_pos]) {
+      new_pos = position[cur_pos];
+    } else if (position["default"]) {
+      new_pos = position["default"];
+    }
+    if (mapp(new_pos)) {
+      return ({ new_pos["self"], new_pos["target"], new_pos["rest"] });
+    }
+    if (new_pos && new_pos != "ignore" &&
+        !ob->query_cannot_change_position() &&
+        ("/cmds/living/" + new_pos)->query_position_command()) {
+      str = ({ " making you " + new_pos + " " +
+                 ("/cmds/living/" + new_pos)->query_up_down(),
+                 " making $hobj$ " + new_pos + " " +
+                 ("/cmds/living/" + new_pos)->query_up_down(),
+                 " making $hobj$ " + new_pos + " " +
+                 ("/cmds/living/" + new_pos)->query_up_down()
+                 });
+    }
+  }
+  return str;
+}
+private string position_of(object ob, mapping position) {
+  string tmp;
+  tmp = ob->query_position();
+  if (position[tmp]) {
+    tmp = position_command(position[tmp]);
+    if (tmp) {
+      return tmp;
+    }
+  }
+  if (position["default"]) {
+    tmp = position_command(position["default"]);
+    if (tmp) {
+      return tmp;
+    }
+  }
+  return "";
+}
+private string env_position_of(object ob, mapping position) {
+  return file_name(ob->query_current_room()) + position_of(ob, position);
+}
+private void print_messages(string verb, mixed obs, string arg, string self,
+                            string rest, string target, string force,
+                            mapping position) {
+  object *here, *targ;
+  string *pos_stuff, *actor_pos_stuff;
+  if(!obs)
+    obs = ({ });
+  if(!position)
+    position = ([ ]);
+  switch(sizeof(obs)) {
+  case 0:
+    pos_stuff = position_string(previous_object(), position, 0);
+    actor_pos_stuff = ({ "", "", ""});
+    do_position_stuff(previous_object(), position);
+    break;
+  case 1:
+    pos_stuff = position_string(obs[0], position, 0);
+    actor_pos_stuff = position_string(previous_object(), position["actor"], 0);
+    do_position_stuff(obs[0], position);
+    if (position && position["actor"])
+      do_position_stuff(previous_object(), position["actor"]);
+    break;
+  default:
+    actor_pos_stuff = position_string(previous_object(), position["actor"], 0);
+    pos_stuff = ({ "", "", "" });
+    if (position && position["actor"])
+      do_position_stuff(previous_object(), position["actor"]);
+  }
+  here = filter(obs, (: environment(previous_object(1)) == environment($1) :));
+  targ = obs - here - ({ previous_object() });
+  if(!sizeof(obs) || sizeof(here))
+    previous_object()->remove_hide_invis("hiding");
+  if(member_array(previous_object(), obs) == -1) {
+    previous_object()->event_soul(previous_object(),
+                                 create_message(obs, arg, self, 0, 0,
+                                                 pos_stuff[POS_TARGET],
+                                                 actor_pos_stuff[POS_TARGET],
+                                                 0, 1), ({ }), verb, arg, 0);
+  } else {
+    if(sizeof(obs) > 1)
+      obs -= ({ previous_object() });
+    previous_object()->event_soul(previous_object(),
+                                  create_message(obs, arg, self, 0, 0,
+                                                 pos_stuff[POS_SELF],
+                                                 actor_pos_stuff[POS_SELF],
+                                                 0, 1), ({ }), verb, arg, 0);
+  }
+  if(arg)
+    arg = replace(arg,
+                  ({ "yourself", previous_object()->query_objective() + "self",
+                       "your", previous_object()->query_possessive() }));
+  if(sizeof(targ)) {
+    target = replace(target, ({ " you.", " $hcname$.",
+                                " you ", " $hcname$ ",
+                                " you!", " $hcname$!",
+                                " your ", " $mhcname$ " }));
+    targ->event_soul(previous_object(),
+                     create_message(obs, arg, target, 1, 0,
+                                    pos_stuff[POS_SELF],
+                                    actor_pos_stuff[POS_TARGET], 0, 1),
+                     ({ }), verb, arg, 0);
+  }
+  obs -= ({ previous_object() });
+  if(!sizeof(obs) || sizeof(here)) {
+    if(sizeof(here) > 1)
+      here -= ({ previous_object() });
+    if(environment(previous_object()))
+      event(environment(previous_object()), "soul",
+            create_message(here, arg, rest, 1, 0, pos_stuff[POS_REST],
+                           actor_pos_stuff[POS_REST], 0, 0),
+            ({ previous_object() }) + targ, verb, arg,
+            sizeof(here)>=1?here[0]:0);
+  }
+#ifdef DISABLED
+  if(sizeof(obs) && stringp(force)) {
+    force = replace(force, "$mcname$", previous_object()->query_name());
+    foreach(ob in obs)
+      call_out("do_force", 2, ({ ob, force }));
+  }
+#endif
+}
+string add_start(string pat, string verb) {
+  return verb + " " + pat;
+}
+string help_list() {
+  return "$P$Soul$P$The commands available in this soul currently number " +
+    sizeof(soul_command_names) +
+    ".\nHere is a nice list of them.\nGood luck!\n" +
+    sprintf("%-#*s\n\n", (int) this_player()->query_cols(),
+            implode(sort_array(keys(soul_command_names), 1), "\n"));
+}
+string help_string(string verb) {
+  string ret, arg;
+  int i;
+  mixed target;
+  mixed *data;
+  if (!soul_command_names[verb])
+    return 0;
+  data = query_soul_command_data(verb);
+  ret = sprintf("Allowed command patterns:\n%-#*s\n\n",
+                (int) this_player()->query_cols(),
+                implode(map_array(data[PATTERNS],
+                                  "add_start", this_object(), verb), "\n"));
+  if (data[SINGLE]) {
+    if (data[SINGLE][NO_ARGUMENTS]) {
+      ret += "Has a no arguments mode.\nSelf:   " +
+        create_message(0, "", data[SINGLE][NO_ARGUMENTS][SELF], 0, 0,
+                       0, 0, this_player(), 0) +
+        "Others: " +
+        create_message(0, "", data[SINGLE][NO_ARGUMENTS][REST], 1, 0,
+                       0, 0, this_player(), 0) + "\n";
+    }
+    if (data[SINGLE][ARGUMENTS]) {
+      for (i = 0; i < sizeof(data[SINGLE][ARGUMENTS]); i += SMALL_ARG_SIZE) {
+        arg = data[SINGLE][ARGUMENTS][i + ARGS][0];
+        ret += sprintf("For the arguments: [%-=*s",
+                       (int) this_player()->query_cols() - 20,
+                       implode(data[SINGLE][ARGUMENTS][i + ARGS],
+                               ", ") + "]") + "\nSelf:   " +
+          create_message(0, arg, data[SINGLE][ARGUMENTS][i + SELF], 0, 0,
+                         0, 0, this_player(), 0)
+          + "Others: " + create_message(0, arg,
+                                        data[SINGLE][ARGUMENTS][i + REST], 1,
+                                        0, 0, 0, this_player(), 0)
+          + "\n";
+      }
+    }
+  }
+  if (data[TARGET]) {
+    target = query_multiple_short(({ "Womble", "Cabbage" }));
+    if (data[TARGET][NO_ARGUMENTS]) {
+      ret += "Has a no arguments, targeted mode.\nSelf:   " +
+        create_message(target, "", data[TARGET][NO_ARGUMENTS][SELF], 0, 0,
+                       0, 0,
+                       this_player(), 0) + "Target: " +
+        (data[TARGET][NO_ARGUMENTS][TARGET] ?
+         create_message(target, "", data[TARGET][NO_ARGUMENTS][TARGET], 2,
+                        0, 0, 0, this_player(), 0) :
+         create_message(target, "", data[TARGET][NO_ARGUMENTS][REST],
+                        1, 0, 0, 0,this_player(), 0)) +
+        "Others: " + create_message(target, "",
+                                    data[TARGET][NO_ARGUMENTS][REST], 1,
+                                    0, 0, 0, this_player(), 0) + "\n";
+    }
+    if (data[TARGET][ARGUMENTS]) {
+      for (i = 0; i < sizeof(data[TARGET][ARGUMENTS]); i += ARG_SIZE) {
+        arg = data[TARGET][ARGUMENTS][i + ARGS][0];
+        ret += sprintf("For the arguments: [%-=*s",
+                       (int) this_player()->query_cols() - 20,
+                       implode(data[TARGET][ARGUMENTS][i + ARGS],
+                               ", ") + "]") + "\nSelf:   " +
+          create_message(target, arg, data[TARGET][ARGUMENTS][i + SELF],
+                         0, 0, 0, 0,
+                         this_player(), 0) + "Target: " +
+          (data[TARGET][ARGUMENTS][TARGET + i] ?
+           create_message(target, arg,
+                          data[TARGET][ARGUMENTS][i + TARGET], 2, 0, 0,
+                          0, this_player(), 0) :
+           create_message(target, arg,data[TARGET][ARGUMENTS][i + REST],
+                          1, 0, 0, 0,this_player(), 0)) +
+          "Others: " + create_message(target, arg,
+                                      data[TARGET][ARGUMENTS][i + REST],
+                                      1, 0, 0, 0, this_player(), 0);
+      }
+    }
+  }
+  return this_player()->convert_message(ret);
+}
+void do_force(mixed *arr) {
+  string cmd;
+  cmd = explode(arr[1], " ")[0];
+  if (soul_command_names[cmd] &&
+      !arr[0]->query_property("dead") &&
+      userp(arr[0]))
+    arr[0]->eventForce(arr[1]);
+}
+int query_pcache_size() {
+  return sizeof(keys(pattern_cache));
+}
+int query_scache_size() {
+  return sizeof(keys(soul_cache));
+}
+mixed *stats() {
+  return ({ ({ "souls read", scache_reads, }),
+              ({ "soul cache hit percent",
+                   (scache_hits * 100) / scache_reads, }),
+              ({ "souls in cache", sizeof(keys(soul_cache)), }),
+              ({ "patterns read", pcache_reads, }),
+              ({ "pattern cache hit percent",
+                   (pcache_hits * 100) / pcache_reads, }),
+              ({ "patterns in cache", sizeof(keys(pattern_cache)) - 1, }), });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/potion.c ===
+inherit "/std/object";
+mapping paths = allocate_mapping(10);
+mapping potions = allocate_mapping(10);
+#define POTION_DIR "/obj/potions/"
+string *directories = ({
+    POTION_DIR,
+});
+void create() {
+    string dir, s, dummy, title, path, index;
+    int d, i;
+    seteuid("Room");
+    for (d = 0; d < sizeof(directories); d++) {
+        dir = directories[d];
+        index = dir + "index";
+        i = 1;
+        if (file_size(index) > 0) {
+            while (s = read_file(index, i++, 1)) {
+                if ((s == "") || (sscanf(s, "#%s", dummy))) {
+                    continue;
+                }
+                if (sscanf(s, "\"%s\"%*s\"%s\"", title, path) != 3) {
+                    continue;
+                }
+                paths[title] = path;
+                potions[title] = 0;
+            }
+        }
+    }
+    ::create();
+}
+int query_min_level(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+        return -1;
+    }
+    if (!potions[s]) {
+        potions[s] = clone_object(paths[s]);
+    }
+    return potions[s]->query_min_level();
+}
+string query_chant(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+        return 0;
+    }
+    if (!potions[s]) {
+        potions[s] = clone_object(paths[s]);
+    }
+    return potions[s]->query_chant();
+}
+object query_potion(string s) {
+    s = this_player()->expand_nickname(s);
+    if (undefinedp(paths[s])) {
+       return 0;
+    }
+    if (!potions[s]) {
+       potions[s] = clone_object(paths[s]);
+    }
+    return potions[s];
+}
+mixed clone_reagent(string s) {
+    object pot;
+    string potion;
+    potion = this_player()->expand_nickname(s);
+    if (undefinedp(paths[potion])) {
+      return -1;
+    }
+    pot = query_potion(s);
+    printf("Verb = %O\n", query_verb());
+    return pot->clone_reagent(query_verb());
+}
+mapping query_paths() {
+    return paths;
+}
+mapping query_potions() {
+    return potions;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/corpse_handler.c ===
+#include <player_handler.h>
+#define CORPSE_SAVE_DIR "/save/corpses/"
+#define CORPSE_RAM_DIR "/save/ramdisk/corpses/"
+#define CORPSE_SAVE_FILE "/save/corpses/main"
+#define CORPSE_OBJECT "/obj/corpse"
+private mapping _corpses;
+private nosave mapping _to_save;
+private nosave int _save_things_id;
+private int _corpse_id;
+class corpse_data {
+   int id;
+}
+void create() {
+   seteuid(getuid());
+   _corpses = ([ ]);
+   _corpse_id = 1;
+   _to_save = ([ ]);
+   unguarded( (: restore_object(CORPSE_SAVE_FILE,  1) :));
+   call_out("check_corpses", 10);
+}
+private void save_me() {
+   unguarded( (: save_object(CORPSE_SAVE_FILE,  3) :));
+}
+private class corpse_data find_corpse_data(string name, int id) {
+   class corpse_data corpse;
+   if (!_corpses[name]) {
+      return 0;
+   }
+   foreach (corpse in _corpses[name]) {
+      if (corpse->id == id) {
+         return corpse;
+      }
+   }
+   return 0;
+}
+private class corpse_data find_corpse_ob_data(object ob) {
+   string name;
+   int id;
+   name = ob->query_ownership();
+   id = ob->query_corpse_id();
+   return find_corpse_data(name, id);
+}
+object* find_player_corpses(string player) {
+   object* corpses;
+   corpses = filter( children( "/obj/corpse" ),
+             (: $1 && $1->query_property( "player" ) &&
+                $1->query_ownership() == $2 :), player );
+   return corpses;
+}
+private void really_save_corpses() {
+  object ob, player;
+  class corpse_data corpse;
+  string data;
+  string fname;
+  foreach (ob, corpse in _to_save) {
+    if(!ob)
+      continue;
+    data = ob->query_save_data();
+    if (stringp(data)) {
+#ifdef USE_RAMDISK
+      fname = CORPSE_RAM_DIR + corpse->id;
+#else
+      fname = CORPSE_SAVE_DIR + corpse->id;
+#endif
+      unguarded((: write_file($(fname), $(data), 1) :));
+    } else {
+      tell_creator("pinkfish", "Bad corpse save %O %O\n", ob, data);
+    }
+    player = find_player(ob->query_owner());
+    if(player)
+      player->save_me();
+  }
+  _to_save = ([ ]);
+}
+void save_corpse(object ob) {
+   class corpse_data corpse;
+   if (!ob->query_property("player") || !ob->query_ownership()) {
+      return ;
+   }
+   corpse = find_corpse_ob_data(ob);
+   if (!corpse) {
+      tell_creator("pinkfish", "Cannot find the corpse to save %O [%O].\n",
+                   ob, ob->query_ownership());
+      return ;
+   }
+   _to_save[ob] = corpse;
+   if (_save_things_id) {
+      remove_call_out(_save_things_id);
+   }
+   _save_things_id = call_out((: really_save_corpses :), 2);
+}
+object create_corpse(string name, int id) {
+   class corpse_data corpse;
+   string data, fname;
+   object ob;
+   corpse = find_corpse_data(name, id);
+#ifdef USE_RAMDISK
+   if(unguarded( (: file_size(CORPSE_RAM_DIR + $(corpse->id)) :)) > 0)
+     fname = CORPSE_RAM_DIR + corpse->id;
+#endif
+   if(!fname)
+     fname = CORPSE_SAVE_DIR + corpse->id;
+   data = unguarded( (: read_file($(fname)) :));
+   if (data) {
+     ob = clone_object(CORPSE_OBJECT);
+     ob->setup_corpse_from_save(data, name, id);
+     return ob;
+   }
+   return 0;
+}
+void check_corpses() {
+   class corpse_data* corpses;
+   string name;
+   object* obs;
+   int i;
+   int j;
+   foreach (name, corpses in _corpses) {
+      obs = find_player_corpses(name);
+      for (i = 0; i < sizeof(corpses); i++) {
+         for (j = 0; j < sizeof(obs); j++) {
+            if (obs[j]->query_corpse_id() == corpses[i]->id) {
+               corpses = corpses[0..i -1] + corpses[i+1..];
+               i--;
+            }
+         }
+      }
+      if (sizeof(corpses)) {
+         for (i = 0; i < sizeof(corpses); i++) {
+            create_corpse(name, corpses[i]->id);
+         }
+      }
+   }
+}
+int query_next_corpse_id() {
+   int id;
+   id = _corpse_id++;
+   save_me();
+   return id;
+}
+void register_corpse(object ob) {
+   string name;
+   int id;
+   class corpse_data corpse;
+   tell_creator("Registering %O (%O)\n", ob, ob->query_ownership());
+   name = ob->query_ownership();
+   if(PLAYER_HANDLER->test_creator(name)) {
+     tell_creator("pinkfish", "Not registering creator corpse %O (%O)\n",
+                  ob, ob->query_ownership());
+     return;
+   }
+   id = ob->query_corpse_id();
+   corpse = find_corpse_ob_data(ob);
+   if (corpse) {
+      save_corpse(ob);
+      return ;
+   }
+   corpse = new(class corpse_data);
+   corpse->id = id;
+   if (!_corpses[name]) {
+      _corpses[name] = ({ corpse });
+   } else {
+      _corpses[name] += ({ corpse });
+   }
+   save_me();
+   save_corpse(ob);
+}
+void deregister_corpse(object ob) {
+   string name;
+   int id;
+   class corpse_data corpse;
+   int i;
+   if (!ob->query_property("player")) {
+      return ;
+   }
+   name = ob->query_ownership();
+   id = ob->query_corpse_id();
+   for (i = 0; i < sizeof(_corpses[name]); i++) {
+      corpse = _corpses[name][i];
+      if (corpse->id == id) {
+         _corpses[name] = _corpses[name][0..i-1] + _corpses[name][i+1..];
+         if (!sizeof(_corpses[name])) {
+            map_delete(_corpses, name);
+         }
+         save_me();
+         unguarded( (: rm(CORPSE_SAVE_DIR + $(id)) :));
+#ifdef USE_RAMDISK
+         unguarded( (: rm(CORPSE_RAM_DIR + $(id)) :));
+#endif
+         return ;
+      }
+   }
+}
+mixed *stats() {
+  return ({ ({ "corpses", keys(_corpses) }) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/term.c ===
+#define ANSI(p) sprintf("%c["+(p)+"m", 27)
+#define ESC(p) sprintf("%c"+(p), 27)
+#define CHAR(p) sprintf("%c", (p))
+#define TERMINAL_DUMB "dumb"
+private nosave mapping aliases, terms;
+void create() {
+  aliases = ([ "xterm-debian" : "xterm",
+               "zmud" : "vt220",
+               "amiga" : "vt220",
+               "linux" : "vt220",
+               "xterm-color" : "xterm",
+               "vt102" : "vt100",
+               "dec-vt100" : "vt100",
+               "vt300" : "vt220",
+               "vt100a" : "vt100",
+               "vt100-ansi" : "vt100",
+               "dec-vt220" : "vt220",
+               "vt400" : "vt220",
+               "vs100" : "xterm",
+               "sun-cmd" : "vt220-nc",
+               "unknown" : TERMINAL_DUMB,
+               "ibm" : TERMINAL_DUMB,
+               "iris-ansi-net" : "vt220",
+               "network" : TERMINAL_DUMB,
+               "vt320" : "vt220",
+               "dtterm" : "vt220",
+               "screen" : "vt220",
+               "dec-vt320" : "vt220",
+               "dec-vt100i" : "vt100",
+               "ansii" : "ansi",
+               "vt100i" : "vt100",
+               "vt200-80" : "vt220",
+               "ibm-3279-2-e" : TERMINAL_DUMB,
+               "ibm-3279-2" : TERMINAL_DUMB,
+               "vt200" : "vt220",
+               "dec-vt200" : "vt220",
+               "hft" : "vt220",
+               "mac" : "vt220-nc",
+               "vt340" : "vt220",
+               "vt340-am" : "vt220",
+               "ibm-3278-2" : TERMINAL_DUMB,
+               "ibm-3278-2-e" : TERMINAL_DUMB,
+               "kterm" : "xterm",
+               "sun" : "vt220-nc",
+               "sun1" : "vt220-nc",
+               "xterms" : "xterm",
+               "vs100s" : "xterm",
+               "vt52" : TERMINAL_DUMB,
+               "vt420" : "vt220",
+               "dec-vt420" : "vt220",
+               "aixterm-m" : "aixterm",
+               "ibm-3151" : "ibm3151",
+               "ibm-3278-5" : TERMINAL_DUMB,
+               "du" : TERMINAL_DUMB,
+               "dialup" : TERMINAL_DUMB,
+               "dec-vt52" : TERMINAL_DUMB,
+               "vt100-pro" : "vt100",
+            ]);
+  terms = ([ TERMINAL_DUMB : ([ "RESET" : "",
+                         "BOLD" : "",
+                         "FLASH" : "",
+                         "BLACK" : "",
+                         "RED" : "",
+                         "BLUE" : "",
+                         "CYAN" : "",
+                         "MAGENTA" : "",
+                         "ORANGE" : "",
+                         "YELLOW" : "",
+                         "GREEN" : "",
+                         "WHITE" : "",
+                         "BLACK" : "",
+                         "B_RED" : "",
+                         "B_ORANGE" : "",
+                         "B_YELLOW" : "",
+                         "B_BLACK" : "",
+                         "B_CYAN" : "",
+                         "B_WHITE" : "",
+                         "B_GREEN" : "",
+                         "B_MAGENTA" : "",
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE": "",
+                         "UNDERLINE": "",
+                         "%" : "%^",
+                         ]),
+             "ansi" : ([ "RESET" : ANSI("39;49")+ANSI("0;10"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "BLACK" : ANSI(30),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "ansi-no-flash" : ([ "RESET" : ANSI("39;49")+ANSI("0;10"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : "",
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "BLACK" : ANSI(30),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "freedom" : ([ "RESET" : ESC("G0"),
+                         "BOLD" : ESC("G@"),
+                         "FLASH" : ESC("G2"),
+                         "BLACK" : "",
+                         "RED" : "",
+                         "GREEN" : "",
+                         "ORANGE" : "",
+                         "YELLOW" : "",
+                         "BLUE" : "",
+                         "CYAN" : "",
+                         "MAGENTA" : "",
+                         "BLACK" : "",
+                         "WHITE" : "",
+                         "B_RED" : ESC("GD"),
+                         "B_GREEN" : ESC("GD"),
+                         "B_ORANGE" : ESC("G4"),
+                         "B_YELLOW" : ESC("G4"),
+                         "B_BLUE" : ESC("G4"),
+                         "B_CYAN" : ESC("GD"),
+                         "B_BLACK" : ESC("GD"),
+                         "B_WHITE" : ESC("G4"),
+                         "B_MAGENTA" : ESC("G4"),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ESC("G4"),
+                         "UNDERLINE" : ESC("G8"),
+                         "%" : "%^",
+                         ]),
+             "ansi-status": ([
+                         "RESET" : ANSI("39;49")+ANSI("0;10"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "BLACK" : ANSI(30),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS" : ESC("[23;24r") + ESC(8),
+                         "WINDOW" : ESC(7)+ESC("[0;22r")+ESC("[22H\n"),
+                         "INITTERM" : ESC("[H")+ESC("[J")+
+                                      ESC("[23;24r")+ESC("23H\n"),
+                         "ENDTERM" : ESC("[0r")+ESC("[H")+ESC("[J"),
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "xterm": ([ "RESET" : ANSI("39;49")+ESC("[m"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "BLACK" : ANSI(30),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "WINDOW" : "",
+                         "INITTERM" : "",
+                         "ENDTERM" : "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "vt100" : (["RESET" : ANSI("39;49")+ESC("[m")+CHAR(15),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "hpterm" : (["RESET" : ESC("&v0S")+ESC("&d@"),
+                         "BOLD" : ESC("&dB"),
+                         "FLASH" : "",
+                         "BLACK" : "",
+                         "RED" : ESC("&dB"),
+                         "GREEN" : ESC("&dD"),
+                         "ORANGE" : "",
+                         "YELLOW" : ESC("&dB"),
+                         "BLUE" : "",
+                         "CYAN" : "",
+                         "MAGENTA" : "",
+                         "WHITE" : "",
+                         "B_RED" : "",
+                         "B_GREEN" : "",
+                         "B_ORANGE" : "",
+                         "B_YELLOW" : "",
+                         "B_BLUE" : "",
+                         "B_CYAN" : "",
+                         "B_BLACK" : "",
+                         "B_WHITE" : "",
+                         "B_MAGENTA" : "",
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ESC("&dB"),
+                         "UNDERLINE" : ESC("&dD"),
+                         "%" : "%^",
+                         ]),
+           "aixterm" : ([ "RESET" : ANSI("0;10")+ESC("(B"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : "",
+                         "BLACK" : "",
+                         "RED" : ANSI(1),
+                         "BLUE" : "",
+                         "CYAN" : "",
+                         "MAGENTA" : "",
+                         "ORANGE" : "",
+                         "YELLOW" : ESC('p'),
+                         "GREEN" : ESC('W'),
+                         "WHITE" : "",
+                         "BLACK" : "",
+                         "B_RED" : "",
+                         "B_ORANGE" : "",
+                         "B_YELLOW" : "",
+                         "B_BLACK" : "",
+                         "B_CYAN" : "",
+                         "B_WHITE" : "",
+                         "B_GREEN" : "",
+                         "B_MAGENTA" : "",
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE": ESC('p'),
+                         "UNDERLINE": ESC('W'),
+                         "%" : "%^",
+                         ]),
+           "ibm3151" : ([ "RESET" : ESC("4@"),
+                         "BOLD" : ESC("4H"),
+                         "FLASH" : ESC("4D"),
+                         "BLACK" : "",
+                         "RED" : ESC("4H"),
+                         "BLUE" : "",
+                         "CYAN" : "",
+                         "MAGENTA" : "",
+                         "ORANGE" : "",
+                         "YELLOW" : ESC("4A"),
+                         "GREEN" : ESC("4B"),
+                         "WHITE" : "",
+                         "BLACK" : "",
+                         "B_RED" : "",
+                         "B_ORANGE" : "",
+                         "B_YELLOW" : "",
+                         "B_BLACK" : "",
+                         "B_CYAN" : "",
+                         "B_WHITE" : "",
+                         "B_GREEN" : "",
+                         "B_MAGENTA" : "",
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE": ESC("4A"),
+                         "UNDERLINE": ESC("4B"),
+                         "%" : "%^",
+                         ]),
+             "vt220": ([ "RESET" : ANSI("39;49")+ESC("[m"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI(31),
+                         "GREEN" : ANSI(32),
+                         "ORANGE" : ANSI(33),
+                         "YELLOW" : ANSI("1;33"),
+                         "BLUE" : ANSI(34),
+                         "CYAN" : ANSI(36),
+                         "MAGENTA" : ANSI(35),
+                         "BLACK" : ANSI(30),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "WINDOW" : "",
+                         "INITTERM" : "",
+                         "ENDTERM" : "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "vt100-nc" : ([ "RESET" : ESC("[m")+CHAR(15),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI("37;7"),
+                         "GREEN" : ANSI(1),
+                         "ORANGE" : ANSI(37),
+                         "YELLOW" : ANSI("1;4"),
+                         "BLUE" : ANSI(37),
+                         "CYAN" : ANSI(4),
+                         "MAGENTA" : ANSI(37),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+             "vt220-nc" : ([ "RESET" : ESC("[m"),
+                         "BOLD" : ANSI(1),
+                         "FLASH" : ANSI(5),
+                         "BLACK" : ANSI(30),
+                         "RED" : ANSI("37;7"),
+                         "GREEN" : ANSI(1),
+                         "ORANGE" : ANSI(37),
+                         "YELLOW" : ANSI("1;4"),
+                         "BLUE" : ANSI(37),
+                         "CYAN" : ANSI(4),
+                         "MAGENTA" : ANSI("7;4"),
+                         "WHITE" : ANSI(37),
+                         "B_RED" : ANSI(41),
+                         "B_GREEN" : ANSI(42),
+                         "B_ORANGE" : ANSI(43),
+                         "B_YELLOW" : ANSI("1;43"),
+                         "B_BLUE" : ANSI(44),
+                         "B_CYAN" : ANSI(46),
+                         "B_BLACK" : ANSI(40),
+                         "B_WHITE" : ANSI(47),
+                         "B_MAGENTA" : ANSI(45),
+                         "STATUS": "",
+                         "WINDOW": "",
+                         "INITTERM": "",
+                         "ENDTERM": "",
+                         "REVERSE" : ANSI(7),
+                         "UNDERLINE" : ANSI(4),
+                         "%" : "%^",
+                         ]),
+          ]);
+}
+mixed set_network_term_type(string str) {
+  string type;
+  str = lower_case(str);
+  if (!terms[str] && !(type = aliases[str])) {
+#ifdef DEBUG
+    log_file("TERMTYPES", "No entry for \"%s\" (%s).\n", str,
+             this_player()->query_name());
+#endif
+    return 0;
+  }
+  if (type) {
+     return terms[type];
+  }
+  return terms[str];
+}
+mapping set_term_type(string str) {
+  if (!terms[str] && !(str = aliases[str])) {
+    efun::tell_object(this_player(), "No entry for "+str+", using dumb.\n");
+    str = TERMINAL_DUMB;
+  }
+  return terms[str];
+}
+string *query_term_types() {
+  return m_indices(terms);
+}
+string *query_colour_codes() {
+   return keys(terms[TERMINAL_DUMB]);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/finderror_helper.c ===
+#include <log.h>
+#include <config.h>
+#include <db.h>
+nosave inherit "/std/object";
+private void recursive_add_directory( string word, string dir );
+class error_data {
+    string name;
+    string *dirs;
+    int no_calls;
+}
+nosave mapping _error_cache;
+string name, *dirs;
+void create() {
+    ::create();
+    set_name( "finderror_helper" );
+    set_short( "finderror helper" );
+    _error_cache = ([ ]);
+}
+private string strip_extension( string file ) {
+    if ( file[<1] == '/' ) {
+        return file[0..<2];
+    }
+    return file;
+}
+private class error_data get_data_file( string word ) {
+    string file;
+    if ( _error_cache[ word ] ) {
+        return _error_cache[ word ];
+    }
+    seteuid( word );
+    file = "/w/" + word + "/finderror.o";
+    if ( file_size( file ) > 0 ) {
+        unguarded( (: restore_object, file :) );
+        _error_cache[ word ] = new( class error_data,
+            name : name,
+            dirs : map( dirs, (: strip_extension :) ),
+            no_calls : 0 );
+    }
+    else {
+        _error_cache[ word ] = new( class error_data,
+            name : word,
+            dirs : ({ }),
+            no_calls : 0 );
+    }
+    return _error_cache[ word ];
+}
+private int save_data_file( string word ) {
+    seteuid( word );
+    if ( _error_cache[ word ] ) {
+        name = _error_cache[ word ]->name;
+        dirs = _error_cache[ word ]->dirs;
+        unguarded( (: save_object, "/w/" + word + "/finderror" :) );
+        return 1;
+    }
+    return 0;
+}
+string escape( string txt ) {
+    return replace( txt, ({ "'", "\\'" }) );
+}
+private string assemble_dirs_sql( string *dirs ) {
+    dirs = map( dirs, (: escape :) );
+    return "(" + implode( map( dirs,
+            (: "Directory" + ( strsrch( $1, "%" ) > -1 ? " LIKE " : " = " )
+            +  "'" + $1 + "'" :) ), " OR " ) + ")";
+}
+void finished_query( int status, mixed data, function func, object player ) {
+    evaluate( func, player, status, data );
+}
+public int query_dirs_count(mixed player, function finish_func ) {
+  class error_data info;
+  string query;
+  string txt;
+  string word;
+    if ( objectp( player ) ) {
+  word = player->query_name();
+    }
+    else {
+        word = player;
+        player = this_object();
+    }
+  info = get_data_file( word );
+  if ( sizeof( info->dirs ) ) {
+        txt = assemble_dirs_sql( info->dirs );
+        query = "SELECT Directory, Type, COUNT(Id) FROM errors WHERE " + txt + " AND "
+            "Status = 'OPEN' GROUP BY Directory, Type;";
+        DB_HANDLER->make_sql_request("errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(player) ) :) );
+        return 1;
+  }
+  return 0;
+}
+public int query_errors_in_dirs(string *directories, function finish_func ) {
+    string query;
+    string txt;
+    if ( directories ) {
+        directories = map( directories , (: escape :) );
+        txt = "(" + implode( map( directories,
+            (: "Directory" + ( strsrch( $1, "%" ) > -1 ? " LIKE " : " = " )
+            +  "'" + $1 + "'" :) ), " OR " ) + ")";
+        query = "SELECT Directory, Type, COUNT(Id) AS C FROM errors WHERE " + txt + " AND "
+            "Status = 'OPEN' GROUP BY Directory, Type";
+        DB_HANDLER->make_sql_request("errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(this_player()) ) :) );
+        return 1;
+    }
+    return 0;
+}
+public void query_next_dir( object player, function finish_func ) {
+    string query;
+    string txt;
+    string word;
+    class error_data info;
+    word = player->query_name();
+    info = get_data_file( word );
+    if ( sizeof( info->dirs ) ) {
+        txt = assemble_dirs_sql( info->dirs );
+        query = "SELECT Directory, COUNT(Id) AS C FROM errors WHERE " + txt +
+            " AND Status = 'OPEN' GROUP BY Directory HAVING C > 0 LIMIT 1;";
+        DB_HANDLER->make_sql_request( "errors", CONFIG_DB_ERRORS_USER, "",
+            query, (: finished_query( $1, $2, $(finish_func), $(player) ) :) );
+    }
+    else {
+        tell_object( player, "You have no finderrors directories defined.  Add "
+            "them with 'finderrors add'\n" );
+    }
+}
+public string *query_directories( string player ) {
+    class error_data data;
+    data = get_data_file( player );
+    return copy( data->dirs );
+}
+public int add_directory( object player, string dir, int recursive ) {
+    int res;
+    class error_data info;
+    string word;
+    word = player->query_name();
+    info = get_data_file( word );
+    res = member_array( dir, info->dirs );
+    if ( recursive )  {
+        dir += "%";
+    }
+    if ( res == -1 ) {
+        if ( dir[ <1 ] == '/') {
+            dir = dir[ 0 .. <2 ];
+        }
+        info->dirs = ({ dir }) + info->dirs;
+        tell_object( player, "Added " + dir +
+            (recursive ? " (recursive)" : "") + "\n" );
+        save_data_file( word );
+    }
+    return 1;
+}
+private void recursive_add_directory( object player, string dir ) {
+    mixed *directories, *file;
+    class error_data info;
+    string word;
+    word = player->query_name();
+    info = get_data_file( word );
+    info->no_calls--;
+    directories = get_dir( dir, -1 );
+    if ( directories ) {
+        foreach ( file in directories ) {
+            if ( file[ 1 ] == -2 && file[ 0 ] != "Maps") {
+                add_directory( player, dir + file[ 0 ] +"/", 1 );
+            }
+        }
+    }
+    if ( info->no_calls == 0 ) {
+        tell_object( player,
+            "All subdirectories have been added to the list.\n" );
+        save_data_file( word );
+    }
+}
+public int remove_directory( object player, string directory, int recursive ) {
+    class error_data info;
+    string word;
+    int pos;
+    word = player->query_name();
+    info = get_data_file( word );
+    if ( recursive ) {
+        pos = sizeof( directory ) - 1;
+        info->dirs = filter( info->dirs,
+            (: $1[ 0..$(pos) ] != $(directory) :));
+    }
+    else {
+        pos = member_array( directory, info->dirs );
+        if ( pos == -1 ) {
+            return 0;
+        }
+       info->dirs = info->dirs[ 0..pos - 1 ] + info->dirs[ pos+1.. ];
+    }
+    save_data_file( word );
+    return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/trig.c ===
+int *sintab, *pow;
+create()
+{
+   pow = ({ 296296, 308556, 321324, 334621, 348467, 362887, 377903,
+            393541, 409825, 426784, 444444, 462835, 481987, 501931,
+            522701, 544331, 566855, 590311, 614738, 640176, 666666,
+            694253, 722981, 752897, 784052, 816496, 850283, 885467,
+            922107, 960264, 1000000,
+            1041379, 1084471, 1129346, 1176079, 1224744, 1275424,
+            1328201, 1383161, 1440396, 1500000, 1562069, 1626707,
+            1694020, 1764118, 1837117, 1913136, 1992301, 2074742,
+            2160595, 2250000, 2343104, 2440061, 2541030, 2646177,
+            2755675, 2869705, 2988452, 3112114, 3240892, 3375000
+   });
+   sintab = ({
+      0, 17452, 34899, 52335, 69756, 87155, 104528, 121869, 139173, 156434,
+      173648, 190808, 207911, 224951, 241921, 258819, 275637, 292371,
+      309016, 325568, 342020, 358367, 374606, 390731, 406736, 422618,
+      438371, 453990, 469471, 484809, 500000, 515038, 529919, 544639,
+      559192, 573576, 587785, 601815, 615661, 629320, 642787, 656059,
+      669130, 681998, 694658, 707106, 719339, 731353, 743144, 754709,
+      766044, 777145, 788010, 798635, 809016, 819152, 829037, 838670,
+      848048, 857167, 866025, 874619, 882947, 891006, 898794, 906307,
+      913545, 920504, 927183, 933580, 939692, 945518, 951056, 956304,
+      961261, 965925, 970295, 974370, 978147, 981627, 984807, 987688,
+      990268, 992546, 994521, 996194, 997564, 998629, 999390, 999847, 1000000
+   });
+}
+int sin(int angle)
+{
+   while (angle < 0) angle += 360;
+   while (angle >= 360) angle -= 360;
+   if (angle >= 270) return -sintab[360 - angle];
+   if (angle >= 180) return -sintab[angle - 180];
+   if (angle >= 90) return sintab[180 - angle];
+   return sintab[angle];
+}
+int cos(int angle)
+{
+   return sin(90 - angle);
+}
+int tan(int angle)
+{
+   return 1000 * sin(angle) / (sin(90 - angle) / 1000);
+}
+int pow1_5(int n)
+{
+   if (n > 30) n = 30;
+   else if (n < -30) n = -30;
+   return pow[30-n];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/vhandler.c ===
+mapping stored_variables;
+void create()
+{
+  seteuid(geteuid(this_object()));
+  stored_variables=([ ]);
+  restore_object(file_name(this_object()));
+}
+mixed query_variable_status(string vname)
+{
+  return stored_variables[vname];
+}
+int set_variable_status(string vname, mixed vvalue)
+{
+  stored_variables[vname]=vvalue;
+  save_object(file_name(this_object()));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/cmr_handler.c ===
+#include <cmr.h>
+#include <colour.h>
+#include <library.h>
+#define SAVE_FILE "/save/cmr_handler"
+inherit "/std/object";
+string *colour_names;
+mapping colour_details;
+string *material_names;
+mapping material_details;
+void load_cmr_handler();
+void save_cmr_handler();
+void create();
+string add_colour( string word, int fine, int crude, int qp_thresh,
+                int sp_thresh );
+int *query_colour_details( string word );
+int delete_colour( string word );
+string *query_colour_names();
+string identify_colour( string word, object player );
+string add_material( string word, int colour, int type, int skill_reqd,
+                  int skill_thresh );
+int *query_material_details( string word );
+int delete_material( string word );
+string *query_material_names();
+string identify_material( string word, object player, int article );
+string query_material_adjective( string word );
+void load_cmr_handler() {
+  if ( file_size( SAVE_FILE +".o" ) > 0 )
+    unguarded((: restore_object, SAVE_FILE :));
+}
+void save_cmr_handler() {
+  unguarded((: save_object, SAVE_FILE :));
+}
+void create() {
+  colour_names = ({ });
+  colour_details = ([ ]);
+  material_names = ({ });
+  material_details = ([ ]);
+  ::create();
+  load_cmr_handler();
+}
+string add_colour( string word, int fine, int crude, int qp_thresh,
+                int sp_thresh ) {
+  int temp;
+  temp = member_array( word, colour_names );
+  if ( temp != -1 ) return "colour already exists";
+  colour_names += ({ word });
+  colour_details += ([ word : ({ fine, crude, qp_thresh, sp_thresh }) ]);
+  save_cmr_handler();
+  return "the colour "+ word +", a shade of "+ ( ( fine == crude )?
+         "pure ":MODIFIERS[fine] ) + COLOURS[crude] +", with thresholds of "+
+         qp_thresh +" xp and "+ sp_thresh +" sp";
+}
+int *query_colour_details( string word ) {
+  int temp;
+  temp = member_array( word, colour_names );
+  if ( temp == -1 ) return ({ -1 });
+  return colour_details[word];
+}
+int delete_colour( string word ) {
+  int temp;
+  temp = member_array( word, colour_names );
+  if ( temp == -1 ) return 0;
+  colour_names -= ({ word });
+  colour_details = m_delete( colour_details, word );
+  save_cmr_handler();
+  return 1;
+}
+string *query_colour_names() { return colour_names + ({ }); }
+string identify_colour( string word, object player ) {
+  int temp, *args;
+  temp = member_array( word, colour_names );
+  if ( temp == -1 )
+    return "unknown colour";
+  args = allocate( 4 );
+  args = colour_details[word];
+  if ( !player )
+    return word;
+  switch ( ( ( LIBRARY->query_quest_points(player->query_name()) ) > args[2] )+
+           ( ( player->query_max_gp() ) > args[3] ) ) {
+  case 0:
+    return COLOURS[args[1]];
+  case 1:
+    return ( ( ( args[0] == args[1] )?"pure ":MODIFIERS[args[0]] ) +
+             COLOURS[args[1]] );
+  default:
+    return word;
+  }
+}
+string add_material( string word, int colour, int type, int skill_reqd,
+                  int skill_thresh ) {
+  int temp;
+  string text;
+  temp = member_array( word, material_names );
+  if ( temp != -1 ) return "material already exists";
+  material_names += ({ word });
+  material_details += ([ word : ({ colour, type, skill_reqd,
+                         skill_thresh }) ]);
+  save_cmr_handler();
+  if ( !skill_reqd )
+    text = " that is always recognised";
+  else
+    if ( skill_reqd == LEARNT )
+      text = " that is recognised through knowledge";
+    else
+      text = " that has a threshold of "+ skill_thresh +" in "+
+             SKILLS[skill_reqd];
+  return word +", a"+ ( ( colour == COL_ORANGE )?"n ":" " ) +
+         COLOURS[colour] +" "+ MATERIALS[type] + text;
+}
+int *query_material_details( string word ) {
+  int temp;
+  temp = member_array( word, material_names );
+  if ( temp == -1 ) return ({ -1 });
+  return material_details[word];
+}
+int delete_material( string word ) {
+  int temp;
+  temp = member_array( word, material_names );
+  if ( temp == -1 ) return 0;
+  material_names -= ({ word });
+  material_details = m_delete( material_details, word );
+  save_cmr_handler();
+  return 1;
+}
+string *query_material_names() { return material_names + ({ }); }
+string identify_material( string word, object player, int article ) {
+  int temp, *args;
+  string prefix;
+  temp = member_array( word, material_names );
+  if ( temp == -1 ) return "unknown material";
+  args = allocate( 4 );
+  args = material_details[word];
+  prefix = ( ( article )?"a"+ ( ( args[0] == COL_ORANGE )?"n ":" " ):"" );
+   if ( !args[ 2 ] || !player )
+      return word;
+  if ( args[2] == LEARNT )
+    if ( member_array( word,
+        (string *)CMR_LIBRARY->query_known_materials( player->query_name() ) )
+        == -1 )
+      return prefix + COLOURS[ args[ 0 ] ] +" "+
+          MATERIALS[ args[ 1 ] ];
+    else
+      return word;
+  if ( ( player->query_skill_bonus( SKILLS[args[2]] ) ) > args[3] )
+    return word;
+  else return prefix + COLOURS[args[0]] +" "+ MATERIALS[args[1]];
+}
+string query_material_adjective( string word ) {
+  int temp, *args;
+  temp = member_array( word, material_names );
+  if ( temp == -1 ) return "an unknown material";
+  args = allocate( 4 );
+  args = material_details[word];
+  return COLOURS[args[0]] +" "+ MATERIAL_ADJECTIVES[args[1]];
+}
+string query_material_ansi_colour( string word ) {
+  int temp, *args;
+  temp = member_array( word, material_names );
+  if ( temp == -1 ) return "";
+  args = allocate( 4 );
+  args = material_details[word];
+  return ANSI_COLOURS[args[0]];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/item_tracker.c ===
+#include <library.h>
+#include <quest_handler.h>
+inherit "/std/object";
+#define QUEST_INFO_IDENT  "items"
+#define MAX_COPIES    10
+mapping item_cache;
+mapping player_items;
+void create()
+{
+   ::create();
+   item_cache = ([ ]);
+}
+mixed query_item_state( mixed pl_name, mixed item )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  return player_items[ item ];
+}
+int delete_item( mixed pl_name, mixed item )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  map_delete( player_items, item );
+  return 1;
+}
+int query_item_copies( mixed pl_name, mixed item )
+{
+  int copy_number,n_copies;
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    item = item->query_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  n_copies = 0;
+  for (copy_number = 1; copy_number < MAX_COPIES; copy_number++) {
+    if (player_items[ item+"/"+copy_number ]) n_copies++;
+  }
+  return n_copies;
+}
+int set_item_state( mixed pl_name, mixed item, mixed state )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  if (objectp(item)) {
+    if (item->query_tracked_item_owner() != pl_name) return 0;
+    item = item->query_full_tracked_item_identifier();
+  }
+  if (!item) return 0;
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  player_items[ item ] = state;
+  return 1;
+}
+mixed query_all_item_states( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    player_items = copy(LIBRARY->query_player_quest_info( pl_name, QUEST_INFO_IDENT ));
+    if (!player_items) player_items = ([ ]);
+    item_cache[ pl_name ] = player_items;
+  }
+  return player_items;
+}
+int save_all_item_states( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    return 0;
+  }
+  LIBRARY->set_player_quest_info( pl_name, QUEST_INFO_IDENT, player_items );
+  return 1;
+}
+int save_all_item_states_delete_cache( mixed pl_name )
+{
+  if (objectp(pl_name)) {
+    if (!interactive(pl_name)) return 0;
+    pl_name = pl_name->query_name();
+  }
+  player_items = item_cache[ pl_name ];
+  if (!player_items) {
+    return 0;
+  }
+  LIBRARY->set_player_quest_info( pl_name, QUEST_INFO_IDENT, player_items );
+  map_delete( item_cache, pl_name );
+  return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/mail_track.c ===
+inherit "std/object";
+#include <mail.h>
+#include <mail_track.h>
+#include <player_handler.h>
+#define SECURITY if (!master()->query_leader(previous_object(-1))) return 0;
+int add_member(string list, string mem);
+private void load_me();
+private void save_me();
+int query_list(string list);
+int create_list(string list, string creator);
+nosave mixed *our_mailers;
+mapping mailing_lists;
+void setup() {
+   set_name("tracker");
+   set_short("mail tracker");
+   add_property("determinate", "the ");
+   add_property("there", "mounted on one wall");
+   add_adjective("mail");
+   set_long("This thing tracks mail.   Clever, innit?\n");
+   reset_get();
+   reset_drop();
+   our_mailers = ({ });
+   mailing_lists = ([ ]);
+   seteuid("Root");
+   load_me();
+   if (!query_list("postmaster")) {
+      create_list("postmaster", "pinkfish");
+   }
+   move(MAIL_ROOM);
+}
+int add_mailer(object ob, string str) {
+   int i;
+   if (!stringp(str) || !objectp(ob)) {
+      return 0;
+   }
+   i = member_array(str, our_mailers);
+   if (i == -1) {
+      our_mailers += ({ ob, str });
+   } else {
+      write(i);
+      if (our_mailers[i-1]) {
+         our_mailers[i-1]->dest_me();
+      }
+      our_mailers += ({ ob, str });
+   }
+   return 1;
+}
+object find_mailer(string str) {
+   int i;
+   if (!stringp(str)) {
+      return 0;
+   }
+   i = member_array(str, our_mailers);
+   if (i == -1) {
+      return 0;
+   }
+   return our_mailers[i-1];
+}
+int delete_mailer(object ob) {
+   int i;
+   if (!objectp(ob)) {
+      return 0;
+   }
+   i = member_array(ob, our_mailers);
+   if (i == -1) {
+      return 0;
+   }
+   our_mailers = delete(our_mailers, i, 2);
+}
+void we_are_done(object me) {
+   if (objectp(me)) {
+      me->dest_me();
+   }
+}
+int mail(string str, string sub) {
+   object mailer;
+   mailer = clone_object(MAILER);
+   mailer->set_do_this_last(({ this_object(), "we_are_done", mailer }));
+   mailer->read_mail(str, sub);
+   return 2;
+}
+private void save_me() {
+   unguarded((: save_object, "/save/mail_track" :));
+}
+private void load_me() {
+   string *list_names, name;
+   mixed *list;
+   unguarded((: restore_object, "/save/mail_track" :));
+   list_names = keys(mailing_lists);
+   if (sizeof(list_names) && !classp(mailing_lists[list_names[0]])) {
+      foreach (name, list in mailing_lists) {
+         mailing_lists[name] = new(class mailing_list, members : list[0],
+                                                controllers : list[1], creator : list[2]);
+      }
+      save_me();
+   }
+}
+string *query_mailing_lists() {
+   return keys(mailing_lists) +
+     "/secure/master"->query_domains() +
+      ({ "seniors", "lords", "hlords" });
+}
+int query_list(string list) {
+   return member_array(list, query_mailing_lists()) != -1;
+}
+string *query_members(string list) {
+  string *tmp;
+  switch (list) {
+  case "playtesters" :
+    tmp = (string *)"/obj/handlers/playtesters"->query_playtesters();
+    return ({ "/d/playtesters/master"->query_lord() }) + sort_array(tmp, 1);
+  case "seniors" :
+    tmp = (string *)master()->query_all_seniors();
+    return tmp;
+  case "lords" :
+    tmp = (string *)master()->query_all_leaders();
+    return tmp;
+  case "hlords" :
+    tmp = ((string *)master()->query_administrators() -
+           ({ "Admin", "Root", "offler" }));
+    return tmp;
+  default :
+  }
+  if (file_size("/d/"+ list) == -2) {
+    tmp = (string *)("/d/"+ list +"/master")->query_members() +
+      ({ (string)("/d/"+ list +"/master")->query_lord() });
+  }
+  else if (mailing_lists[list]) {
+    tmp = copy(mailing_lists[list]->members);
+  }
+  if(tmp)
+    return filter_array(tmp, (: PLAYER_HANDLER->test_active($1, 1) :));
+  return ({ });
+}
+int query_member(string list_name, string name) {
+   class mailing_list list;
+   list = mailing_lists[list_name];
+   if (list) {
+      return member_array(name, list->members) != -1;
+   }
+   if (file_size("/d/" + list_name) == -2) {
+      return (int)("/d/" + list_name + "/master")->query_member(name);
+   }
+   if (list_name == "seniors") {
+      return (int)master()->query_senior(name);
+   }
+   if (list_name == "lords") {
+      return (int)master()->query_leader(name);
+   }
+   if (list_name == "hlords") {
+      return (int)master()->query_administrator(name);
+   }
+}
+string *query_controllers(string list) {
+   if (file_size("/d/"+ list) == -2) {
+      return ({ (string)("/d/"+ list +"/master")->query_lord() });
+   }
+   if (mailing_lists[list]) {
+      return copy(mailing_lists[list]->controllers);
+   }
+   return ({ });
+}
+int query_controller(string list_name, string name) {
+   class mailing_list list = mailing_lists[list_name];
+   if (!list) {
+      return 0;
+   }
+   return member_array(name, list->controllers) != -1;
+}
+string query_creator(string list_name) {
+   class mailing_list list = mailing_lists[list_name];
+   if (!classp(list)) {
+      return 0;
+   }
+   return list->creator;
+}
+int create_list(string list, string creator) {
+   SECURITY
+   if (mailing_lists[list]) {
+      return 0;
+   }
+   if (file_size("/d/" + list) == -2) {
+      return 0;
+   }
+   if (PLAYER_HANDLER->test_user(list)) {
+      return 0;
+   }
+   mailing_lists[list] = new(class mailing_list, members : ({ creator }),
+                                          controllers : ({ creator }), creator : creator);
+   save_me();
+   return 1;
+}
+protected int delete_list(string list) {
+   if (!mailing_lists[list]) {
+      return 0;
+   }
+   map_delete(mailing_lists, list);
+   save_me();
+   return 1;
+}
+int add_controller(string list_name, string mem) {
+   class mailing_list list = mailing_lists[list_name];
+   SECURITY
+   if (!classp(list)) {
+      return 0;
+   }
+   if (member_array(mem, list->controllers) != -1) {
+      return 0;
+   }
+   list->controllers += ({ mem });
+   add_member(list_name, mem);
+   save_me();
+   return 1;
+}
+int remove_controller(string list_name, string name) {
+   int i;
+   class mailing_list list = mailing_lists[list_name];
+   SECURITY
+   if (!classp(list)) {
+      return 0;
+   }
+   if ((i = member_array(name, list->controllers)) == -1) {
+      return 0;
+   }
+   list->controllers = delete(list->controllers, i, 1);
+   save_me();
+   return 1;
+}
+int add_member(string list_name, string mem) {
+   class mailing_list list = mailing_lists[list_name];
+   if (file_name(previous_object()) != MAIL_ROOM) {
+      return 0;
+   }
+   if (!classp(list)) {
+      return 0;
+   }
+   if (member_array(mem, list->members) != -1) {
+      return 0;
+   }
+   list->members += ({ mem });
+   save_me();
+   return 1;
+}
+int remove_member(string list_name, string mem) {
+   int i;
+   class mailing_list list = mailing_lists[list_name];
+   if (file_name(previous_object()) != MAIL_ROOM) {
+      return 0;
+   }
+   if (!classp(list)) {
+      return 0;
+   }
+   if ((i = member_array(mem, list->members)) == -1) {
+      return 0;
+   }
+   list->members = delete(list->members, i, 1);
+   if (!sizeof(list->members)) {
+      delete_list(list_name);
+   }
+   save_me();
+   return 1;
+}
+int delete_member(string list_name, string mem) {
+   class mailing_list list = mailing_lists[list_name];
+   SECURITY
+   if (!remove_member(list_name, mem)) {
+      return 0;
+   }
+   remove_controller(list_name, mem);
+   if (!sizeof(list->members)) {
+      delete_list(list_name);
+   }
+   save_me();
+   return 1;
+}

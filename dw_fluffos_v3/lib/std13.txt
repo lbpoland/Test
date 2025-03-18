@@ -1,0 +1,1697 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shadows/fighting/bob.c ===
+#include <tasks.h>
+#include <weapon.h>
+#define QUEST_MAX 570
+#define DIFFICULTY 100
+inherit "/std/effect_shadow";
+string *data;
+void set_data( string *words ) { data = words; }
+mapping special_attack( object target ) {
+    int damage;
+    int skill;
+    int difficulty;
+    object *args;
+    args = arg();
+    if((object)environment(target) != (object)environment(player)) {
+        tell_object(player, "Where did "+target->short()+" go?\n");
+        remove_this_effect();
+        return ([ ]);
+    }
+    if (!sizeof(match_objects_for_existence("bucket", ({ this_player() }))) &&
+        !sizeof(match_objects_for_existence("apple", ({ this_player() })))) {
+       add_failed_mess("You must have an apple and a bucket to use bob.\n");
+       return 0;
+    }
+    difficulty += target->query_str() * 10;
+    skill = (int)player->query_skill_bonus("fighting.combat.melee."+ data[1]);
+    damage = 4 + sqrt( damage ) / 2;
+    damage = 2 * damage + 8 * (random(damage)) +
+             2 * damage + 8 * (random(damage));
+    switch( (int)TASKER->perform_task(player, "fighting.combat.melee."+ data[1],
+        difficulty, TM_COMMAND)) {
+    case AWARD :
+        tell_object( player, "%^YELLOW%^"+ replace( ({ "You feel that "+
+              "your skill with a bucket has increased.", "You feel "+
+              "more able to use a bucket.", "You seem to be a step "+
+              "closer to mastering a bucket." })[ random( 3 ) ],
+            "$weapon$", ( args[ 1 ] == player ? "unarmed combat" :
+              (string)args[ 1 ]->a_short() ) ) +"%^RESET%^\n" );
+    case SUCCEED :
+        tell_object( player, "You grab hold of " +
+          (string)target->the_short() + "'s head and shove it down "
+          "into the bucket.\nYou scream out 'Bob for this!'\n"
+          "You try and drown " + target->the_short() + ".\n");
+        tell_room( environment(player),
+          player->the_short() + " grabs hold of " +
+          (string)target->the_short() + "'s head and shoves it down "
+          "into the bucket.\n" + player->the_short() +
+          " scream out 'Bob for this!'\n" +
+          player->the_short() + " tries to drown " + target->the_short() +
+          ".\n", ({ player, }));
+        set_arg(0);
+        break;
+    default:
+        tell_object( player, "You manage to botch your use of a bucket.\n");
+        remove_this_effect();
+        return 0;
+    }
+#ifdef DEBUG
+    tell_creator("ceres", sprintf("Crush: player: %s, weapon: %s (%d), Diff: %d, Dam: %d Ski: %d\n",
+        player->query_name(),
+        args[ 1 ]->query_name(),
+        args[1]->query_enchant(),
+        difficulty, damage, skill));
+#endif
+    remove_this_effect();
+    return ([ args[ 1 ] : ({ damage }) + data ]);
+}
+int tasking_done() { return 1; }
+void event_death(object killed, object * others, object killer, string rmess,
+                      string kmess) {
+  object *args;
+  player->event_death(killed, others, killer, rmess, kmess);
+  args = arg();
+  if ( killed == args[ 0 ] ) remove_this_effect();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shadows/attached/single_shoulder.c ===
+#include "path.h"
+inherit "/std/effect_shadow";
+private int test_sash( object thing ) {
+   return (string)thing->query_type() == "sash" &&
+          sizeof(thing->query_pockets());
+}
+private int test_for_effect( object thing ) {
+   return member_array( EFFECTS +"single_shoulder",
+      (string *)thing->query_wear_effects() ) != -1;
+}
+void check_handicap() {
+   int new_arg;
+   mixed old_arg;
+   object *things;
+   things = (object *)player->query_wearing() - ({ 0 });
+   old_arg = arg();
+   if (objectp(old_arg)) {
+      old_arg = 0;
+   }
+   new_arg = sizeof( filter_array( things, (: test_sash :), this_object() ) ) *
+         sizeof( filter_array( things, (: test_for_effect :), this_object() ) );
+   if ( !new_arg ) {
+      remove_this_effect();
+      return;
+   }
+   new_arg /= 2;
+   if ( old_arg == new_arg ) {
+      return;
+   }
+   player->adjust_bonus_dex( old_arg - new_arg );
+   set_arg( new_arg );
+}
+void now_worn( object thing ) {
+   player->now_worn( thing );
+   if ( find_call_out( "check_handicap" ) == -1 ) {
+      call_out( "check_handicap", 0 );
+   }
+}
+void now_removed( object thing ) {
+   player->now_removed( thing );
+   if ( find_call_out( "check_handicap" ) == -1 ) {
+      call_out( "check_handicap", 0 );
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shadows/attached/path.h ===
+#define PATH "/std/shadows/attached/"
+#define EFFECTS "/std/effects/attached/"
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shadows/attached/talker_response.c ===
+class response {
+    string  sender;
+    string *triggers;
+    string *responses;
+    int     probability;
+    int     delay;
+}
+inherit "/std/effect_shadow";
+public          object  query_listener      ( );
+public  varargs void    query_responses     ( string );
+public  varargs void    add_respond_to_talker_with( string, string,
+                                                        string *, int, int );
+public          int     delete_response     ( string, string, string * );
+public          void    receive             ( string, string, string,
+                                                        object * );
+public          void    process_response    ( string *, string * );
+private varargs int     register_listener   ( object );
+private         int     compare_arrays      ( mixed *, mixed *);
+mapping responses = ([ ]);
+object listener;
+private varargs int register_listener(object target) {
+  if(objectp(target)) {
+    listener = target;
+  }
+  else
+    listener = this_object()->arg_of(this_object()->
+                                effects_matching("object.talker.response")[0]);
+  if(!objectp(listener))
+    this_object()->delete_effect(this_object()->
+                                effects_matching("object.talker.response")[0]);
+  return 1;
+}
+public object query_listener() {
+  return listener;
+}
+public varargs void query_responses(string key) {
+  if(stringp(key)) {
+    class response *womble = responses[key];
+    foreach(class response cabbage in womble) {
+      printf("Channel: %s\n\tChatter: %s\n", key, cabbage->sender);
+      printf("\tTrigger:\n");
+      foreach(string trigger in cabbage->triggers)
+        printf("\t\t\"%s\"\n",trigger);
+      printf("\tResponse:\n");
+      foreach(string resp in cabbage->responses)
+        printf("\t\t\"%s\"\n", resp);
+      printf("\tProbability:\t%d\n\tDelay:\t%d\n\n",
+             cabbage->probability, cabbage->delay);
+    }
+    return;
+  } else {
+    foreach(string nextkey in keys(responses)) {
+      query_responses(nextkey);
+    }
+    return;
+  }
+}
+public varargs void add_respond_to_talker_with(string channel, string sender,
+                                               string *trigger,
+                                               string *response, int probability,
+                                               int delay ) {
+  class response new_item;
+  if(!listener)
+    register_listener();
+  if (!channel || !sender || !trigger || !response ){
+    listener->call_out("do_command", 3, "'Err. I haven't been setup "
+                       "correctly in regards to my talker!");
+    return;
+  }
+  channel = lower_case(channel);
+  if (undefinedp(responses[channel]))
+    responses[channel] = ({});
+  else {
+      foreach(class response item in responses[channel]) {
+        if(item->sender == sender && item->triggers - trigger == ({}) &&
+           item->responses - response == ({}) && item->probability == probability)
+            return;
+      }
+  }
+  if(!probability)
+    probability = 10;
+  if(!delay)
+    delay = 1;
+  if(delay == -1)
+    delay = 0;
+  if(probability > 100)
+    probability = 100;
+  new_item = new(class response, sender : sender, triggers : trigger,
+                 responses : response, probability : probability, delay : delay);
+  responses[channel] += ({ new_item });
+  return;
+}
+public int delete_response( string channel, string sender, string *triggers ) {
+  if( sizeof(responses[channel]) !=
+      sizeof(responses[channel]   = responses[channel] -
+             filter(filter(responses[channel], (: $1->sender == $(sender) :)),
+                    (: compare_arrays( $1->triggers, $(triggers) ) :)) ) )
+    return 1;
+  return 0;
+}
+public void receive(string channel, string sender, string text,
+                    object *receivers) {
+  class response response;
+  if(!listener) {
+    register_listener();
+    return;
+  }
+  if(sizeof(responses) && listener->query_name() != lower_case(sender) ) {
+    if(member_array(lower_case(channel), keys(responses)) > -1 &&
+       responses[channel]) {
+      foreach( response in responses[channel]) {
+        if(response->sender == sender ||
+           response->sender == "anyone" ) {
+          foreach( string trigger in response->triggers ) {
+            if(regexp(text, trigger)) {
+              if(random(100) < response->probability) {
+                call_out("process_response", response->delay,
+                         response->responses,
+                         ({ channel, sender, text }));
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+  } else {
+    query_shadowing(this_object())->receive(channel, sender, text, receivers);
+  }
+}
+private int compare_arrays( mixed *ar1, mixed *ar2 ) {
+  int i;
+  if ( !ar1 && !ar2 )
+    return 0;
+  if ( sizeof( ar1 ) != sizeof( ar2 ) )
+    return 1;
+  i = sizeof( ar1 );
+  while ( i-- ) {
+    if ( ar1[ i ] != ar2[ i ] ) {
+      return 1;
+    }
+  }
+  return 0;
+}
+public void process_response( string *commands, string *arguments) {
+  if(!query_listener()) return;
+  foreach(string response in commands) {
+    if(response[0] == '#') {
+      if(function_exists(response[1..], listener)) {
+        call_other( listener, ({ response[1..] }) + arguments);
+      }
+    } else {
+      listener->do_command(response);
+    }
+  }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/sign_writer.c ===
+inherit "/std/room/basic_room";
+#include <money.h>
+#include <move_failures.h>
+#define SIGN_MAKING_PICK_UP_TIME (24 * 60 * 60)
+class sign_type {
+   string short;
+   string long;
+   int cost;
+   int weight;
+   int max_letters;
+   int max_lines;
+}
+class sign_making {
+   int type;
+   string mess;
+   string colour;
+   int pick_up;
+}
+private nosave class sign_type* _signtypes;
+private nosave mapping _paintcolours;
+private nosave string _save_file;
+private nosave string _language;
+private nosave function _open_func;
+private mapping _signs;
+void do_load();
+void create() {
+   _signtypes = ({ });
+   _paintcolours = ([ ]);
+   _signs = ([ ]);
+   ::create();
+   do_load();
+   add_help_file("sign_writer");
+}
+int is_open() {
+   if (_open_func) {
+      return evaluate(_open_func);
+   }
+   return 1;
+}
+void set_open_func(function func) {
+   _open_func = func;
+}
+function query_open_func() {
+   return _open_func;
+}
+void set_language(string lang) {
+   _language = lang;
+}
+string query_language() {
+   return _language;
+}
+void set_save_file_name(string save) {
+   _save_file = save;
+}
+string query_save_file_name() {
+   return _save_file;
+}
+void do_save() {
+   if (_save_file) {
+      save_object(_save_file);
+   }
+}
+void do_load() {
+   if (_save_file) {
+      restore_object(_save_file);
+   }
+}
+void add_paint_colour(string colour, int cost) {
+   _paintcolours[colour] = cost;
+}
+void add_sign_type(string short, string long, int cost,
+                   int weight, int max_letters, int max_lines) {
+   class sign_type bing;
+   bing = new(class sign_type);
+   bing->short = short;
+   bing->long = long;
+   bing->cost = cost;
+   bing->weight = weight;
+   bing->max_letters = max_letters;
+   bing->max_lines = max_lines;
+   _signtypes += ({ bing });
+}
+void add_sign_making(string owner, int type, string mess,
+                     string colour, int pick_up) {
+   class sign_making bing;
+   bing = new(class sign_making);
+   bing->type = type;
+   bing->mess = mess;
+   bing->colour = colour;
+   bing->pick_up = pick_up;
+   if (!_signs[owner]) {
+      _signs[owner] = ({ });
+   }
+   _signs[owner] += ({ bing });
+   do_save();
+}
+int do_order(string type) {
+   int pos;
+   int cost;
+   string place;
+   if (!is_open()) {
+      add_failed_mess(the_short() + " is not currently open.\n");
+      return 0;
+   }
+   if (strlen(type) == 1) {
+      pos = lower_case(type)[0] - 'a';
+      if (pos < 0 || pos > sizeof(_signtypes)) {
+         add_failed_mess("The id must be between 'a' and '" +
+               sprintf("%c", 'a' + sizeof(_signtypes) - 1) + "'.\n");
+         return 0;
+      }
+   } else {
+      add_failed_mess("The id must be between 'a' and '" +
+            sprintf("%c", 'a' + sizeof(_signtypes) - 1) + "'.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   cost = _signtypes[pos]->cost;
+   if (cost > this_player()->query_value_in(place)) {
+      add_failed_mess("You do not have enough money to pay for this "
+            "sign.  You "
+            "need " + MONEY_HAND->money_value_string(cost, place) +
+            ".\n");
+      return 0;
+   }
+   write("Using a sign of type " + _signtypes[pos]->short +
+         ".  What message would "
+         "you like on your sign?\n");
+   this_player()->do_edit("", "finish_editing_message", this_object(),
+                          0, pos);
+   add_succeeded_mess(({ "",
+                         "$N looks into getting a sign made up.\n" }));
+   return 1;
+}
+void finish_editing_message(string mess, int type) {
+   string colour;
+   int cost;
+   string place;
+   class sign_type bing;
+   if (!mess) {
+      write("Aborting sign writing process.\n");
+      return ;
+   }
+   bing = _signtypes[type];
+   if (strlen(replace(mess, ({ "\n", "", }))) > bing->max_letters) {
+      write("The message " + mess + " has too many letters for the "
+            "sign " + bing->short + ", the most allowed is " +
+            bing->max_letters + ", you have " +
+            strlen(replace(mess, ({ "\n", "", }))) +
+            ".\n");
+      return ;
+   }
+   if (sizeof(explode(mess, "\n")) > bing->max_lines) {
+      write("The message " + mess + " has too many lines for the "
+            "sign " + bing->short + ", the most allowed is " +
+            bing->max_lines + ", you have " +
+            sizeof(explode(mess, "\n")) +
+            ".\n");
+      return ;
+   }
+   write("You have selected a sign of type " + bing->short + " and have "
+         "decided to put the message:\n" + mess + "\nonto the sign.\n"
+         "Paint colours are:\n");
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   foreach (colour, cost in _paintcolours) {
+      write(sprintf("%-20s %s per letter\n", colour,
+            MONEY_HAND->money_value_string(cost, place)));
+   }
+   write("What colour paint would you like? ");
+   input_to("finish_sign", 0, type, mess);
+}
+void finish_sign(string colour, int type, string mess) {
+   int cost;
+   string place;
+   class sign_type bing;
+   colour = lower_case(colour);
+   bing = _signtypes[type];
+   if (!strlen(colour)) {
+      write("Aborting the sign process.\n");
+      return ;
+   }
+   if (!_paintcolours[colour]) {
+      write("I am sorry, we do not stock " + colour + ".\n");
+      write("Try one of " +
+            query_multiple_short(keys(_paintcolours)) + ".\n");
+      write("What colour paint would you like? ");
+      input_to("finish_sign", 0, type, mess);
+      return ;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   cost = _paintcolours[colour] *
+          strlen(replace(mess, ({ "\n", "", " ", "" })));
+   cost += bing->cost;
+   if (cost > this_player()->query_value_in(place)) {
+      write("You do not have enough money to pay for this sign.  You "
+            "need " + MONEY_HAND->money_value_string(cost, place) +
+            ".\n");
+      return ;
+   }
+   write("Making a sign of type " + bing->short + " with a message of:\n" +
+         mess + "\nWill cost " +
+         MONEY_HAND->money_value_string(cost, place) +
+         ".\nDo you wish to make this sign? ");
+   input_to("validate_sign", 0, type, mess, colour, cost);
+}
+void validate_sign(string choice, int type, string mess,
+                   string colour, int cost) {
+   int pick_up;
+   string place;
+   class sign_type bing;
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   if (cost > this_player()->query_value_in(place)) {
+      write("You do not have enough money to pay for this sign.  You "
+            "need " + MONEY_HAND->money_value_string(cost, place) +
+            ".\n");
+      return ;
+   }
+   bing = _signtypes[type];
+   choice = lower_case(choice);
+   if (!strlen(choice) || (choice[0] != 'n' && choice[0] != 'y')) {
+      write("You did not enter 'yes' or 'no'.  Please try again.\n");
+      write("Making a sign of type " + bing->short + " with a message of:\n" +
+            mess + "\nWill cost " +
+            MONEY_HAND->money_value_string(cost, place) +
+            ".\nDo you wish to make this sign? ");
+      input_to("validate_sign", 0, type, mess, colour);
+      return 0;
+   }
+   this_player()->pay_money( (mixed *)MONEY_HAND->create_money_array(
+               cost, place ), place );
+   pick_up = time() + SIGN_MAKING_PICK_UP_TIME;
+   add_sign_making(this_player()->query_name(), type, mess, colour,
+                   pick_up);
+   write("Ok, we will start making your sign.  Please come "
+         "back tomorrow (after " + ctime(pick_up) +
+         ") to pick up your sign.\n");
+}
+int do_collect() {
+   class sign_making sign;
+   class sign_type type;
+   object* ok;
+   string* not_yet;
+   string* bits;
+   object ob;
+   if (!is_open()) {
+      add_failed_mess(the_short() + " is not currently open.\n");
+      return 0;
+   }
+   if (!_signs[this_player()->query_name()]) {
+      add_failed_mess("You have no signs to pick up.\n");
+      return 0;
+   }
+   ok = ({ });
+   not_yet = ({ });
+   foreach (sign in _signs[this_player()->query_name()]) {
+      if (time() > sign->pick_up) {
+         type = _signtypes[sign->type];
+         ob = clone_object("/std/room/furniture/basic");
+         bits = explode(type->short, " ");
+         ob->set_name(bits[<1]);
+         ob->add_adjective(bits[0..<2]);
+         ob->set_short(type->short);
+         ob->set_long(type->long);
+         ob->set_weight(type->weight);
+         ob->add_read_mess(sign->mess, sign->colour + " paint",
+                           query_language(), 1);
+         ob->add_property("sign");
+         if (ob->move(this_player()) != MOVE_OK) {
+            ob->move(this_object());
+         }
+         ok += ({ ob });
+      } else {
+         not_yet += ({ _signtypes[sign->type]->short + " with " +
+                       sign->colour + " letters" });
+      }
+   }
+   if (sizeof(ok)) {
+      add_succeeded_mess("$N pick$s up $I.\n", ok);
+      return 1;
+   }
+   if (sizeof(not_yet) == 1) {
+      add_failed_mess("The sign " + query_multiple_short(not_yet) +
+                      " is not ready to be picked up yet.\n");
+   } else {
+      add_failed_mess("The signs " + query_multiple_short(not_yet) +
+                      " are not ready to be picked up yet.\n");
+   }
+   return 0;
+}
+int do_browse(string type) {
+   class sign_type bing;
+   string place;
+   int pos;
+   if (!is_open()) {
+      add_failed_mess(the_short() + " is not currently open.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   if (strlen(type) == 1) {
+      pos = lower_case(type)[0] - 'a';
+      if (pos < 0 || pos > sizeof(_signtypes)) {
+         add_failed_mess("The id must be between 'a' and '" +
+               sprintf("%c", 'a' + sizeof(_signtypes) - 1) + "'.\n");
+         return 0;
+      }
+   } else {
+      add_failed_mess("The id must be between 'a' and '" +
+            sprintf("%c", 'a' + sizeof(_signtypes) - 1) + "'.\n");
+      return 0;
+   }
+   bing = _signtypes[pos];
+   write("The sign of type " + type + " has a short description of '" +
+         bing->short + "' and a long description:\n" + bing->long +
+         "\nIt will cost " +
+         MONEY_HAND->money_value_string(bing->cost, place) +
+         " and will take a maximum of " + bing->max_letters +
+         " letters and a maximum number of lines of " +
+         bing->max_lines + ".\n");
+   add_succeeded_mess(({ "", "$N browses a sign in " + the_short() +
+                             ".\n" }));
+   return 1;
+}
+int do_list() {
+   class sign_type bing;
+   int i;
+   string ret;
+   string place;
+   string colour;
+   int cost;
+   if (!is_open()) {
+      add_failed_mess(the_short() + " is not currently open.\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   ret = "Signs availabe:\n";
+   for (i = 0; i < sizeof(_signtypes); i++) {
+      bing = _signtypes[i];
+      ret += "$I$7=   " + sprintf("%c", 'a' + i) +
+             ") " + bing->short + " costs " +
+         MONEY_HAND->money_value_string(bing->cost, place) +
+         " with " + bing->max_letters + " characters and " +
+         bing->max_lines + " lines.\n";
+   }
+   ret += "\n$I$0=Colours available:\n";
+   foreach (colour, cost in _paintcolours) {
+      ret += sprintf("$I$7=   %-20s %s per letter\n", colour,
+            MONEY_HAND->money_value_string(cost, place));
+   }
+   write("$P$Sign browse$P$" + ret);
+   add_succeeded_mess(({ "", "$N lists the signs in " +
+                             the_short() + ".\n" }) );
+   return 1;
+}
+void init() {
+   add_command("list", "", (: do_list() :));
+   add_command("browse", "<string'sign'>", (: do_browse($4[0]) :));
+   add_command("collect", "sign", (: do_collect() :));
+   add_command("buy", "<string'sign'>", (: do_order($4[0]) :));
+   add_command("order", "<string'sign'>", (: do_order($4[0]) :));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_craft_shop.c ===
+#include <config.h>
+#ifdef __DISTRIBUTION_LIB__
+inherit "/std/room";
+#else
+inherit "/std/room/player_housing";
+#endif
+inherit "/std/shops/inherit/player_craft_shop";
+void create() {
+#ifdef __DISTRIBUTION_LIB__
+   room::create();
+#else
+   player_housing::create();
+#endif
+   player_craft_shop::create();
+   add_help_file("craft_shop");
+   add_help_file("craft_shop_category");
+   add_help_file("player_craft_shop");
+}
+void init() {
+#ifdef __DISTRIBUTION_LIB__
+   room::init();
+#else
+   player_housing::init();
+#endif
+   player_craft_shop::init();
+}
+void dest_me() {
+#ifdef __DISTRIBUTION_LIB__
+   room::dest_me();
+#else
+   player_craft_shop::dest_me();
+#endif
+   player_housing::dest_me();
+}
+void set_save_dir(string dir) {
+   set_save_file(dir + "_main");
+#ifndef __DISTRIBUTION_LIB__
+   ::set_save_dir(dir);
+#endif
+}
+int is_allowed(string name) {
+   if (name == "pinkfish") {
+      return 1;
+   }
+   if (lower_case(name) == lower_case(query_owner())) {
+      return 1;
+   }
+   if (member_array(lower_case(name), query_allowed()) != -1) {
+      return 1;
+   }
+   return 0;
+}
+void event_exit(object ob, string mess, object to) {
+#ifdef __DISTRIBUTION_LIB__
+   room::event_exit(ob, mess, to);
+#else
+   player_housing::event_exit(ob, mess, to);
+#endif
+   player_craft_shop::event_exit(ob, mess, to);
+}
+#ifndef __DISTRIBUTION_LIB__
+int ownership_change(string old_owner, string new_owner) {
+   player_craft_shop::ownership_change(old_owner, new_owner);
+   return player_housing::ownership_change(old_owner, new_owner);
+}
+#endif
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/bank.c ===
+#include <money.h>
+#include <move_failures.h>
+#define NAME (string)this_player()->query_name()
+#define CAP_NAME (string)this_player()->one_short()
+#define POSS (string)this_player()->query_possessive()
+#define HANDLER "/obj/handlers/bank_handler"
+#define OLD_BANK "/d/am/save/bank"
+nosave inherit "/std/room/basic_room";
+int total_account, total_made;
+nosave int account_cost, percentage;
+nosave string bank_name, place;
+int do_withdraw(int num, string type);
+int do_deposit(string str);
+nosave string save_file;
+void create() {
+  account_cost = 0;
+  percentage = 90;
+  total_account = 0;
+  total_made = 0;
+  bank_name = "Bing's First";
+  place = "default";
+  add_help_file("bank");
+  ::create();
+}
+void init() {
+  add_command( "balance", "" );
+  add_command( "withdraw", "<number> <string>",
+               (: do_withdraw($4[0], $4[1]) :) );
+  add_command( "open", "account" );
+  add_command( "close", "account" );
+  add_command( "deposit", "<string>", (: do_deposit($4[0]) :) );
+  ::init();
+}
+int query_account_cost() { return account_cost; }
+void set_account_cost( int number ) { account_cost = number; }
+int query_percentage() { return percentage; }
+void set_percentage( int number ) { percentage = number; }
+int query_total_account() { return total_account; }
+int query_total_made() { return total_made; }
+string query_bank_name() { return bank_name; }
+void set_bank_name( string word ) { bank_name = word; }
+string query_place() { return place; }
+string query_money_place() { return query_place(); }
+void set_place( string word ) { place = word; }
+string query_save_file() { return save_file; }
+void set_save_file( string word ) {
+  save_file = word;
+  if ( file_size( save_file +".o" ) > 0 )
+    unguarded((: restore_object, save_file :));
+}
+void do_save() {
+   if ( !save_file ) {
+      return;
+   }
+   unguarded( (: save_object, save_file :) );
+}
+int get_account() {
+  int amount;
+  if ( amount = (int)this_player()->query_property( "bank "+ OLD_BANK ) ) {
+    HANDLER->adjust_account( NAME, bank_name, amount );
+    this_player()->remove_property( "bank "+ OLD_BANK );
+    total_account += amount;
+    do_save();
+  }
+  return (int)HANDLER->query_account( NAME, bank_name );
+}
+int set_account( int amount ) {
+  HANDLER->set_account( NAME, bank_name, amount );
+}
+int do_balance() {
+  int amount;
+  amount = get_account();
+  if ( amount < 0 ) {
+    notify_fail( "You do not have an account here.\n" );
+    return 0;
+  }
+  if ( !amount ) {
+     this_player()->add_succeeded_mess(this_object(),
+       ({ "Your account is empty.\n",
+           "$N checks the balance of $p account.\n" }), ({ }) );
+    return 1;
+  }
+  this_player()->add_succeeded_mess(this_object(),
+     ({ "You have "+ (string)MONEY_HAND->money_value_string( amount, place ) +
+        " in your account.\n",
+        "$N checks the balance of $p account.\n" }), ({ }) );
+  return 1;
+}
+int do_withdraw( int number, string type ) {
+  int amount;
+  int best;
+  int total;
+  object money;
+  total = get_account();
+  if ( total < 0 ) {
+    notify_fail( "You do not have an account here.\n" );
+    return 0;
+  }
+  if ( number <= 0 ) {
+    notify_fail( "You must withdraw something.\n" );
+    return 0;
+  }
+  money = clone_object( MONEY_OBJECT );
+  money->set_money_array( (mixed *)MONEY_HAND->query_values_in( place ) );
+  if ( ( best = (int)money->find_best_fit( type ) ) == -1 ) {
+    notify_fail( "That currency is not legal tender here.  Sorry.\n" );
+    money->dest_me();
+    return 0;
+  }
+  type = ( (mixed *)money->query_money_array() )[ best ];
+  amount = number * ( (mixed *)money->query_money_array() )[ best + 1 ];
+  if ( ( amount > total ) ||
+       ( amount < 0 ) ) {
+    notify_fail( "You don't have enough money in your account.  Sorry.\n" );
+    money->dest_me();
+    return 0;
+  }
+  money->set_money_array( ({ type, number }) );
+  set_account( total - amount );
+  total_account -= amount;
+  do_save();
+  this_player()->add_succeeded_mess(this_object(),
+   ({ "You withdraw "+ (string)money->short() +".\n" +
+      "You have "+ (string)MONEY_HAND->money_value_string( get_account(),
+                                                           place ) +
+        " in your account after the withdrawal.\n",
+      "$N withdraws some money from $p account.\n"
+       }), ({ }) );
+  if ( (int)money->move( this_player() ) != MOVE_OK ) {
+    write( "You are too heavily burdened to collect the money, so the teller "+
+      "puts it on the counter for you.\n" );
+    money->move( this_object() );
+  }
+  this_player()->save();
+  return 1;
+}
+int do_deposit( string words ) {
+   int amount;
+   int total;
+   int tmp;
+   mixed money;
+   object *tender;
+   object legal;
+   object illegal;
+   string howmuch;
+   total = get_account();
+   if ( total < 0 ) {
+      notify_fail("You don't have an account here.\n");
+      return 0;
+   }
+   money = (mixed)MONEY_HAND->parse_money( words, this_player(), place );
+   if ( intp( money ) ) {
+      switch( money ) {
+         case NO_MATCH :
+            return notify_fail( "You do not have \""+ words +"\".\n" );
+         case NO_MONEY :
+            return notify_fail( "You can only deposit money.\n" );
+         default :
+            return notify_fail( "You can only deposit legal tender.\n" );
+      }
+   }
+   if (!place) {
+      place = "default";
+   }
+   tender = MONEY_HAND->filter_legal_tender( money, place);
+   legal = tender[0];
+   illegal = tender[1];
+   if (legal) {
+     amount = legal->query_value_in(place);
+     if (place != "default") {
+       amount += legal->query_value_in("default");
+     }
+     if(amount < 200) {
+       if( legal->move( this_player() ) != MOVE_OK ) {
+          legal->move( environment( this_player() ) );
+          tell_object( this_player(), "You lose hold of some coins and "
+             "they tumble to the floor.\n" );
+          tell_room( environment( this_player() ), this_player()->one_short() +
+             "accidentally drops some coins.\n", this_player() );
+       }
+       if(illegal)
+         if( illegal->move( this_player() ) != MOVE_OK ) {
+            illegal->move( environment( this_player() ) );
+            tell_object( this_player(), "You lose hold of some coins and "
+               "they tumble to the floor.\n" );
+            tell_room( environment( this_player() ), this_player()->one_short() +
+             "accidentally drops some coins.\n", this_player() );
+         }
+       add_failed_mess("That is too small an amount to deposit.\n");
+       return 0;
+     }
+     tmp = ( amount * ( 100 - percentage ) ) / 100;
+     total_made += tmp;
+     amount = amount - tmp;
+     set_account( total + amount );
+     total_account += amount;
+     do_save();
+   }
+   if (illegal) {
+      if( illegal->move( this_player() ) != MOVE_OK ) {
+         illegal->move( environment( this_player() ) );
+         tell_object( this_player(), "You lose hold of some coins and "
+            "they tumble to the floor.\n" );
+         tell_room( environment( this_player() ), this_player()->one_short() +
+            "accidentally drops some coins.\n", this_player() );
+       }
+   }
+   if (legal) {
+      howmuch = legal->the_short();
+      legal->move( "/room/rubbish" );
+      this_player()->save();
+   } else {
+      add_failed_mess("Unable to find any legal money to deposit.\n");
+      return 0;
+   }
+   write( "You give the teller "+ howmuch +".\n" );
+   write( "After expenses, this leaves "+ (string)MONEY_HAND->
+          money_value_string( amount, place ) +".\n" );
+   this_player()->add_succeeded_mess(this_object(),
+       ({  "$N $V "+words+".\n"
+           "This gives a total of " +
+           MONEY_HAND->money_value_string(total + amount, place ) +
+           " in your account.\n",
+           "$N deposit$s some money into $p account.\n" }), ({ }) );
+   return 1;
+}
+int do_open() {
+  int amount;
+  object money;
+  if ( get_account() >= 0 ) {
+    notify_fail( "You already have an account here.\n" );
+    return 0;
+  }
+  if ( account_cost ) {
+    if ( !( money = present( MONEY_ALIAS, this_player() ) ) ) {
+      notify_fail( "You do not have any money.\n" );
+      return 0;
+    }
+    amount = (int)money->query_value_in( place );
+    if ( place != "default" )
+      amount += (int)money->query_value_in( "default" );
+    if ( amount < account_cost ) {
+      notify_fail( "You do not have enough money to open an account.\n" );
+      return 0;
+    }
+    write( "It will cost you "+ (string)MONEY_HAND->money_value_string(
+      account_cost, place ) +" to open the account.\nDo you still wish to "+
+      "open an account here? " );
+    input_to( "check_open" );
+    return 1;
+  }
+  set_account( 0 );
+  this_player()->add_succeeded_mess(this_object(),
+     "$N $V an account.\n", ({ }) );
+  return 1;
+}
+int check_open( string word ) {
+  object money;
+  word = lower_case( word );
+  if (word [ 0 ] ==  110 ) {
+    write( "Okay, not opening an account.\n" );
+    return 1;
+  }
+  if ( word[ 0 ] !=  121 ) {
+    write( "Do you want to open an account? Answer \"yes\" or \"no\".\n" );
+    input_to( "check_open" );
+    return 1;
+  }
+  set_account( 0 );
+  write( "You now have an account here.\n" );
+  money = present( MONEY_ALIAS, this_player() );
+  MONEY_HAND->pay_amount_from( account_cost, money, place );
+  total_made += account_cost;
+  do_save();
+  this_player()->save();
+  return 1;
+}
+int do_close() {
+  int total;
+  object money;
+  total = get_account();
+  if ( total < 0 ) {
+    notify_fail( "You do not have an account here.\n" );
+    return 0;
+  }
+  if ( total ) {
+    if ( money = (object)MONEY_HAND->make_new_amount( total, place ) ) {
+      write( "You receive "+ (string)money->short() +" on closing "+
+        "your account.\n" );
+      if ( (int)money->move( this_player() ) != MOVE_OK ) {
+        write( "You are too heavily burdened to accept all that money, so "+
+          "the teller puts it on the counter for you.\n" );
+        money->move( this_object() );
+      }
+    } else {
+      write( "The amount of money in your account was not even worth a "+
+        "coin of the lowest denomination in the local currency.  Sorry.\n"+
+        "Your account is now closed.\n" );
+      total_made += total;
+    }
+    total_account -= total;
+  } else
+    write( "You close your account.\n" );
+  this_player()->add_succeeded_mess(this_object(),
+     "$N $V an account.\n", ({ }) );
+  set_account( -1 );
+  do_save();
+  this_player()->save();
+  return 1;
+}
+mixed *stats() {
+  return ::stats() + ({
+    ({ "account cost", account_cost }),
+    ({ "percentage", percentage }),
+    ({ "total accounts", total_account }),
+    ({ "total made", total_made }),
+    ({ "bank name", bank_name }),
+    ({ "place", place }),
+    ({ "save file", save_file }) });
+}
+int make_bank_robbers() {
+  int i, amount, loss, number, percent_loss, total;
+  string player_name;
+  object *bags, *money, *players, *robbers;
+  mixed *mon_array;
+  percent_loss = 2 + random( 4 );
+  players = users();
+  for ( i = 0; i < sizeof( players ); i++ ) {
+    player_name = (string)players[ i ]->query_name();
+    if ( ( amount = (int)HANDLER->query_account( player_name, bank_name ) ) ) {
+      switch( amount ) {
+        case 1 .. 10:
+          loss = 0;
+          break;
+        case 11 .. 100:
+          loss = ( amount * percent_loss ) / 100;
+          break;
+        case 101 .. 1000:
+          loss = ( amount * percent_loss * 2 ) / 100;
+          break;
+        case 1001 .. 10000:
+          loss = ( amount * percent_loss * 3 ) / 100;
+          break;
+        case 10001 .. 100000:
+          loss = ( amount * percent_loss * 4 ) / 100;
+          break;
+        default:
+          loss = ( amount * percent_loss * 5 ) / 100;
+      }
+      HANDLER->adjust_account( player_name, bank_name, -loss );
+      total += loss;
+    }
+  }
+  if ( !total ) return 0;
+  if ( !( number = total / 10000 ) ) number = 1;
+  if ( number > 5 ) number = 5;
+  total_account -= total;
+  amount = total / 3;
+  total_made += 2 * amount;
+  do_save();
+  mon_array = (mixed *)MONEY_HAND->create_money_array( amount / number, place );
+  bags = allocate( number );
+  money = allocate( number );
+  robbers = allocate( number );
+  for ( i = 0; i < number; i++ ) {
+    money[ i ] = clone_object( MONEY_OBJECT );
+    money[ i ]->set_money_array( mon_array );
+    bags[ i ] = clone_object( "/obj/container" );
+    bags[ i ]->set_name( "bag" );
+    bags[ i ]->set_short( "money bag" );
+    bags[ i ]->add_adjective( "money" );
+    bags[ i ]->add_property( "determinate", "a " );
+    bags[ i ]->set_main_plural( "money bags" );
+    bags[ i ]->set_long( "This is a roughly sewn sacking bag with a big "+
+      "\"$\" sign on it.\n" );
+    bags[ i ]->set_weight( 10 );
+    bags[ i ]->set_max_weight( 3 * (int)money[ i ]->query_weight() + 10 );
+    robbers[ i ] = clone_object( "/obj/monster" );
+    robbers[ i ]->set_name( "robber" );
+    robbers[ i ]->set_short( "bank robber" );
+    robbers[ i ]->add_adjective( "bank" );
+    robbers[ i ]->add_property( "determinate", "a " );
+    robbers[ i ]->set_main_plural( "bank robbers" );
+    robbers[ i ]->set_long( "This is a bank robber.  You can tell by the "+
+      "stripey jersey and the mask over his eyes.\n" );
+    robbers[ i ]->set_race( "human" );
+    robbers[ i ]->set_guild( "thief" );
+    robbers[ i ]->set_gender( 1 + random( 1 ) );
+    robbers[ i ]->set_level( 20 + random( 30 ) + random( 40 ) );
+    robbers[ i ]->reset_all();
+    money[ i ]->move( bags[ i ] );
+    bags[ i ]->move( robbers[ i ] );
+    robbers[ i ]->move( this_object() );
+  }
+  return amount;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/commercial.c ===
+inherit "/std/shops/inherit/commercial";
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/vault_entry.c ===
+inherit "/std/room/basic_room";
+inherit "/std/shops/inherit/vault_entry";
+void create() {
+   add_help_file("vault_entry");
+   basic_room::create();
+}
+void init() {
+  basic_room::init();
+  vault_entry::init();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/auction_house.c ===
+inherit "/std/room/basic_room";
+inherit "/std/shops/inherit/auction_house";
+void create() {
+   auction_house::create();
+   basic_room::create();
+   add_help_file("auction_house");
+}
+void init() {
+   basic_room::init();
+   auction_house::init();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/money_changer.c ===
+#include <money.h>
+#include <move_failures.h>
+inherit "/std/room/basic_room";
+int change(string str1, string str2);
+void create() {
+   add_help_file("money_changer");
+   ::create();
+}
+void init() {
+  ::init();
+  add_command("change", "<string> {into|to} <string>",
+                (: change($4[0], $4[2]) :) );
+}
+int change( string words, string type ) {
+   int val_index;
+   int value;
+   int value_type;
+   int value_unit;
+   int value_change;
+   int i;
+   string place;
+   mixed money;
+   object changed;
+   object *monies;
+   mixed *change;
+   mixed *values;
+   place = query_property( "place" );
+   if ( !place || ( place == "" ) ) {
+      place = "default";
+   }
+   values = (mixed *)MONEY_HAND->query_values_in( place );
+   MONEY_OBJECT->set_money_array( values );
+   val_index = (int)MONEY_OBJECT->find_best_fit( type );
+   if ( val_index == -1 ) {
+      return notify_fail( "The coin type \""+ type +
+            "\" is not legal tender here.\n" );
+   }
+   money = (mixed)MONEY_HAND->parse_money( words, this_player(), place );
+   if ( intp( money ) ) {
+      switch( money ) {
+         case NO_MATCH :
+            return notify_fail( "You do not have \""+ words +"\".\n" );
+         case NO_MONEY :
+            return notify_fail( "You can only change money here.\n" );
+         default :
+            return notify_fail( "You can only change legal tender.\n" );
+      }
+   }
+   if (place != "default")  {
+      monies = MONEY_HAND->filter_legal_tender(money, "default");
+      if (monies[0])  monies[0]->move(this_player());
+      if (!monies[1])  {
+         return notify_fail( "You can only change legal tender.\n" );
+      }
+      money = monies[1];
+   }
+   value = (int)money->query_value_in( place );
+   i = member_array(values[val_index], money->query_money_array());
+   if (i != -1) {
+      value_type = money->query_money_array()[i + 1] * values[val_index + 1];
+   }
+   value_unit = values[val_index + 1] * 100 / query_property("rate");
+   value_change = (value - value_type) % value_unit;
+   value = ( (value - value_type) / value_unit ) * values[val_index + 1] +
+           value_type;
+   if ( value < values[ val_index + 1 ] ) {
+      money->move( this_player() );
+      return notify_fail(
+        "That is not even worth one "+ values[ val_index ] +" after I "
+        "subtract my commission.\n" );
+   }
+   changed = clone_object( MONEY_OBJECT );
+   changed->set_money_array( ({ values[ val_index ],
+                                value / values[ val_index + 1 ] }));
+   change = (mixed *)MONEY_HAND->create_money_array( value_change, place );
+   this_player()->add_succeeded_mess(this_object(),
+    ({ "You changed "+query_multiple_short( money->half_short( 1 ) ) +
+         " into "+
+         query_multiple_short( changed->half_short( 1 ) ) +".\n",
+       "$N $V some money into "+type+".\n" }), ({ }) );
+   money->move( "/room/rubbish" );
+   if ( sizeof( change ) ) {
+      changed->adjust_money( change );
+      write( "You were returned "+ (string)MONEY_HAND->money_string( change )
+            +" in change.\n" );
+   }
+   if ( (int)changed->move( this_player() ) != MOVE_OK ) {
+      write( "Unfortunately, you're too heavily burdened to accept all that "+
+            "money, so it's put on the table for you.\n" );
+      changed->move( this_object() );
+   }
+   return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_pub.c ===
+inherit "/std/room/basic_room";
+inherit "/std/shops/inherit/pub";
+private mapping _cold_drinks;
+private mapping _food;
+private mapping _hot_drinks;
+void create() {
+   do_setup++;
+   basic_room::create();
+   pub::create();
+   do_setup--;
+   if (!do_setup) {
+      this_object()->setup();
+      this_object()->reset();
+   }
+}
+void init() {
+   basic_room::init();
+   pub::init();
+}
+void dest_me() {
+   pub::dest_me();
+   basic_room::dest_me();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/general_shop_close.c ===
+inherit "/std/shops/general_shop";
+inherit "/std/shops/inherit/store_close";
+void womble() {
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/item_shop.c ===
+#include <armoury.h>
+#include <money.h>
+#include <move_failures.h>
+inherit "/std/room/basic_room";
+inherit "/std/shops/inherit/item_shop";
+void create() {
+  do_setup++;
+  basic_room::create();
+  item_shop::create();
+  do_setup--;
+  if ( !do_setup ) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+}
+void init() {
+   basic_room::init();
+   item_shop::init();
+}
+void event_theft( object command_ob, object thief, object victim,
+  object *stolen ) {
+    basic_room::event_theft( command_ob, thief, victim, stolen );
+    item_shop::event_theft( command_ob, thief, victim, stolen );
+}
+void dest_me() {
+   item_shop::dest_me();
+   basic_room::dest_me();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/vault.c ===
+#include <vault.h>
+inherit "/std/room/basic_room";
+private object _container;
+private string _vault_name;
+private string _entry;
+private string _there;
+void set_vault_exit(string direc, mixed dest, string type) {
+  _entry = dest;
+  add_exit(direc, dest, type);
+  modify_exit( direc, ({ "function", "check_done" }) );
+  modify_exit( direc, ({ "closed", 1 }) );
+}
+void set_vault_name(string str) { _vault_name = str; }
+object init_container(object person) {
+  object container;
+  string owner;
+  owner = person->query_name();
+  container = clone_object( "/obj/cont_save" );
+  container->set_max_weight( 1000 );
+  container->set_open();
+  container->set_stuck( 1 );
+  container->set_can_recurse(1);
+  container->reset_get();
+  container->set_save_file( VAULT_SAVE +_vault_name+ "/"+ owner,
+                           person );
+  if ( !master()->file_exists( VAULT_SAVE +_vault_name+"/"+ owner +".o" ) ) {
+    container->add_property( "owner", owner );
+    container->do_save();
+  }
+  container->move(this_object());
+  container->add_property("there", "here");
+  this_object()->setup_container(container);
+  container->add_property( "owner", owner );
+  _there = container->query_property("there");
+  return container;
+}
+void event_enter(object thing, string mess, object from) {
+  string owner;
+  if( !userp( thing ) )
+    return;
+  owner = thing->query_name();
+  if ( _container ) {
+    if((string)_container->query_property( "owner" ) == owner)
+      return;
+    else if(thing->query_creator() &&
+            find_player(_container->query_property( "owner" )) &&
+            environment(find_player(_container->query_property( "owner" ))) ==
+            this_object())
+         return;
+      else {
+        _container->dest_me();
+        _container = 0;
+      }
+  }
+  _container = init_container(thing);
+  call_out("fix_owner", 2, owner);
+}
+void fix_owner(string owner) {
+  if (_container) {
+     _container->add_property( "owner", owner );
+     if(_there) {
+       _container->add_property("there", _there);
+     }
+  }
+}
+int check_done( string verb, object thing, string special ) {
+  if ( thing->query_auto_loading() ) {
+    tell_room( this_object(), "The door swings shut.\n" );
+    tell_object( thing, "Your vaults's inventory is still being generated.\n"
+                "Please wait until it is completed.\n" );
+      return notify_fail( "" );
+   }
+   return 1;
+}
+void event_exit( object thing, string message, object to ) {
+  if(_container && _container->query_property("owner") == thing->query_name()) {
+    _container->move("/room/void");
+    call_out((: _container->dest_me() :), 1);
+  }
+  if(interactive(thing))
+    thing->save_me();
+}
+string query_quit_handler() {
+  return _entry;
+}
+void setup_container(object container) {
+  container->set_name( "drawer" );
+  container->set_short( "drawer" );
+  container->add_alias( "drawer" );
+  container->set_long("The single open drawer is sticking straight "
+                      "out of the wall like...  well, like a drawer sticking "
+                      "straight out of the wall.  " );
+}
+int trap_action( string str ) {
+   string st1;
+   if( sscanf( str,"%s %s", str, st1 ) );
+      switch(str) {
+      case "circle":
+         tell_object( this_player(),
+               "Something tells you that drawing a circle in this location "
+               "would be a bad idea.\n");
+         return 1;
+      case "erect":
+         tell_object( this_player(),
+               "You can't seem to get the tent to unfold properly.  "
+               "Perhaps you should try it somewhere else.\n");
+         return 1;
+      default:
+         return 0;
+    }
+}
+void event_net_dead(object ob) {
+   ob->move_with_look(_entry);
+}
+void init() {
+   ::init();
+   this_player()->command_override( (: trap_action :) );
+}
+int query_vault_room() {
+   return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/real_estate_auction.c ===
+inherit "/std/shops/auction_house";
+#include <housing.h>
+#include <money.h>
+#include <move_failures.h>
+#include <room/auction.h>
+#include <nomic_system.h>
+#include <morpork.h>
+#define AUCTION_LENGTH (3600*24*5)
+#define NEW_AGREEMENT_COST 4000
+#define REAL_ESTATE_NEW_LOT_BIDDING "new_low_bidding"
+private nosave string* _areas;
+private nosave string _city;
+private nosave string _language;
+int add_house(string house);
+int check_can_bid(object person,
+                  class auction which,
+                  int bid_amount);
+void create() {
+   _areas = ({ });
+   _city = "Ankh-Morpork";
+   _language = "morporkian";
+   ::create();
+   add_help_file("real_estate");
+}
+void reset()
+{
+   call_out("after_reset", 10);
+}
+void add_housing_area(string area) {
+   _areas += ({ area });
+}
+string* query_housing_areas() {
+   return _areas;
+}
+void after_reset()
+{
+   string house;
+   string *available;
+   int i;
+   string area;
+   foreach (area in _areas) {
+      available = HOUSING->query_vacant(area);
+      if (sizeof(available)) {
+        i = 1;
+        foreach(house in available) {
+          call_out("add_house", i++, house);
+        }
+      }
+   }
+}
+int add_house(string house)
+{
+   object agreement;
+   string text;
+   int tim;
+   if (member_array(house, keys(HOUSING->query_houses())) == -1) {
+      return 0;
+   }
+   if(lower_case(HOUSING->query_owner(house)) != "for sale") {
+     log_file("REAS", ctime(time()) + ": attempt to add house %s that's "
+              "not for sale.\n", house);
+     return 0;
+   }
+   HOUSING->set_rent(house, 0);
+   agreement = clone_object(AGREEMENT);
+   agreement->set_city(_city);
+   agreement->set_language(_language);
+   agreement->set_house(house);
+   text = HOUSING->query_address(house);
+   tim = query_last_auction_finish_time();
+   if (tim + 60 * 60 < time() + query_auction_times()["very long"]) {
+      tim = 0;
+   } else {
+      tim = tim + 60 * 60 - time();
+   }
+   if (add_item_to_auction(({ agreement }), text,
+                           400, "Patrician", tim,
+                           "housing_auction", house)) {
+      HOUSING->set_under_offer(house);
+      broadcast_shop_event(REAL_ESTATE_NEW_LOT_BIDDING, this_player(),
+                           house);
+      log_file("REAS", ctime(time()) + ": Added house %s\n", house);
+      return 1;
+   }
+}
+void housing_auction(int event_type,
+                     class auction auct,
+                     string house,
+                     string buyer,
+                     int cost,
+                     object *obs)
+{
+   object book;
+   switch (event_type) {
+   case AUCTION_WITHDRAW_PHASE:
+     if(lower_case(HOUSING->query_owner(house)) != "under offer") {
+       write("House is not currently under offer!\n");
+       log_file("REAS", ctime(time()) + ": attempted to withdraw %s when it "
+                "was not 'Under Offer'.\n", house);
+     } else {
+       HOUSING->set_for_sale(house);
+       log_file("REAS", ctime(time()) + ": %s back to For Sale.\n", house);
+     }
+     break;
+   case AUCTION_CLAIM_PHASE:
+      HOUSING->set_owner(house, buyer);
+      HOUSING->set_value(house, cost);
+      obs[0]->set_city(_city);
+      obs[0]->set_language(_language);
+      obs[0]->set_house(house);
+      log_file("REAS", ctime(time()) + ": %O sold to %O for %O.\n",
+               house, buyer,
+               MONEY_HAND->money_value_string(cost, query_property("place")));
+      book = clone_object(BOOK);
+      if (book) {
+         if (book->move(this_player()) != MOVE_OK) {
+            book->move(this_object());
+         }
+      }
+      write("A nice new house owner's guide pops up for you.\n");
+      break;
+   }
+}
+int do_agreement()
+{
+   string *houses;
+   int i;
+   string place;
+   place = query_property("place");
+   if (this_player()->query_value_in(place) < NEW_AGREEMENT_COST) {
+      add_failed_mess("You need " +
+                      MONEY_HAND->
+                      money_value_string(NEW_AGREEMENT_COST,
+                                         place) +
+                      " to get a new agreement.\n");
+      return 0;
+   }
+   houses = filter(keys(HOUSING->query_houses()),
+                   (: HOUSING->query_owner($1) == $2 :),
+                   this_player()->query_name());
+   if (!sizeof(houses)) {
+      add_failed_mess("You are not renting any houses.\n");
+      return 0;
+   }
+   for (i = 0; i < sizeof(houses); i++) {
+      printf("%c) %s %s\n", i + 'A',
+             HOUSING->query_address(houses[i]),
+             HOUSING->query_region(houses[i]));
+   }
+   write("It will cost you " + MONEY_HAND->
+                      money_value_string(NEW_AGREEMENT_COST,
+                                         place) + " for a new "
+         "agreement.\n");
+   write("Which house to choose? ");
+   input_to("new_agreement_choice", 0, houses);
+   add_succeeded_mess(({ "",
+                         "$N enquires about a new rental agreement.\n" }));
+   return 1;
+}
+protected void new_agreement_choice(string choice,
+                          string *houses)
+{
+   int index;
+   object agreement;
+   string place;
+   place = query_property("place");
+   choice = lower_case(choice);
+   if (!strlen(choice)) {
+      write("Ok, canceling agreement check.\n");
+      return;
+   }
+   index = choice[0] - 'a';
+   if (index < 0 || index >= sizeof(houses)) {
+      write("Choice out of bounds.\n");
+      return;
+   }
+   if (this_player()->query_value_in(place) < NEW_AGREEMENT_COST) {
+      add_failed_mess("You need " +
+                      MONEY_HAND->
+                      money_value_string(NEW_AGREEMENT_COST,
+                                         place) +
+                      " to get a new agreement.\n");
+      return 0;
+   }
+   this_player()->pay_money(MONEY_HAND->
+                            create_money_array(NEW_AGREEMENT_COST, place));
+   agreement = clone_object(AGREEMENT);
+   agreement->set_city(_city);
+   agreement->set_language(_language);
+   agreement->set_house(houses[index]);
+   if (agreement->move(this_player()) != MOVE_OK) {
+      write("Unable to move the agreement into your inventory.\n");
+      return 0;
+   }
+   write("Created a new agreement for " +
+         HOUSING->query_address(houses[index]) + ".\n");
+}
+int check_can_bid(object person,
+                  class auction which,
+                  int bid_amount)
+{
+   int total_money,
+     total_bids;
+   string *accounts;
+   string account;
+   class auction auction;
+   accounts = "/obj/handlers/bank_handler"->query_accounts(person->
+                                                           query_name());
+   foreach(account in accounts) {
+      total_money += "/obj/handlers/bank_handler"->query_account(person->
+                                                                 query_name(),
+                                                                 account);
+   }
+   foreach(auction in query_auctions()) {
+      if (auction->current_bidder &&
+          lower_case(auction->current_bidder) == person->query_name()) {
+         total_bids += auction->bid;
+      }
+   }
+   if (total_bids + bid_amount > total_money * 3) {
+      add_failed_mess
+         ("You do not have sufficient funds in your bank accounts "
+          "to cover such a bid.\n");
+      return 0;
+   }
+   return 1;
+}
+void init()
+{
+   ::init();
+   add_command("request", "[agreement]", (: do_agreement() :));
+}
+void reset_auctions_to_under_offer() {
+    class auction auc;
+    foreach( auc in query_auctions() ) {
+        HOUSING->set_under_offer(auc->extra);
+    }
+}
+void set_city( string where ) {
+    _city = where;
+}
+void set_language( string lang ) {
+    _language = lang;
+}
+string query_city() {
+    return _city;
+}
+string query_language() {
+    return _language;
+}
+mixed *stats() {
+  return ::stats() +
+    ({
+        ({ "areas", _areas }),
+        ({ "city", _city }),
+        ({ "language", _language }),
+    });
+}

@@ -1,0 +1,1850 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/state_changer.c ===
+#include <tasks.h>
+#include <effect.h>
+#define STATE_CHANGE "/obj/handlers/state_change"
+inherit "/obj/vessel";
+object *add_list = ({ });
+int query_busy();
+int do_action( object *obs );
+string parse_message( string message );
+string query_classification();
+string command;
+string process;
+string start_mess;
+string interim_mess;
+string end_mess;
+int duration;
+int base_bonus;
+string skill;
+string fail_process;
+string end_mess_fail;
+string end_mess_abort;
+string command_mess;
+function start_func;
+function end_func;
+function fail_func;
+int gp_cost;
+string gp_type = "other";
+string running_inv_mess;
+void create() {
+    ::create();
+    set_stuck( 1 );
+    set_leak_rate( 0 );
+    set_weight( 100 );
+    set_max_weight( 5000 );
+    set_max_volume( 5000 );
+    set_hide_cond( 1 );
+    this_object()->add_extra_look(this_object());
+}
+void set_command( string _command ) { command = _command; }
+void set_process( string _process ) { process = _process; }
+void set_fail_process( string _process ) { fail_process = _process; }
+void set_start_message( string message ) { start_mess = message; }
+void set_interim_message( string message ) { interim_mess = message; }
+void set_end_message( string message ) { end_mess = message; }
+void set_fail_message( string message ) { end_mess_fail = message; }
+void set_abort_message( string message ) { end_mess_abort = message; }
+void set_duration( int _duration ) { duration = _duration; }
+void set_command_mess( string message ) { command_mess = message; }
+void set_start_func( function f ) { start_func = f; }
+void set_end_func( function f ) { start_func = f; }
+void set_fail_func( function f) { fail_func = f; }
+void set_skill( string _skill, int _base_bonus ) {
+    skill = _skill;
+    base_bonus = _base_bonus;
+}
+void set_gp_cost( int gp ) { gp_cost = gp; }
+void set_gp_type( string type ) { gp_type = type; }
+void set_running_inv_mess( string mess ) { running_inv_mess = mess; }
+void init() {
+  ::init();
+  if ( command ) {
+    add_command( command, "all in <direct:object>", (: do_action( $1 ) :) );
+  }
+}
+int do_action( object *obs ) {
+int *tmp;
+  if ( gp_cost ) {
+      if ( this_player()->query_specific_gp( gp_type ) < gp_cost )
+          return notify_fail( "You are too tired to "+ command +" with the "+ this_object()->the_short() + ".\n" );
+      this_player()->adjust_gp( -gp_cost );
+  }
+  if ( sizeof( tmp = this_object()->effects_matching( query_classification() ) ) )
+    return notify_fail( this_object()->the_short() + " is already being used by "+
+      this_object()->arg_of( tmp[0] )->query_short() +"!\n" );
+  if ( !sizeof( all_inventory( this_object() ) ) )
+    return notify_fail( "There is nothing to "+ command + ".\n" );
+  if ( functionp( start_func ) ) {
+    if ( !evaluate( start_func ) ) {
+        debug_printf( "Stopped at start_func\n" );
+        return notify_fail( "" );
+    }
+  }
+  this_object()->add_effect( file_name( this_object() ), this_player() );
+  if ( stringp( start_mess ) )
+      tell_room( environment(), parse_message(start_mess) );
+  if ( stringp( command_mess ) ) {
+      this_player()->add_succeeded_mess( this_object(), parse_message( command_mess ),
+          all_inventory( this_object() ) );
+    debug_printf( "Setting asm to %s.\n", parse_message( command_mess ) );
+  }
+  else
+      this_player()->add_succeeded_mess( this_object(), "$N "+ command +"$s $I "
+        "in $D.\n", all_inventory( this_object() ) );
+  return 1;
+}
+object beginning(object apparatus, object tp, int id) {
+    apparatus->submit_ee(0, duration, EE_REMOVE);
+    apparatus->submit_ee("show_message", ({ 30, 30 }), EE_CONTINUOUS);
+    return tp;
+}
+object show_message(object apparatus, object tp, int id) {
+  if ( stringp( interim_mess ) )
+      tell_room(environment(), parse_message(interim_mess) );
+  if ( !sizeof( all_inventory() ) )
+    submit_ee( 0, 0, EE_REMOVE );
+  return tp;
+}
+object end(object apparatus, object tp, int id) {
+ object ob;
+ int temp;
+ int l_bonus = base_bonus;
+  if ( functionp( end_func ) ) {
+    if ( !evaluate( end_func ) ) {
+        debug_printf( "Stopped at start_func\n" );
+        return tp;
+    }
+  }
+  if ( !sizeof( all_inventory() ) ) {
+    debug_printf( "Aborted due to lack of inventory!\n" );
+    if ( stringp( end_mess_abort ) )
+      tell_room( environment(), parse_message(end_mess_abort) );
+    return tp;
+  }
+  foreach( object i in all_inventory() ) {
+      if ( temp = i->query_property( process + " modifier" ) ) {
+          l_bonus += temp;
+          debug_printf( "%s difficulty will be modified by %d (%O).\n",
+             process, temp, ob );
+      }
+  }
+  if ( skill ) {
+      switch( TASKER->perform_task( tp, skill, l_bonus, TM_COMMAND ) ) {
+        case AWARD:
+          tell_object( tp, "%^YELLOW%^You learn something new about "+ process +"ing!%^RESET%^\n" );
+        case SUCCEED:
+          tell_room( environment(), parse_message(end_mess) );
+          foreach( object i in all_inventory() ) {
+            if (!i)
+              continue;
+              ob = STATE_CHANGE->transform( i, process, tp );
+              debug_printf( "Transforming: %O to %O.\n", i, ob );
+              if ( ob ) {
+                add_list += ({ ob });
+                i->move( "/room/rubbish" );
+                ob->move( this_object() );
+              }
+           }
+           break;
+        default:
+            if ( stringp( end_mess ) )
+                tell_room( environment(), parse_message(end_mess_fail) );
+            if ( functionp( fail_func ) )
+                evaluate( fail_func );
+            foreach( object i in all_inventory() ) {
+              if (!i)
+                continue;
+              ob = STATE_CHANGE->transform( i, fail_process, tp );
+              debug_printf( "Transforming: %O to %O.\n", i, ob );
+              if ( ob ) {
+                add_list += ({ ob });
+                i->move( "/room/rubbish" );
+                ob->move( this_object() );
+              }
+           }
+           break;
+      }
+  }
+  else {
+    if ( stringp( end_mess ) )
+        tell_room( environment(), parse_message(end_mess) );
+    foreach( object i in all_inventory() ) {
+      if (!i)
+        continue;
+      ob = STATE_CHANGE->transform( i, process, tp );
+      debug_printf( "Transforming: %O to %O.\n", i, ob );
+      if ( ob ) {
+        add_list += ({ ob });
+        i->move( "/room/rubbish" );
+      }
+      add_list->move( this_object() );
+      add_list = ({ });
+    }
+  }
+  return tp;
+}
+string query_classification() { return "state.changing."+ process; }
+string extra_look( object ob ) {
+  return "";
+}
+string parse_message( string message ) {
+  message = replace( message, "$inventory$", query_multiple_short( all_inventory() ) );
+  debug_printf( "message is: %s.\n" , message );
+  return message;
+}
+int test_add(object ob, int flag) {
+    debug_printf( "Testing add of: %O (%O) in state changer.\n", ob, environment( ob ) );
+    if ( member_array( ob, add_list ) != -1 ) {
+       return ::test_add( ob, flag );
+    }
+    if ( query_busy() ) {
+        tell_object( this_player(), "It might not be wise to add anything to "+
+            this_object()->the_short() + " while it is in use!\n" );
+        return 0;
+    }
+    return ::test_add( ob, flag );
+}
+int test_remove( object ob, int flag, mixed dest ) {
+    if ( dest && base_name( dest ) == "/room/rubbish" )
+        ::test_remove( ob, flag, dest );
+    debug_printf( "Testing remove of: %O (%O) in state changer.\n", ob, environment( ob ) );
+    if ( query_busy() ) {
+        tell_object( this_player(), "It might not be wise to take anything from "+
+            this_object()->the_short() + " while it is in use!\n" );
+        return 0;
+    }
+    return ::test_remove( ob, flag, dest );
+}
+string long( string word, int dark ) {
+  if ( query_busy() ) {
+    if ( stringp( running_inv_mess ) )
+      return query_long() + parse_message( running_inv_mess );
+    else
+      return ::long( word, dark );
+  }
+  return ::long( word, dark );
+}
+int do_empty(object *dest, string me, string him, string prep) {
+  if ( query_busy() ) {
+    add_failed_mess( "You can't empty "+ this_object()->short() +" while it is being used.\n" );
+    return 0;
+  }
+  return ::do_empty( dest, me, him, prep );
+}
+int do_fill(object *to, mixed *args_b, mixed *args_a, mixed *args) {
+  if ( query_busy() ) {
+    add_failed_mess( "You can't fill anything from "+ this_object()->short()
+      +" while it is being used.\n" );
+    return 0;
+  }
+  return  ::do_fill( to, args_b, args_a, args );
+}
+int query_busy() { return !!sizeof( this_object()->effects_matching( query_classification() ) ); }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/cont_medium.c ===
+#include <move_failures.h>
+#include <parse_command.h>
+#include <obj_parser.h>
+inherit "/std/object";
+private int amount;
+private int continuous;
+private int collective;
+private nosave string my_filename;
+private int *weight_unit;
+private nosave int no_join;
+private float value_scale;
+private string medium_alias;
+private string pile_name;
+private string *_sorted_amount_names;
+private mapping amount_types;
+private mixed *pile_types;
+private nosave mixed _short_name;
+object make_medium_clone( int number );
+void create() {
+  int junk;
+  do_setup++;
+  ::create();
+  do_setup--;
+  continuous = 0;
+  collective = 0;
+  weight_unit = ({ 1, 200 });
+  pile_name = "pile";
+  if ( !do_setup )
+    this_object()->setup();
+  if( !clonep( this_object() ) )
+    return;
+  sscanf( file_name( this_object() ), "%s#%d", my_filename, junk );
+  amount = 1;
+}
+void set_name( string word ) {
+  ::set_name( word );
+  if ( continuous )
+    add_plural( word );
+}
+int query_amount() { return amount; }
+void set_amount( int number ) {
+  if(environment() && continuous)
+    environment()->add_volume(number - amount);
+  amount = number;
+  if(continuous || collective)
+    set_weight((amount * weight_unit[ 0 ] ) / weight_unit[ 1 ]);
+}
+void adjust_amount(int number) {
+  if(environment() && continuous)
+    environment()->add_volume(number);
+  amount += number;
+  if(amount < 1) {
+    no_join = 1;
+    move( "/room/rubbish" );
+    return;
+  }
+  if(continuous || collective)
+    set_weight((amount * weight_unit[0]) / weight_unit[1]);
+}
+int query_continuous() { return continuous; }
+int query_collective() { return collective; }
+int query_merger() { return 1; }
+void set_continuous() {
+  collective = 0;
+  if (continuous) {
+    return;
+  }
+  if ( environment() ) {
+    environment()->add_volume( -200*query_weight() );
+  }
+  continuous = 1;
+  if(environment()) {
+    environment()->add_volume( amount );
+  }
+}
+void reset_continuous() {
+  if (!continuous) {
+    return;
+  }
+  continuous = 0;
+  if ( environment() ) {
+    environment()->add_volume( -amount );
+  }
+}
+void set_collective() {
+  collective = 1;
+  continuous = 0;
+  add_property( "determinate", "" );
+}
+void reset_collective() {
+  collective = 0;
+}
+int *query_weight_unit() { return weight_unit; }
+void set_weight_unit( int *numbers ) { weight_unit = numbers; }
+int query_no_join() { return no_join; }
+void set_no_join() { no_join = 1; }
+void reset_no_join() { no_join = 0; }
+string query_medium_alias() { return medium_alias; }
+void set_medium_alias( string word ) {
+   medium_alias = word;
+   add_alias( medium_alias );
+}
+string query_pile_name() { return pile_name; }
+void set_pile_name( string word ) { pile_name = word; }
+mapping query_amount_types() { return amount_types; }
+void set_amount_types( mapping map ) {
+  amount_types = map;
+  _sorted_amount_names = sort_array(m_indices( amount_types ),
+      (: amount_types[$1][0] - amount_types[$2][0] :));
+}
+mixed query_pile_types() { return pile_types; }
+void set_pile_types( mixed *args ) { pile_types = args; }
+int query_max_seen() { return 12; }
+int query_value() {
+  if (!floatp(value_scale) || !continuous) {
+    if(collective)
+      return (amount * ::query_value() );
+    return ::query_value();
+  }
+  return to_int(::query_value() * value_scale * amount);
+}
+void set_value_scale(float f) { value_scale = f; }
+float query_value_scale() { return value_scale; }
+int query_how_many() {
+  int biggest_amount;
+  int how_many;
+  string size;
+  string biggest_size;
+  if(!amount)
+    return 0;
+  if(!m_sizeof(amount_types)) {
+    if(collective)
+        return amount;
+    return 0;
+  }
+  biggest_size = _sorted_amount_names[0];
+  foreach (size in _sorted_amount_names) {
+    if (amount < amount_types[size][0]) {
+      break;
+    }
+    biggest_size = size;
+  }
+  biggest_amount = amount_types[biggest_size][0];
+  how_many = ( amount + biggest_amount / 2 ) / biggest_amount;
+  return how_many;
+}
+varargs string amount_size(int exact) {
+   int biggest_amount;
+   int how_many;
+   string size;
+   string biggest_size;
+   string biggest_plural;
+   if ( !amount ) {
+      return "none at all";
+   }
+   if ( !m_sizeof( amount_types ) ) {
+      return "minus one Cornish pint";
+   }
+   biggest_size = _sorted_amount_names[0];
+   foreach (size in _sorted_amount_names) {
+     if (amount < amount_types[size][0]) {
+       break;
+     }
+     biggest_size = size;
+   }
+   biggest_amount = amount_types[biggest_size][0];
+   biggest_plural = amount_types[biggest_size][1];
+   how_many = ( amount + biggest_amount / 2 ) / biggest_amount;
+   if ( !how_many ) {
+      return "apparently not containing any "+ biggest_plural;
+   }
+   if ( how_many == 1 ) {
+      return "about one "+ biggest_size;
+   }
+   if ( !exact  &&  how_many > query_max_seen() ) {
+      return "more "+ biggest_plural +" than you can count";
+   }
+   return "about "+ query_num( how_many ) +" "+ biggest_plural;
+}
+string amount_size_short() {
+   int biggest_amount;
+   int how_many;
+   string size;
+   string biggest_size;
+   string ret;
+   string biggest_plural;
+   if ( !amount || !sizeof( amount_types ) ||
+        (query_property("determinate") == "some ") ) {
+     if(collective)
+       return query_num(amount, 20) + " ";
+     return "";
+   }
+   if (_short_name && _short_name[0] == amount) {
+      return _short_name[1];
+   }
+   biggest_size = _sorted_amount_names[0];
+   foreach (size in _sorted_amount_names) {
+     if (amount < amount_types[size][0]) {
+       break;
+     }
+     biggest_size = size;
+   }
+   biggest_amount = amount_types[biggest_size][0];
+   biggest_plural = amount_types[biggest_size][1];
+   how_many = ( amount + biggest_amount / 2 ) / biggest_amount;
+   if(!how_many) {
+     if(collective)
+       ret = query_num(amount) + " ";
+     else
+       ret = "a smidgeon of ";
+   } else if(collective && amount < biggest_amount) {
+     ret = query_num(amount) + " ";
+   } else if(how_many == 1) {
+     ret = "one "+ biggest_size + " of ";
+   } else {
+     ret = query_num( how_many, query_max_seen()) +" "+ biggest_plural +
+       " of ";
+   }
+   _short_name = ({ amount, ret });
+   return ret;
+}
+string pile_size() {
+   int i;
+   if ( !sizeof( pile_types ) ) {
+      return "a surreal "+ pile_name;
+   }
+   for ( i = 0; i < ( sizeof( pile_types ) - 1 ); i += 2 ) {
+      if ( amount <= pile_types[ i ] ) {
+         return add_a( pile_types[ i + 1 ] ) +" "+ pile_name;
+      }
+   }
+   return add_a( pile_types[ sizeof( pile_types ) - 1 ] ) +" "+ pile_name;
+}
+varargs string pretty_short( object thing ) {
+  if(collective) {
+    if(amount > 1)
+      return pretty_plural(thing);
+    else
+      return add_a(::pretty_short(thing));
+  }
+  return amount_size_short() + ::pretty_short( thing );
+}
+varargs string pretty_plural( object thing ) {
+  if(amount > 1)
+    return amount_size_short() + ::pretty_plural( thing );
+  return ::pretty_plural(thing);
+}
+#ifdef 0
+string short(int dark) {
+  string ret;
+  ret = ::short( dark );
+  if(!ret || ret == "something" || !collective)
+    return(ret);
+  if(amount == 1)
+    return add_a(ret);
+  return( query_num(amount, 9999 ) + " " + query_main_plural());
+}
+#endif
+string long(string words, int dark ) {
+  int i;
+  string ret;
+  string *bits;
+  if(continuous)
+    return replace( ::long( words, dark ),
+                    ({ "$amount_size$", amount_size(),
+                         "$pile_size$", pile_size() }) );
+  ret = replace( ::long( words, dark ), "$N", short( dark ) );
+  if(collective && amount > 1) {
+    ret = replace( ret, ",$", "$comma_dollar$" );
+    ret = replace( ret, ({ ",", " $spaced_comma$", ";", " $spaced_semi$",
+        ":", " $spaced_colon$", ".", " $spaced_period$" }) );
+    ret = replace( ret, "$comma_dollar$", ",$");
+    bits = explode(ret, " ");
+    for(i = 0; i < sizeof(bits); i++) {
+        switch( bits[ i ] ) {
+        case "This":
+          bits[i] = "These";
+          break;
+        case "this":
+          bits[i] = "these";
+          break;
+        case "is":
+          bits[i] = "are";
+          break;
+        case "a":
+        case "an":
+          bits[i] = amount_size_short();
+          bits[i] = bits[i][0..<2];
+          break;
+        case "it":
+           bits[i] = "they";
+           break;
+        case "It":
+           bits[i] = "They";
+           break;
+        case "its":
+           bits[i] = "their";
+           break;
+        case "Its":
+           bits[i] = "Their";
+           break;
+        case "$a":
+        case "$an":
+           bits[i] = bits[i][1..];
+           break;
+        default:
+           if( bits[i][0..1] == "$V" ) {
+              bits[i] = replace_string( bits[i], "$V", "" );
+              bits[i] = explode( bits[i], "$" )[1];
+           };
+           if( bits[i][0..1] == "$P" ) {
+              bits[i] = replace_string( bits[i], "$P", "" );
+              bits[i] = pluralize( bits[i] );
+           };
+           if( bits[i][0..1] == "$A" ) {
+              bits[i] = replace_string( bits[i], "$A", "" );
+              bits[i] = pluralize( bits[i] );
+           };
+           if(strsrch(bits[i], query_plural(dark)) == -1)
+               bits[i] = replace(bits[i], short(dark), query_plural(dark));
+        }
+      }
+    ret = implode(bits, " ");
+    ret = replace(ret, ({ " $spaced_comma$", ",", " $spaced_semi$", ";",
+        " $spaced_colon$", ":", " $spaced_period$", "." })  );
+  } else if( collective && amount == 1 ) {
+     bits = explode(ret, " ");
+     for(i = 0; i < sizeof(bits); i++) {
+        if( bits[i][0..1] == "$V" ) {
+           bits[i] = replace_string( bits[i], "$V", "" );
+           bits[i] = explode( bits[i], "$" )[0];
+        };
+        if( bits[i][0..1] == "$P" ) {
+           bits[i] = replace_string( bits[i], "$P", "" );
+        };
+        if( bits[i] == "$a" || bits[i] == "$an" ) {
+           bits[i] = bits[i][1..];
+        };
+        if( bits[i][0..1] == "$A" ) {
+           bits[i] = replace_string( bits[i], "$A", "" );
+           bits[i] = add_a( bits[i] );
+        };
+     };
+     ret = implode( bits, " " );
+  };
+  return ret;
+}
+string query_long(string words, int dark)  {
+   return long(words, dark);
+}
+object new_collective(int number) {
+  object ob;
+  object place;
+  ob = make_medium_clone(number);
+  adjust_amount(-number);
+  ob->set_no_join();
+  if(environment()) {
+    place = (object)environment()->query_property( "medium dest" );
+    if(!place)
+      place = environment();
+    ob->move(place);
+  }
+  ob->reset_no_join();
+  ob->call_out("merge", 1);
+  return ob;
+}
+int merge_criteria(object ob) {
+  return medium_alias == ob->query_medium_alias();
+}
+void merge() {
+  object *obs;
+  if(environment())
+     obs = filter(all_inventory(environment()) - ({ this_object() }),
+                  "merge_criteria", this_object());
+  if(sizeof(obs) && objectp(obs[0])) {
+    no_join = 1;
+    move("/room/rubbish");
+    obs[0]->adjust_amount(amount);
+  }
+  return;
+}
+varargs int move( mixed dest, string messin, string messout ) {
+  int check;
+  if((check = ::move(dest, messin, messout)) != MOVE_OK)
+    return check;
+  if(no_join || !medium_alias || (!continuous && !collective))
+    return MOVE_OK;
+  call_out("merge", 0);
+  return MOVE_OK;
+}
+object make_medium_clone( int number ) {
+   object medium;
+   mapping map;
+   medium = clone_object( explode( file_name( this_object() ), "#" )[ 0 ] );
+   map = (mapping)this_object()->query_dynamic_auto_load();
+   medium->init_dynamic_arg( map );
+   map = (mapping)this_object()->query_static_auto_load();
+   if ( map ) {
+      medium->init_static_arg( map );
+   }
+   medium->set_amount( number );
+   medium->set_enchant( query_enchant() * medium->query_max_enchant() /
+                        query_max_enchant() );
+   return medium;
+}
+object cont_query_parse_id( mixed *args ) {
+   int i;
+   string *sizes;
+   object medium, place;
+   if ( args[ P_THING ] < 0 ) {
+      args[ P_THING ]++;
+      if ( args[ P_THING ] ) {
+         return 0;
+      }
+      args[ P_THING ] = -99999;
+      return this_object();
+   }
+   sizes = m_indices( amount_types );
+   if ( args[ P_THING ] == 1 ) {
+      for ( i = 0; i < sizeof( sizes ); i++ ) {
+         if ( member_array( sizes[ i ], explode( args[ P_STR ], " " ) ) !=
+               -1 ) {
+            if ( amount_types[ sizes[ i ] ][ 0 ] > amount ) {
+               return 0;
+            }
+            medium = make_medium_clone( amount_types[ sizes[ i ] ][ 0 ] );
+            place = (object)environment()->query_property( "medium dest" );
+            if ( !place ) {
+               place = environment();
+            } else {
+               remove_call_out( "no_env_move" );
+               call_out( "dest_old_env", 1, environment() );
+            }
+            adjust_amount( -amount_types[ sizes[ i ] ][ 0 ] );
+            this_object()->set_no_env_move( place );
+            medium->move( place );
+            args[ P_THING ] = -99999;
+            return medium;
+         }
+      }
+      args[ P_THING ] = -99999;
+      return this_object();
+   }
+   for ( i = 0; i < sizeof( sizes ); i++ ) {
+      if ( member_array( amount_types[ sizes[ i ] ][ 1 ],
+            explode( args[ P_STR ], " " ) ) != -1 ) {
+         if ( amount_types[ sizes[ i ] ][ 0 ] * args[ P_THING ] > amount ) {
+               return 0;
+         }
+         medium = make_medium_clone( amount_types[ sizes[ i ] ][ 0 ] *
+                args[ P_THING ] );
+         place = (object)environment()->query_property( "medium dest" );
+         if ( !place ) {
+            place = environment();
+         } else {
+            remove_call_out( "no_env_move" );
+            call_out( "dest_old_env", 1, environment() );
+         }
+         adjust_amount( -amount_types[ sizes[ i ] ][ 0 ] * args[ 0 ] );
+         this_object()->set_no_env_move( place );
+         medium->move( place );
+         args[ P_THING ] = -99999;
+         return medium;
+      }
+   }
+   return 0;
+}
+object coll_query_parse_id( mixed *arr ) {
+   string *bits;
+   if((arr[0] < 0)) {
+     return 0;
+   }
+   if(arr[0] == 0) {
+     bits = explode( arr[ 1 ], " " );
+     if(sizeof(bits) == 1) {
+       if(bits[0] == query_main_plural()) {
+         return this_object();
+       }
+     }
+     if(member_array(bits[sizeof(bits) - 1 ], query_plurals()) == -1) {
+       return this_object();
+     }
+     return 0;
+   }
+   if(id(arr[1])) {
+     return new_collective(amount - arr[0]);
+   }
+}
+object query_parse_id( mixed *args ) {
+  if(continuous)
+    return cont_query_parse_id(args);
+  return coll_query_parse_id(args);
+}
+mixed* cont_parse_match_object(string* input, object player,
+                               class obj_match_context context) {
+   int result;
+   string size;
+   mixed* amt;
+   int make_amt;
+   int smallest;
+   int num;
+   object medium;
+   object place;
+   result = ::is_matching_object(input, player, context);
+   if (!continuous || !result) {
+      if (result) {
+         if (update_parse_match_context(context, 1, result)) {
+            return ({ result, ({ this_object() }) });
+         }
+      }
+      return 0;
+   }
+   smallest = amount;
+   foreach (size, amt in amount_types) {
+      if ( member_array( size, input) != -1) {
+         if ( amt[ 0 ] > amount ) {
+            return 0;
+         }
+         make_amt = amt[0];
+      } else if ( member_array( amt[1], input ) != -1 ) {
+         if ( amt[ 0 ] > amount ) {
+            return 0;
+         }
+         make_amt = amt[0];
+      }
+      if (smallest > amt[0]) {
+         smallest = amt[0];
+      }
+   }
+   if (!make_amt) {
+     if(!amount)
+       make_amt = 1;
+     else
+       make_amt = amount;
+   }
+   num = update_parse_match_context(context, (amount / make_amt), result);
+   if (!num) {
+      return 0;
+   }
+   make_amt *= num;
+   if (context->fraction) {
+      make_amt = (make_amt * context->fraction[0]) / context->fraction[1];
+   }
+   if (make_amt < smallest) {
+      make_amt = smallest;
+   }
+   if (make_amt < amount) {
+      medium = make_medium_clone( make_amt );
+      place = (object)environment()->query_property( "medium dest" );
+      if ( !place ) {
+         place = environment();
+      } else {
+         remove_call_out( "no_env_move" );
+         call_out( "dest_old_env", 1, environment() );
+      }
+      adjust_amount( -make_amt );
+      this_object()->set_no_env_move( place );
+      medium->move( place );
+      return ({ result, ({ medium }) });
+   }
+   return ({ result, ({ this_object() }) });
+}
+mixed* coll_parse_match_object(string* input, object viewer,
+                               class obj_match_context context) {
+  int ret;
+  int num;
+  int make_amt;
+  string size;
+  mixed *amt;
+  int smallest;
+  ret = ::is_matching_object(input, viewer, context);
+  if (!ret) {
+    return 0;
+  }
+  if (sizeof(input) == 1 &&
+      !context->number_included &&
+      !context->ordinal &&
+      (member_array(input[<1], query_plurals()) != -1 ||
+       input[<1] == "all" || input[<1] == "thing")) {
+    return ({ OBJ_PARSER_MATCH_PLURAL, ({ this_object() }) });
+  }
+  if(amount_types) {
+    smallest = amount;
+    foreach (size, amt in amount_types) {
+      if(member_array( size, input) != -1) {
+        if(amt[0] > amount) {
+          return 0;
+        }
+        make_amt = amt[0];
+        ret = OBJ_PARSER_MATCH_SINGULAR;
+      } else if(member_array( amt[1], input ) != -1) {
+        if(amt[ 0 ] > amount) {
+          return 0;
+        }
+        make_amt = amt[0];
+        ret = OBJ_PARSER_MATCH_PLURAL;
+      }
+      if (smallest > amt[0]) {
+        smallest = amt[0];
+      }
+    }
+  }
+  if(!make_amt)
+    make_amt = 1;
+  num = update_parse_match_context(context, to_int(amount / make_amt), ret);
+  if (!num)
+    return 0;
+  num *= make_amt;
+  if (context->fraction) {
+    num = (num  * context->fraction[0]) / context->fraction[1];
+  }
+  if(num < amount) {
+    new_collective(amount - num);
+    return ({ ret, ({ this_object() }) });
+  }
+  return ({ ret, ({ this_object() }) });
+}
+mixed *parse_match_object(string *input, object player,
+                          class obj_match_context context) {
+  if(continuous)
+    return cont_parse_match_object(input, player, context);
+  return coll_parse_match_object(input, player, context);
+}
+void set_no_env_move( object dest ) {
+   object place;
+   if ( file_name( environment() ) == "/room/rubbish" ) {
+      return;
+   }
+   place = clone_object( "/std/container" );
+   place->add_property( "medium dest", dest );
+   move( place );
+   call_out( "no_env_move", 0, dest, place );
+}
+void no_env_move( object dest, object place ) {
+   if ( environment() == place ) {
+      move( dest );
+   }
+   call_out( "dest_old_env", 1, place );
+}
+void dest_old_env( object place ) {
+   if ( place ) {
+      place->dest_me();
+   }
+}
+mapping query_dynamic_auto_load() {
+   return ([
+      "::": ::query_dynamic_auto_load(),
+      "continuous": continuous,
+      "collective": collective,
+      "amount": amount,
+   ]);
+}
+void init_dynamic_arg( mapping map, object ) {
+  if ( !mapp( map ) )
+    return;
+  if ( map[ "::" ] )
+    ::init_dynamic_arg( map[ "::" ]);
+  if ( map[ "amount" ] )
+    set_amount( map[ "amount" ] );
+  if ( !undefinedp( map[ "continuous" ] ) )
+    if ( map[ "continuous" ] ) {
+      set_continuous();
+    } else {
+      reset_continuous();
+    }
+  if(!undefinedp(map["collective"]))
+    collective = map["collective"];
+}
+mapping int_query_static_auto_load() {
+   return ([
+      "::": ::int_query_static_auto_load(),
+      "weight_unit": weight_unit,
+      "medium_alias": medium_alias,
+      "pile_name": pile_name,
+      "amount_types": amount_types,
+      "pile_types": pile_types,
+      "value_scale": value_scale,
+   ]);
+}
+mapping query_static_auto_load() {
+  if ( base_name(this_object()) + ".c" == __FILE__ )
+      return int_query_static_auto_load();
+   return 0;
+}
+void init_static_arg( mapping map ) {
+   if ( !mapp( map ) )
+      return;
+   if ( map[ "::" ] )
+      ::init_static_arg( map[ "::" ] );
+   if ( !undefinedp( map[ "medium_alias" ] ) )
+      medium_alias = map[ "medium_alias" ];
+   if ( pointerp( map[ "weight_unit" ] ) )
+      weight_unit = map[ "weight_unit" ];
+   if ( stringp( map[ "pile_name" ] ) )
+      pile_name = map[ "pile_name" ];
+   if ( mapp( map[ "amount_types" ] ) )
+      set_amount_types(map[ "amount_types" ]);
+   if ( pointerp( map[ "pile_types" ] ) )
+      pile_types = map[ "pile_types" ];
+   if ( floatp( map[ "value_scale" ] ) )
+      value_scale = map[ "value_scale" ];
+}
+mixed *stats() {
+   return ::stats() + ({
+      ({ "amount", amount }),
+      ({ "medium alias", medium_alias }),
+      ({ "continuous", continuous }),
+      ({ "collective", collective }),
+      ({ "value scale", value_scale }),
+   });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/money.c ===
+#include <money.h>
+#include <move_failures.h>
+#include <obj_parser.h>
+#define COIN_WEIGHT 10
+#define DEF_VALUE 1
+#define USE_VAULT DEF_VALUE
+inherit "/std/object";
+private nosave int no_join;
+private nosave int _already_joined;
+private mixed *money_array;
+private nosave string _long;
+int query_value_in(string where);
+void create() {
+   ::create();
+   set_name( "coin" );
+   add_alias( MONEY_ALIAS );
+   add_plural( "coins" );
+   set_main_plural( "coins" );
+   add_property( "determinate", "" );
+   add_property( "no one", 1 );
+   add_property( "money", 1 );
+   money_array = ({ });
+}
+int query_collective() { return 1; }
+mapping query_dynamic_auto_load() {
+   if (!_already_joined) {
+      return ([
+         "::" : ::query_dynamic_auto_load(),
+         "money array" : money_array,
+      ]);
+   }
+   add_alias(MONEY_ALIAS);
+}
+void init_dynamic_arg( mapping map, object ) {
+   ::init_dynamic_arg( map[ "::" ] );
+   money_array = map[ "money array" ];
+   if (sizeof(money_array) < 2)  call_out("dest_me", 0);
+   short_d = _long = 0;
+   if ( find_call_out( "check_adjectives" ) == -1 ) {
+      call_out( "check_adjectives", 0 );
+   }
+}
+int query_merger() { return 1; }
+int query_no_join() { return no_join; }
+int query_already_joined() { return _already_joined; }
+void reset_already_joined() { _already_joined = 0; }
+void set_already_joined() { _already_joined = 1; }
+void set_no_join() {
+#ifdef DEBUGGER
+   if (find_player(DEBUGGER) == this_player())
+      tell_creator(DEBUGGER, "Called set_no_join\n");
+#endif
+   no_join = 1;
+   call_out( "merge_coins", 0 );
+}
+void force_no_join()  { no_join = 1; }
+void reset_no_join() { no_join = 0; }
+int query_number_coins() {
+   int i;
+   int tot;
+   if (_already_joined) {
+      return 0;
+   }
+   for ( i = 1; i < sizeof( money_array ); i += 2 ) {
+      tot += money_array[ i ];
+   }
+   return tot;
+}
+void fixup_money_weight() {
+   set_weight( 1 + query_number_coins() / COIN_WEIGHT );
+}
+int group_object() { return ( query_number_coins() > 1 ); }
+void check_adjectives() {
+   int i;
+   string* bits;
+   set_adjectives( ({ }) );
+   set_aliases( ({ }) );
+   set_plurals( ({ }) );
+   if ( !sizeof( money_array )) {
+     if(file_name(environment()) != MONEY_VAULT) {
+       _already_joined = 0;
+#ifdef DEBUGGER
+      if (find_player(DEBUGGER) == this_player())
+          tell_creator(DEBUGGER, "MOVING %O to rubbish room\n", this_object());
+#endif
+#ifdef USE_VAULT
+       MONEY_VAULT->add_to_list(this_object());
+#else
+       move("/room/rubbish");
+#endif
+     }
+     return;
+   }
+   add_alias( MONEY_ALIAS );
+   add_plural( "coins" );
+   add_plural("money");
+   for ( i = 0; i < sizeof( money_array ); i += 2 ) {
+      bits = explode(lower_case(money_array[ i ]), " ");
+      if (sizeof(bits) > 1) {
+         add_adjective(bits[0..<2] );
+      } else {
+         add_adjective(bits);
+      }
+      if (MONEY_HAND->query_origin_of(money_array[i]) == "default")
+         add_adjective(({ "provincial", "default" }));
+      add_alias(MONEY_HAND->query_aliases_for(money_array[i]));
+      add_adjective(MONEY_HAND->query_adjectives_for(money_array[i]));
+      add_plural( (string)MONEY_HAND->query_plural_for( money_array[ i ] ) );
+   }
+   fixup_money_weight();
+}
+mixed *query_money_array() {
+   if (!_already_joined) {
+      return money_array;
+   }
+   return ({ });
+}
+varargs int adjust_money( mixed amount, string type ) {
+   int i;
+   int ret;
+   if ( pointerp( amount ) ) {
+      for ( i = 0; i < sizeof( amount ); i += 2 ) {
+         adjust_money( amount[ i + 1 ], amount[ i ] );
+      }
+      fixup_money_weight();
+      return 1;
+   }
+   if ( !stringp( type ) || !intp( amount ) || _already_joined) {
+      return 0;
+   }
+   short_d = _long = 0;
+   if ( ( i = member_array( type, money_array ) ) == -1 ) {
+      money_array += ({ type, amount });
+      ret = 1;
+   } else {
+      money_array[ i + 1 ] += amount;
+      if ( money_array[ i + 1 ] <= 0 ) {
+         money_array = delete( money_array, i, 2 );
+         ret = 0;
+      } else {
+         ret = 1;
+      }
+   }
+   if ( find_call_out( "check_adjectives" ) == -1 ) {
+      call_out( "check_adjectives", 0 );
+   }
+   fixup_money_weight();
+   if (ret) {
+      return money_array[ i + 1 ];
+   }
+   return 0;
+}
+void set_money_array( mixed *new_array ) {
+   short_d = _long = 0;
+   money_array = new_array;
+   if ( find_call_out( "check_adjectives" ) == -1 ) {
+      call_out( "check_adjectives", 0 );
+   }
+   fixup_money_weight();
+}
+string *half_symbol_short()  {
+   int i;
+   int value;
+   string *retval;
+   string *zones = ({ });
+   for (i = 0; i < sizeof(money_array); i += 2)
+      zones |= ({ MONEY_HAND->query_origin_of(money_array[i]) });
+   retval = allocate(sizeof(zones));
+   for (i = 0; i < sizeof(zones); i++)  {
+      value = query_value_in(zones[i]);
+      retval[i] = MONEY_HAND->money_value_string(value, zones[i]);
+   }
+   return retval;
+}
+string *half_short( int full ) {
+   int i;
+   string *retval;
+   retval = ({ });
+   for ( i = 0; i < sizeof( money_array ); i += 2 ) {
+      if ( money_array[ i + 1 ] < 1 ) {
+         continue;
+      }
+      if ( !full && ( money_array[ i + 1 ] > 12 ) ) {
+         retval += ({ "some "+ (string)MONEY_HAND->query_main_plural_for(
+               money_array[ i ] ) });
+         continue;
+      }
+      if ( money_array[ i + 1 ] == 1 ) {
+         retval += ({ "one "+
+               (string)MONEY_HAND->query_short_for( money_array[ i ] ) });
+         continue;
+      }
+      retval += ({ money_array[ i + 1 ] +" "+
+            (string)MONEY_HAND->query_main_plural_for( money_array[ i ] ) });
+   }
+   return retval;
+}
+string short( int dark ) {
+   string *retval;
+   if ( short_d ) {
+      return short_d;
+   }
+   retval = half_short( 0 );
+   if ( !sizeof( retval ) ) {
+      return 0;
+   }
+   if ( sizeof( retval ) == 1 ) {
+      short_d = retval[ 0 ];
+   } else {
+      short_d = query_multiple_short( retval );
+   }
+   return short_d;
+}
+string long( string word, int dark ) {
+   int i;
+   mixed *details;
+   if (dark < -1 || dark > 1) {
+      return "It is too dark to see anything about the coins.\n";
+   }
+   if ( _long ) {
+      return _long;
+   }
+   if ( !sizeof( money_array ) ) {
+      return "This is some money that isn't money.\n";
+   }
+   _long = "";
+   for ( i = 0; i < sizeof( money_array ); i += 2 ) {
+      details = (mixed *)MONEY_HAND->query_details_for( money_array[ i ] );
+      if ( money_array[ i + 1 ] == 1 ) {
+         _long += "The "+ (string)MONEY_HAND->query_short_for(
+               money_array[ i ] ) +" shows ";
+      } else {
+         _long += "The "+ (string)MONEY_HAND->query_main_plural_for(
+               money_array[ i ] ) +" show ";
+      }
+      _long += details[ 2 ] +" on the reverse, and "+ details[ 3 ] +
+            " on the obverse.\n";
+   }
+   return _long;
+}
+string query_long_details( string word, int dark, object looker) {
+   if (dark < -1 || dark > 1) {
+      return "It is too dark to see anything about the coins.\n";
+   }
+   return long(word, dark);
+}
+object new_money_object(mixed number, string type) {
+   int i;
+   object money;
+   object env;
+   object per;
+#ifdef DEBUGGER
+   if (find_player(DEBUGGER) == this_player())
+      tell_creator(DEBUGGER, "Creating new money object from %O\n", this_object());
+#endif
+   if (!sizeof(money_array) || _already_joined) {
+      return 0;
+   }
+   if (pointerp(number))  {
+#ifdef USE_VAULT
+      money = MONEY_VAULT->get_money_ob();
+#else
+      money = clone_object(MONEY_OBJECT);
+#endif
+      money->set_no_join();
+      money->adjust_money(number);
+      for (i = 1; i < sizeof(number); i += 2)
+         number[i] = -number[i];
+      adjust_money(number);
+   }
+   else  {
+      if (!type || type == "") {
+         return 0;
+      }
+      if ((i = member_array(type, money_array)) == -1) {
+         return 0;
+      }
+      if (number > money_array[i + 1]) {
+         return 0;
+      }
+#ifdef USE_VAULT
+      money = MONEY_VAULT->get_money_ob();
+#else
+      money = clone_object(MONEY_OBJECT);
+#endif
+      money->set_no_join();
+      money->adjust_money(number, type);
+      adjust_money(-number, type);
+   }
+   if (money->move(environment()) != MOVE_OK) {
+      env = environment();
+      do {
+        env = environment(env);
+      } while (env && money->move(env) != MOVE_OK);
+      per = environment();
+      while (per && !living(per)) {
+         per = environment(per);
+      }
+      if (money && env)
+        tell_object(per, "Oops, the money " + money->the_short() +
+                    " has found life in your inventory too heavy and "
+                    "has gone to " + env->the_short() + ".\n");
+   }
+   return money;
+}
+object merge_coins() {
+   object money;
+   if (_already_joined)   return this_object();
+   remove_alias( MONEY_ALIAS );
+   if(environment()) {
+     money = present( MONEY_ALIAS, environment() );
+   }
+   add_alias( MONEY_ALIAS );
+   if ( objectp( money ) &&
+        money != this_object())
+   {
+#ifdef USE_VAULT
+      MONEY_VAULT->add_to_list(this_object());
+#else
+      move("/room/rubbish");
+#endif
+      money->adjust_money( money_array );
+      money->fixup_money_weight();
+      _already_joined = 1;
+#ifdef DEBUGGER
+      if (find_player(DEBUGGER) == this_player())
+         tell_creator(DEBUGGER, "Merging %O and %O\n", this_object(), money);
+#endif
+      return money;
+   }
+#ifdef DEBUGGER
+   if (find_player(DEBUGGER) == this_player())
+      tell_creator(DEBUGGER, "Merge coins returning %O\n", this_object());
+#endif
+   return this_object();
+}
+varargs int move( mixed dest, string messin, string messout ) {
+   int i;
+   if (_already_joined)
+     return MOVE_INVALID_DEST;
+   if(objectp(dest) && environment(dest) && !living(dest) &&
+      !dest->query_corpse() && !dest->query_accept_money())
+     return MOVE_INVALID_DEST;
+   i = ::move( dest, messin, messout );
+   if ( i != MOVE_OK ) {
+      return i;
+   }
+   if((file_name(environment()) == MONEY_VAULT))
+     return MOVE_OK;
+   if ( ( file_name( environment() ) == "/room/rubbish" ) || no_join ) {
+      reset_no_join();
+      return MOVE_OK;
+   }
+   merge_coins();
+   return MOVE_OK;
+}
+public int find_best_fit( mixed word ) {
+   int i;
+   int best;
+   int best_rating;
+   int rating;
+   string against;
+   string *words;
+   if ( !word || ( word == "" ) ) {
+      return 0;
+   }
+   if (stringp(word)) {
+      words = explode( lower_case( word ), " " ) - ({ "coin", "coins" });
+   } else {
+      words = word;
+   }
+   best = -1;
+   for ( i = 0; i < sizeof( money_array ); i += 2 ) {
+      rating = 0;
+      against = "X "+ replace( money_array[ i ] +" "+
+            (string)MONEY_HAND->query_plural_for( money_array[ i ] ),
+            " coins", "" ) +" X";
+      foreach( word in words ) {
+         if ( sscanf( against, "%*s "+ word +" %*s" ) == 2 ) {
+            rating++;
+         }
+      }
+      if ( rating > best_rating ) {
+         best_rating = rating;
+         best = i;
+      }
+   }
+   return best;
+}
+object query_parse_id( mixed *arr ) {
+   int i;
+   string *bits;
+   object money;
+#ifdef DEBUG
+   debug_printf("%O", arr );
+#endif
+   if ( ( arr[ 0 ] < 0 ) || !sizeof( money_array ) ) {
+      return 0;
+   }
+   if ( arr[ 0 ] == 0 ) {
+      bits = explode( arr[ 1 ], " " );
+      if ( sizeof( bits ) == 1 ) {
+         if ( bits[ 0 ] == "coins" ) {
+            return this_object();
+         }
+      }
+      if ( member_array( bits[ sizeof( bits ) - 1 ], query_plurals() ) == -1 ) {
+         return this_object();
+      }
+      i = find_best_fit( arr[ 1 ] );
+      if ( i == -1 ) {
+         return 0;
+      }
+      money = new_money_object( money_array[ i + 1 ], money_array[ i ] );
+      return money;
+   }
+   i = find_best_fit( arr[ 1 ] );
+   if ( i == -1 ) {
+      i = 0;
+   }
+   if ( arr[ 0 ] > money_array[ i + 1 ] ) {
+      return 0;
+   }
+   money = new_money_object( arr[ 0 ], money_array[ i ] );
+   return money;
+}
+mixed* parse_match_object(string* input, object viewer,
+                          class obj_match_context context) {
+   int ret;
+   int found;
+   int num;
+   int i;
+   int j;
+   int success;
+   object money;
+   mixed *matched;
+   string where;
+   string *bits;
+   string name;
+   if (!sizeof(money_array)) {
+      return 0;
+   }
+   ret = ::is_matching_object(input, viewer, context);
+   if (!ret) {
+      return 0;
+   }
+   if (sizeof(input) == 1 &&
+       !context->number_included &&
+       !context->ordinal &&
+       (input[<1] == "coins" || input[<1] == "money" ||
+        input[<1] == "all" || input[<1] == "thing" ||
+        input[<1] == "one")) {
+      return ({ OBJ_PARSER_MATCH_PLURAL, ({ this_object() }) });
+   }
+   else if (sizeof(input) >= 2  &&
+            member_array(input[0], query_adjectives()) > -1  &&
+            (input[<1] == "coins"  ||  input[<1] == "money"))
+   {
+      success = 0;
+      name = lower_case(input[0]);
+      if (name == "provincial"  ||  name == "default")  {
+         success = 1;
+         where = "default";
+      }
+      else for (i = 0; i < sizeof(money_array); i += 2)  {
+         bits = explode(lower_case(money_array[i]), " ");
+         if (member_array(name, bits) > -1)  {
+            where = MONEY_HAND->query_origin_of(money_array[i]);
+            if (!where)
+               return 0;
+            if (where != "default")
+               success = 1;
+            break;
+         }
+      }
+      if (success)  {
+         matched = MONEY_HAND->filter_legal_money_to_array(money_array,
+                                                           where);
+         if (sizeof(matched[0]) == 0)
+            return 0;
+         for (j = 1; j < sizeof(matched[0]); j+= 2)
+           num += matched[0][j];
+         if (!update_parse_match_context(context, num, ret))
+            return 0;
+         money = new_money_object(matched[0], "");
+         if (!money)
+            return 0;
+         return ({ ret, ({ money }) });
+      }
+   }
+   found = find_best_fit(input);
+   if (found == -1) {
+      return 0;
+   }
+   num = money_array[found + 1];
+   num = update_parse_match_context(context, num, ret);
+   if (!num) {
+      return 0;
+   }
+   money = new_money_object( num, money_array[found]);
+   if (!money) {
+      return 0;
+   }
+   return ({ ret, ({ money }) });
+}
+int do_not_sell() { return 1; }
+int query_value() { return 0; }
+int query_value_in( string where ) {
+   return (int)MONEY_HAND->query_total_value( money_array, where );
+}
+int query_money( string type ){
+   int i;
+   i = member_array( type, money_array );
+   if (i == -1 ) {
+      return 0;
+   }
+   return money_array[i + 1];
+}
+mixed *stats() {
+  return ::stats() +
+    ({ ({ "value" , query_multiple_short(half_short(1)) }) });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/cure_wand.c ===
+inherit "/std/effects/healing/basic_cure";
+inherit "/obj/wand";
+void create() {
+   do_setup++;
+   wand::create();
+   basic_cure::create();
+   do_setup--;
+   if ( do_setup )
+      this_object()->setup();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/armour.c ===
+#include <move_failures.h>
+#include <virtual.h>
+#define AC_LIMIT 100
+#undef INFORM
+inherit "/std/object";
+inherit "/std/basic/wearable";
+inherit "/std/armour_logic";
+void create() {
+   do_setup++;
+   object::create();
+   armour_logic::create();
+   wearable::create();
+   add_alias( "armour" );
+   add_plural( "armours" );
+   add_help_file("armour");
+   if ( !query_property( "shop type" ) )
+      add_property( "shop type", "armoury" );
+   do_setup--;
+   if ( !do_setup )
+      this_object()->setup();
+}
+int query_armour() { return 1; }
+string long( string word, int dark ) {
+   return object::long( word, dark ) + wearable::long( word, dark );
+}
+varargs int query_ac( string type, int amount, string zone ) {
+   int a_class, tmp;
+#ifdef INFORM
+   string message;
+#endif
+   a_class = armour_logic::query_ac( type, amount, zone );
+#ifdef INFORM
+   message = query_short() +": striking " + zone + ", basic value "+ a_class;
+#endif
+   if ( a_class > AC_LIMIT )
+      a_class = AC_LIMIT;
+   a_class += ( a_class * query_enchant() ) / query_max_enchant() + query_enchant();
+#ifdef INFORM
+   message += "; after enchant "+ a_class;
+   if ( objectp( worn_by ) )
+      event( environment( worn_by ), "inform", message, "combat" );
+#endif
+   do_damage( type, amount );
+   a_class = ( a_class * query_cond() ) / query_max_cond();
+   switch(random(a_class)) {
+   case 0:
+     return 0;
+   case 1:
+     return a_class / 2;
+   case 2..3:
+     return a_class * 2 / 3;
+   default:
+     if(a_class > amount)
+       tmp = amount - (amount / (5 + random(10)));
+     else
+       tmp = a_class - (amount / (5 + random(10)));
+     if(tmp < a_class / 2)
+       tmp = a_class / 2;
+     return tmp;
+   }
+}
+void setup_armour( int number ) {
+   set_max_cond( number );
+   set_cond( number );
+   set_lowest_cond( number );
+}
+int query_value() {
+   return modify_value( object::query_value() );
+}
+int query_full_value() { return object::query_value(); }
+void player_wear() {
+   if ( !environment() )
+      return;
+   wearable::player_wear();
+}
+int drop(mixed dest) {
+   if ( worn_by && living(worn_by))
+      return 1;
+   return object::drop(dest);
+}
+varargs int move( mixed dest, string messin, string messout ) {
+   int flag;
+   flag = object::move( dest, messin, messout );
+   if ( ( flag == MOVE_OK ) && worn_by )
+      set_worn_by( 0 );
+   return flag;
+}
+void dest_me() {
+   set_worn_by( 0 );
+   object::dest_me();
+}
+mixed *stats() {
+   return object::stats() + armour_logic::stats() + wearable::stats() +
+          ({ ({ "max ac", AC_LIMIT }) });
+}
+mapping int_query_static_auto_load() {
+   return ([
+      "::" : object::int_query_static_auto_load(),
+      "ac" : ac,
+      "armour types" : armour_types,
+   ]) + wearable::query_static_auto_load();
+}
+mapping query_static_auto_load() {
+   if ( base_name(this_object()) != __FILE__[0..<3]) {
+      return ([ ]);
+   }
+   return int_query_static_auto_load();
+}
+mapping query_dynamic_auto_load() {
+   mapping map;
+   map = ([
+      "::" : object::query_dynamic_auto_load(),
+   ]) + wearable::query_dynamic_auto_load();
+   return map;
+}
+void init_static_arg( mapping map ) {
+   if ( !mapp( map ) )
+      return;
+   if ( map[ "::" ] )
+      object::init_static_arg( map[ "::" ] );
+   wearable::init_static_arg( map );
+   if ( map[ "ac" ] )
+      ac = map[ "ac" ];
+   if (pointerp(ac)) {
+     int i;
+     mixed *tmp;
+     tmp = (mixed *)ac;
+     ac = ([ ]);
+     for (i=0;i<sizeof(tmp);i+=2)
+       add_ac(tmp[0], tmp[1][1], tmp[1][0]);
+   } else if ( map[ "armour types" ] )
+      armour_types = map[ "armour types" ];
+   set_type( query_type() );
+}
+void replace_me(){
+  object receipt;
+  receipt = clone_object( "/std/object" );
+  receipt->set_name( "receipt" );
+  receipt->set_short( "destructed item receipt" );
+  receipt->add_adjective( ({ "destructed", "item" }) );
+  receipt->set_long( "This seems to be a small piece of paper.\n" );
+  receipt->set_read_mess( "According to our sources, your "+query_short()+" was not "
+                          "allowed to exist.  Have a nice day." );
+  receipt->move( environment() );
+  receipt->set_weight( 1 );
+  destruct( this_object() );
+}
+void init_dynamic_arg( mapping map, object ) {
+   mapping stat_temp;
+   string virt_name, new_name;
+   if ( map[ "::" ] )
+      object::init_dynamic_arg( map[ "::" ] );
+   wearable::init_dynamic_arg( map );
+   if( virt_name = query_property( VIRTUAL_NAME_PROP ) ) {
+     if( file_size( virt_name ) == -1 ) {
+       new_name = ( CLONER )->other_file( virt_name );
+       if( stringp( new_name ) && ( new_name != virt_name ) ) {
+         add_property( VIRTUAL_NAME_PROP, new_name );
+         virt_name = new_name;
+       } else {
+         if( VIRTUAL_HANDLER->query_forbidden( virt_name ) ) {
+           call_out( "replace_me", 1 );
+         } else {
+           VIRTUAL_HANDLER->add_missing( virt_name );
+         }
+       }
+     }
+     if( file_size( virt_name ) != -1 &&
+         query_property( "virtual time" ) < stat( virt_name )[1] ) {
+       stat_temp = ( VIRTUAL_HANDLER )->new_data( virt_name );
+       if( mapp( stat_temp ) ) {
+         init_static_arg( stat_temp );
+         add_property( "virtual time", time() );
+       }
+     }
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/cont_save.c ===
+inherit "/obj/baggage";
+private mapping details;
+private nosave string _save_file;
+private object _loading;
+private nosave int _can_recurse;
+varargs void do_load( object thing ) {
+   if ( _save_file ) {
+      all_inventory( this_object() ) -> dest_me();
+      if ( file_size( _save_file + ".o" ) > 0 ) {
+         unguarded((: restore_object, _save_file :));
+         if ( thing ) {
+            set_player( thing );
+         }
+         if ( sizeof( details ) ) {
+            init_dynamic_arg( details, 0 );
+         }
+      }
+   }
+}
+void create() {
+   _save_file = "";
+   details = ([ ]);
+   _can_recurse = 0;
+   ::create();
+}
+protected int handle_restore_inventory(object ob) {
+   _loading = ob;
+   return ::handle_restore_inventory(ob);
+}
+string query_long_details(string arg, int dark, object looker) {
+   string ret;
+   ret = ::query_long_details(arg, dark, looker);
+   if (query_auto_loading()) {
+      return ret + the_short() + " contents is still being generated.\n";
+   }
+   return ret;
+}
+int test_remove( object thing, int flag, mixed dest ) {
+   if (!query_auto_loading()) {
+      remove_call_out( "do_save" );
+      if ( find_call_out( "do_save" ) == -1 ) {
+         call_out( "do_save", 1 );
+      }
+      return ::test_remove( thing, flag, dest );
+   } else if (_loading == thing) {
+      return ::test_remove( thing, flag, dest );
+   } else {
+      return 0;
+   }
+}
+int test_add( object ob, int flag) {
+   if (!query_auto_loading()) {
+      remove_call_out( "do_save" );
+      if ( find_call_out( "do_save" ) == -1 ) {
+         call_out( "do_save", 1 );
+      }
+      return 1;
+   } else if (_loading == ob) {
+      return ::test_add( ob, flag );
+   } else {
+      return 0;
+   }
+}
+void do_save() {
+   if ( _save_file && _save_file != "" &&
+        !query_auto_loading()) {
+      details = ([ ]);
+      details = query_dynamic_auto_load();
+      unguarded((: save_object, _save_file :));
+   }
+}
+void check_euid() {
+   if ( previous_object() ) {
+      seteuid( geteuid( previous_object() ) );
+   }
+}
+varargs void set_save_file( string file, object thing ) {
+   _save_file = file;
+   call_out( "do_load", 0, thing );
+}
+string query_save_file() {
+   return _save_file;
+}
+void set_can_recurse(int recurse_flag) { _can_recurse = recurse_flag; }
+int query_can_recurse() { return _can_recurse; }
+int can_find_match_recurse_into(object looker) {
+   if (query_closed()) {
+      return 0;
+   }
+   if (!_can_recurse)
+      return ::can_find_match_recurse_into(looker);
+   return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/bottle.c ===
+#define PHIAL 150
+#define BOTTLE 1000
+#define QUIRM 2500
+#define DEMIJOHN 50000
+inherit "/obj/vessel";
+nosave string glass;
+void make_bottle( string word, int number ) {
+   float mass;
+   string adjective, noun;
+   glass = word;
+   set_max_volume(number*4);
+   mass = number / 100.0;
+   if ( !mass ) mass = 1;
+   set_leak_rate( 0 );
+   set_value( to_int(mass * 25 + random( mass * 10 )) );
+   set_weight( to_int(mass + random( mass * 10 ) / 10 ));
+   set_max_weight( to_int(mass * 2 ));
+   add_property( "fragile", to_int(mass * 20 + random( mass * 5 )) );
+   switch( number ) {
+      case 0..PHIAL:
+         adjective = "small";
+         noun = "phial";
+         set_length( 2 );
+         set_width( 1 );
+         break;
+      case PHIAL+1..BOTTLE:
+         adjective = "medium sized";
+         noun = "bottle";
+         set_length( 12 );
+         set_width( 6 );
+         break;
+      case BOTTLE+1..QUIRM:
+         adjective = "large";
+         noun = "Quirm";
+         set_length( 24 );
+         set_width( 12 );
+         break;
+      case QUIRM+1..DEMIJOHN:
+         adjective = "very large";
+         noun = "demijohn";
+         set_length( 48 );
+         set_width( 24 );
+         break;
+      default:
+         adjective = "huge";
+         noun = "tank";
+         set_length( 88 );
+         set_width( 48 );
+   }
+   set_name( lower_case( noun ) );
+   set_short( adjective +" "+ glass +" "+ noun );
+   set_long( "This is a "+ adjective +" "+ glass +" glass "+ noun +".\n" );
+   add_alias( "bottle" );
+   add_adjective( ({ adjective, glass }) );
+   set_main_plural( adjective +" "+ glass +" "+ noun +"s" );
+   add_plural( lower_case( noun ) +"s" );
+   set_material( ({ "glass" }) );
+}
+string query_glass() { return glass; }
+int query_number() { return (int)query_property( "number" ); }
+mixed *stats() {
+   return ::stats() + ({
+      ({ "glass", glass, }),
+   });
+}
+mapping int_query_static_auto_load() {
+   return ([
+      "::" : ::int_query_static_auto_load(),
+      "glass" : glass,
+   ]);
+}
+void init_static_arg( mapping map ) {
+   if ( map["::"] )
+      ::init_static_arg( map["::"] );
+   if ( !undefinedp( map["glass"] ) )
+      glass = map["glass"];
+}
+mixed query_static_auto_load() {
+   if ( explode( file_name( this_object() ), "#" )[ 0 ] == "/obj/bottle" )
+      return int_query_static_auto_load();
+   return ([ ]);
+}

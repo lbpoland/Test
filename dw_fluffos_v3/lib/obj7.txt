@@ -1,0 +1,2107 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/garbage.c ===
+nosave string *trouble = ({});
+nosave mapping cloned_by = ([]);
+nosave object *_rooms;
+nosave int lag, lastlag, maxlag, minlag, burstlag, users;
+#define DEBUG
+#define MIN_TIME 219599
+#define MAX_TIME 219600
+#define FAULT_RATE 4500
+#define ROOM_IDLE_DELAY 7200
+#define ROOM_STABLE_DELAY 10800
+#define NO_AUTO_REBOOT 1
+#define REBOOTS_PER_CRASH 6
+#define CHANGE_SPEED 6
+#define SAVE_FILE "/save/garbage"
+int max_time;
+int crash;
+int limit;
+nosave int faults_prev;
+nosave int stime_prev;
+nosave int utime_prev;
+nosave int uptime_prev;
+nosave int rate_exceeded;
+nosave int times_run;
+#if efun_defined(get_garbage)
+int get_junk(object ob){
+  return ob->query_dest_other() == 0;
+}
+#else
+int get_junk(object ob){
+  if(!clonep(ob) || refs(ob) != 2 || query_shadowing(ob) ||
+     environment(ob) || ob->query_dest_other())
+    return 0;
+  return 1;
+}
+#endif
+nosave int id;
+void create(){
+  function tmp;
+  mapping map;
+  unguarded(function(){
+    restore_object(SAVE_FILE);
+    if(!max_time) {
+      max_time = MAX_TIME;
+      crash = 1;
+      limit = 1000;
+      save_object(SAVE_FILE);
+    } else {
+      if(crash)
+        max_time -= max_time/CHANGE_SPEED;
+      else
+        max_time += max_time/(CHANGE_SPEED*REBOOTS_PER_CRASH);
+      if(max_time > MAX_TIME)
+        max_time = MAX_TIME;
+      crash = 1;
+      save_object(SAVE_FILE);
+    }
+  });
+  map = rusage();
+  faults_prev = map["majflt"];
+  stime_prev = map["stime"];
+  utime_prev = map["utime"];
+  uptime_prev = uptime();
+  id = call_out("housekeeping", 300);
+  tmp = function(function func) {
+    int diff;
+    diff = real_time() - time();
+    if(diff > 2){
+      diff -= 2;
+      lag += diff;
+      if(diff > maxlag) {
+        maxlag = diff;
+        if(maxlag > 600) {
+          master()->crash("Too much lag to recover");
+          shutdown(0);
+        }
+      }
+    }
+    if(diff < minlag) {
+      minlag = diff;
+    }
+    if(diff > 2 && (diff - lastlag > burstlag))
+      burstlag = diff - lastlag;
+    lastlag = diff;
+    diff = sizeof(users());
+    if(diff > users) {
+      users = diff;
+    }
+    efun::call_out(func, 1, func);
+  };
+  call_out(tmp, 1, tmp);
+}
+void check_reboot() {
+  int faults_now;
+  int stime_now;
+  int utime_now;
+  mapping map;
+  int reboot;
+  map = rusage();
+  stime_now = map["stime"];
+  utime_now = map["utime"];
+  faults_now = map["majflt"];
+  event(users(), "inform",
+        "Cpu usage for period = "+
+        ((((utime_now-utime_prev) + (stime_now-stime_prev) ) / 10.0 )/
+         (uptime() - uptime_prev))+"% Fault rate is "+
+       (faults_now - faults_prev), "cpu");
+  event(users(), "inform", "Machine lag is "+
+        (lag/900) + " seconds (average) "+minlag+" seconds (min) "+
+        maxlag+" seconds (max) "+burstlag+" seconds (burst)", "cpu");
+  log_file("GARBAGE", "%s lag %d (%d/%d) burst %d users %d faults %d "
+           "cpu %.1f%%\n",
+           ctime(time())[4..18], (lag/900), minlag, maxlag, burstlag,
+           users, (faults_now - faults_prev),
+           ((((utime_now-utime_prev) + (stime_now-stime_prev) ) /
+             15.0 )/ (uptime() - uptime_prev)));
+  if(find_object("/obj/shut") && "/obj/shut"->query_time_to_crash() != 9999)
+    return;
+#ifndef NO_TIMED_REBOOT
+  if(uptime() > max_time)
+    reboot = 1;
+#endif
+#ifndef NO_AUTO_REBOOT
+  if((uptime() > MIN_TIME) &&
+     (faults_now > (faults_prev + FAULT_RATE))) {
+    if(rate_exceeded) {
+      reboot = 1;
+    }
+  } else {
+    rate_exceeded = 1;
+  } else {
+    rate_exceeded = 0;
+  }
+#endif
+  if(reboot) {
+    shout("A'Tuin cries out: Too heavy, I need to put the Disc down for a "+
+          "moment.\n");
+    "/obj/shut"->shut(10);
+    log_file("GARBAGE", ctime(time())[4..18]+" Auto; Faults: "+
+             faults_now+", "+ faults_prev+"; uptime: "+uptime()+"; Cpu: "+
+             ((((utime_now-utime_prev) + (stime_now-stime_prev) ) / 15.0 ) /
+              (uptime() - uptime_prev))+
+             "\n");
+    call_out(function(){
+      crash = 0;
+      unguarded((:save_object(SAVE_FILE):));
+    }, 9*60);
+    return;
+  }
+#if efun_defined(set_check_limit)
+  if(lag > 900)
+    limit += 5;
+  if(lag < 300)
+    limit--;
+  limit = set_check_limit(limit);
+#endif
+  faults_prev = faults_now;
+  uptime_prev = uptime();
+  stime_prev = stime_now;
+  utime_prev = utime_now;
+  users = 0;
+  lag = 0;
+  maxlag = 0;
+  burstlag = 0;
+  minlag = 900;
+}
+void start_cleanup() {
+  int i;
+  int t = real_time();
+  _rooms = filter(objects((: function_exists("query_last_visited", $1) :)),
+                  (: $1->query_keep_room_loaded() == 0 &&
+                   $1->query_last_visited() < (time() - ROOM_IDLE_DELAY) &&
+                   $1->query_last_visited() > (time() - ROOM_STABLE_DELAY):));
+  for(i=(times_run % 2); i<sizeof(_rooms); i += 2)
+    catch(_rooms[i]->clean_up());
+  log_file("GARBAGE", "%s cleaning %d rooms. Current memory %.2fM\n",
+           ctime(time())[4..18], i/2, (memory_info() / 1024000.0));
+  event(users(), "inform",
+        sprintf("Cleaning %d idle rooms", i/2), "cpu");
+  if(real_time() - t > 1)
+    log_file("GARBAGE", "%s room cleanup took %d seconds.\n",
+             ctime(time())[4..18], real_time() - t);
+}
+void tidy_up() {
+  int rmem, ocount;
+  rmem = memory_info();
+  ocount = reclaim_objects();
+  rmem -= memory_info();
+  event(users(), "inform",
+        sprintf("Reclaimed %d object%s (%d byte%s)",
+                ocount, (ocount == 1 ? "" : "s"),
+                rmem, (rmem == 1 ? "" : "s") ), "cpu");
+}
+void housekeeping() {
+  string *tmpkeys;
+  int i;
+  object *junk;
+  int t = real_time();
+  i = set_eval_limit(0);
+  set_eval_limit(5000000);
+#if efun_defined(get_garbage)
+  junk = filter(get_garbage(), (:get_junk:));
+#else
+  junk = objects((:get_junk:));
+#endif
+  set_eval_limit(i);
+  times_run++;
+  call_out("check_reboot", 10);
+  if(!(times_run % 3))
+    call_out("tidy_up", 30);
+  if(times_run > 4 && (times_run % 2 == 1))
+    call_out("start_cleanup", 60);
+  foreach(object ob in junk)
+    trouble |= ({base_name(ob)});
+  id = call_out((:housekeeping:), 15 * 60);
+  foreach(object ob in junk) {
+#ifdef DEBUG
+    if(cloned_by[file_name(ob)])
+      log_file("GARBAGE_DEBUG", "%O cloned by %O\n", ob,
+               cloned_by[file_name(ob)]);
+#endif
+    reset_eval_cost();
+    ob->dest_me();
+  }
+  tmpkeys = keys(cloned_by);
+  if(sizeof(tmpkeys)>10000){
+    cloned_by = ([]);
+  }
+#if !efun_defined(add_action)
+  "/obj/handlers/livings"->remove_garbage();
+#endif
+  if(real_time() - t > 1)
+    log_file("GARBAGE", "%s garbage cleanup took %d seconds.\n",
+             ctime(time())[4..18], real_time() - t);
+}
+nosave private object armoury, cloner;
+void cloned(object ob){
+  object obcloner;
+  if(!armoury)
+    armoury = find_object("/obj/handlers/armoury");
+  if(!cloner)
+    cloner = find_object("/global/cloner");
+  if(previous_object(1) != armoury && previous_object() != cloner){
+    obcloner = previous_object(1);
+  } else catch {
+    int i = 2;
+    obcloner = armoury;
+    while(obcloner == armoury || obcloner == cloner)
+      obcloner = previous_object(i++);
+  };
+  if(member_array(base_name(ob), trouble) != -1){
+    string tmp = "";
+#if 0
+    int i, j;
+    for(i = 2; i < sizeof(call_stack()); i++){
+      if(!call_stack(1)[i])
+        break;
+      for(j = 0; j < 4; j++)
+        tmp = sprintf("%s %O", tmp, call_stack(j)[i]);
+      tmp += "\n";
+    }
+#endif
+    cloned_by[file_name(ob)] = sprintf("%O\n%s", obcloner, tmp);
+  }
+  if((find_call_out(id) < 0) && ((uptime() - uptime_prev) > (30 * 60)))
+    id = call_out((:housekeeping:), 0);
+}
+int query_next_reboot() {
+#ifndef NO_TIMED_REBOOT
+  return max_time - uptime();
+#else
+  return -1;
+#endif
+}
+int query_faults_prev() {
+   return faults_prev;
+}
+void set_max_time(int i) { max_time = i; save_object(SAVE_FILE); }
+void dest_me(){
+  crash = 0;
+  unguarded((:save_object(SAVE_FILE):));
+  destruct(this_object());
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/mag_eff_handler.c ===
+#define BLACK_MASS 1000
+#define NUM_POSS 6
+#define NUM_USER 20
+private mixed *_octonite;
+private int _call_out_no;
+protected void update_octonite();
+protected void schedule_next();
+int block( object thing ) {
+   if ( !thing->query_closed() )
+      return 0;
+   return (int)thing->query_property( "enchantment block" );
+}
+int ambient_enchantment( object thing ) {
+   int i, total;
+   object *tops;
+   tops = ({ thing });
+   while ( environment( tops[ 0 ] ) ) {
+      tops = ({ environment( tops[ 0 ] ) }) + tops;
+   }
+   for ( i = 0; i < sizeof( tops ); i++ ) {
+      total += (int)tops[ i ]->query_enchant();
+      total = ( total * ( 100 - block( tops[ i ] ) ) + 50 ) / 100;
+   }
+   return total;
+}
+int *choose_effect( int number ) {
+  return ({ number, random( NUM_POSS * number ) / BLACK_MASS });
+}
+void do_effect( int number, string name, object place ) {
+  int i;
+  string word;
+  object thing, *things;
+  switch( number ) {
+    case 0:
+      tell_room( place, "How curious.\n" );
+      break;
+    case 1:
+      tell_room( place, name +" spins slowly in mid-air, then "+
+        "vanishes with a small \"pop!\"\n" );
+      break;
+    case 2:
+      i = random( 4 );
+      tell_room( place, name +" sparkles and turns into a small "+
+        ({ "yellow", "green", "hairy", "spotted" })[ i ] +" caterpillar.\n" );
+      thing = clone_object( "/obj/monster" );
+      thing->set_name( "caterpillar" );
+      thing->set_short( ({ "yellow", "green", "hairy", "spotted" })[ i ]
+        +" caterpillar" );
+      thing->add_adjective( ({ "yellow", "green", "hairy", "spotted" })[ i ] );
+      thing->set_main_plural( ({ "yellow", "green", "hairy", "spotted" })[ i ]
+        +" caterpillars" );
+      thing->add_plural( "caterpillars" );
+      thing->set_long( "This is a small, common or garden caterpillar.\n" );
+      thing->set_race( "caterpillar" );
+      thing->set_level( 1 );
+      thing->move( place );
+      break;
+    case 3:
+      tell_room( place, name +" vanishes with a sharp \"spang!\"\n"+
+        "A moment later, you hear a small thunderclap.\n" );
+      break;
+    case 4:
+      tell_room( place, "Balefire blossoms, and "+ name +" turns into "+
+        "a bunch of flowers.\n" );
+      thing = clone_object( "/std/object" );
+      thing->set_name( "flowers" );
+      thing->set_short( "bunch of flowers" );
+      thing->set_main_plural( "bunches of flowers" );
+      thing->add_adjective( ({ "bunch", "bunches", "of" }) );
+      thing->add_plural( "bunches" );
+      thing->set_long( "A nice bunch of flowers.\n" );
+      thing->set_weight( 10 );
+      thing->set_value( 100 );
+      thing->move( place );
+      break;
+    case 5:
+      tell_room( place, "With a small gout of flame, "+ name +" begins "+
+        "to accelerate.\n" );
+      switch( (string)place->query_property( "location" ) ) {
+        case "outside":
+          tell_room( place, name +" vanishes into the distance.\n" );
+          break;
+        default:
+          tell_room( place, "There is a small puff of burning dust as "+
+            name +" passes through a wall.\n" );
+      }
+      things = users() - all_inventory( place );
+      if ( sizeof( things ) > ( i = random( NUM_USER ) ) ) {
+        if ( !( thing = environment( things[ i ] ) ) ) break;
+        tell_object( find_player( "deutha" ),
+            (string)things[ i ]->query_name() +"\n" );
+        tell_room( thing, "You hear a high-pitched whine.\n" );
+        tell_object( things[ i ], "Something small and very hot zooms past "+
+          "you at ear level.\n" );
+        if ( ( !( word = (string)things[ i ]->query_short() ) || ( word == "" )
+          ) || things[ i ]->query_invis() ) break;
+        tell_room( thing, word +" looks shaken.\n", things[ i ] );
+      }
+      break;
+    default:
+      tell_room( place, "Something really, really strange happens.\n" );
+  }
+}
+object *query_octonite_crystals() { return _octonite; }
+void add_octonite_crystal( object crystal ) {
+   int i, when;
+   when = time() + roll_MdN( 5, 60 );
+   if ( !sizeof( _octonite ) ) {
+      _octonite = ({ crystal, when });
+      schedule_next();
+   } else {
+      for ( i = 0; i < sizeof( _octonite ); i += 2 ) {
+         if ( when < _octonite[ i + 1 ] ) {
+            break;
+         }
+      }
+      if ( i == 0 ) {
+         _octonite = ({ crystal, when }) + _octonite;
+         schedule_next();
+         return;
+      }
+      if ( i >= sizeof( _octonite ) ) {
+         _octonite += ({ crystal, when });
+         return;
+      }
+      _octonite = _octonite[ 0 .. i - 1 ] + ({ crystal, when }) +
+            _octonite[ i ..  ];
+   }
+}
+protected void schedule_next() {
+   int next;
+   remove_call_out(_call_out_no);
+   next = _octonite[ 1 ] - time();
+   if ( next > 0 ) {
+      _call_out_no = call_out( (: update_octonite :), next );
+   } else {
+      _call_out_no = call_out( (: update_octonite :), 0 );
+   }
+}
+protected void update_octonite() {
+   int ambient, weight;
+   object crystal;
+   crystal = _octonite[ 0 ];
+   if ( objectp( crystal ) ) {
+      weight = 20 * (int)crystal->query_weight();
+      tell_object( find_player( "deutha" ), "Current: "+ weight +".\n" );
+      ambient = ambient_enchantment( crystal );
+      if ( ambient > weight ) {
+         weight += ( ambient - weight ) / 4;
+      }
+      weight -= ( weight * ( 100 - block( environment( crystal ) ) ) ) / 800;
+      if ( random( 20 ) < weight % 20 ) {
+         weight += 20;
+      }
+      weight /= 20;
+      if ( !weight )
+         crystal->dest_me();
+      else {
+         crystal->set_weight( weight );
+         crystal->set_enchant( ( 7 * (int)crystal->query_max_enchant() ) / 8 );
+         crystal->set_value_info( "magic", weight * 10000 );
+      }
+      _octonite = delete( _octonite, 0, 2 );
+      if ( sizeof( _octonite ) ) {
+         schedule_next();
+      }
+      if ( crystal ) {
+         add_octonite_crystal( crystal );
+      }
+   } else {
+      _octonite = delete( _octonite, 0, 2 );
+      if ( sizeof( _octonite ) ) {
+         schedule_next();
+      }
+   }
+}
+string extra_look( object thing ) {
+   if ( explode( file_name( thing ), "#" )[ 0 ] != "/obj/magic/octonite" ) {
+      return "";
+   }
+   switch ( (int)thing->query_weight() ) {
+      case 0 :
+         return "";
+      case 1 .. 2 :
+         return "It is about the size of a pea.\n";
+      case 3 .. 6 :
+         return "It is about the size of a hazelnut.\n";
+      case 7 .. 12 :
+         return "It is about the size of a walnut.\n";
+      case 13 .. 20 :
+         return "It is about the size of an orange.\n";
+      case 21 .. 30 :
+         return "It is about the size of a grapefruit.\n";
+      default :
+         return "It is about the size of a pumpkin.\n";
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/gossip_handler.c ===
+#include <gossip.h>
+mixed *gossip;
+mixed *rumours;
+nosave mixed *filter_these;
+private void save_stuff();
+void create() {
+   seteuid(getuid());
+   filter_these = ({ "fuck", "fucking", "fucker", "cunt", "bitch", "shit" });
+   gossip = ({ });
+   rumours = ({ });
+   unguarded( (: restore_object(GOSSIP_SAVE_FILE) :) );
+   call_out((: save_stuff :), 10*60);
+}
+private void save_stuff() {
+   call_out((: save_stuff :), 10*60);
+   if (sizeof(gossip) > GOSSIP_KEEP_LEVEL) {
+      gossip = gossip[sizeof(gossip)-GOSSIP_KEEP_LEVEL..];
+   }
+   if (sizeof(rumours) > RUMOUR_KEEP_LEVEL) {
+      rumours = rumours[sizeof(rumours)-RUMOUR_KEEP_LEVEL..];
+   }
+   unguarded( (: save_object(GOSSIP_SAVE_FILE) :) );
+}
+void add_gossip(string name, string mess) {
+   string *bits;
+   int i;
+   bits = explode(mess, " ");
+   for (i = 0; i < sizeof(bits); i++) {
+      if (member_array(bits[i], filter_these) != -1) {
+         return ;
+      }
+   }
+   gossip += ({ ({ name, mess }) });
+}
+varargs string remove_gossip(string match, int force)
+{
+  int pos, index;
+  if (!match || match == "") return "Must provide a match string";;
+  pos = -1;
+  for (index = sizeof(gossip); index; index--) {
+    if (strsrch(gossip[index - 1][1], match) != -1) {
+      if (pos == -1)
+        pos = index - 1;
+      else if (!force) {
+        return "too many matches";
+      }
+    }
+  }
+  if (pos != -1) {
+    string found = "found " + gossip[pos][1] + " by " + gossip[pos][0];
+    gossip = delete(gossip, pos, 1);
+    return found;
+  } else
+    return "No match";
+}
+void add_rumour(string name, string mess) {
+   rumours += ({ ({ name, mess }) });
+   save_stuff();
+}
+string *query_random_gossip() {
+   if (sizeof(rumours) && random(2)) {
+      return rumours[random(sizeof(rumours))];
+   } else {
+      if (sizeof(gossip))
+	 return gossip[random(sizeof(gossip))];
+      else
+	 return 0;
+   }
+}
+mixed *query_gossip() {
+   return gossip;
+}
+string *query_filter() {
+   return filter_these;
+}
+mixed *query_rumours() {
+   return rumours;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/colour.c ===
+#include <colour.h>
+string calc_colour( int red, int green, int blue, int whitener ) {
+   int main_hue;
+   string result;
+   result = "";
+   if ( whitener > -1 ) {
+      switch ( red + green + blue ) {
+         case 0 .. 4 :
+            return "colourless";
+         case 5 .. 29 :
+            result += "faint ";
+            break;
+         case 30 .. 154 :
+            break;
+         default :
+            result += "intense ";
+      }
+   }
+   return result;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/bank_handler.c ===
+#define RESTORE_PATH "/save/bank_accounts/"
+#define CHEAT_THRESHOLD 200000
+class franchise {
+   string office;
+   int cost_per_month;
+   int cost_per_new_account;
+}
+class bank_data {
+   string master_office;
+   class franchise* franchises;
+   int cost_to_start;
+   int default_cost_per_month;
+   int default_cost_per_new_account;
+}
+private mapping accounts;
+private nosave mapping _banks;
+void do_cheat_check(string, string, int, string, int);
+void create() {
+   string str;
+   _banks = ([ ]);
+   str = unguarded((: read_file, RESTORE_PATH + "bank_data.o" :));
+   if (str) {
+      _banks = restore_variable(str);
+   }
+}
+private void save_banks() {
+   unguarded((: write_file, RESTORE_PATH + "bank_data.o",
+                save_variable(_banks), 1 :));
+}
+private void init_data( string word ) {
+  accounts = ([ ]);
+}
+int get_data_file( string name ) {
+  int success;
+  success = unguarded((: restore_object, RESTORE_PATH+
+           name[0..0]+"/"+name :));
+  if(!success) {
+    init_data(name);
+    return success;
+  }
+  return 1;
+}
+private void save_data_file( string name ) {
+  if(!unguarded((: save_object, RESTORE_PATH+name[0..0]+"/"+name :)))
+    debug_printf("Problem saving " + RESTORE_PATH+name[0..0]+"/"+name);
+}
+int query_account( string word, string bank_name ) {
+  get_data_file( word );
+  if ( !accounts ) {
+    return -1;
+  }
+  if ( member_array( bank_name, m_indices( accounts ) ) == -1 ) {
+    return -1;
+  }
+  return accounts[ bank_name ];
+}
+void adjust_account( string name, string bank_name, int amount ) {
+  int before;
+  get_data_file( name );
+  before = accounts[ bank_name ];
+  accounts[bank_name] += amount;
+  if ( accounts[ bank_name ] < 0 ) {
+    accounts = m_delete( accounts, bank_name );
+  }
+  do_cheat_check(name, bank_name, amount, "by", before);
+  save_data_file( name );
+  return;
+}
+void set_account( string name, string bank_name, int amount ) {
+  int before;
+  get_data_file( name );
+  before = accounts[ bank_name ];
+  if ( amount < 0 ) {
+    accounts = m_delete( accounts, bank_name );
+  } else {
+    accounts[ bank_name ] = amount;
+  }
+  do_cheat_check(name, bank_name, amount, "to", before);
+  save_data_file( name );
+  return;
+}
+string *query_accounts(string player) {
+  get_data_file(player);
+  if(!accounts)
+    return ({ });
+  return keys(accounts);
+}
+void create_new_bank(string name, string master) {
+   class bank_data data;
+   if (_banks[name]) {
+      return ;
+   }
+   data = new(class bank_data);
+   data->master_office = master;
+   data->franchises = ({ });
+   data->cost_to_start = 2600000;
+   data->default_cost_per_month = 360000;
+   data->default_cost_per_new_account = 400;
+   _banks[name] = data;
+   save_banks();
+}
+void remove_bank(string name) {
+   map_delete(_banks, name);
+   save_banks();
+}
+class bank_data query_bank_data(string name) {
+   return copy(_banks[name]);
+}
+void add_new_franchise(string name, string franchise_office) {
+   class franchise franchise;
+   if (!_banks[name]) {
+      return ;
+   }
+   foreach (franchise in _banks[name]->franchises) {
+      if (franchise->office == franchise_office) {
+         return ;
+      }
+   }
+   franchise = new(class franchise);
+   franchise->office = franchise_office;
+   franchise->cost_per_month = _banks[name]->default_cost_per_month;
+   franchise->cost_per_new_account = _banks[name]->default_cost_per_new_account;
+   _banks[name]->franchises += ({ franchise });
+   save_banks();
+   return ;
+}
+void set_bank_default_cost_to_open(string name, int amount) {
+   if (!_banks[name]) {
+      return ;
+   }
+   _banks[name]->cost_to_start = amount;
+   save_banks();
+   return ;
+}
+void set_bank_default_cost_per_new_account(string name, int amount) {
+   if (!_banks[name]) {
+      return ;
+   }
+   _banks[name]->default_cost_per_new_account = amount;
+   save_banks();
+   return ;
+}
+void set_bank_franchise_cost_per_month(string name, string franchise_office,
+                                     int amount) {
+   class franchise franchise;
+   if (!_banks[name]) {
+      return ;
+   }
+   foreach (franchise in _banks[name]->franchises) {
+      if (franchise->office == franchise_office) {
+         franchise->cost_per_month = amount;
+         save_banks();
+         return ;
+      }
+   }
+   return ;
+}
+void set_bank_franchise_cost_per_new_account(string name, int amount) {
+   if (!_banks[name]) {
+      return ;
+   }
+   _banks[name]->cost_per_new_account = amount;
+   save_banks();
+   return ;
+}
+void set_bank_default_cost_per_month(string name, int amount) {
+   if (!_banks[name]) {
+      return ;
+   }
+   _banks[name]->default_cost_per_month = amount;
+   save_banks();
+   return ;
+}
+int query_bank_default_cost_to_open(string name) {
+   if (!_banks[name]) {
+      return -1;
+   }
+   return _banks[name]->cost_to_start;
+}
+int query_bank_default_cost_per_new_account(string name) {
+   if (!_banks[name]) {
+      return -1;
+   }
+   return _banks[name]->default_cost_per_new_account;
+}
+int query_bank_franchise_cost_per_month(string name, string franchise_office) {
+   class franchise franchise;
+   if (!_banks[name]) {
+      return -1;
+   }
+   foreach (franchise in _banks[name]->franchises) {
+      if (franchise->office == franchise_office) {
+         return franchise->cost_per_month;
+      }
+   }
+   return -1;
+}
+int query_bank_franchise_cost_per_new_account(string name,
+                                              string franchise_office) {
+   class franchise franchise;
+   if (!_banks[name]) {
+      return -1;
+   }
+   foreach (franchise in _banks[name]->franchises) {
+      if (franchise->office == franchise_office) {
+         return franchise->cost_per_new_account;
+      }
+   }
+   return -1;
+}
+int query_bank_default_cost_per_month(string name) {
+   if (!_banks[name]) {
+      return -1;
+   }
+   return _banks[name]->default_cost_per_month;
+}
+string query_bank_master_office(string name) {
+   if (!_banks[name]) {
+      return 0;
+   }
+   return _banks[name]->master_office;
+}
+void set_bank_master_office(string name, string master) {
+   if (!_banks[name]) {
+      return 0;
+   }
+   _banks[name]->master_office = master;
+   save_banks();
+}
+string* query_banks() {
+   return keys(_banks);
+}
+string* query_franchises(string bank) {
+   if (!_banks[bank]) {
+      return ({ });
+   }
+   return map(_banks[bank]->franchises, (: $1->office :) );
+}
+void do_cheat_check(string name, string bank_name, int amount,
+                    string str, int after) {
+#ifdef LOGGING
+  if((amount - after) > CHEAT_THRESHOLD) {
+    log_file ("BANK_CHEAT", sprintf ("%s: %s deposited %d into %s.\n",
+                                     ctime(time()), name, (amount-after),
+                                     bank_name));
+  }
+#endif
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/refresh.c ===
+#include <refresh.h>
+#include <playerinfo.h>
+#define SAVE_FILE "/save/refresh"
+mapping refresh_callbacks;
+mapping delete_callbacks;
+nosave string loaded_by;
+nosave string loaded_time;
+protected void load_me()
+{
+  refresh_callbacks = 0;
+  delete_callbacks = 0;
+  unguarded( (: restore_object, SAVE_FILE, 0 :) );
+  if (!refresh_callbacks) {
+    refresh_callbacks = ([ ]);
+  }
+  if (!delete_callbacks) {
+    delete_callbacks = ([ ]);
+  }
+}
+protected void save_me()
+{
+  unguarded( (: save_object, SAVE_FILE, 0 :) );
+}
+string query_name() {
+   return "Refresh Handler";
+}
+void create()
+{
+  seteuid("/secure/master"->creator_file(file_name(this_object())));
+  load_me();
+  if (!previous_object()) {
+    loaded_by = "The Masked Man";
+  } else {
+    if (previous_object()->query_creator()) {
+      loaded_by = "Creator: " + previous_object()->query_name();
+    } else if (previous_object()->query_interactive()) {
+      loaded_by = "Player: " + previous_object()->query_name();
+    } else {
+      loaded_by = file_name(previous_object());
+      if (this_player())
+        loaded_by += sprintf(" (%s)", this_player()->query_name());
+    }
+  }
+  loaded_time = ctime(time());
+}
+void dest_me()
+{
+  save_me();
+  destruct(this_object());
+}
+nomask mixed dwep()
+{
+  efun::destruct(this_object());
+  return "Destructed With Extreme Prejudice";
+}
+string register_refresh(mixed ob, string func)
+{
+  object real;
+  if (objectp(ob)) {
+    ob = base_name(ob);
+  }
+  if (!ob) {
+    return "Please supply an object";
+  }
+  real = load_object(ob);
+  if (!real) {
+    return "Couldn't find object";
+  }
+  if (func && !function_exists(func, real)) {
+    return "Couldn't find function";
+  }
+  if (!func) {
+    if (refresh_callbacks[ob]) {
+      map_delete(refresh_callbacks, ob);
+    }
+  } else {
+    if (refresh_callbacks[ob]) {
+      refresh_callbacks[ob] = func;
+    } else {
+      refresh_callbacks += ([ ob : func ]);
+    }
+  }
+  save_me();
+}
+string register_delete(mixed ob, string func)
+{
+  object real;
+  if (objectp(ob)) {
+    ob = base_name(ob);
+  }
+  if (!ob) {
+    return "Please supply an object";
+  }
+  real = load_object(ob);
+  if (!real) {
+    return "Couldn't find object";
+  }
+  if (func && !function_exists(func, real)) {
+    return "Couldn't find function";
+  }
+  if (!func) {
+    if (delete_callbacks[ob]) {
+      map_delete(delete_callbacks, ob);
+    }
+  } else {
+    if (delete_callbacks[ob]) {
+      delete_callbacks[ob] = func;
+    } else {
+      delete_callbacks += ([ ob : func ]);
+    }
+  }
+  save_me();
+}
+varargs void player_refreshed(object player, int totally) {
+  string ob;
+  if (base_name(file_name(previous_object())) != "/global/player") {
+    return;
+  }
+  foreach (ob in keys(refresh_callbacks)) {
+    object obj;
+    obj = load_object(ob);
+    if (obj) {
+      mixed *vals;
+      vals = ({ refresh_callbacks[ob], player, totally });
+      call_out( (: call_other, obj, vals :), 1);
+    }
+  }
+}
+varargs void player_deleted(string player)
+{
+  string ob;
+  if (file_name(previous_object()) != "/secure/delete_clear" &&
+      file_name(previous_object()) != "/cmds/lord/rmp_layer" &&
+      !master()->high_programmer(previous_object(-1))) {
+    unguarded( (: write_file, "/log/CHEAT", ctime( time() ) +
+                ": illegal attempt to delete player files using "+
+                "refresh_handler\nTrace: "+ back_trace() :) );
+    return;
+  }
+  foreach (ob in keys(delete_callbacks)) {
+    object obj;
+    obj = load_object(ob);
+    if (obj) {
+      mixed *vals;
+      vals = ({ delete_callbacks[ob], player, PLAYER_DELETED });
+      call_out( (: call_other, obj, vals :), 1);
+    }
+  }
+  "/secure/related_files"->delete_related_files(player, 1, 0);
+}
+mapping query_funcs()
+{
+  return ([
+    "refresh callbacks" : refresh_callbacks,
+    "delete callbacks" : delete_callbacks,
+    ]);
+}
+mixed *stats()
+{
+  return ({
+    ({ "refreshes", sizeof(refresh_callbacks) }),
+    ({ "deletes", sizeof(delete_callbacks) }),
+    ({ "loaded by", loaded_by }),
+    ({ "loaded time", loaded_time }),
+    });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/clothing_handler.c ===
+#include <clothing.h>
+mapping _types;
+mapping _equivilants;
+mapping _zones;
+string *_zone_level;
+protected void add_clothing_type(string name,
+                                 string *not_remove,
+                                 string *hiding);
+protected void add_clothing_zone(string zone, string *types);
+private int fixup_types(string type, string *types);
+protected void add_equivilant_type(string name, string equiv);
+private void check_clothing_types();
+string *query_clothing_zone(string zone);
+string *query_clothing_cannot_remove(string type);
+string can_wear_or_remove(object thing, object player);
+void create() {
+   _types = ([ ]);
+   _equivilants = ([ ]);
+   _zones = ([ ]);
+   _zone_level = ({ });
+   add_clothing_type("bandaid", ({ }), ({ }));
+   add_clothing_type("wig",
+       ({ "hood", "helmet", "coif", "hat", "all covering" }),
+       ({ "hood", "helmet", "coif", "hat", "all covering" }));
+   add_clothing_type("hat",
+       ({ "hood", "helmet", "all covering" }),
+       ({ "hood", "helmet", "all covering" }));
+   add_clothing_type("helmet",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering" }));
+   add_clothing_type("hood",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("earring",
+       ({ "coif", "all covering" }),
+       ({ "hood", "coif", "all covering" }));
+   add_clothing_type("moustache",
+       ({ "coif", "mask", "all covering" }),
+       ({ "coif", "mask", "all covering" }));
+   add_clothing_type("glasses",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("nosering",
+       ({ "mask", "coif", "all covering" }),
+       ({ "mask", "coif", "all covering" }));
+   add_clothing_type("mask",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("headband",
+       ({ "hat", "hood", "helmet", "coif", "all covering" }),
+       ({ "hat", "hood", "helmet", "coif", "all covering" }));
+   add_clothing_type("scarf",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering"}));
+   add_clothing_type("necklace",
+       ({ "coif", "all covering" }),
+       ({ "cloak", "coif", "all covering" }));
+   add_clothing_type("collar",
+       ({ "hood", "all covering" }),
+       ({ "hood", "all covering"}));
+   add_clothing_type( "shoulder",
+       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
+          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
+          "shirt", "undershirt", "all covering" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
+          "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
+          "all covering" }));
+   add_clothing_type( "bra",
+       ({ "cloak", "cape", "sash", "robe",  "tabard", "breastplate",
+          "hauberk", "haubergon", "byrnie", "jacket","jumper", "waistcoat",
+          "shirt", "undershirt", "all covering", "long dress", "mini dress" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "hauberk", "haubergon",
+           "byrnie", "jacket", "jumper", "waistcoat", "shirt", "undershirt",
+           "all covering", "long dress", "mini dress" }));
+   add_clothing_type("undershirt",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "waistcoat",
+          "shirt", "harness", "all covering" }),
+       ({ "cloak", "robe", "tabard", "breastplate", "haubergon", "hauberk",
+          "byrnie", "jacket", "jumper", "shirt", "long dress", "mini dress",
+          "all covering" }));
+   add_clothing_type("shirt",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "waistcoat",
+          "harness", "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("waistcoat",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket", "jumper", "harness",
+          "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("harness",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("jumper",
+       ({ "cloak", "cape", "sash", "robe", "breastplate", "haubergon",
+          "hauberk", "byrnie", "tabard", "jacket",  "all covering" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "jacket",
+          "all covering" }));
+   add_clothing_type("jacket",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "all covering" }),
+       ({ "cloak", "robe", "hauberk", "all covering" }));
+   add_clothing_type("tabard",
+       ({ "cloak", "cape", "sash", "robe", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("robe",
+       ({ "cloak", "cape", "sash", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("cloak",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("sash",
+       ({ "cloak", "cape", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("cape",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("armband",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("glove",
+       ({ "all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("bracelet",
+       ({ "glove", "all covering" }),
+       ({ "cloak", "glove", "all covering" }));
+   add_clothing_type("ring",
+       ({ "glove", "all covering" }),
+       ({ "glove", "all covering" }));
+   add_clothing_type("box",
+       ({ "cloak", "robe", "all covering" }),
+       ({ "cloak", "robe", "skirt", "all covering" }));
+   add_clothing_type("apron",
+       ({ "cloak", "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("underwear",
+       ({ "harness", "trousers", "greave", "hauberk", "haubergon",
+          "byrnie", "belt", "trousers", "all covering" }),
+       ({ "cloak", "robe", "skirt", "trousers", "all covering",
+          "long dress", "mini dress" }));
+   add_clothing_type("garter",
+       ({ "greave", "hauberk", "trousers", "all covering"}),
+       ({ "cloak", "robe", "greave", "hauberk", "trousers", "skirt",
+          "all covering", "long dress", "mini dress"}));
+   add_clothing_type("skirt",
+       ({ "belt", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("trousers",
+       ({ "greave", "hauberk", "belt" }),
+       ({ "cloak", "hauberk", "robe", "all covering" }));
+   add_clothing_type("belt",
+       ({"hauberk", "haubergon", "byrnie", "all covering" }),
+       ({ "cloak", "robe", "hauberk", "haubergon", "byrnie", "all covering" }));
+   add_clothing_type("sock",
+       ({ "overshoe", "boot", "chausse", "all covering" }),
+       ({ "cloak", "overshoe", "boot", "chausse", "all covering",
+          "long dress", "trousers" }));
+   add_clothing_type("anklet",
+       ({ }),
+       ({ "cloak", "overshoe", "chausse", "all covering" }));
+   add_clothing_type("boot",
+       ({ "overshoe" }),
+       ({ "overshoe", "all covering" }));
+   add_clothing_type("overshoe",
+       ({ }),
+       ({ "all covering" }));
+   add_clothing_type("long dress",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
+          "all covering","belt" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("mini dress",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "breastplate",
+          "haubergon", "hauberk", "byrnie", "jacket",  "jumper", "harness",
+          "all covering","belt" }),
+       ({ "cloak", "robe", "haubergon", "hauberk", "byrnie", "jacket",
+          "jumper", "all covering" }));
+   add_clothing_type("small shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("large shield",
+       ({"all covering" }),
+       ({ "all covering" }));
+   add_clothing_type("badge",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "all covering" }));
+   add_clothing_type("small scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("belt scabbard",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("coif",
+       ({ "hood", "scarf", "mask", "helmet", "hat", "all covering"}),
+       ({ "hood", "all covering"}));
+   add_clothing_type("byrnie",
+       ({ "cloak", "breastplate", "backplate", "tabard", "small scabbard",
+          "belt scabbard", "robe", "cape", "sash", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("haubergon",
+       ({ "cloak", "breastplate", "backplate", "tabard", "vambrace",
+          "small scabbard", "belt scabbard", "robe", "cape", "sash",
+          "all covering"}),
+       ({ "cloak", "robe", "all covering"}));
+   add_clothing_type("hauberk",
+       ({ "cloak", "tabard", "vambrace", "greave", "breastplate", "backplate",
+          "small scabbard", "belt scabbard", "robe", "cape", "sash",
+          "all covering"}),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("chausse",
+       ({ "boot", "overshoe", "all covering"}),
+       ({ "boot", "overshoe", "all covering"}));
+   add_clothing_type("breastplate",
+       ({ "cloak", "small scabbard", "belt scabbard", "robe", "tabard",
+          "cape", "sash", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("backplate",
+       ({ "cloak", "cape", "sash", "robe", "tabard", "all covering"}),
+       ({ "cloak", "cape", "sash", "robe", "all covering"}));
+   add_clothing_type("vambrace",
+       ({ "glove", "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("greave",
+       ({ "all covering" }),
+       ({ "cloak", "robe", "all covering" }));
+   add_clothing_type("all covering", ({}), ({}));
+   add_clothing_zone("head",
+       ({ "hood", "helmet", "coif", "hat", "wig", "headband", "moustache",
+          "glasses", "mask" }));
+   add_clothing_zone("neck",
+       ({ "cloak", "hood", "coif", "cape", "scarf", "collar" }));
+   add_clothing_zone("chest",
+       ({ "cloak", "sash", "robe", "breastplate", "haubergon", "hauberk",
+          "byrnie", "tabard", "jacket","jumper", "shirt", "undershirt",
+          "shoulder", "bra","shield", "large shield", "long dress",
+          "mini dress", "apron", "waistcoat" }));
+   add_clothing_zone("back",
+       ({ "cloak", "cape", "sash", "robe", "hauberk", "haubergon", "byrnie",
+          "jacket", "jumper", "shirt", "undershirt", "backplate",
+          "long dress", "mini dress", "waistcoat" }));
+   add_clothing_zone("abdomen",
+       ({ "large shield", "robe", "breastplate", "byrnie", "hauberk",
+          "skirt", "box", "trousers", "underwear", "long dress",
+          "mini dress", "apron", "waistcoat" }));
+   add_clothing_zone("arms",
+       ({ "cloak", "small shield", "shield", "large shield", "robe",
+          "vambrace", "hauberk", "haubergon", "jacket", "armband",
+          "jumper", "shirt", "long dress" }));
+   add_clothing_zone("hands",
+       ({ "glove", "small shield", "shield", "large shield" }));
+   add_clothing_zone("legs",
+       ({ "cloak", "robe", "greave", "hauberk", "skirt", "trousers",
+          "long dress" }));
+   add_clothing_zone("feet",
+       ({ "overshoe", "boot", "chausse", "sock", "anklet" }));
+   add_equivilant_type("shoe", "boot");
+   add_equivilant_type("sandal", "boot");
+   add_equivilant_type("clog", "boot");
+   add_equivilant_type("sabaton", "boot");
+   add_equivilant_type("turban", "helmet");
+   add_equivilant_type("gorget", "collar");
+   add_equivilant_type("stocking", "sock");
+   add_equivilant_type("coat", "cloak");
+   add_equivilant_type("overall", "long dress");
+   call_out((: check_clothing_types() :), 2);
+}
+object* query_items_blocking(object thing, object player) {
+   int i;
+   int j;
+   int k;
+   string *stuff;
+   object *blocking;
+   mixed junk;
+   mixed main_types;
+   object *wearing;
+   main_types = thing->query_type();
+   if (stringp(main_types)) {
+      main_types = ({ main_types });
+   }
+   wearing = player->query_wearing() - ({ thing });
+   blocking = ({ });
+   for (k=0;k<sizeof(main_types);k++) {
+      stuff = query_clothing_cannot_remove(main_types[k]);
+      if (!sizeof(wearing) || !stuff) {
+         return ({ });
+      }
+      for (i = 0; i < sizeof(wearing); i++) {
+         junk = wearing[i]->query_type();
+         if (stringp(junk)) {
+            junk = ({ junk });
+         }
+         for (j = 0; j < sizeof(junk); j++) {
+            if (member_array(junk[j], stuff) != -1 &&
+                 member_array(wearing[i], blocking) == -1) {
+               blocking += ({ wearing[i] });
+               break;
+            }
+         }
+      }
+   }
+   return blocking;
+}
+string can_wear_or_remove( object thing, object player ) {
+   object *blocking;
+   blocking = query_items_blocking(thing, player);
+   if (sizeof(blocking)) {
+     return "when you are wearing "+ query_multiple_short(blocking);
+   }
+   return 0;
+}
+protected void add_clothing_type(string name,
+                                 string *not_remove,
+                                 string *hiding) {
+   _types[name] = new (class clothing_type, _hiding : hiding,
+                                           _not_remove : not_remove);
+}
+class clothing_type query_clothing_type(string name) {
+   return _types[name];
+}
+string *query_clothing_cannot_remove(string type) {
+   class clothing_type bing;
+   bing = _types[type];
+   if (bing) {
+      return bing->_not_remove;
+   }
+   return 0;
+}
+string *query_clothing_hiding(string type) {
+   class clothing_type bing;
+   bing = _types[type];
+   if (bing) {
+      return bing->_hiding;
+   }
+   return ({ });
+}
+int query_clothing_depth(mixed type) {
+   class clothing_type bing;
+   int depth;
+   string str;
+   int min_depth;
+   if (stringp(type)) {
+      bing = _types[type];
+      if (bing) {
+         return bing->_depth;
+      }
+   } else if (pointerp(type)) {
+      min_depth = 100000;
+      foreach (str in type) {
+         depth = query_clothing_depth(str);
+         if (depth < min_depth && depth > 0) {
+            min_depth = depth;
+         }
+      }
+      return min_depth;
+   }
+   return 0;
+}
+int query_clothing_maximum_depth(mixed type) {
+   class clothing_type bing;
+   int depth;
+   string str;
+   int max_depth;
+   if (stringp(type)) {
+      bing = _types[type];
+      if (bing) {
+         return bing->_depth;
+      }
+   } else if (pointerp(type)) {
+      max_depth = 0;
+      foreach (str in type) {
+         depth = query_clothing_depth(str);
+         if (depth > max_depth) {
+            max_depth = depth;
+         }
+      }
+      return max_depth;
+   }
+   return 0;
+}
+mapping query_all_clothing_types() {
+   return _types;
+}
+private void check_clothing_types() {
+   string ty;
+   class clothing_type bits;
+   string *stuff;
+   string bing;
+   string type;
+   int rank;
+tell_creator("presto", "called check_clothing_types\n");
+   foreach (ty, bits in _types) {
+      foreach (bing in bits->_not_remove) {
+         if (!query_clothing_type(bing)) {
+            write("Unknown clothing type " + bing + " in the not remove "
+                  " for " + ty + ".\n");
+         }
+      }
+      foreach (bing in bits->_hiding) {
+         if (!query_clothing_type(bing)) {
+            write("Unknown clothing type " + bing + " in the hiding "
+                  " for " + ty + ".\n");
+         }
+      }
+   }
+   rank = 1;
+   foreach (bing in _zone_level) {
+      stuff = query_clothing_zone(bing);
+      foreach (type in stuff) {
+         bits = _types[type];
+         if (!bits->_depth &&
+             (sizeof(bits->_not_remove) == 0  ||
+             bits->_not_remove[0] == "all covering")) {
+            bits->_depth = rank;
+            rank = fixup_types(type, stuff);
+         }
+      }
+      foreach (type in stuff) {
+         bits = _types[type];
+         if (!bits->_depth) {
+tell_creator("presto", "setting depth of %O to %d\n", type, rank + 1);
+            bits->_depth = rank++;
+         }
+      }
+   }
+}
+private int fixup_types(string type, string *types) {
+   string bing;
+   class clothing_type base;
+   class clothing_type bits;
+   int depth;
+   base = _types[type];
+   depth = base->_depth + 1;
+   foreach (bing in types) {
+      bits = _types[bing];
+      if (!bits->_depth &&
+          member_array(type, bits->_not_remove) != -1) {
+         bits->_depth = depth;
+         depth = fixup_types(bing, types);
+      }
+   }
+   return depth;
+}
+protected void add_clothing_zone(string zone, string *types) {
+   string ty;
+   foreach (ty in types) {
+      if (!query_clothing_type(ty)) {
+         write("Incorrect clothing type " + ty + " in zone " + zone + ".\n");
+      }
+   }
+   _zones[zone] = types;
+   _zone_level += ({ zone });
+}
+protected void add_zone_coverage(string type, string *zones) {
+  string zone;
+  if(!query_clothing_type(type))
+    write("Incorrect clothing type " + type + "\n");
+  foreach(zone in zones)
+    if(member_array(type, zones) != -1)
+      _zones[zone] += ({ type });
+}
+mapping query_all_clothing_zones() {
+   return _zones;
+}
+string *query_clothing_zone(string zone) {
+   return _zones[zone];
+}
+string query_zone_name(string type) {
+   string zone;
+   string *stuff;
+   foreach (zone, stuff in _zones) {
+      if (member_array(type, stuff) != -1) {
+         return zone;
+      }
+   }
+   return 0;
+}
+string *query_zone_names(string type) {
+   string zone;
+   string *stuff;
+   string *zones;
+   if(_equivilants[type])
+     type = _equivilants[type];
+   zones = ({ });
+   foreach (zone, stuff in _zones) {
+     if (member_array(type, stuff) != -1 && zone) {
+       zones += ({ zone });
+     }
+   }
+   return zones;
+}
+int query_zone_level(string zone) {
+   int i;
+   i = member_array(zone, _zone_level);
+   return i * 100;
+}
+protected void add_equivilant_type(string name, string equiv) {
+   if (!query_clothing_type(equiv)) {
+      write("Incorrect clothing type " + equiv + " in equivilant listing.\n");
+   }
+   _equivilants[name] = equiv;
+}
+mapping query_all_equivilant_types() {
+   return _equivilants;
+}
+string query_equivilant_type(string type) {
+   return _equivilants[type];
+}
+int query_valid_type(string type) {
+   if (query_clothing_type(type) ||
+       query_equivilant_type(type)) {
+      return 1;
+   }
+   return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/hist_handler.c ===
+#define SAVE "/save/hist_handler.o"
+#define MAX_HIS 20
+#define HISTORY_TIME (3600*24*2)
+mapping history;
+mixed *query_lord_history();
+void add_lord_history( string start, string mess );
+void create() {
+  seteuid(master()->get_root_uid());
+  history = ([]);
+  if(!unguarded((: restore_object, SAVE+".gz" :)))
+    unguarded((: restore_object, SAVE :));
+  call_out("tidy_history", 2);
+}
+void save_me() {
+  unguarded((: save_object, SAVE, 2 :));
+}
+void add_cre_history(string start, string mess) {
+  mixed *cre_history = history["cre"];
+  if (undefinedp(history["cre"]))
+    cre_history = ({ ({ start, mess, time() }) });
+  else
+    cre_history += ({ ({ start, mess, time() }) });
+  if (sizeof(cre_history) > MAX_HIS)
+    cre_history = cre_history[1..];
+  history["cre"] = cre_history;
+}
+mixed *query_cre_history() {
+  return history["cre"];
+}
+void add_chat_history(string channel, string start, string mess) {
+  mixed *chat_history = history[channel];
+  if ( !chat_history ) {
+    chat_history = ({ });
+  }
+  if (channel == "lord")   {
+    add_lord_history( start, mess );
+    return;
+  } else {
+    chat_history += ({ ({ start, mess, time() }) });
+  }
+  if (sizeof(chat_history) > MAX_HIS) {
+    chat_history = chat_history[1..];
+  }
+  history[channel] = chat_history;
+}
+mixed *query_chat_history(string channel) {
+  if (channel == "lord")
+    return query_lord_history();
+  return history[channel];
+}
+void add_lord_history(string start, string mess) {
+  mixed *lord_history = history["lord"];
+  if (!master()->query_lord(previous_object(-1)))
+    return;
+  if (undefinedp(history["lord"]))
+    lord_history = ({ ({ start, mess, time() }) });
+  else
+    lord_history += ({ ({ start, mess, time() }) });
+  if (sizeof(lord_history) > MAX_HIS)
+    lord_history = lord_history[1..];
+  history["lord"] = lord_history;
+}
+mixed *query_lord_history() {
+  if (!master()->query_lord(previous_object(-1)))
+    return ({ });
+  return history["lord"];
+}
+void dest_me() {
+  save_me();
+  destruct(this_object());
+}
+void reset() {
+  save_me();
+}
+void tidy_history() {
+  string channel;
+  int i;
+  foreach(channel in keys(history)) {
+    for(i = 0; i<sizeof(history[channel]); i++)
+      if(history[channel][i][2] < time() - HISTORY_TIME) {
+  history[channel] = history[channel][1..];
+      } else
+  break;
+    if(!sizeof(history[channel]))
+      map_delete(history, channel);
+  }
+  save_object(SAVE, 2);
+}
+void reset_history() {
+  if (!master()->high_programmer(previous_object(-1)))
+    return;
+  history = ([]);
+  save_object(SAVE, 2);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/newspaper.c ===
+#include <room/newspaper.h>
+#include <nroff.h>
+#include <autodoc.h>
+#include <login_handler.h>
+#define SAVE_DIR "/save/newspaper/"
+class edition {
+   int date_published;
+   class article* articles;
+   class advert* adverts;
+   string headline;
+   int num_sold;
+   int num_web_hits;
+   int total_revenue;
+}
+class paper {
+   class edition* published_editions;
+   string dir_name;
+   string long;
+   string description;
+   string office;
+   int paper_cost;
+   string language;
+}
+private mapping _papers;
+private mapping _areas;
+private mapping _xp;
+private mapping _inform;
+void load_me();
+void save_me();
+void create() {
+   _papers = ([ ]);
+   _areas = ([ ]);
+   _xp = ([ ]);
+   _inform = ([ ]);
+   seteuid(getuid());
+   load_me();
+   if (!_inform) {
+      _inform = ([ ]);
+   }
+}
+int is_paper(string paper) {
+   return classp(_papers[paper]);
+}
+void add_paper(string name, string long, string desc, string office,
+    string language) {
+   if (is_paper(name)) {
+      return ;
+   }
+   _papers[name] = new(class paper);
+   _papers[name]->published_editions = ({ });
+   _papers[name]->dir_name = replace_string(lower_case(name), " ", "_");
+   _papers[name]->long = long;
+   _papers[name]->description = desc;
+   _papers[name]->office = office;
+   _papers[name]->paper_cost = 5 * 4;
+   _papers[name]->language = language;
+   save_me();
+}
+string* query_all_papers() {
+   return keys(_papers);
+}
+int query_current_edition_num(string paper) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   return sizeof(_papers[paper]->published_editions) + 1;
+}
+int query_last_edition_num(string paper) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   return sizeof(_papers[paper]->published_editions);
+}
+int is_valid_edition(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   if (edition > 0 && edition <= sizeof(_papers[paper]->published_editions)) {
+      return 1;
+   }
+   return 0;
+}
+int query_edition_date(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   if (!is_valid_edition(paper, edition)) {
+      return 0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->date_published;
+}
+class article* query_edition_articles(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return ({ });
+   }
+   if (!is_valid_edition(paper, edition)) {
+      return ({ });
+   }
+   return copy(_papers[paper]->published_editions[edition - 1]->articles);
+}
+class advert* query_edition_adverts(string paper, int edition) {
+   if (!is_paper(paper)) {
+      return ({ });
+   }
+   if (!is_valid_edition(paper, edition)) {
+      return ({ });
+   }
+   return copy(_papers[paper]->published_editions[edition - 1]->adverts);
+}
+string query_paper_office(string paper) {
+   if (!is_paper(paper)) {
+      return  0;
+   }
+   return _papers[paper]->office;
+}
+void set_paper_office(string paper, string office) {
+   if (!is_paper(paper)) {
+      return  0;
+   }
+    _papers[paper]->office = office;
+   save_me();
+}
+string query_paper_headline(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  "No news is good news.";
+   }
+   return _papers[paper]->published_editions[edition - 1]->headline;
+}
+void set_paper_headline(string paper, int edition, string headline) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
+   }
+   _papers[paper]->published_editions[edition - 1]->headline = headline;
+   save_me();
+}
+int query_edition_revenue(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->total_revenue;
+}
+void add_edition_revenue(string paper, int edition, int revenue) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
+   }
+   _papers[paper]->published_editions[edition - 1]->total_revenue += revenue;
+   save_me();
+}
+void add_edition_web_hit(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  ;
+   }
+   _papers[paper]->published_editions[edition - 1]->num_web_hits++;
+   _papers[paper]->published_editions[edition - 1]->total_revenue += NEWSPAPER_WEB_HIT_REVENUE;
+   save_me();
+}
+void add_edition_paper_sold(string paper, int edition, int cost) {
+   if (!is_valid_edition(paper, edition)) {
+tell_creator("pinkfish", "Not valid edition %O %O\n", paper, previous_object());
+      return  ;
+   }
+tell_creator("pinkfish", "Updating num sold %O %O\n", paper, edition);
+   _papers[paper]->published_editions[edition - 1]->num_sold++;
+   _papers[paper]->published_editions[edition - 1]->total_revenue += cost;
+   save_me();
+}
+int query_edition_num_sold(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->num_sold;
+}
+int query_edition_num_web_hits(string paper, int edition) {
+   if (!is_valid_edition(paper, edition)) {
+      return  0;
+   }
+   return _papers[paper]->published_editions[edition - 1]->num_web_hits;
+}
+int is_paper_area(string area) {
+   return pointerp(_areas[area]);
+}
+void add_paper_area(string area) {
+   if (is_paper_area(area)) {
+      return ;
+   }
+   _areas[area] = ({ });
+}
+void add_paper_to_area(string paper, string area) {
+   if (!is_paper(paper) || !is_paper_area(area)) {
+      return ;
+   }
+   _areas[area] += ({ paper });
+   save_me();
+}
+string* query_papers_in_area(string area) {
+   if (_areas[area]) {
+      return _areas[area];
+   }
+   return ({ });
+}
+void set_article_text(class article art, string text) {
+   unguarded( (:
+      write_file(SAVE_DIR + $(art->file_name), save_variable(({ $(art), $(text) })), 1) :) );
+}
+void add_newspaper_inform(string paper, string ob) {
+   if (!_inform[paper]) {
+      _inform[paper] = ({ });
+   }
+   if (!stringp(ob)) {
+      return ;
+   }
+   if (member_array(ob, _inform[paper]) != -1) {
+      return ;
+   }
+   _inform[paper] += ({ ob });
+   save_me();
+}
+void remove_newspaper_inform(string paper, string ob) {
+   if (!_inform[paper]) {
+      return ;
+   }
+   _inform[paper] -= ({ ob });
+   save_me();
+}
+string* query_newspaper_informs(string paper) {
+   if (!_inform[paper]) {
+      return ({ });
+   }
+   return _inform[paper];
+}
+string query_article_text(class article art) {
+   string str;
+   string* bits;
+   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+   if (str) {
+      bits = restore_variable(str);
+      return bits[1];
+   }
+   return "Error reading the article text.";
+}
+string query_article_text_html(class article art) {
+   string str;
+   string* bits;
+   str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+   if (str) {
+      bits = restore_variable(str);
+      switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
+      case NEWSPAPER_ARTICLE_TYPE_PLAIN :
+         bits[1] = replace_string(bits[1], "\n\n", "<p>");
+         bits[1] = replace_string(bits[1], "\n", "<br>");
+         return bits[1];
+      case NEWSPAPER_ARTICLE_TYPE_HTML :
+         bits[1] = replace_string(bits[1], "<pre>", "</font><pre>");
+         bits[1] = replace_string(bits[1], "</pre>",
+                                  "</pre>\n<font face=\"helvetica,arial\">");
+         return bits[1];
+      }
+      return bits[1];
+   }
+   return "Error reading the article text.";
+}
+string convert_html(string input) {
+   return AUTODOC_NROFF->convert_html(input);
+}
+string query_article_text_plain(class article art) {
+   string str;
+   string fluff;
+   string* bits;
+   switch (art->type & NEWSPAPER_ARTICLE_TYPE_MASK) {
+   case NEWSPAPER_ARTICLE_TYPE_SECTION :
+      return "";
+   case NEWSPAPER_ARTICLE_TYPE_PLAIN :
+      str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+      if (str) {
+         bits = restore_variable(str);
+         return bits[1];
+      }
+      break;
+   case NEWSPAPER_ARTICLE_TYPE_HTML :
+      fluff = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff", 1) :) );
+      if (!fluff) {
+         str = unguarded( (: read_file(SAVE_DIR + $(art->file_name)) :) );
+         if (str) {
+            bits = restore_variable(str);
+            bits[1] = convert_html(bits[1]);
+            unguarded( (: write_file(SAVE_DIR + $(art->file_name) + ".proc",
+                                     $(bits[1]), 1) :) );
+            unguarded( (: NROFF_HAND->create_nroff(SAVE_DIR + $(art->file_name) + ".proc",
+                                SAVE_DIR + $(art->file_name) + ".nroff") :) );
+            str = unguarded( (: NROFF_HAND->cat_file(SAVE_DIR + $(art->file_name) + ".nroff") :) );
+            return str;
+         }
+      } else {
+         return fluff;
+      }
+   }
+   return "Error reading the article text.";
+}
+string query_paper_long(string paper) {
+   if (!is_paper(paper)) {
+      return "This is a very transperant and unhappy newspaper.\n";
+   }
+   return _papers[paper]->long;
+}
+void set_paper_description(string paper, string description) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->description = description;
+   save_me();
+}
+string query_paper_description(string paper) {
+   if (!is_paper(paper)) {
+      return "This is a very transperant and unhappy newspaper.\n";
+   }
+   return _papers[paper]->description;
+}
+void set_paper_long(string paper, string long) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->long = long;
+   save_me();
+}
+void set_paper_cost(string paper, int cost) {
+   if (!is_paper(paper)) {
+      return ;
+   }
+   _papers[paper]->paper_cost = cost;
+   save_me();
+}
+int query_paper_cost(string paper) {
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   return _papers[paper]->paper_cost;
+}
+int publish_paper(string paper,
+                  string headline,
+                  class article* articles,
+                  string* text,
+                  class advert* adds,
+                  string* editors) {
+   string paper_dir;
+   string tmp;
+   class paper fluff;
+   class article article;
+   class edition womble;
+   int i;
+   int edition;
+   int total_xp;
+   int type;
+   if (!is_paper(paper)) {
+      return 0;
+   }
+   fluff = _papers[paper];
+   edition = sizeof(fluff->published_editions) + 1;
+   paper_dir = SAVE_DIR + fluff->dir_name;
+   unguarded( (: mkdir($(paper_dir)) :));
+   paper_dir += "/" + edition;
+   unguarded( (: mkdir($(paper_dir)) :));
+   foreach (article in articles) {
+      article->file_name = fluff->dir_name + "/" + edition + "/" +
+                           article->file_name;
+      type = article->type & NEWSPAPER_ARTICLE_TYPE_MASK;
+      if ((type == NEWSPAPER_ARTICLE_TYPE_PLAIN ||
+           type == NEWSPAPER_ARTICLE_TYPE_HTML) &&
+           !(article->type & NEWSPAPER_ARTICLE_NO_XP_FLAG)) {
+         _xp[lower_case(article->author)] += NEWSPAPER_XP_PER_ARTICLE;
+         total_xp += NEWSPAPER_XP_PER_ARTICLE;
+      }
+   }
+   total_xp = total_xp * 10 / 100;
+   total_xp += NEWSPAPER_XP_EDITOR;
+   if (sizeof(editors)) {
+      foreach (tmp in editors) {
+         _xp[tmp] += total_xp / sizeof(editors);
+      }
+   }
+   for (i = 0; i < sizeof(articles); i++) {
+      set_article_text(articles[i], text[i]);
+   }
+   womble = new(class edition);
+   womble->articles = articles;
+   womble->adverts = adds;
+   womble->date_published = time();
+   womble->headline = headline;
+   fluff->published_editions += ({ womble });
+   save_me();
+   foreach (tmp in query_newspaper_informs(paper)) {
+      call_out((: $1->event_publish_paper($2) :), 2, tmp, paper);
+   }
+   return 1;
+}
+void load_me() {
+   string paper;
+   class paper fluff;
+   class paper rabbit;
+   unguarded( (: restore_object(SAVE_DIR + "main", 1) :) );
+   foreach (paper, fluff in _papers) {
+      if (sizeof(fluff) == 6) {
+         rabbit = new(class paper);
+         rabbit->published_editions = fluff->published_editions;
+         rabbit->dir_name = fluff->dir_name;
+         rabbit->long = fluff->long;
+         rabbit->description = fluff->description;
+         rabbit->office = fluff->office;
+         rabbit->paper_cost = 5 * 4;
+         rabbit->language = "general";
+         _papers[paper] = rabbit;
+         fluff = rabbit;
+      } else if( sizeof( fluff ) == 7 ) {
+         rabbit = new(class paper);
+         rabbit->published_editions = fluff->published_editions;
+         rabbit->dir_name = fluff->dir_name;
+         rabbit->long = fluff->long;
+         rabbit->description = fluff->description;
+         rabbit->office = fluff->office;
+         rabbit->paper_cost = 5 * 4;
+         rabbit->language = fluff->language;
+         _papers[paper] = rabbit;
+         fluff = rabbit;
+      }
+   }
+}
+void save_me() {
+   unguarded( (: save_object(SAVE_DIR + "main") :) );
+}
+mixed* stats() {
+   string paper;
+   string person;
+   class paper data;
+   mixed* ret;
+   int last;
+   int xp;
+   ret = ({ });
+   foreach (paper, data in _papers) {
+      last = query_last_edition_num(paper);
+      ret += ({ ({ paper + ": office", data->office }),
+                ({ paper + ": dir name", data->dir_name }),
+                ({ paper + ": last issue", last }),
+                ({ paper + ": current issue", query_current_edition_num(paper) }),
+                ({ paper + ": num sold", query_edition_num_sold(paper, last) }),
+                ({ paper + ": num web hits", query_edition_num_web_hits(paper, last) }),
+                ({ paper + ": revenue", query_edition_revenue(paper, last) }),
+              });
+   }
+   foreach (person, xp in _xp) {
+      ret += ({ ({ person + ": xp", xp }) });
+   }
+   return ret;
+}
+void player_login_check(string player, string bing) {
+   object play;
+   int xp;
+   if (bing != LOGIN) {
+      return ;
+   }
+   xp = _xp[player];
+   if (xp) {
+      play = find_player(player);
+      play->adjust_xp(xp);
+      map_delete(_xp, player);
+      save_me();
+      tell_object(play, "%^YELLOW%^You feel like the experience of writing "
+                        "an article has made you a better person.\n%^RESET%^");
+   }
+}
+void set_language_for( string paper, string language ) {
+    if( is_paper( paper ) )
+        _papers[ paper ]->language = language;
+}
+string query_language_for( string paper ) {
+    if( is_paper( paper ) ) {
+        if( !undefinedp( _papers[ paper ]->language ) )
+            return _papers[ paper ]->language;
+        return "general";
+    }
+    return 0;
+}

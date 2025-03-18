@@ -2,11 +2,11 @@ import os
 import re
 
 # Configuration
-BASE_PATH = "/mnt/home2/test/Test/dw_fluffos_v3/lib/cmds/"
-DIRS = ["player", "living", "guild-race"]
-OUTPUT_BASE = "commands_part"
-CHAR_LIMIT = 80000  # Cap at 80,000 characters
-TOKEN_LIMIT = 120000  # Cap at 120,000 tokens (words)
+BASE_PATH = "/mnt/home2/test/Test/dw_fluffos_v3/lib/"
+DIRS = ["obj"]
+OUTPUT_BASE = "obj"
+CHAR_LIMIT = 90000  # Cap at 80,000 characters
+TOKEN_LIMIT = 130000  # Cap at 120,000 tokens (words)
 BUFFER = 0.95  # 95% of limits as threshold (76,000 chars, 114,000 tokens)
 
 def count_tokens(text):

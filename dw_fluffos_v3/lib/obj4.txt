@@ -1,0 +1,2588 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/container.c ===
+#include "move_failures.h"
+#include "parse_command.h"
+#include "potion_attrs.h"
+inherit "/std/container";
+inherit "/std/basic/close_lock_container";
+#define MAX_INVENT 40
+nosave int full_weight, leak_rate, hb_count;
+mixed *misc_attrs;
+nosave mixed *all_attrs;
+nosave mixed *active_attrs;
+int volume, max_volume;
+int water;
+int *ps_coord;
+int ps_quantity;
+nosave mixed *potion_id, *potion_adjective;
+nosave int volume_to_womble;
+void set_volume_to_womble(int n) { volume_to_womble = n; }
+int query_volume_to_womble() { return volume_to_womble; }
+void set_full_weight(int i) { full_weight = i; }
+void set_leak_rate(int i) { leak_rate = i; }
+int query_full_weight() { return full_weight; }
+int query_leak_rate() { return leak_rate; }
+int query_volume() { return volume; }
+void set_volume(int i) {
+   volume = i;
+   if (leak_rate) {
+      set_heart_beat(1);
+   }
+}
+int query_max_volume() { return max_volume; }
+int *query_ps_coord() { return ps_coord; }
+int query_ps_quantity() { return ps_quantity; }
+void set_ps_quantity(int n) { ps_quantity = n; }
+int *query_all_attrs() { return all_attrs; }
+int *query_misc_attrs() { return misc_attrs; }
+int *query_active_attrs() { return active_attrs; }
+void set_water_volume(int n) { water = n; if (leak_rate) set_heart_beat(1); }
+int query_water_volume() { return water; }
+void set_max_weight(int i) {
+  if (!max_volume && i) {
+    max_volume = i*10;
+  }
+  ::set_max_weight(i);
+}
+void set_max_volume(int i) {
+  if (!query_max_weight() && i) {
+    ::set_max_weight(i/10);
+  }
+  max_volume = i;
+}
+int empty_formula() {
+   int vol_lost;
+   vol_lost = 2 + volume * 95 / 100;
+   if (vol_lost > volume) vol_lost = volume;
+   return vol_lost;
+}
+int cull_neutral_obs( mixed ob ) {
+   if ( ob->query_vect() ) {
+     return 1;
+   }
+   return 0;
+}
+int *contents_vect() {
+   object *inv;
+   int *v;
+   int ang, str, tot, i;
+   inv = all_inventory(this_object());
+   inv = filter_array(inv, "cull_neutral_obs", this_object());
+   if (sizeof(inv) == 0) return ({ 0, 0, 0 });
+   tot = ang = str = 0;
+   for (i = 0; i < sizeof(inv); i++) {
+      v = inv[i]->query_vect();
+      tot += v[0];
+      ang += v[1] * v[0];
+      str += v[2] * v[0];
+   }
+   return ({ ang / tot, str / tot, tot });
+}
+int dest_active_contents() {
+   object *inv;
+   int i;
+   inv = all_inventory(this_object());
+   inv = filter_array(inv, "cull_neutral_obs", this_object());
+   for (i = 0; i < sizeof(inv); i++) {
+      inv[i]->dest_me();
+   }
+   return sizeof(inv);
+}
+int *squidge_vector(int *v, int meth_ang, int meth_mult) {
+   int ca, cb;
+   int da, cx, cy;
+   object trig;
+   "/obj/handlers/trig"->wibble_wobble();
+   trig = find_object("/obj/handlers/trig");
+   da = meth_ang - v[0];
+   ca = v[1] * trig->cos(da);
+   cb = v[1] * trig->sin(da);
+   ca = ca * meth_mult;
+   cb /= meth_mult;
+   ca /= 1000000;
+   cb /= 1000000;
+   cx = ca * trig->cos(meth_ang) + cb * trig->sin(meth_ang);
+   cy = ca * trig->sin(meth_ang) - cb * trig->cos(meth_ang);
+   return ({ cx / 1000000, cy / 1000000 });
+}
+void set_ps_coord_quantity(int *coord, int quantity);
+void add_ps_vect(int *v, int quant) {
+   object trig;
+   int ca, cb;
+   if (quant <= 0) return;
+   trig = find_object("/obj/handlers/trig");
+   ca = v[0];  cb = v[1];
+    ca = (int)trig->pow1_5(ps_coord[0] * 10 * ps_quantity /(ca * quant)) * ca / 1000000;
+   cb = (int)trig->pow1_5(ps_coord[1] * 10 * ps_quantity /(cb * quant)) * cb / 1000000;
+   set_ps_coord_quantity( ({ ps_coord[0] + ca, ps_coord[1] + cb }),
+                          quant + ps_quantity);
+   return;
+}
+string transparency_string(int trans)
+{
+   switch (trans) {
+   case -10..9: return "opaque";
+   case 10..24: return "milky";
+   case 25..39: return "murky";
+   case 40..59: return "cloudy";
+   case 60..74: return "misty";
+   case 75..89: return "slightly misty";
+   case 90..110: return "clear";
+   default: return "paisley";
+   }
+}
+string consistency_string(int cons)
+{
+   switch (cons) {
+   case -10..9: return "watery liquid";
+   case 10..24: return "slightly viscous watery liquid";
+   case 25..39: return "runny syrup";
+   case 40..59: return "syrup";
+   case 60..74: return "jelly";
+   case 75..89: return "paste";
+   case 90..110: return "solid";
+   default: return "non-Newtonian fluid";
+   }
+}
+void update_potion_parse()
+{
+   int i;
+   string *exploded;
+   potion_adjective = query_adjectives() +
+                  ({ transparency_string(all_attrs[POTION_TRANSPARENCY]) });
+   potion_id = ({ query_name() }) + query_alias() +
+                  ({ consistency_string(all_attrs[POTION_CONSISTENCY]) });
+   for (i = 0; i < sizeof(all_attrs[POTION_NAMES]); i++) {
+      exploded = explode(all_attrs[POTION_NAMES][i][0], " ");
+      potion_id += ({ exploded[sizeof(exploded) - 1] });
+      if (sizeof(exploded) > 1) {
+         potion_adjective += exploded[0..sizeof(exploded) - 2];
+      }
+   }
+   for (i = 0; i < sizeof(all_attrs[POTION_COLOURS]); i++)
+      potion_adjective += explode(all_attrs[POTION_COLOURS][i][0], " ");
+}
+void void_liquid()
+{
+   volume = 0;
+   water = 0;
+   misc_attrs = allocate(POTION_ATTRS_SIZE);
+   misc_attrs[POTION_CONSISTENCY] = 0;
+   misc_attrs[POTION_TRANSPARENCY] = 100;
+   misc_attrs[POTION_NAMES] = ({ });
+   misc_attrs[POTION_COLOURS] = ({ });
+   misc_attrs[POTION_SMELLS] = ({ });
+   misc_attrs[POTION_FLAVOURS] = ({ });
+   ps_coord = (int *)POTION_SPACE_HANDLER->neutral_coordinate();
+   ps_quantity = 0;
+   active_attrs = all_attrs = misc_attrs;
+   update_potion_parse();
+}
+void create() {
+  do_setup++;
+  container::create();
+  close_lock_container::create();
+  set_can_export_inventory();
+  do_setup--;
+  void_liquid();
+  add_property("liquid", 1);
+  add_property("watertight", 1);
+  leak_rate = 1000;
+  if ( !do_setup )
+    this_object()->setup();
+}
+void init() {
+  (void)this_player()->add_command("drink", this_object());
+  (void)this_player()->add_command("splash", this_object(), "<direct:object> <preposition> <indirect:object>");
+  (void)this_player()->add_command("rub", this_object(), "<direct:object> <preposition> <indirect:object>");
+  (void)this_player()->add_command("apply", this_object(), "<direct:object> <preposition> <indirect:object>");
+  (void)this_player()->add_command("pour", this_object(), "<direct:object> <preposition> <indirect:object>");
+  (void)this_player()->add_command("taste", this_object());
+  (void)this_player()->add_command("smell", this_object());
+  this_player()->add_command("fill", this_object(), "<indirect:object> <preposition> <direct:object>");
+  this_player()->add_command("fill", this_object(), "<indirect:object> <fraction> up <preposition> <direct:object>");
+  this_player()->add_command("fill", this_object(), "<indirect:object> <fraction> full <preposition> <direct:object>");
+  (void)this_player()->add_command("empty", this_object());
+  close_lock_container::init();
+}
+int query_complete_weight() {
+  return ::query_complete_weight() + ( query_max_weight() * volume ) /
+      ( max_volume + 1 );
+}
+int query_weight_left() {
+  if (!max_volume)
+    return query_max_weight() - query_loc_weight();
+  return query_max_weight() - query_loc_weight() - (query_max_weight()*volume)/max_volume;
+}
+int query_volume_left() {
+  if (!query_max_weight())
+    return max_volume - volume;
+  return max_volume - volume - (max_volume*query_loc_weight())/query_max_weight();
+}
+int add_weight( int n ) {
+  if ( query_weight_left() < n ) return 0;
+  if ( !( ::add_weight( n ) ) ) return 0;
+  if ( n >= 0 ) {
+    remove_call_out( "check_breakages" );
+    call_out( "check_breakages", 5 + random( 16 ) );
+  }
+  return 1;
+#ifdef BREAK_NOW
+  obs = all_inventory();
+  for (i=0;i<sizeof(obs);i++)
+    if ((amt = obs[i]->query_property("fragile"))) {
+      if (query_loc_weight() <= amt || ((query_loc_weight() - amt)*100)/amt <= random(100))
+          obs[i] = 0;
+    } else
+      obs[i] = 0;
+  obs = obs - ({ 0 });
+  if (sizeof(obs)) {
+    say(this_player()->one_short()+" breaks "+
+          (sizeof(obs)>1?"some things":"one thing")+" in "+
+          query_multiple_short(({ this_object() }))+".\n");
+    write("You break "+query_multiple_short(obs)+" in "+
+          query_multiple_short(({ this_object() }))+".\n");
+    obs->dest_me();
+  }
+  return 1;
+#endif
+}
+void check_breakages() {
+  object *obs, carrier;
+  int i, amt, wt;
+  carrier = environment(this_object());
+  while (carrier && (!living(carrier))) {
+    carrier = environment(carrier);
+  }
+  if (!carrier)
+    return;
+  obs = all_inventory();
+  wt = query_loc_weight() - (int)query_property("padded");
+  for (i=0;i<sizeof(obs);i++) {
+    if ((amt = obs[i]->query_property("fragile"))) {
+      if (wt <= amt || ((wt - amt)*100)/amt <= random(100)) {
+          obs[i] = 0;
+      }
+    } else {
+      obs[i] = 0;
+    }
+  }
+  obs = obs - ({ 0 });
+  if (sizeof(obs) && environment(carrier)) {
+    tell_room(environment(carrier), carrier->the_short()+" breaks "+
+          (sizeof(obs)>1?"some things":"one thing")+" in "+
+          query_multiple_short(({ this_object() }))+".\n", ({ carrier }));
+    tell_object(carrier, "You break "+query_multiple_short(obs)+" in "+
+          query_multiple_short(({ this_object() }))+".\n");
+    obs->dest_me();
+  }
+}
+varargs string pretty_short( object thing ) {
+   return short_status() + ::pretty_short( thing );
+}
+varargs string pretty_plural( object thing ) {
+   return short_status() + ::pretty_plural( thing );
+}
+string liquid_name()
+{
+   string liq_name;
+   mixed *names, *colours;
+   string *med, *lo;
+   int no_names, no_colours, i;
+   names = all_attrs[POTION_NAMES];
+   colours = all_attrs[POTION_COLOURS];
+   no_names = (sizeof(names) < 1 || names[0][1] < VERY_SMALL_AMOUNT);
+   no_colours = (sizeof(colours) < 1 || colours[0][1] < VERY_SMALL_AMOUNT);
+   if (no_names && no_colours) {
+      liq_name = "a colourless " +
+         transparency_string(all_attrs[POTION_TRANSPARENCY]) + " " +
+         consistency_string(all_attrs[POTION_CONSISTENCY]);
+   } else if (no_names) {
+      if (colours[0][1] < SMALL_AMOUNT) {
+         liq_name = "a faint " + colours[0][0];
+      } else {
+         liq_name = add_a(colours[0][0]);
+      }
+      liq_name += " " + transparency_string(all_attrs[POTION_TRANSPARENCY]) +
+                     " " + consistency_string(all_attrs[POTION_CONSISTENCY]);
+      med = ({ });
+      i = 1;
+      while (i < sizeof(colours) && colours[i][1] >= SMALL_AMOUNT)
+         med += ({ colours[i++][0] });
+      lo = ({ });
+      while (i < sizeof(colours) && colours[i][1] >= VERY_SMALL_AMOUNT)
+         lo += ({ colours[i++][0] });
+      if (sizeof(med)) {
+         liq_name += " with swirls of " + query_multiple_short(med);
+      }
+      if (sizeof(lo)) {
+         if (sizeof(med)) liq_name += " and faint streaks of " + query_multiple_short(lo);
+         else liq_name += " with faint streaks of " + query_multiple_short(lo);
+      }
+   } else if (no_colours) {
+      i = 0;
+      med = ({ });
+      lo = ({ });
+      while (i < sizeof(names) && names[i][1] >= SMALL_AMOUNT)
+         med += ({ names[i++][0] });
+      while (i < sizeof(names) && names[i][1] >= VERY_SMALL_AMOUNT)
+         lo += ({ names[i++][0] });
+      if (sizeof(med) > 1) liq_name = "a mixture of " + query_multiple_short(med);
+      else if (sizeof(med) == 1) liq_name = med[0];
+      if (!sizeof(med) && sizeof(lo) > 1)
+         liq_name = "a diluted mixture of " + query_multiple_short(lo);
+      else if (!sizeof(med) && sizeof(lo) == 1)
+         liq_name = "diluted " + lo[0];
+      else if (sizeof(med) && sizeof(lo))
+         liq_name += "and small quantities of " + query_multiple_short(lo);
+   } else {
+      if (names[0][1] > colours[0][1] / 2)
+      {
+         i = 0;
+         med = ({ });
+         lo = ({ });
+         while (i < sizeof(names) && names[i][1] >= SMALL_AMOUNT)
+            med += ({ names[i++][0] });
+         while (i < sizeof(names) && names[i][1] >= VERY_SMALL_AMOUNT)
+            lo += ({ names[i++][0] });
+         if (sizeof(med) > 1) liq_name = "a mixture of " + query_multiple_short(med);
+         else if (sizeof(med) == 1) liq_name = med[0];
+         if (!sizeof(med) && sizeof(lo) > 1)
+            liq_name = "a diluted mixture of " + query_multiple_short(lo);
+         else if (!sizeof(med) && sizeof(lo) == 1)
+            liq_name = "diluted " + lo[0];
+         else if (sizeof(med) && sizeof(lo))
+            liq_name += "and small quantities of " + query_multiple_short(lo);
+         if (colours[0][1] < SMALL_AMOUNT) liq_name += " (a faint " + colours[0][0];
+         else liq_name += " (" + add_a(colours[0][0]);
+         liq_name += " " + transparency_string(all_attrs[POTION_TRANSPARENCY]) +
+                        " " + consistency_string(all_attrs[POTION_CONSISTENCY]);
+         med = ({ });
+         i = 1;
+         while (i < sizeof(colours) && colours[i][1] >= SMALL_AMOUNT)
+            med += ({ colours[i++][0] });
+         lo = ({ });
+         while (i < sizeof(colours) && colours[i][1] >= VERY_SMALL_AMOUNT)
+            lo += ({ colours[i++][0] });
+         if (sizeof(med)) {
+            liq_name += " with swirls of " + query_multiple_short(med);
+         }
+         if (sizeof(lo)) {
+            if (sizeof(med)) liq_name += " and faint streaks of " + query_multiple_short(lo);
+            else liq_name += " with faint streaks of " + query_multiple_short(lo);
+         }
+         liq_name += ")";
+      } else {
+         if (colours[0][1] < SMALL_AMOUNT) liq_name = "a faint " + colours[0][0];
+         else liq_name = add_a(colours[0][0]);
+         liq_name += " " + transparency_string(all_attrs[POTION_TRANSPARENCY]) +
+                        " " + consistency_string(all_attrs[POTION_CONSISTENCY]);
+         med = ({ });
+         i = 0;
+         while (i < sizeof(names) && names[i][1] >= VERY_SMALL_AMOUNT)
+            med += ({ names[i++][0] });
+         liq_name += " containing " + query_multiple_short(med);
+         med = ({ });
+         i = 1;
+         while (i < sizeof(colours) && colours[i][1] >= SMALL_AMOUNT)
+            med += ({ colours[i++][0] });
+         lo = ({ });
+         while (i < sizeof(colours) && colours[i][1] >= VERY_SMALL_AMOUNT)
+            lo += ({ colours[i++][0] });
+         if (sizeof(med)) {
+            liq_name += " with swirls of " + query_multiple_short(med);
+         }
+         if (sizeof(lo)) {
+            if (sizeof(med)) liq_name += " and faint streaks of " + query_multiple_short(lo);
+            else liq_name += " with faint streaks of " + query_multiple_short(lo);
+         }
+      }
+   }
+   return liq_name;
+}
+string query_liquid_short()
+{
+   if (sizeof(all_attrs[POTION_NAMES]) && sizeof(all_attrs[POTION_COLOURS])) {
+      if (all_attrs[POTION_NAMES][0][1] > all_attrs[POTION_COLOURS][0][1] / 2) {
+         return all_attrs[POTION_NAMES][0][0];
+      }
+   }
+   return (sizeof(all_attrs[POTION_COLOURS]) ?
+           all_attrs[POTION_COLOURS][0][0] : "colourless") + " " +
+             transparency_string(all_attrs[POTION_TRANSPARENCY]) + " " +
+             consistency_string(all_attrs[POTION_CONSISTENCY]);
+}
+string long(string str, int dark) {
+  string ret;
+  int bing;
+  ret = ::long(str, dark);
+  if (query_transparent() ||
+      !query_closed()) {
+    if ( ( dark == 2 ) || ( dark == -2 ) ) {
+       if (query_contents() != "") {
+          ret += "The "+ short( dark ) +" contains some items you cannot "
+                 "make out.\n";
+       }
+    } else {
+       ret += query_contents( "The "+ short( dark ) +" contains:\n" );
+    }
+  }
+  ret += long_status();
+  if ((query_transparent() || !query_closed()) && volume) {
+    if ( ( dark == 2 ) || ( dark == -2 ) ) {
+      ret += "It has some liquid of some sort in it.\n";
+    } else {
+      bing = (volume*8 + max_volume/16)/max_volume;
+      if (bing <= 0) {
+        ret += "It is slightly wet from "+liquid_name()+".\n";
+      } else if (bing >= 8) {
+        ret += "It is full to the brim with " + liquid_name()+".\n";
+      } else {
+        ret += "It is " + ({ "an eighth", "a quarter",
+                "three eighths", "half", "five eighths", "three quarters",
+                "seven eighths" })[bing-1]+" full of "+liquid_name()+".\n";
+      }
+    }
+  }
+  return ret;
+}
+string *fullness_adjectives()
+{
+   if (!max_volume) {
+      return ({ "totally", "empty" });
+   }
+   switch (100 * volume / max_volume) {
+   case 0..4: return ({ "totally", "empty" });
+   case 5..13: return ({ "empty" });
+   case 65..94: return ({ "full" });
+   case 95..100: return ({ "totally", "full" });
+   default: return ({ });
+   }
+}
+string *parse_command_id_list() {
+  return potion_id + ::parse_command_id_list();
+}
+string *parse_command_adjectiv_id_list() {
+  return  fullness_adjectives() + potion_adjective + ::parse_command_adjectiv_id_list();
+}
+int sort_func(int *x, int *y)
+{
+   if (x[1] < y[1]) return 1;
+   else return 0;
+}
+mixed *mix_liq(mixed *arr1, mixed *arr2, int vol1, int vol2, int tot_vol)
+{
+   int i, j;
+   mixed *arr3;
+   arr3 = allocate(sizeof(arr1));
+   for (i = 0; i < sizeof(arr1); i++) {
+      arr3[i] = ({ arr1[i][0], arr1[i][1] * vol1 / tot_vol });
+      for (j = 0; j < sizeof(arr2); j++) {
+         if (arr2[j][0] == arr1[i][0]) {
+            arr3[i][1] += arr2[j][1] * vol2 / tot_vol;
+            arr2[j][1] += 100000;
+            break;
+         }
+      }
+   }
+   for (i = 0; i < sizeof(arr2); i++) {
+      if (arr2[i][1] >= 100000) {
+         arr2[i][1] -= 100000;
+      } else {
+         arr3 += ({ ({ arr2[i][0], arr2[i][1] * vol2 / tot_vol }) });
+      }
+   }
+   arr3 = sort_array(arr3, "sort_func", this_object());
+   for (i = sizeof(arr3) - 1; i >= 0; i--) {
+      if (arr3[i][1] > 0) break;
+   }
+   if (i < 0) arr3 = ({ });
+   else arr3 = arr3[0..i];
+   return arr3;
+}
+mixed *merge_potions(mixed *potion1, mixed *potion2, int vol1, int vol2, int tot_vol)
+{
+   mixed *result;
+   result = allocate(POTION_ATTRS_SIZE);
+   result[POTION_CONSISTENCY] =
+      (potion1[POTION_CONSISTENCY] * vol1 +
+       potion2[POTION_CONSISTENCY] * vol2) / tot_vol;
+   result[POTION_TRANSPARENCY] =
+      (potion1[POTION_TRANSPARENCY] * vol1 +
+       potion2[POTION_TRANSPARENCY] * vol2) / tot_vol;
+   result[POTION_NAMES] = mix_liq(potion1[POTION_NAMES], potion2[POTION_NAMES],
+                                  vol1, vol2, tot_vol);
+   result[POTION_COLOURS] = mix_liq(potion1[POTION_COLOURS], potion2[POTION_COLOURS],
+                                  vol1, vol2, tot_vol);
+   result[POTION_FLAVOURS] = mix_liq(potion1[POTION_FLAVOURS], potion2[POTION_FLAVOURS],
+                                  vol1, vol2, tot_vol);
+   result[POTION_SMELLS] = mix_liq(potion1[POTION_SMELLS], potion2[POTION_SMELLS],
+                                  vol1, vol2, tot_vol);
+   return result;
+}
+void set_misc_attrs(mixed *new_misc_attrs, int misc_vol)
+{
+   misc_attrs = new_misc_attrs + ({ });
+   volume = water + misc_vol;
+   all_attrs = merge_potions(active_attrs, misc_attrs, water, volume - water, volume);
+   update_potion_parse();
+   if (leak_rate) set_heart_beat(1);
+}
+mixed *change_concentration(mixed *potion, int new_conc)
+{
+   mixed *newpotion;
+   int i;
+   newpotion = potion + ({ });
+   newpotion[POTION_CONSISTENCY] = newpotion[POTION_CONSISTENCY] * new_conc / 100;
+   newpotion[POTION_TRANSPARENCY] =
+      (100 - (100 - newpotion[POTION_TRANSPARENCY]) * new_conc / 100);
+   for (i = 0; i < sizeof(newpotion[POTION_NAMES]); i++) {
+      newpotion[POTION_NAMES][i][1] = newpotion[POTION_NAMES][i][1] * new_conc / 100;
+   }
+   for (i = 0; i < sizeof(newpotion[POTION_COLOURS]); i++) {
+      newpotion[POTION_COLOURS][i][1] = newpotion[POTION_COLOURS][i][1] * new_conc / 100;
+   }
+   for (i = 0; i < sizeof(newpotion[POTION_SMELLS]); i++) {
+      newpotion[POTION_SMELLS][i][1] = newpotion[POTION_SMELLS][i][1] * new_conc / 100;
+   }
+   for (i = 0; i < sizeof(newpotion[POTION_FLAVOURS]); i++) {
+      newpotion[POTION_FLAVOURS][i][1] = newpotion[POTION_FLAVOURS][i][1] * new_conc / 100;
+   }
+   return newpotion;
+}
+void set_ps_coord_quantity(int *new_coord, int new_quantity)
+{
+   mixed *ps_attrs;
+   ps_attrs = (mixed *)POTION_SPACE_HANDLER->query_attrs_at(new_coord);
+   active_attrs = change_concentration(ps_attrs, new_quantity * 100 / water);
+   ps_quantity = new_quantity;
+   ps_coord = new_coord;
+   all_attrs = merge_potions(active_attrs, misc_attrs, water, volume - water, volume);
+   update_potion_parse();
+   (void)POTION_SPACE_HANDLER->potion_create(this_object(), new_coord, new_quantity);
+}
+void begin_config()
+{
+   potion_id = allocate(9);
+   ps_coord = allocate(9);
+}
+void config(int vari, mixed cont)
+{
+   potion_id[vari] = cont;
+   ps_coord[vari] = 1;
+}
+void end_config()
+{
+   mixed *ps_attrs;
+   if (ps_coord[OC_VOL]) {
+      volume = potion_id[OC_VOL];
+      if (ps_coord[OC_MVOL]) water = volume - potion_id[OC_MVOL];
+      else water = potion_id[OC_WVOL];
+   } else {
+      water = potion_id[OC_WVOL];
+      volume = water + potion_id[OC_MVOL];
+   }
+   leak_rate = potion_id[OC_LEAKRATE];
+   if (leak_rate && volume) set_heart_beat(1);
+   if (ps_coord[OC_MAXVOL]) max_volume = potion_id[OC_MAXVOL];
+   else max_volume = volume;
+   ps_quantity = potion_id[OC_PSQUANT];
+   if (ps_coord[OC_MISCATTRS]) misc_attrs = potion_id[OC_MISCATTRS];
+   else misc_attrs = ({ 0, 100, ({ }), ({ }), ({ }), ({ }) });
+   if (ps_coord[OC_PSCOORD]) ps_coord = potion_id[OC_PSCOORD];
+   else ps_coord = ({ 0, 0 });
+   ps_attrs = (mixed *)POTION_SPACE_HANDLER->query_attrs_at(ps_coord);
+   active_attrs = change_concentration(ps_attrs, ps_quantity * 100 / water);
+   all_attrs = merge_potions(active_attrs, misc_attrs, water, volume - water, volume);
+   update_potion_parse();
+   (void)POTION_SPACE_HANDLER->potion_create(this_object(), ps_coord, ps_quantity);
+}
+mixed stats() {
+  return container::stats() + close_lock_container::stats() + ({
+    ({ "ps_quantity", query_ps_quantity() }),
+   ({ "ps_coord", (pointerp(ps_coord) && sizeof(ps_coord) == 2) ?
+      "({ " + ps_coord[0] + ", " + ps_coord[1] + " })" :
+      sprintf("%O", ps_coord) }),
+    ({ "volume", query_volume() + "" }),
+    ({ "max volume", query_max_volume() }),
+    ({ "water vol", query_water_volume() }),
+    ({ "volume left", query_volume_left() }),
+    ({ "weight left", query_weight_left() }),
+    ({ "full_weight", query_full_weight(), }),
+    ({ "leak_rate", query_leak_rate() + "" }),
+  });
+}
+object query_parse_id(mixed *arr) {
+  volume_to_womble = 0;
+  return ::query_parse_id(arr);
+}
+object query_frac_parse_id(mixed *arr) {
+  int i;
+  volume_to_womble = 0;
+  if (arr[P_THING] < 0) {
+    arr[P_THING]++;
+    if (arr[P_THING] != 0)
+      return 0;
+    volume_to_womble = volume*arr[P_TOP]/arr[P_BOT];
+    call_out("set_volume_to_womble", 0, 0);
+    arr[P_THING] = -1784628;
+    return this_object();
+  }
+  if (arr[P_THING] == 0)
+    if ((i=(arr[P_MAX_NUM]*arr[P_TOP])/arr[P_BOT]) > arr[P_CUR_NUM]++)
+      return this_object();
+    else
+      if (i+1 == arr[P_CUR_NUM]) {
+        volume_to_womble = volume*arr[P_TOP]/arr[P_BOT];
+        call_out("set_volume_to_womble", 0, 0);
+        return this_object();
+      }
+  else
+    return 0;
+  if ((i=(arr[P_THING]*arr[P_TOP])/arr[P_BOT]) > arr[P_CUR_NUM]++)
+    return this_object();
+  else
+    if (i+1 == arr[P_CUR_NUM]) {
+      volume_to_womble = volume*arr[P_TOP]/arr[P_BOT];
+      call_out("set_volume_to_womble", 0, 0);
+      return this_object();
+    }
+  return 0;
+}
+int remove_volume(int vol_lost)
+{
+   int q_lost;
+   if (!volume) {
+      q_lost = ps_quantity;
+      water = 0;
+      ps_quantity = 0;
+      return q_lost;
+   }
+   q_lost = ps_quantity * vol_lost / volume;
+   water -= water * vol_lost / volume;
+   volume -= vol_lost;
+   ps_quantity -= q_lost;
+   return q_lost;
+}
+void heart_beat() {
+  int lost, off;
+   if (leak_rate == 0 || volume <= 0) {
+      set_heart_beat(0);
+      return;
+   }
+  if (hb_count--) return ;
+  hb_count = 10;
+  lost = leak_rate;
+  if (lost > volume)
+    lost = volume;
+  off = lost/100;
+  if (off > 10)
+    off = 10;
+  tell_room(environment(),
+            capitalize(query_liquid_short())+({ " drips slowly",
+                               " drips",
+                               " dribbles",
+                               " trickles slowly",
+                               " trickles",
+                               " trickles rapidly",
+                               " pours sluggishly",
+                               " pours",
+                               " streams",
+                               " gushes",
+                               " fountains", })[off]+" out of the "+
+                                                          short(1)+".\n");
+  (void)remove_volume(lost);
+  if (!volume) {
+    set_heart_beat(0);
+    void_liquid();
+  }
+}
+void transfer_liquid_to(object dest, int vol_misc, mixed *misc,
+                                     int vol_water, int *coord, int quantity)
+{
+   mixed *their_attrs;
+   int their_vol, their_water, their_quantity, new_quantity, new_misc_vol;
+   int *new_coord, *old_coord;
+   their_attrs = (mixed *)dest->query_misc_attrs();
+   their_vol = (int)dest->query_volume();
+   their_water = (int)dest->query_water_volume();
+   their_quantity = (int)dest->query_ps_quantity();
+   new_quantity = quantity + their_quantity;
+   if (!their_attrs)
+      return ;
+   new_misc_vol = vol_misc + their_vol - their_water;
+   (void)dest->set_water_volume(their_water + vol_water);
+   if (new_misc_vol) {
+      their_attrs = merge_potions(misc_attrs, their_attrs,
+                               vol_misc, their_vol - their_water,
+                               new_misc_vol);
+      (void)dest->set_misc_attrs(their_attrs, new_misc_vol);
+   } else
+      (void)dest->set_volume(their_water + vol_water);
+   old_coord = (int *)dest->query_ps_coord();
+   new_coord = allocate(2);
+   if (pointerp(ps_coord) && new_quantity) {
+      new_coord[0] = (ps_coord[0] * quantity + old_coord[0] * their_quantity) /
+                     new_quantity;
+      new_coord[1] = (ps_coord[1] * quantity + old_coord[1] * their_quantity) /
+                     new_quantity;
+      dest->set_ps_coord_quantity(new_coord, new_quantity);
+   }
+}
+int ensure_open()
+{
+   if (query_locked()) {
+      write("The " + short(1) + " is locked.\n");
+      return 0;
+   }
+   if (query_closed())
+      if (do_open()) {
+         write("You open the "+short(1)+".\n");
+         return 1;
+      } else {
+         write("You can't open the " + short(1) + ".\n");
+         return 0;
+      }
+   return 1;
+}
+int do_pour(object *dest, string me, string him, string prep)
+{
+   int amount_poured, volume_transferred, old_water, old_volume;
+   string liquid_desc;
+   if (sizeof(dest) > 1) {
+      write("Currently you can only pour into one object\n");
+      return 0;
+   }
+   if (!ensure_open()) return 0;
+   if (volume <= 0) {
+      write("The " + short(0) + " you are trying to pour out of is empty.\n");
+      return 0;
+   }
+   old_water = water;
+   old_volume = volume;
+   liquid_desc = query_liquid_short();
+   if (volume_to_womble && volume_to_womble <= empty_formula())
+      volume_transferred = volume_to_womble;
+   else
+      volume_transferred = empty_formula();
+   amount_poured = remove_volume(volume_transferred);
+   if (volume_transferred > dest[0]->query_volume_left()) {
+      say(this_player()->short(0) + " attempts to pour from " + add_a(short(0))
+         + " into " + add_a(dest[0]->short(0)) + " but ends up spilling "
+         + liquid_desc + " all over the ground.\n");
+      write(capitalize(liquid_desc) + " spills on the floor as you try to pour "
+         + "from the " + short(0) + " into the " + dest[0]->short(0) + ".\n");
+      amount_poured = (amount_poured * ((int)dest[0]->query_volume_left())) /
+                         volume_transferred;
+      volume_transferred = (int)dest[0]->query_volume_left();
+   }
+   transfer_liquid_to(dest[0], volume_transferred * (old_volume - old_water) / old_volume,
+      misc_attrs, volume_transferred * old_water / old_volume, ps_coord, amount_poured);
+   this_player()->add_succeeded(dest[0]);
+   return 1;
+}
+int do_fill(object *to, mixed *args_b, mixed *args_a, mixed *args) {
+   int m, n, i, run_out, volume_needed, their_volume, their_max,
+       amount_poured, ok;
+   if (intp(args[1]) && intp(args[2])) {
+      m = args[0];
+      n = args[1];
+      if (m > n || m < 0 || n <= 0) {
+         notify_fail("Interesting fraction you have there!\n");
+         return 0;
+      }
+   } else {
+      m = 1;
+      n = 1;
+   }
+   if (query_locked()) {
+      notify_fail("The " + short(0) + " is locked!\n");
+      return 0;
+   }
+   if (query_closed()) {
+      if (do_open()) {
+         write("You open the " + short(0) + ".\n");
+      } else {
+         write("You cannot open the " + short(0) + ".\n");
+         return 0;
+      }
+   }
+   if (volume <= 0) {
+      write("The " + short(0) + " is bone dry!\n");
+      return 0;
+   }
+   run_out = 0;
+   for (i = 0; i < sizeof(to) && !run_out; i++) {
+      their_volume = (int)to[i]->query_volume();
+      their_max = (int)to[i]->query_max_volume();
+      if (their_max <= 0) {
+         write("The " + to[i]->short(0) +
+               " doesn't look like it can be filled!\n");
+         continue;
+      }
+      if (their_volume >= their_max) {
+         write("The " + to[i]->short(0) + " is full to the brim already.\n");
+         continue;
+      }
+      volume_needed = their_max * m / n;
+      if (their_volume >= volume_needed) {
+         write("The " + to[i]->short(0) + " is more than " + m + "/" + n +
+           " full already.\n");
+         continue;
+      }
+      ok++;
+      volume_needed -= their_volume;
+      if (volume_needed > empty_formula()) {
+         write("You drain the " + short(0) + " into the " + to[i]->short(0) +
+            " but it is not enough.\n");
+         volume_needed = empty_formula();
+         run_out = 1;
+         this_player()->add_succeeded(to[i]);
+      } else {
+         this_player()->add_succeeded(to[i]);
+      }
+      amount_poured = volume_needed * ps_quantity / volume;
+      transfer_liquid_to(to[i], volume_needed * (volume - water) / volume,
+         misc_attrs, volume_needed * water / volume, ps_coord, amount_poured);
+      amount_poured = remove_volume(volume_needed);
+   }
+   return ok;
+}
+int do_drink(object *dest, string me, string him, string prep)
+{
+   int amount_drunk, amount_can_be_drunk;
+   if (sizeof(dest)) {
+      write("Drinking is a very simple operation - please don't complicate matters.\n");
+      return 0;
+   }
+   if (!ensure_open()) return 0;
+   if (volume <= 0) {
+      write("The " + short(0) + " is bone dry!\n");
+      return 0;
+   }
+   amount_can_be_drunk = (2000 - (int)this_player()->query_volume(2)) *
+      (int)this_player()->query_con() / 12;
+   if (!volume_to_womble) volume_to_womble = empty_formula();
+   if (volume_to_womble > empty_formula()) volume_to_womble = empty_formula();
+   if (volume_to_womble > amount_can_be_drunk) {
+      write("You drink some of the liquid, but simply cannot fit it all in.\n");
+      volume_to_womble = amount_can_be_drunk;
+   }
+   amount_drunk = remove_volume(volume_to_womble);
+   (void)POTION_SPACE_HANDLER->potion_drunk(this_player(), ps_coord, amount_drunk);
+   this_player()->adjust_volume(2, volume_to_womble * 12 /
+      (int)this_player()->query_con());
+   switch ((this_player()->query_volume(2) + 100) / 200) {
+   case 5:
+      write("You feel mildly full of liquid.\n");
+      break;
+   case 6:
+      write("You feel very full of liquid.\n");
+      break;
+   case 7:
+      write("You feel pissed.\n");
+      break;
+   case 8:
+      write("You are awash with liquid.\n");
+      break;
+   case 9:
+      write("You are full to the brim with liquid.\n");
+      break;
+   case 10:
+      write("You feel you would burst if you drank any more.\n");
+      break;
+   }
+   return 1;
+}
+int do_empty(object *dest, string me, string him, string prep)
+{
+   if (sizeof(dest)) {
+      write("Passing on to pour ... bad move.\n");
+      return do_pour(dest, me, him, prep);
+   }
+   if (!ensure_open()) { write("It aint open!\n"); return 0; }
+   if (volume == 0) {
+      write("The " + short(0) + " is already empty.\n");
+      return 0;
+   }
+   if (volume_to_womble && volume_to_womble <= empty_formula())
+      (void)remove_volume(volume_to_womble);
+   else
+      (void)remove_volume(empty_formula());
+   return 1;
+}
+int do_splash(object *dest, string me, string him, string prep) {
+   int amount_splashed;
+   if (sizeof(dest) > 1) {
+      write("You can only splash one object at a time.\n");
+      return 0;
+   }
+   if (!sizeof(dest))
+     return 0;
+   if (!ensure_open()) return 0;
+   if (volume_to_womble && volume_to_womble <= empty_formula())
+      amount_splashed = remove_volume(volume_to_womble);
+   else
+      amount_splashed = remove_volume(empty_formula());
+   (void)POTION_SPACE_HANDLER->potion_touch(dest[0], ps_coord, amount_splashed);
+   (void)this_player()->add_succeeded(dest[0]);
+   return 1;
+}
+int do_rub(object *dest, string me, string him, string prep) {
+   int amount_rubbed;
+   if (sizeof(dest) > 1) {
+      write("You can only "+query_verb()+" on to one object at a time.\n");
+      return 0;
+   }
+   if (!sizeof(dest))
+     return 0;
+   if (environment(dest[0]) != this_player()) {
+      write("You can only "+query_verb()+" on to an object in your inventory.\n");
+      return 0;
+   }
+   if (!ensure_open()) return 0;
+   if (volume_to_womble && volume_to_womble <= empty_formula())
+      amount_rubbed = remove_volume(volume_to_womble);
+   else
+      amount_rubbed = remove_volume(empty_formula());
+   (void)POTION_SPACE_HANDLER->potion_touch(dest[0], ps_coord, amount_rubbed);
+   (void)this_player()->add_succeeded(dest[0]);
+   return 1;
+}
+void do_apply(object *dest, string me, string him, string prep ) {
+   do_rub( dest, me, him, prep );
+}
+#define TASTE_AMOUNT 5
+int do_taste() {
+   int amount_tasted;
+   string desc;
+   mixed *group;
+   int i;
+   if (!ensure_open()) return 0;
+   if (volume < TASTE_AMOUNT) {
+      write("There is no liquid to taste.\n");
+      return 0;
+   }
+   desc = "The " + query_liquid_short();
+   if (!sizeof(all_attrs[POTION_FLAVOURS]) ||
+     all_attrs[POTION_FLAVOURS][0][1] < VERY_SMALL_AMOUNT)
+      desc += " has no discernible flavour";
+   else {
+      group = ({ });
+      for (i = 0; i < sizeof(all_attrs[POTION_FLAVOURS]) &&
+           all_attrs[POTION_FLAVOURS][i][1] >= SMALL_AMOUNT; i++)
+         group += all_attrs[POTION_FLAVOURS][i][0..0];
+      if (sizeof(group)) {
+         desc += " tastes of " + query_multiple_short(group);
+         if (i < sizeof(all_attrs[POTION_FLAVOURS]) &&
+             all_attrs[POTION_FLAVOURS][i][1] >= VERY_SMALL_AMOUNT)
+            desc += " with a faint hint of ";
+      } else desc += " tastes faintly of ";
+      group = ({ });
+      for (; i < sizeof(all_attrs[POTION_FLAVOURS]) &&
+           all_attrs[POTION_FLAVOURS][i][1] >= VERY_SMALL_AMOUNT; i++)
+         group += all_attrs[POTION_FLAVOURS][i][0..0];
+      if (sizeof(group)) desc += query_multiple_short(group);
+   }
+   write(desc + ".\n");
+   say(this_player()->one_short() + " takes a small sip from the " +
+       short(0) + ".\n");
+   amount_tasted = remove_volume(TASTE_AMOUNT);
+   (void)POTION_SPACE_HANDLER->potion_drunk(this_player(), ps_coord, TASTE_AMOUNT);
+   return 1;
+}
+int do_smell()
+{
+   string desc;
+   string *group;
+   int i;
+   if (!ensure_open()) return 0;
+   if (volume < 1) {
+      write("There is no liquid to smell.\n");
+      return 0;
+   }
+   desc = "The " + query_liquid_short();
+   if (!sizeof(all_attrs[POTION_SMELLS]) ||
+     all_attrs[POTION_SMELLS][0][1] < VERY_SMALL_AMOUNT)
+      desc += " has no distinct aroma";
+   else {
+      group = ({ });
+      for (i = 0; i < sizeof(all_attrs[POTION_SMELLS]) &&
+           all_attrs[POTION_SMELLS][i][1] >= SMALL_AMOUNT; i++)
+         group += all_attrs[POTION_SMELLS][i][0..0];
+      if (sizeof(group)) {
+         desc += " smells of " + query_multiple_short(group);
+         if (i < sizeof(all_attrs[POTION_SMELLS]) &&
+             all_attrs[POTION_SMELLS][i][1] >= VERY_SMALL_AMOUNT)
+            desc += " with a faint hint of ";
+      } else desc += " smells faintly of ";
+      group = ({ });
+      for (; i < sizeof(all_attrs[POTION_SMELLS]) &&
+           all_attrs[POTION_SMELLS][i][1] >= VERY_SMALL_AMOUNT; i++)
+         group += all_attrs[POTION_SMELLS][i][0..0];
+      if (sizeof(group)) desc += query_multiple_short(group);
+   }
+   write(desc + ".\n");
+   say(this_player()->one_short() + " takes a whiff of the " +
+       short(0) + ".\n");
+   (void)POTION_SPACE_HANDLER->potion_smell(this_player(), ps_coord, ps_quantity * 100 / volume);
+   return 1;
+}
+mapping int_query_static_auto_load() {
+  mapping tmp;
+  tmp = ::int_query_static_auto_load();
+  return ([ "::" : tmp,
+            "leak rate" : leak_rate,
+            "full weight" : full_weight,
+            "trans" : query_transparent(),
+            "difficulty" : query_difficulty(),
+            "key" : query_key(),
+            "trap open func" : query_open_trap_func(),
+            "trap lock func" : query_lock_trap_func(),
+            "trap open ob" : query_open_trap_ob(),
+            "trap lock ob" : query_lock_trap_ob(),
+            "max volume" : max_volume,
+          ]);
+}
+mapping query_dynamic_auto_load() {
+  if (!query_name() || query_name() == "object") {
+    return 0;
+  }
+  return ([
+           "::" : ::query_dynamic_auto_load(),
+           "locked" : query_locked(),
+           "stuck" : query_stuck(),
+           "closed" : query_closed(),
+           "volume" : volume,
+           "water" : water,
+           "misc attrs" : misc_attrs,
+           "ps coord" : ps_coord,
+           "ps quantity" : ps_quantity,
+          ]);
+}
+void init_dynamic_arg(mapping map) {
+  mixed *ps_attrs;
+  object money;
+  if (map["::"])
+    ::init_dynamic_arg(map["::"]);
+  if (sizeof(map["money"])) {
+     money = clone_object("/obj/money");
+     money->set_money_array(map["money"]);
+     money->move(this_object());
+  }
+  if (map["locked"]) {
+     set_locked();
+  } else {
+     set_unlocked();
+  }
+  set_stuck(map["stuck"]);
+  if (map["closed"]) {
+     set_closed();
+  } else {
+     set_open();
+  }
+  volume = map["volume"];
+  set_water_volume(map["water"]);
+  if (volume == 0) {
+    void_liquid();
+    update_potion_parse();
+    return;
+  }
+  misc_attrs = map["misc attrs"];
+  ps_quantity = map["ps quantity"];
+  ps_coord = map["ps coord"];
+  ps_attrs = (mixed *)POTION_SPACE_HANDLER->query_attrs_at(ps_coord);
+  if(!water) water = 1;
+  active_attrs = change_concentration(ps_attrs, ps_quantity * 100 / water);
+  all_attrs = merge_potions(active_attrs, misc_attrs, water, volume - water, volume);
+  update_potion_parse();
+}
+void init_static_arg(mapping args) {
+  if (args["::"]) {
+    ::init_static_arg(args["::"]);
+  }
+  if (!undefinedp(args["leak rate"])) {
+    leak_rate = args["leak rate"];
+  }
+  if (!undefinedp(args["full weight"])) {
+    full_weight = args["full weight"];
+  }
+  if (!undefinedp(args["trans"])) {
+    if (args["trans"]) {
+       set_transparent();
+    } else {
+       set_opaque();
+    }
+  }
+  if (!undefinedp(args["difficulty"])) {
+    set_difficulty(args["difficulty"]);
+  }
+  if (!undefinedp(args["key"])) {
+    set_key(args["key"]);
+  }
+  if (!undefinedp(args["trap open func"])) {
+    set_open_trap(args["trap open ob"], args["trap open func"]);
+  }
+  if (!undefinedp(args["trap lock func"])) {
+    set_lock_trap(args["trap lock ob"], args["trap lock func"]);
+  }
+  if (!undefinedp(args["max volume"])) {
+    max_volume = args["max volume"];
+  }
+}
+mixed query_static_auto_load() {
+  if (!query_name() || query_name() == "object") return 0;
+  if (file_name(this_object())[0..13] == "/obj/container")
+    return int_query_static_auto_load();
+  return ([ ]);
+}
+int test_add(object ob, int flag) {
+  return !query_closed() && !flag;
+}
+int can_find_match_recurse_into(object looker) {
+   if (query_closed()) {
+      return 0;
+   }
+   return ::can_find_match_recurse_into(looker);
+}
+int test_remove(object ob, int flag) { return !query_closed(); }
+varargs int move(mixed dest, string messin, string messout) {
+   int result;
+   object from;
+   object to;
+   from = environment();
+   result = ::move(dest, messin, messout);
+   if (result == MOVE_OK) {
+      to = environment();
+      we_moved(from, to);
+   }
+   return result;
+}
+void dest_me() {
+   close_lock_container::dest_me();
+   container::dest_me();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/package.c ===
+inherit "/obj/baggage";
+int query_value() {
+  int value;
+  object ob;
+  value = ::query_value();
+  foreach(ob in all_inventory())
+    value += ob->query_value();
+  return value;
+}
+mixed query_static_auto_load() {
+  if ( base_name(this_object()) + ".c" == __FILE__ )
+    return int_query_static_auto_load();
+  return ([ ]);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/service_provider.c ===
+#include <armoury.h>
+#include <money.h>
+#include <move_failures.h>
+inherit "/obj/monster";
+#define SERVICE  0
+#define BROWSE   1
+#define FUNCTION 2
+#define COST     3
+#define ALIASES  4
+private int parsing_function( mixed *array , string words );
+int _busy;
+mixed *_service_array = ({ });
+void set_busy()   { _busy = 1; }
+void reset_busy() { _busy = 0; }
+varargs int check_busy( object player )
+{
+    if( _busy || sizeof( query_queued_commands() ) )
+    {
+        if( player ) {
+            tell_object( player, query_short() +" is busy at the moment."+
+            "  " + capitalize( query_pronoun() )+ " will be with you " +
+            "shortly.\n" );
+        }
+    return 1;
+    } else
+        return 0;
+}
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    if ( !do_setup ) this_object()->setup();
+}
+void init()
+{
+    ::init();
+    this_player()->add_command( "inquire", this_object(),
+        "[a] <string> {from|of} <direct:living:here>", "do_browse" );
+    this_player()->add_command( "browse", this_object(),
+        "[a] <string> {from|of} <direct:living:here>" );
+    this_player()->add_command( "request", this_object(),
+        "[a] <string> from <direct:living:here>" );
+    this_player()->add_command( "list", this_object(),
+        "services [available] {from|of} <direct:living:here>" );
+}
+varargs int add_service( string service , string browse_info ,
+    string func, int cost, string *aliases )
+{
+    string *alias_array;
+    if( !service || !browse_info || !func ||
+        !function_exists( func , this_object() , 1 ) )
+            return 0;
+    alias_array = !sizeof(aliases) ? ({ }) : aliases ;
+    _service_array += ({ ({ service , browse_info , func , cost ,
+        alias_array }) });
+    return 1;
+}
+int remove_service( string service )
+{
+    mixed *things;
+    things = filter( _service_array, (: $1[SERVICE]==$(service) :) );
+    switch( sizeof(things) ) {
+        case 1: _service_array -= things; return 0; break;
+        default: return 0; break;
+    }
+    return 0;
+}
+int do_browse( mixed indirect_obs, string dir_match, string indir_match,
+    string *words )
+{
+    string place;
+    mixed *things;
+    object player;
+    player = this_player();
+    if ( check_busy( player ) ) return 0;
+    place = query_property( "place" );
+    if ( !place || ( place == "" ) )
+        place = "default";
+    things =
+        filter( _service_array ,(:parsing_function( $1, $(words)[0]):) );
+    if( !sizeof( things ) ) {
+        init_command( "say I'm afraid I don't offer that service.", 2 );
+    } else {
+        init_command("say A " + things[0][SERVICE] + " costs " +
+            MONEY_HAND->money_value_string( things[0][COST], place ) +
+            ".  " + things[0][1], 2 );
+    }
+    player->add_succeeded_mess( this_object(), "$N ask$s $D "+
+          "about "+ words[ 0 ] +".\n", ({ }) );
+    return 1;
+}
+int do_request( mixed indirect_obs, string dir_match, string indir_match,
+      string *words )
+{
+    mixed *things;
+    object player;
+    int value;
+    string place;
+    player = this_player();
+    place = query_property("place");
+    if ( !place || place == "" )
+        place = "default";
+    if ( check_busy( player ) ) return 0;
+    things =
+        filter( _service_array , (: parsing_function($1,$(words)[0]) :));
+    if ( !sizeof( things ) )
+        init_command( "say I'm afraid I don't offer that service.", 2 );
+    else {
+        value = player->query_value_in("default") +
+            ( place == "default" ? 0 : player->query_value_in( place ) );
+        if( things[0][COST] > value )
+            init_command("say And just how do you propose to pay "+
+                "for a "+things[0][SERVICE]+"?" , 2 );
+        else {
+            init_command("say Certainly, "+
+                ( player->query_gender() == 1 ? "Sir" : "Ma'am" )+
+                "!");
+            tell_object( player , "You hand "+query_short()+" the "+
+                "necessary money.\n");
+            player->pay_money( MONEY_HAND->
+                create_money_array(things[0][COST], place ), place );
+            call_out( things[0][FUNCTION] , 4 , player, things[0] );
+        }
+    }
+    player->add_succeeded_mess( this_object(), "$N ask$s $D "+
+        "about having a "+ words[ 0 ] +".\n", ({ }) );
+   return 1;
+}
+int do_list()
+{
+    string place, list;
+    int i,number;
+    number = sizeof( _service_array );
+    place = query_property( "place" );
+    if ( !place || ( place == "" ) )
+        place = "default";
+    list = "I am currently offering the following: ";
+    if( number > 3 ) {
+        for( i=0 ; i < (number-2) ; i++ ) {
+            list += ( "a "+_service_array[i][SERVICE]+" for "+
+                MONEY_HAND->money_value_string(
+                    _service_array[i][COST], place )+", " );
+        }
+    }
+    if( number > 1 ) {
+        list += ( "a " + _service_array[<2][SERVICE] + " for " +
+            MONEY_HAND->money_value_string(
+                _service_array[<2][COST], place ) +" and " );
+    }
+    if( number > 0 ) {
+        list += ( _service_array[<1][SERVICE] + " for " +
+            MONEY_HAND->money_value_string(
+                _service_array[<1][COST], place ) +"." );
+    }
+    if( number == 0 )
+        list = "I am not currently offering any services.";
+    init_command("say "+ list, 2);
+    this_player()->add_succeeded_mess( this_object(), "$N ask$s $D what "+
+         "services "+ (string)this_object()->query_pronoun() +" has "+
+         "on offer.\n", ({ }) );
+   return 1;
+}
+private int parsing_function( mixed *array , string word )
+{
+    if ( array[SERVICE] == word ) return 1;
+    if ( member_array( word, array[ALIASES] ) != -1 ) return 1;
+    return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/corpse.c ===
+#include <bit.h>
+#include <corpse.h>
+#include <move_failures.h>
+#define DECAY_BASE 200
+#define PLAYER_DECAY_BASE 600
+#define RANDOM( x ) x[ random( sizeof( x ) ) ]
+inherit "/std/container";
+inherit "/std/living/carrying";
+inherit "/std/basic/virtual_quit_control";
+private int _decay;
+private int _corpse_id;
+private string _owner;
+private string _race_ob;
+private string _race_name;
+private string *_bits_gone;
+private string *_removed;
+private string *_permitted;
+private object _weapon;
+private object *_armours;
+private object *_holding;
+private string _start_pos;
+private string _nationality;
+void set_decay_messages();
+void remove_creator_corpse( object ob );
+void set_race_ob(string _race_ob);
+int query_corpse() {
+  return 1;
+}
+int query_corpse_id() {
+   return _corpse_id;
+}
+int query_decay() {
+  return _decay;
+}
+void set_decay(int dec) {
+  _decay = dec;
+}
+string query_owner() {
+  return _owner;
+}
+string *query_permitted() {
+  return _permitted;
+}
+void set_race_name(string str) {
+  _race_name = str;
+}
+string query_race_name() {
+  return _race_name;
+}
+object make_bit(string which_bit);
+object *make_bits(string *what_bits);
+void give_permission(string);
+string query_name() {
+  if (!::query_name())
+    return "someone";
+  return::query_name();
+}
+string *remove_array_parts(string *a1,
+                           string *a2) {
+  int i;
+  string a;
+  if (sizeof(a2))
+    foreach(a in a2) {
+    for (i = 0; i < sizeof(a1); i++) {
+      if (a == a1[i]) {
+        a1 = delete(a1, i, 1);
+        break;
+      }
+    }
+  }
+  return a1;
+}
+void setup() {
+  _bits_gone = ({ });
+  _removed = ({ });
+  add_property("cureable", 1);
+  add_property("determinate", "the ");
+  _owner = "noone";
+  _race_name = "womble";
+  _decay = DECAY_BASE;
+  add_plural("corpses");
+  add_plural("bodies");
+  add_plural("carcasses");
+  add_alias(({ "corpse", "body", "carcass" }));
+  set_short("corpse");
+  set_long("A corpse, it looks dead.\n");
+  set_weight(STD_CORPSE_WEIGHT);
+  set_race_ob("/std/races/unknown");
+  _permitted = ({ });
+  _armours = ({ });
+  _holding = ({ });
+  add_extra_look(this_object());
+}
+string extra_look() {
+  if(sizeof(_removed))
+    return "It appears to be missing its " + query_multiple_short(_removed) +
+      ".\n";
+  return "";
+}
+void give_permission(string words) {
+  _permitted += ({ words });
+}
+int get(mixed dest) {
+  if (query_property("player") && dest) {
+    if (!this_player())
+      return::get(dest);
+    if (member_array((string) this_player()->query_name(), _permitted) ==
+        -1)
+      return MOVE_INVALID_DEST;
+  }
+  return::get(dest);
+}
+int test_remove(object thing,
+                int flag,
+                mixed dest) {
+  int i;
+  if (base_name(environment()) == "/room/rubbish") {
+    return 1;
+  }
+  if (thing->query_property("my corpse") == this_object()) {
+    return 1;
+  }
+  if (!query_property("player")) {
+    return 1;
+  }
+  if (!sizeof(_permitted) || !this_player()) {
+    i =::test_remove(thing, flag, dest);
+  } else if (member_array((string) this_player()->query_name(), _permitted) ==
+             -1) {
+    i =::test_remove(thing, flag, dest);
+  } else {
+    write((string) thing->the_short() + " $V$0=buzzes,buzz$V$ for a "
+          "moment.\n");
+    return 1;
+  }
+  if (i && this_player() && thing &&
+      sizeof(thing->effects_matching("mudlib.owned.weapon")) &&
+      this_player()->query_name() != thing->query_owner() &&
+      member_array((string) this_player()->query_name(), _permitted) == -1) {
+    log_file("LOOT", "%s %s took %s [%s] from %s.\n",
+             ctime(time()), this_player()->query_cap_name(),
+             thing->query_short(), thing->query_owner(),
+             this_object()->query_owner());
+  }
+  if (i) {
+     CORPSE_HANDLER->save_corpse(this_object());
+  }
+  return i;
+}
+string long(string words,
+            int dark) {
+  if (dark == 2 || dark == -2) {
+    if (query_living_contents(0) != "") {
+      return::long(words, dark) + "Carrying, wearing or holding some "
+        "things you cannot make out.\n";
+    }
+  }
+  return::long(words, dark) + query_living_contents(0);
+}
+void set_owner(string words, object thing) {
+  string det;
+  string *tmp;
+  if (stringp(words)) {
+    _owner = words;
+  } else {
+    det = (string) thing->query_property("determinate");
+    if (stringp(det)) {
+      _owner = det + (string) thing->short();
+    } else {
+      _owner = add_a((string) thing->short());
+    }
+  }
+  if (thing && thing->query_property("player")) {
+    set_decay(PLAYER_DECAY_BASE);
+    give_permission(thing->query_name());
+    catch(_corpse_id = CORPSE_HANDLER->query_next_corpse_id());
+    _start_pos = thing->query_start_pos();
+    set_ownership(thing->query_name());
+    add_property("player", 1);
+  }
+  set_name("corpse");
+  set_short("corpse of " + _owner);
+  add_adjective(({ "corpse", "of" }));
+  tmp = explode(lower_case(_owner), " ");
+  if (sizeof(tmp) > 1) {
+    add_alias(tmp[<1]);
+  }
+  add_adjective(tmp);
+  add_adjective(tmp[<1] + "'s");
+  if (thing) {
+     _nationality = thing->query_nationality();
+    if(userp(thing)) {
+      set_main_plural("corpses of " + thing->short());
+    } else  if (thing->query_main_plural() && !userp(thing)) {
+      set_main_plural("corpses of " + (string) thing->query_main_plural());
+    } else {
+      set_main_plural("corpses of " + pluralize((string) thing->short()));
+    }
+  } else {
+    set_main_plural("corpses");
+  }
+  set_long("This is the dead body of " + _owner + ".\n");
+  if (thing && thing->query_weight(1)) {
+    set_weight((int) thing->query_weight(1));
+  } else {
+    set_weight(STD_CORPSE_WEIGHT);
+  }
+  if ( thing && ( thing->query_creator() ||
+    thing->query_property( "test character" ) ) )
+  remove_creator_corpse( thing );
+  BIT_CONTROLLER->add_bit(this_object());
+  if (thing && thing->query_property("player")) {
+    catch(CORPSE_HANDLER->register_corpse(this_object()));
+  }
+}
+void remove_creator_corpse( object ob ) {
+  call_out( (: move( "/room/morgue", "$N lands in the room with a thud. The kind of thud a "
+      "sack of steaks dropped from a great height would make.\n", "" ) :), 6 );
+  call_out( (: tell_room( environment( $(ob) ), "squeeek THUMP squeeeek THUMP "
+    "squeeek THUMP squeeeek THUMP\n" ) :), 1 );
+  call_out( (: tell_room( environment( $(ob) ), "An igor pushing an old and "
+    "battered wheelbarrow appears from somewhere.\n" ) :), 2 );
+  call_out( (: tell_room( environment( $(ob) ), "%^CYAN%^The igor says \"Well bugger "
+    "me. I've been wanting another one "
+    "of those. The mathter will be so pleased.\"%^RESET%^\n" ) :), 4 );
+  call_out( (: tell_room( environment( $(ob) ), "Igor cuts something off the corpse"
+    " and stuffs it in his pocket before throwing the remains of the corpse into "
+  "his barrow and shuffling away. \n" ) :), 6 );
+  call_out( (: CORPSE_HANDLER->save_corpse(this_object()) :), 8 );
+  return;
+}
+void do_decay() {
+  int rate;
+  if (!environment()) {
+    return;
+  }
+  rate = 5 + (int) (environment()->query_property("decay rate"));
+  if (rate > 0) {
+    _decay -= rate;
+  }
+  set_decay_messages();
+  if (_decay > 0) {
+    CORPSE_HANDLER->save_corpse(this_object());
+  }
+}
+void set_decay_messages() {
+  if (!_race_name) {
+    _race_name = (string) _race_ob->query_name();
+  }
+  switch (_decay) {
+  case 101..PLAYER_DECAY_BASE:
+    break;
+  case 51..100:
+    if (!find_player(query_name())) {
+      set_short("somewhat decayed remains of " + add_a(query_name()));
+      set_main_plural("somewhat decayed remains of " +
+                      pluralize(query_name()));
+    }
+    break;
+  case 1..50:
+    set_short("decayed remains of " + add_a(_race_name));
+    set_main_plural("decayed remains of " + pluralize(_race_name));
+    set_long("This is the dead body of " + add_a(_race_name) + ".\n");
+    break;
+  default:
+    CORPSE_HANDLER->deregister_corpse(this_object());
+    set_ownership(0);
+    all_inventory()->move(environment());
+    move("/room/rubbish");
+  }
+}
+void set_race_ob(string s) {
+  _race_ob = s;
+}
+string query_race_ob() {
+  return _race_ob;
+}
+string query_bit_left(string s) {
+  string *bits;
+  bits = _race_ob->query_possible_bits(s);
+  if (!bits || !sizeof(bits)) {
+    return 0;
+  }
+  bits = remove_array_parts(bits, _bits_gone);
+  if (!sizeof(bits)) {
+    return 0;
+  }
+  return bits[0];
+}
+string *query_bit_left_pl(string s) {
+  string *bits;
+  bits = _race_ob->query_possible_plural_bits(s);
+  if (!bits || !sizeof(bits)) {
+    return 0;
+  }
+  bits = remove_array_parts(bits, _bits_gone);
+  if (!sizeof(bits)) {
+    return 0;
+  }
+  return bits;
+}
+string *query_edible_bits_left() {
+  string *bits;
+  string *inedible;
+  bits = _race_ob->query_possible_bits();
+  inedible = _race_ob->query_all_inedible();
+  if (!bits || !inedible) {
+    return ({ });
+  }
+  return remove_array_parts(bits, _bits_gone) - inedible;
+}
+varargs object *find_inv_match(string s,
+                               object looker) {
+  string bit;
+  string *bits;
+  object *weap;
+  object wep;
+  int cut;
+  if (undefinedp(s)) {
+    return all_inventory();
+  }
+  bit = query_bit_left(s);
+  bits = query_bit_left_pl(s);
+  if (!bit && !sizeof(bits)) {
+    return all_inventory();
+  }
+  cut = 0;
+  if (looker) {
+    weap = looker->query_weapons();
+  }
+  if (sizeof(weap)) {
+    foreach(wep in weap) {
+      if (wep->id("dagger") || wep->id("knife")) {
+        cut = 1;
+      }
+    }
+  }
+  if (bit) {
+    if (cut || _race_ob->query_pluckable(bit)) {
+      return ({ make_bit(bit) });
+    }
+    if (sizeof(weap)) {
+      tell_object(looker, "You can only cut things from a corpse "
+                  "with a knife or dagger.\n");
+    } else {
+      tell_object(looker, "You can't cut bits from a corpse with your "
+                  "bare hands.\n");
+    }
+    return ({ });
+  }
+  if (sizeof(bits)) {
+    if (cut) {
+      if (sizeof(bits) > 5) {
+        return make_bits(bits[0..4]);
+      } else {
+        return make_bits(bits);
+      }
+    }
+    foreach(bit in bits) {
+      if (!((string) _race_ob->query_pluckable(bit))) {
+        bits -= ({ bit });
+      }
+    }
+    if (sizeof(bits)) {
+      if (sizeof(bits) > 5) {
+        return make_bits(bits[0..4]);
+      } else {
+        return make_bits(bits);
+      }
+    }
+    if (sizeof(weap)) {
+      tell_object(looker, "You can only cut things from a corpse "
+                  "with a knife or dagger.\n");
+    } else {
+      tell_object(looker, "You can't cut bits from a corpse with your "
+                  "bare hands.\n");
+    }
+    return ({ });
+  }
+}
+object make_bit(string which_bit) {
+  mixed *bit;
+  object bitobj;
+  bit = _race_ob->query_bit(which_bit);
+  if ((sizeof(bit[2][2]) > 1) && stringp(bit[2][2][0])) {
+    bitobj = clone_object(bit[2][2][0]);
+  } else {
+    bitobj = clone_object("/std/bit");
+  }
+  bitobj->set_race_ob(_race_ob);
+  if (_race_name) {
+    bitobj->set_race_name(_race_name);
+  } else {
+    bitobj->set_race_name(_race_ob->query_name());
+  }
+  bitobj->set_corpse_weight(query_weight());
+  if (!_race_ob->query_eat(bit[BIT_NAME])) {
+    bitobj->set_bit(bit[0], 0);
+  } else {
+    bitobj->set_bit(bit[0], (_decay * 2) / 3);
+  }
+  _bits_gone |= bit[BIT_EXTRA][3..] + ({ bit[BIT_NAME] });
+  _removed += ({ bit[BIT_NAME] });
+  if (which_bit == "head") {
+    set_short("decapitated corpse of " + _owner);
+    add_adjective("decapitated");
+  }
+  if (bitobj->move(this_object()) != MOVE_OK) {
+    if (environment()) {
+      bitobj->move(environment());
+    }
+  }
+  bitobj->add_property("my corpse", this_object());
+  return bitobj;
+}
+object *make_bits(string *what_bits) {
+  string bit;
+  object *bits = ({
+  });
+  foreach(bit in what_bits) {
+    bits += ({ make_bit(bit) });
+  }
+  return bits;
+}
+string *query_bits_gone() {
+  return _bits_gone;
+}
+mixed *add_bit_gone(string bit) {
+  string *poss_bits;
+  string tempbit;
+  mixed *bit_details;
+  poss_bits =
+    remove_array_parts(_race_ob->query_possible_bits(bit), _bits_gone);
+  if (!sizeof(poss_bits)) {
+    return 0;
+  }
+  bit_details = _race_ob->query_bit(poss_bits[0]);
+  _bits_gone += ({ bit_details[BIT_NAME] });
+  foreach(tempbit in
+          bit_details[BIT_EXTRA][3..sizeof(bit_details[BIT_EXTRA])]) {
+    _bits_gone += ({ tempbit });
+  }
+  return bit_details;
+}
+void set_bits_gone(string *bits) {
+  int i;
+  _bits_gone = ({ });
+  for (i = 0; i < sizeof(bits); i++) {
+    add_bit_gone(bits[i]);
+  }
+}
+string *query_bits_left() {
+  int i;
+  int j;
+  string *all_bits;
+  mixed *bits;
+  bits = _race_ob->query_bits();
+  all_bits = ({ });
+  for (i = 0; i < sizeof(bits); i += 3) {
+    if (bits[i + 2][2]) {
+      for (j = 0; j < bits[i + 2][2][1]; j++) {
+        all_bits += ({ bits[i] });
+      }
+    }
+  }
+  return remove_array_parts(all_bits, _bits_gone);
+}
+object *query_armours() {
+  int i;
+  _armours -= ({ 0 });
+  for (i = 0; i < sizeof(_armours); i++) {
+    if ((object) _armours[i]->query_worn_by() != this_object()) {
+      _armours = delete(_armours, i, 1);
+      i--;
+    }
+  }
+  return _armours + ({ });
+}
+object *query_wearing() {
+  return query_armours();
+}
+void set_armours(object * things) {
+  int i;
+  _armours = ({ });
+  for (i = 0; i < sizeof(things); i++) {
+    if (things[i]->query_no_limbs()) {
+      _holding += ({ things[i] });
+    } else {
+      _armours += ({ things[i] });
+    }
+  }
+}
+void remove_armour(object arm) {
+  _armours -= ({ arm });
+}
+object query_weapon() {
+  return _weapon;
+}
+void set_weapon(object wpn) {
+  _weapon = wpn;
+}
+void unwield_weapon(object wpn) {
+  if (_weapon == wpn)
+    _weapon = 0;
+}
+object *query_holding() {
+  return _holding;
+}
+void set_holding(object * hold) {
+  _holding += hold;
+}
+int *set_unhold(object ob) {
+  int pos;
+  if ((pos = member_array(ob, _holding)) == -1) {
+    return ({ });
+  }
+  if (!ob->set_holder(0)) {
+    return ({ });
+  }
+  _holding = _holding - ({ ob });
+  return ({ pos });
+}
+int *set_hold(object ob,
+              int pos) {
+  if (member_array(ob, _holding) != -1) {
+    return ({ });
+  }
+  _holding += ({ ob });
+  return ({ pos });
+}
+int move_or_destruct(object dest) {
+  if (objectp(dest)) {
+    move_object(dest);
+  } else {
+    move("/room/void");
+  }
+  return 1;
+}
+void dest_me() {
+  mixed *xp;
+  object ob;
+  xp = query_property("XP");
+  if (xp && sizeof(xp) == 2) {
+    foreach(ob in xp[0]) {
+      if (ob) {
+        ob->adjust_xp(xp[1], 1);
+      }
+    }
+  }
+  BIT_CONTROLLER->remove_bit(this_object());
+  if (environment()) {
+    all_inventory()->move(environment());
+  }
+  ::dest_me();
+}
+mapping query_static_auto_load() {
+  return int_query_static_auto_load();
+}
+mapping query_dynamic_auto_load() {
+  mapping tmp;
+  string pos;
+  tmp = ([ "::" : ::query_dynamic_auto_load(),
+           "decay" : _decay,
+           "owner" : _owner,
+           "race ob" : _race_ob,
+           "id" : _corpse_id,
+           "last pos" : pos,
+           "start pos" : _start_pos,
+           "nationality" : _nationality,
+           "ownership" : query_ownership(),
+           "race name" : _race_name, "bits gone" : _bits_gone, ]);
+  return tmp;
+}
+void init_dynamic_arg(mapping map, object) {
+  if (map["::"]) {
+    ::init_dynamic_arg(map["::"]);
+  }
+  if (map["id"]) {
+    _corpse_id = map["id"];
+  }
+  if (map["decay"]) {
+    _decay = map["decay"];
+  }
+  if (map["owner"]) {
+    _owner = map["owner"];
+  }
+  if (map["race ob"]) {
+    _race_ob = map["race ob"];
+  }
+  _nationality = map["nationality"];
+  set_ownership(map["ownership"]);
+  if (map["race name"]) {
+    _race_name = map["race name"];
+  }
+  if (map["bits gone"]) {
+    _bits_gone = map["bits gone"];
+  }
+  if (map["start pos"]) {
+    _start_pos = map["start pos"];
+  }
+  set_decay_messages();
+}
+string query_save_data() {
+   string pos;
+   object env;
+   env = environment();
+   while (env && environment(env)) {
+      if (living(env) && env->query_property("player")) {
+         return CORPSE_IN_PLAYER;
+      }
+      env = environment(env);
+   }
+   pos = find_start_pos( this_object(), env );
+   return save_variable(({ query_dynamic_auto_load(), query_static_auto_load(), pos }));
+}
+void setup_corpse_from_save(string str_data, string name, int id) {
+  mixed data;
+  int res;
+  if (str_data == CORPSE_IN_PLAYER) {
+     return ;
+  }
+  data = restore_variable(str_data);
+  init_static_arg(data[1]);
+  init_dynamic_arg(data[0], 0);
+  BIT_CONTROLLER->add_bit(this_object());
+  res = MOVE_NO_DROP;
+  tell_creator("pinkfish", "Trying to restore to location %O [%O]\n", data[2], this_object());
+  catch(res = this_object()->move(data[2],
+                         "$N looks confused and pops out of the ground.\n",
+                         "$N looks confused and pops out of the ground.\n"));
+  if (res != MOVE_OK) {
+     tell_creator("pinkfish", "Trying to restore to location %O [%O]\n", _start_pos, this_object());
+     catch(res = this_object()->move(_start_pos,
+                         "$N looks confused and pops out of the ground.\n",
+                         "$N looks confused and pops out of the ground.\n"));
+  }
+  if (res != MOVE_OK) {
+     tell_creator("pinkfish", "Trying to restore to location %O [%O]\n", "/room/rubbish", this_object());
+     move("/room/rubbish");
+  }
+}
+mixed *stats() {
+  return::stats() +
+    ({ ({ "decay", _decay, }), ({ "owner", _owner, }),
+         ({ "race ob", _race_ob, }), ({ "race name", _race_name, }) });
+}
+int test_add(object ob,
+             int flag) {
+  if (ob->query_bit_data()) {
+    return 1;
+  }
+  return !flag;
+}
+int can_find_match_reference_inside_object(object thing,
+                                           object player) {
+  if (!query_property("player")) {
+    return 1;
+  }
+  if (member_array(player->query_name(),
+                   _permitted + ({ lower_case(_owner) })) == -1)
+    {
+      return 0;
+    }
+  return 1;
+}
+int can_find_match_recurse_into(object player) {
+  return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/fence.c ===
+#include <armoury.h>
+#include <money.h>
+#include <move_failures.h>
+#include <thief.h>
+inherit "/obj/monster";
+#define MAX 500
+#define SKILL "other.trading.valueing"
+#define PAY_RATES ({ 200, 95, \
+                     400, 90, \
+                     800, 85, \
+                     1600, 80, \
+                     3200, 75, \
+                     6400, 70, \
+                     12800, 65, \
+                     60 })
+class hist_offer {
+  object ob;
+  int old_offer;
+  int value;
+}
+class offer {
+  object who;
+  int amount;
+  int offer_time;
+  object *objects;
+}
+class offer this_offer;
+object cont;
+string *move_data = ({ });
+string fence_type;
+mapping old_offers = ([ ]);
+void whisper( object, string );
+void give_back();
+object query_cont() {
+  return cont;
+}
+void create() {
+  do_setup++;
+  ::create();
+  do_setup--;
+  if( !do_setup )
+    this_object()->setup();
+  cont = clone_object( "/std/container" );
+  cont->move(this_object());
+  cont->reset_drop();
+  cont->reset_get();
+  cont->set_name( "sack" );
+  cont->set_short( "sack" );
+  cont->set_long( "This is a large hessian sack.\n" );
+  cont->add_property( "nosteal", 1 );
+  set_wimpy( 20 );
+  basic_setup( "human", "thief", 500 );
+  add_respond_to_with( ({ "@say", ({ "yes", "Yes", "ok", "okay" }) }),
+    "#do_yes" );
+  add_respond_to_with( ({ "@nod", ({ "you" }) }), "#do_yes" );
+  add_respond_to_with( ({ "@whisper", ({ "yes", "Yes", "ok", "okay" }) }),
+    "#do_yes" );
+  add_respond_to_with( ({ "@say", ({ "no", "No" }) }), "#do_no" );
+  add_respond_to_with( ({ "@whisper", ({ "no", "No" }) }), "#do_no" );
+  add_respond_to_with( ({ "@shake", ({ "you" }) }), "#do_no" );
+}
+void init() {
+  ::init();
+  this_player()->add_command( "fence", this_object(),
+    "<indirect:object:me> to <direct:object>" );
+}
+void dest_me() {
+  if( cont )
+    cont->dest_me();
+  ::dest_me();
+}
+void reset() {
+  object ob;
+  if( this_offer )
+    return;
+  foreach( ob in all_inventory( cont ) )
+    ob->dest_me();
+}
+void check_cont() {
+  if ( !cont )
+    cont = clone_object( "/std/container" );
+}
+void set_fence_type( string str ) {
+  fence_type = str;
+}
+int query_cost( object thing, object buyer ) {
+   return (int)thing->query_value_at( this_object() );
+}
+string cost_string( object thing, string place, object buyer ) {
+  return (string)MONEY_HAND->money_value_string( query_cost( thing, buyer ),
+                                                 place );
+}
+string query_item_type( object ob ) {
+  if( member_array( "weapons", ob->query_plurals()) != -1 )
+    return "weapons";
+  if( member_array( "jewellery", ob->query_plurals()) != -1 ||
+      ob->query_property( "shop type" ) == "jewellers" )
+    return "jewellery";
+  if( member_array( "armours", ob->query_plurals()) != -1 )
+    return "armour";
+  if( member_array( "clothes", ob->query_plurals()) != -1 )
+    return "armour";
+  if( member_array( "gems", ob->query_plurals()) != -1 )
+    return "gems";
+  return "";
+}
+int judge_value( object ob, string type ) {
+  int value, variance, skill;
+  value = query_cost( ob, this_object() );
+  if( type != "" )
+    skill = query_skill_bonus( SKILL + "." + type );
+  else
+    skill = query_skill_bonus( SKILL );
+  if( !skill )
+    skill = 1;
+  variance = value / sqrt( skill );
+  value += random( variance ) - random( variance );
+  return value;
+}
+string calc_place() {
+  string place;
+  place = environment()->query_property( "place" );
+  if( !place || ( place == "" ) )
+    place = "Ankh-Morpork";
+  return place;
+}
+string cost_str( int amt ) {
+  return MONEY_HAND->money_string( MONEY_HAND->create_money_array( amt,
+                                   calc_place() ) );
+}
+int scaled_value( int n ) {
+  int *fish, i, tot;
+  fish = PAY_RATES;
+  if( n < fish[0] ) {
+    return n;
+  }
+  else {
+    tot = fish[0];
+    n -= fish[0];
+  }
+  i = 0;
+  while( n && ( ( i + 1 ) < sizeof( fish ) ) ) {
+    if( n >= fish[i]) {
+      tot += fish[i+1] * fish[i] / 100;
+      n -= fish[i];
+    } else {
+      tot += fish[i+1] * n / 100;
+      n = 0;
+    }
+    i += 2;
+  }
+  if( n ) {
+    tot += ( n * fish[sizeof( fish ) - 1] ) / 100;
+  }
+  return tot;
+}
+int do_fence( object *in_dir, string direct, string indirect, mixed args,
+  string format ) {
+  int offer, their_skill, returned, burdened, light;
+  string type, skill, zone;
+  object ob, *offered, *not_speciality, customer, thing;
+  if( !this_player()->query_creator() &&
+      !this_player()->query_visible( this_object() ) ) {
+    this_object()->do_command( "puzzle" );
+    this_object()->do_command( "wonder if someone is trying to be funny" );
+    return 0;
+  }
+  light = environment( this_object() )->query_light();
+  if ( ( light < 20 ) || ( light > 100 ) ) {
+    if ( light > 100 ) {
+      this_object()->do_command( "say I can't see anything in the glare!" );
+    } else {
+      this_object()->do_command( "say I can't see anything in the gloom!" );
+    }
+    return 0;
+  }
+  if( this_offer &&
+      this_offer->who &&
+      environment( this_offer->who ) == environment( this_object() ) ) {
+    if( this_offer->offer_time > time() - 30 ) {
+      if( this_offer->who != this_player() )
+        whisper( this_player(), "Sorry, I'm already helping " +
+          ( this_offer->who )->the_short() + "." );
+      else
+        whisper( this_player(), "I'm still waiting for a response from you!" );
+      this_player()->add_succeeded_mess( this_object(), "", offered );
+      return 1;
+    } else {
+      whisper( this_offer->who, "I guess you don't want my offer then." );
+      customer = this_offer->who;
+      burdened = 0;
+      returned = 0;
+      foreach( thing in this_offer->objects ) {
+        if( !thing ) {
+          whisper( customer, "Seems there is a hole in my sack!" );
+          continue;
+        }
+        if( thing->move( customer ) != MOVE_OK ) {
+          burdened = 1;
+          thing->move( environment( this_object() ) );
+          whisper( customer, "I'll just put the " + thing->short() +
+            " down here since you are too burdened to accept it." );
+        } else {
+          returned = 1;
+        }
+      }
+      if( burdened && returned ) {
+      tell_object( customer, this_object()->a_short() + " returns the other "
+        "items to you.\n" );
+      } else {
+        if( returned )
+          tell_object( customer, this_object()->a_short() + " returns the "
+            "items to you.\n" );
+      }
+      tell_room( environment(), this_object()->a_short() + " returns the "
+        "items to " +  customer->a_short() + ".\n", ({ customer }) );
+      this_offer = 0;
+    }
+  }
+  not_speciality = ({ });
+  if( sizeof( this_object()->query_move_zones() ) ) {
+    foreach( zone in this_object()->query_move_zones() ) {
+      move_data += ({zone});
+      this_object()->remove_move_zone(zone);
+    }
+    this_object()->add_move_zone( 0 );
+  }
+  this_offer = new( class offer,
+                    objects    : ({ }),
+                    who        : this_player(),
+                    offer_time : time()
+                  );
+  in_dir = filter_array( in_dir, (: !$1->query_keep() :) );
+  if( sizeof( in_dir ) < 1 ) {
+    whisper( this_player(), "You have nothing to fence that you're not overly "
+      "fond of, it seems." );
+    this_player()->add_succeeded_mess( this_object(), "", offered );
+    this_offer = 0;
+    return 1;
+  }
+  if( sizeof( in_dir ) > 10 ) {
+    whisper( this_player(), "Sorry, I can't handle that many items at "
+      "once." );
+    this_player()->add_succeeded_mess( this_object(), "", offered );
+    this_offer = 0;
+    return 1;
+  }
+  tell_room( environment( this_object() ), this_object()->query_short() +
+            " studies " + query_multiple_short( in_dir ) + ".\n" );
+  foreach( ob in in_dir ) {
+    if( environment( ob ) != this_offer->who ) {
+      whisper( this_player(), "Do you think I'm blind?  I can see that you "
+        "don't have " + strip_colours( ob->the_short()) + "." );
+      continue;
+    }
+    if( base_name(ob) == "/obj/money" ) {
+        whisper( this_player(), "I don't accept coins, I'm afraid. The market "
+          "fluctuates far too much for it to be worthwhile.");
+        continue;
+    }
+    if( ob->move( cont ) != MOVE_OK ) {
+      whisper( this_player(), "If I can't take an item you can't fence it "
+        "so you can't fence " + strip_colours( ob->the_short()) + "." );
+      continue;
+    }
+    if( ob->do_not_sell() ) {
+      whisper( this_player(), "You can't sell the " +
+        strip_colours( ob->the_short() ) + "." );
+      if( ob->move( this_player() ) != MOVE_OK ) {
+        ob->move( environment( this_object() ) );
+        whisper( this_player(), "So I'll just put it down here." );
+      }
+      else {
+        whisper( this_player(), "So you can have it back." );
+      }
+      continue;
+    }
+    if( ob->query_property( "fenced" ) ) {
+      do_command( "' Hang on a sec... this looks awful familiar." );
+      do_command( "glare " + this_offer->who->query_name() );
+      do_command( "' Just what are you trying to pull here?!" );
+      do_command( "' I think I'll hang onto these little trinkets "
+                  "until we can establish their correct ownership..." );
+      this_offer = 0;
+      this_player()->add_failed_mess( this_object(), this_object()->
+        the_short() + " confiscates $I.\n", in_dir );
+      return 0;
+    }
+    type = query_item_type( ob );
+    offer = judge_value( ob, type );
+    if( !offer ||
+        offer < 4 ) {
+      whisper( this_player(), ob->the_short() + " isn't worth anything." );
+      if( ob->move( this_player() ) != MOVE_OK ) {
+        ob->move( environment( this_object() ) );
+        whisper( this_player(), "So I'll just put it down here." );
+      }
+      else {
+        whisper( this_player(), "So you can have it back." );
+      }
+      continue;
+    }
+    if( type != fence_type ) {
+      offer -= ( offer / 10 );
+      not_speciality += ({ ob });
+    }
+    offer = (int)scaled_value( offer );
+    if( !undefinedp( old_offers[ob] ) ) {
+      if( !undefinedp( old_offers[ob][ob->query_value()] ) ) {
+        offer = old_offers[ob][ob->query_value()];
+      } else {
+        old_offers[ob][ob->query_value()] = offer;
+      }
+    } else {
+      old_offers[ob] = ([ ob->query_value() : offer ]);
+    }
+    if( type != "" )
+      skill = SKILL + "." + type;
+    else
+      skill = SKILL;
+    their_skill = this_player()->query_skill_bonus( skill );
+    if( !their_skill)
+      their_skill = 2;
+    if( sqrt( their_skill ) < 3 )
+      offer -= offer / 3;
+    else {
+      offer -= ( offer ) / sqrt( their_skill );
+    }
+    if( !offer ||
+        offer < 4 ) {
+      whisper( this_player(), ob->the_short() + " isn't worth anything." );
+      if( ob->move( this_player() ) != MOVE_OK ) {
+        ob->move( environment( this_object() ) );
+        whisper( this_player(), "So I'll just put it down here." );
+      }
+      else {
+        whisper( this_player(), "So you can have it back." );
+      }
+      continue;
+    }
+    this_offer->amount += offer;
+    this_offer->objects += ({ ob });
+  }
+  if( sizeof( not_speciality ) == 1 )
+    whisper( this_player(), "Well, " +
+      strip_colours( query_multiple_short( not_speciality ) ) + " isn't really "
+      "my speciality." );
+  else
+    if( sizeof( not_speciality ) > 1 )
+      whisper( this_player(), "Well, " +
+        strip_colours( query_multiple_short( not_speciality ) ) + " aren't "
+        "really my speciality." );
+  this_player()->add_succeeded_mess( this_object(), "", offered );
+  if( !sizeof( this_offer->objects ) ) {
+    whisper( this_player(), "Well, that was a waste of time." );
+    this_offer = 0;
+    return 1;
+  }
+  whisper( this_player(), "I'll give you " + cost_str( this_offer->amount ) +
+          " for " + strip_colours( query_multiple_short( this_offer->
+          objects ) ) + ", what do you think?" );
+  return 1;
+}
+void do_yes( object person ) {
+  object money, *selling, ob;
+  mixed *m_array;
+  string zone;
+  if( !this_offer || person != this_offer->who )
+    return;
+  whisper( person, "You've got a deal." );
+  selling = ({ });
+  foreach( ob in this_offer->objects ) {
+    ob->add_property( "fenced", (string)person->query_name() );
+    selling += ({ ob });
+  }
+  m_array = (mixed *)MONEY_HAND->create_money_array( this_offer->amount,
+                                                     calc_place() );
+  money = clone_object( MONEY_OBJECT );
+  money->set_money_array( m_array );
+  if( (int)money->move( person ) != MOVE_OK) {
+    money->move( environment( this_object() ) );
+    whisper( person, "You're too heavily burdened to accept all "
+      "that money, so I'll just put it on the floor." );
+  } else {
+    tell_object( person, this_object()->a_short() + " slips you " +
+      cost_str( this_offer->amount ) + ".\n" );
+    tell_room( environment(), this_object()->a_short() + " slips some coins "
+      "to " + person->a_short() + ".\n", ({person}) );
+  }
+  this_offer = 0;
+  if( sizeof( move_data ) > 0 ) {
+    foreach( zone in move_data ) {
+      this_object()->add_move_zone( zone );
+    }
+    this_object()->remove_move_zone( 0 );
+    move_data = ({ });
+  }
+}
+void do_no( object player ) {
+  string zone;
+  object customer, thing;
+  int returned, burdened;
+  if( !this_offer || player != this_offer->who )
+    return;
+  whisper( player, "Ok, have it your own way then." );
+  customer = this_offer->who;
+  burdened = 0;
+  returned = 0;
+  foreach( thing in this_offer->objects ) {
+    if( !thing ) {
+      whisper( customer, "Seems thare is a hole in my sack!" );
+      continue;
+    }
+    if( thing->move( customer ) != MOVE_OK ) {
+      burdened = 1;
+      thing->move( environment( this_object() ) );
+      whisper( customer, "I'll just put the " + thing->short() +
+        " down here since you are too burdened to accept it." );
+    } else {
+      returned = 1;
+    }
+  }
+  if( burdened && returned ) {
+  tell_object( customer, this_object()->a_short() + " returns the other items "
+    "to you.\n" );
+  } else {
+    if( returned )
+      tell_object( customer, this_object()->a_short() + " returns the items to "
+        "you.\n" );
+  }
+  tell_room( environment(), this_object()->a_short() + " returns the "
+    "items to " +  customer->a_short() + ".\n", ({ customer }) );
+  this_offer = 0;
+  if( sizeof( move_data ) > 0 ) {
+    foreach( zone in move_data ) {
+      this_object()->add_move_zone( zone );
+    }
+    this_object()->remove_move_zone( 0 );
+    move_data = ({ });
+  }
+}
+void whisper( object ob, string message ) {
+  do_command( "whisper " + message + " to " + ob->query_name() );
+}
+int busy() {
+  if( this_offer )
+    return 1;
+  return 0;
+}
+void event_exit( object ob, string message, object to ) {
+  object customer, thing;
+  int returned, burdened;
+  if( this_offer &&
+      ob == this_offer->who ) {
+    whisper( ob, "Since you're leaving, I'll give your stuff back." );
+    customer = this_offer->who;
+    burdened = 0;
+    returned = 0;
+    foreach( thing in this_offer->objects ) {
+      if( !thing ) {
+        whisper( customer, "Seems thare is a hole in my sack!" );
+        continue;
+      }
+      if( thing->move( customer ) != MOVE_OK ) {
+        burdened = 1;
+        thing->move( environment( this_object() ) );
+        whisper( customer, "I'll just put the " + thing->short() +
+          " down here since you are too burdened to accept it." );
+      } else {
+        returned = 1;
+      }
+    }
+    if( burdened && returned ) {
+    tell_object( customer, this_object()->a_short() + " returns the other "
+      "items to you.\n" );
+    } else {
+      if( returned )
+        tell_object( customer, this_object()->a_short() + " returns the items "
+          "to you.\n" );
+    }
+    tell_room( environment(), this_object()->a_short() + " returns the "
+      "items to " +  customer->a_short() + ".\n", ({ customer }) );
+    this_offer = 0;
+  }
+}
+int attack_by( object ob ) {
+  int burdened, returned;
+  object customer, thing;
+  if( this_offer &&
+      this_offer->who &&
+      environment( this_offer->who ) == environment( this_object() ) &&
+      this_offer->offer_time > time() - 60 ) {
+    do_command( "say Hey! I'm trying to do business here!" );
+    whisper( this_offer->who, "Hey, you'd better take these." );
+    customer = this_offer->who;
+    burdened = 0;
+    returned = 0;
+    foreach( thing in this_offer->objects ) {
+      if( !thing ) {
+        whisper( customer, "Seems thare is a hole in my sack!" );
+        continue;
+      }
+      if( thing->move( customer ) != MOVE_OK ) {
+        burdened = 1;
+        thing->move( environment( this_object() ) );
+        whisper( customer, "I'll just put the " + thing->short() +
+          " down here since you are too burdened to accept it." );
+      } else {
+        returned = 1;
+      }
+    }
+    if( burdened && returned ) {
+    tell_object( customer, this_object()->a_short() + " returns the other "
+      "items to you.\n" );
+    } else {
+      if( returned )
+        tell_object( customer, this_object()->a_short() + " returns the items "
+                     "to you.\n" );
+    }
+    tell_room( environment(), this_object()->a_short() + " returns the "
+               "items to " +  customer->a_short() + ".\n", ({ customer }) );
+    this_offer = 0;
+  }
+  return ::attack_by(ob);
+}
+void give_back() {
+  int burdened, returned;
+  object customer, thing;
+  customer = this_offer->who;
+  burdened = 0;
+  returned = 0;
+  foreach( thing in this_offer->objects ) {
+    if( !thing ) {
+      whisper( customer, "Seems thare is a hole in my sack!" );
+      continue;
+    }
+    if( thing->move( customer ) != MOVE_OK ) {
+      burdened = 1;
+      thing->move( environment( this_object() ) );
+      whisper( customer, "I'll just put the " + thing->short() + " down here "
+        "since you are too burdened to accept it." );
+    } else {
+      returned = 1;
+    }
+  }
+  if( burdened && returned ) {
+  tell_object( customer, this_object()->a_short() + " returns the other items "
+    "to you.\n" );
+  } else {
+    if( returned )
+      tell_object( customer, this_object()->a_short() + " returns the items to "
+        "you.\n" );
+  }
+  tell_room( environment(), this_object()->a_short() + " returns the "
+    "items to " +  customer->a_short() + ".\n", ({ customer }) );
+  this_offer = 0;
+}
+string query_current_offer() {
+  string str;
+  str = "\nCustomer: " + ( this_offer->who )->short()  + "\n";
+  str += "Amount: " + this_offer->amount + "\n";
+  str += "Offer time: " + this_offer->offer_time + "\n";
+  str += "Objects: " + query_multiple_short( this_offer->objects );
+  return str;
+}

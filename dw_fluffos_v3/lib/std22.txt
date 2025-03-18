@@ -1,0 +1,2297 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/office.c ===
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <mail.h>
+#include <board.h>
+#include <money.h>
+#include <move_failures.h>
+#include <refresh.h>
+#include "office.h"
+private nosave string _proprietor = UNSET_STR,
+                      _shop_name = UNSET_STR,
+                      _very_short = UNSET_STR,
+                      _place = UNSET_STR,
+                      _channel = UNSET_STR,
+                      _storeroom = "",
+                      _shop_front = "",
+                      _counter = "",
+                      _mgr_office = "",
+                      _store_dir = "",
+                      _counter_dir = "",
+                      _shop_dir = "",
+                      _shopkeeper = "",
+                      _stock_policy = "",
+                      _cab_name = "",
+                      _review_month = "",
+                      _savedir = "",
+                      _creator = CREATOR;
+private nosave object _chart = 0,
+                      _board = 0,
+                      _notice = 0;
+private nosave mapping _history = 0,
+                       _applicants = 0,
+                       _policies = 0,
+                       _new_policies = 0,
+                       _list = ([]),
+                       _times = ([]),
+                       _employees = ([]);
+private nosave int _call_save = 0,
+                   _call_hist = 0,
+                   _call_hist_clear = 0,
+                   _call_times = 0,
+                   _call_hire_list = 0,
+                   _call_mail_hirees = 0,
+                   _call_summon = 0,
+                   _call_emps = 0,
+                   _call_review = 0,
+                   _call_apps = 0,
+                   _call_apps_clear = 0,
+                   _call_pols = 0,
+                   _call_pols_clear = 0,
+                   _call_newpols = 0,
+                   _call_newpols_clear = 0;
+private string *_retired = ({}),
+               *_got_bonus = ({}),
+               _last_month = "last month",
+               _eom = CREATOR;
+private mapping _baddies = ([]),
+                _declined = ([]),
+                _accounts = (["profit":0,"bonus":0]);
+private int _max_emp = MAX_EMP,
+            _bonus_val = 0,
+            _bonus = 0,
+            _pay_val = 4,
+            _num_cabinets = MIN_CABINETS,
+            _net_takings = 0;
+private mixed *_register = ({});
+void create()
+{
+   do_setup++;
+   ::create();
+   do_setup--;
+   if (!do_setup)
+   {
+      this_object()->setup();
+      this_object()->reset();
+   }
+   seteuid("Room");
+   add_property("determinate", "");
+   add_help_file("player_shop_office");
+}
+#include "office_code/admin.c"
+#include "office_code/applications.c"
+#include "office_code/baddies.c"
+#include "office_code/cabinets.c"
+#include "office_code/emp_cmd.c"
+#include "office_code/lists.c"
+#include "office_code/logging.c"
+#include "office_code/masked.c"
+#include "office_code/memo.c"
+#include "office_code/personnel.c"
+#include "office_code/policies.c"
+#include "office_code/review.c"
+#include "office_code/save.c"
+#include "office_code/stock.c"
+protected void add_manager_exit(string dir, string path)
+{
+   add_exit(dir, path, "door");
+   modify_exit(dir, ({"function", ({this_object(),
+     "check_manager"}), "door short", "office door", "door long",
+     "There is a sign on the door which reads: \""+ _proprietor+
+     "- Private\".\n"}));
+   _mgr_office = path;
+}
+mapping get_applicants()
+{
+   load_applicants();
+   clear_applicants();
+   return copy(_applicants + ([]));
+}
+mapping get_baddies() { return copy(_baddies + ([])); }
+string *get_employees()
+{
+   string *employees = m_indices(_employees);
+   foreach (string word in employees)
+      if (_employees[word][EMP_POINTS] & SUPERVISOR)
+         employees -= ({word});
+   return copy(sort_array(employees, 1));
+}
+string *get_managers()
+{
+   return copy(sort_array(keys(filter(_employees,
+        (: _employees[$1][EMP_POINTS] & MANAGER :))), 1));
+}
+mapping get_new_policies()
+{
+   load_new_policies();
+   clear_new_policies();
+   return copy(_new_policies);
+}
+mapping get_policies(int type)
+{
+   load_policies();
+   clear_policies();
+   if (type)
+      return copy(filter(_policies, (: _policies[$1][1] :)));
+   else
+      return copy(filter(_policies, (: !_policies[$1][1] :)));
+}
+string *get_retired() { return copy(sort_array(_retired, 1)); }
+string *get_supervisors()
+{
+   string *supervisors = keys(filter(_employees,
+        (: _employees[$1][EMP_POINTS] & SUPERVISOR :)));
+   foreach (string word in supervisors)
+      if (_employees[word][EMP_POINTS] & MANAGER)
+         supervisors -= ({word});
+   return copy(sort_array(supervisors, 1));
+}
+int num_employees_in()
+{
+   int any = 0;
+   foreach (string word in m_indices(_employees))
+      if (_employees[word][EMP_POINTS] & CLOCKED_IN)
+      {
+         if (_employees[word][EMP_POINTS] & NPC) continue;
+         if (!find_player(word) || !interactive(find_player(word)))
+         {
+            reset_employee(word, CLOCKED_IN);
+            shop_log(GENERAL, word, "was clocked out", UNPAID);
+         }
+         else any++;
+      }
+   return any;
+}
+int query_applicant(string player)
+{
+   load_applicants();
+   clear_applicants();
+   if (!sizeof(_applicants)) return FALSE;
+   if (_applicants[player]) return copy(_applicants[player][APP_TYPE]);
+   return FALSE;
+}
+int query_baddie(string player)
+{
+   if (!m_sizeof(_baddies)) return FALSE;
+   if (_baddies[player]) return copy(_baddies[player][BAD_TIME]);
+   return FALSE;
+}
+int query_bonus() { return copy(_accounts["bonus"]); }
+string query_channel() { return copy(_channel); }
+string query_counter() { return copy(_counter); }
+void query_creator(string creator) { return copy(_creator); }
+int query_declined(string player)
+{
+   if (!sizeof(_declined)) return FALSE;
+   if (_declined[player]) return copy(_declined[player]);
+   return FALSE;
+}
+int query_employee(string player)
+{
+   if (_employees[player]) return copy(_employees[player][EMP_POINTS]);
+   return FALSE;
+}
+mapping query_employees() { return copy(_employees + ([])); }
+string *query_list_array() { return copy(m_indices(_list) + ({})); }
+mapping query_list_mapping() { return copy(_list) + ([]); }
+string query_list_string()
+{
+   if (!m_sizeof(_list)) return "absolutely nothing at the moment";
+   return query_multiple_short(m_indices(_list));
+}
+int query_manager(string player)
+{
+   if (_employees[player]) return (_employees[player][EMP_POINTS] & MANAGER);
+   return FALSE;
+}
+int query_maxemp() { return copy(_max_emp); }
+string query_mgr_office() { return copy(_mgr_office); }
+int query_num_cabinets() { return copy(_num_cabinets); }
+int query_pay() { return copy(_pay_val); }
+string query_place() { return copy(_place); }
+int query_policy(string policy)
+{
+   load_policies();
+   clear_policies();
+   if (m_sizeof(_policies) && _policies[policy]) return 2;
+   load_new_policies();
+   clear_new_policies();
+   if (m_sizeof(_new_policies) && _new_policies[policy]) return 1;
+   return 0;
+}
+int query_profit() { return copy(_accounts["profit"]); }
+string query_proprietor() { return copy(_proprietor); }
+int query_retired(string player)
+{
+   return (member_array(player, _retired) == -1)?FALSE:TRUE;
+}
+string query_savedir() { return copy(_savedir); }
+string query_shop_front() { return copy(_shop_front); }
+string query_shop_name() { return copy(_shop_name); }
+string query_shopkeeper() { return copy(_shopkeeper); }
+int query_stock(string items) { return _storeroom->query_num_items(items, 0); }
+string query_storeroom() { return copy(_storeroom); }
+int query_supervisor(string player)
+{
+   if (_employees[player])
+      return (_employees[player][EMP_POINTS] & SUPERVISOR);
+   return FALSE;
+}
+protected void save_emps()
+{
+   if (_very_short == UNSET_STR) return;
+   remove_call_out(_call_emps);
+   _call_emps = call_out((: do_save_emps() :), SAVE_DELAY);
+}
+protected void save_me()
+{
+   if (_very_short == UNSET_STR) return;
+   remove_call_out(_call_save);
+   _call_save = call_out((: do_save() :), SAVE_DELAY);
+}
+protected void set_channel(string name, int board)
+{
+   _channel = lower_case(name);
+   if (board)
+   {
+      _board = clone_object("/obj/misc/board");
+      _board->set_datafile(name);
+      _board->move(this_object());
+   }
+}
+protected void set_counter(string path) { _counter = path; }
+protected void set_creator(string creator) { _creator = creator; }
+protected void set_directions(string store, string counter, string shop)
+{
+   _store_dir = store;
+   _counter_dir = counter;
+   _shop_dir = shop;
+}
+protected void set_place(string place) { _place = place; }
+protected void set_proprietor(string name) { _proprietor = name; }
+protected void set_shop_front(string path) { _shop_front = path; }
+protected void set_shop_name(string name) { _shop_name = name; }
+protected void set_shopkeeper(string path)
+{
+   _shopkeeper = path;
+   path=_shopkeeper->query_name();
+   if (!_employees || !_employees[path])
+   {
+      _employees += ([path:EMP_MAP]);
+      _employees[path][EMP_POINTS] = EMPLOYEE + NPC;
+   }
+}
+protected void set_storeroom(string path) { _storeroom = path; }
+protected void set_stock_policy(string desc) { _stock_policy = desc; }
+protected void set_very_short(string name)
+{
+   if (PLAYER_SHOP->query_shop(name) != file_name(this_object()))
+      return;
+   _very_short = name;
+   _savedir = sprintf("/save/player_housing/%s/player_shops/%s/",
+      lower_case(geteuid(this_object())), name);
+   if (file_size(_savedir+ "shop_data.o") > 0)
+      unguarded((: restore_object, _savedir+ "shop_data" :));
+   if (file_size(_savedir+ "employees") > 0)
+      _employees = restore_variable(unguarded((: read_file,
+        _savedir+ "employees" :)));
+   if (file_size(_savedir+ "times") > 0)
+      _times = restore_variable(unguarded((: read_file,
+      _savedir+ "times" :)));
+   if (file_size(_savedir+ "list") > 0)
+      _list = restore_variable(unguarded((: read_file, _savedir+ "list" :)));
+}
+string shop_very_short() { return copy(_very_short); }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/shop_front.c ===
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <mail.h>
+private nosave class applying_player
+{
+    int step;
+    string *answers;
+}
+private nosave string _inside = "",
+_outside = "",
+_office = "",
+_counter = "",
+_storeroom = "",
+_mgr_office = "",
+_channel;
+private void abort_app(class applying_player);
+private void apply(class applying_player);
+private string cap_name(string);
+int check_employee(string, object, string);
+private void confirm_abort(string, class applying_player);
+private void confirm_apply(string, string, class applying_player);
+private void continue_loop(class applying_player);
+string directions_to(string);
+private int do_apply();
+private int do_cancel();
+private int do_complain();
+private int do_confirm();
+private int do_push();
+private int do_suggestion();
+private void end_app(class applying_player);
+private void end_complaint(string);
+private void end_suggestion(string);
+private void finish_edit(string, class applying_player);
+string query_office();
+string query_outside();
+protected void set_exit_counter(string);
+protected void set_exit_out(string, string);
+protected void set_office(string);
+string sign_text();
+int tinkle_bell(string);
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    add_property("no burial", 1);
+    add_property("los", "closed");
+    add_property("determinate", "");
+    add_item("counter", "The counter divides this room of the shop in two.  "
+      "You get the feeling that only employees can pass it.  There's a "
+      "%^BOLD%^card%^RESET%^ on the counter that catches your attention, "
+      "next to which is a small %^BOLD%^bell%^RESET%^.");
+    add_item("card", "The card seems to be a simple form.  One section "
+      "seems to allow you to \"apply\" for a job here, whilst the "
+      "bottom section could be filled out to make a \"suggestion\".\n"
+      "If you wish to \"complain\" about an employee, you may do so here.  "
+      "If you have been accepted for employment, you can also \"confirm\" "
+      "you accept, or you can \"cancel\" your application at any time.");
+    add_item("doorbell", "The bell above the door is positioned so that as the "
+      "door passes underneath it, it will ring.");
+    add_item(({"bell", "push-bell"}),
+      ({"long", "This is a small push-bell for summoning the employees.",
+        "push", (: do_push() :)}));
+    if (!do_setup)
+    {
+        this_object()->setup();
+        this_object()->reset();
+    }
+    add_help_file("player_shop_shopfront");
+}
+void init()
+{
+    string tp;
+    ::init();
+    if (!_office || _office == "") return;
+    tp = this_player()->query_name();
+    _office->summon_shopkeeper();
+    add_command("complain", "", (: do_complain() :));
+    add_command("suggestion", "", (: do_suggestion() :));
+    if (!check_employee("void", this_player(), "void"))
+        add_command("apply", "", (: do_apply() :));
+    if ( _office->query_applicant(tp) == HIRED)
+        add_command("confirm", "employment", (: do_confirm() :));
+    if (_office->query_applicant(tp))
+        add_command( "cancel", "application", (: do_cancel() :) );
+}
+private void abort_app(class applying_player player_info)
+{
+    tell_object(this_player(),
+      "Are you sure you want to ABORT the application? ");
+    input_to((: confirm_abort($1,$(player_info)) :), 0);
+}
+private void apply(class applying_player player_info)
+{
+    object tp = this_player();
+    tell_object(tp, "\n\n");
+    tell_object(tp, "%^BOLD%^Application for employment with "+
+      _office->query_shop_name()+ "%^RESET%^\n\n"
+      "Please note that a blank entry will abort your application.\n");
+    tell_object(tp, "There are " + query_num(sizeof(APP_QUESTIONS))+
+      " questions on this application form.  Please answer them all.  "
+      "You will get an opportunity at the end to let us know anything "
+      "else about you that seems relevant.\n\n" );
+    continue_loop(player_info);
+}
+private string cap_name(string name)
+{
+    if (test_player(name))
+        return PLAYER_HANDLER->query_cap_name(name);
+    else return capitalize(name);
+}
+int check_employee(string verb, object thing, string special)
+{
+    if (thing->query_creator() ||
+      _office->query_retired(thing->query_name())) return 1;
+    return _office->query_employee(thing->query_name());
+}
+private void confirm_abort(string confirm, class applying_player player_info)
+{
+    confirm = lower_case(confirm);
+    if (strlen(confirm) < 1 || (confirm[0] != 'y' && confirm[0] != 'n'))
+    {
+        tell_object(this_player(), "Please enter 'yes' or 'no'.\n"
+          "Are you sure you want to ABORT the application? ");
+        input_to((: confirm_abort($1,$(player_info)) :), 0);
+        return ;
+    }
+    if (confirm[0..0] != "y")
+    {
+        continue_loop(player_info);
+        return ;
+    }
+    tell_object(this_player(), "Application aborted.\n");
+    return;
+}
+private void confirm_apply(string str, string message,
+  class applying_player player_info)
+{
+    string from, *managers;
+    str = lower_case( str );
+    if (strlen(str) < 1 || (str[0] != 'y' && str[0] != 'n'))
+    {
+        tell_object(this_player(), "Are you sure you want to send "
+          "the application (Yes or No)? ");
+        input_to((: confirm_apply($1,$(message),$(player_info)) :), 0);
+        return;
+    }
+    if(str[0] == 'n')
+    {
+        confirm_abort("y", player_info);
+        return;
+    }
+    from = (string)this_player()->query_name();
+    managers = _office->get_managers();
+    if (!sizeof(managers)) managers = ({ _office->query_creator() });
+    AUTO_MAILER->auto_mail(implode(managers, ","),
+      _office->query_proprietor(), "Application for employment with "+
+      _office->shop_very_short(), "", "There is a new application to be "
+      "viewed.\nPlease vote on "+ cap_name( from )+ "'s application as "
+      "soon as possible.\n", 0, 0);
+    _office->add_applicant(from, message);
+    tell_object(this_player(), "\nYour application has now been sent "
+      "to the managers.  You will hear from us as soon as they have "
+      "made a decision.  Thank you for your application, and good luck.\n");
+}
+private void continue_loop(class applying_player player_info)
+{
+    string q_str = "Question #"+(player_info->step+1)+": ";
+    tell_object(this_player(), "\n%^CYAN%^" + sprintf("%s%-=*s\n",
+        q_str, this_player()->query_cols() - strlen(q_str),
+        APP_QUESTIONS[player_info->step]) + "%^RESET%^");
+    this_player()->do_edit("", (: finish_edit($1,$(player_info)) :), 0);
+}
+string directions_to(string place)
+{
+    if (place == _counter || place == _office || place == _storeroom)
+        return copy(_inside);
+    return "here";
+}
+private int do_apply()
+{
+    int awaiting_vacancies = 0;
+    mapping applicants;
+    string tp = this_player()->query_name();
+    class applying_player player_info;
+    if (_office->query_applicant(tp))
+    {
+        tell_object(this_player(), "You've already applied here!\n");
+        return 1;
+    }
+    if (_office->query_declined(tp))
+    {
+        tell_object(this_player(), "I'm sorry, but you cannot make another "
+          "application just yet.\n");
+        return 1;
+    }
+    applicants = _office->get_applicants();
+    foreach (string applicant in m_indices(applicants))
+    if (applicants[applicant][APP_TYPE] == AWAITING)
+        awaiting_vacancies++;
+    if ((awaiting_vacancies > (_office->query_maxemp() / 10)))
+    {
+        tell_object(this_player(), "I'm sorry, but we do not have any "
+          "vacancies at the moment.  Please try again at a later date.\n");
+        return 1;
+    }
+    player_info = new(class applying_player);
+    player_info->step = 0;
+    player_info->answers = ({});
+    call_out((: apply($(player_info)) :), 0);
+    add_succeeded_mess("");
+    return 1;
+}
+private int do_cancel() { return _office->do_cancel(); }
+private int do_complain()
+{
+    tell_object(this_player(), COMPLAINT_TEXT +
+      "  This complaint will then be sent to the managers of the shop.  "
+      "If you would rather remain anonymous to the managers, please "
+      "contact a liaison, or send a mail with all the above details to "+
+      cap_name(_office->query_creator())+ ".\n");
+    this_player()->do_edit("%^CYAN%^"+ COMPLAINT_TEXT + "%^RESET%^\n\n",
+      (: end_complaint($1) :));
+    add_succeeded_mess("");
+    return 1;
+}
+private int do_confirm() { return _office->do_confirm(); }
+private int do_push()
+{
+    if (this_player()->query_property("shop bell pressed"))
+        return notify_fail( "Calm down!  You've only just pushed it.  Try "
+          "in a minute or so if there's still no reply.\n" );
+    if (check_employee("void", this_player(), "void"))
+        return notify_fail("There's already an employee here: You!\n");
+    if (!_channel || _channel == "")
+        return notify_fail( "You push the bell, but no-one can hear you.\n" );
+    this_player()->add_property("shop bell pressed", 1, BELL_TIMEOUT);
+    HISTORY_HANDLER->add_chat_history(_channel, "Shop: ", this_player()->
+      query_short() + " called for assistance.");
+    children(BADGE)->receive(_channel, "Shop", this_player()->query_short()+
+      " is calling for assistance.");
+    add_succeeded_mess("$N $V the bell.\n");
+    return 1;
+}
+private int do_suggestion()
+{
+    tell_object(this_player(), SUGGEST_TEXT+ "\n");
+    this_player()->do_edit("%^CYAN%^"+ SUGGEST_TEXT+ "%^RESET%^\n",
+      (: end_suggestion($1) :));
+    add_succeeded_mess("");
+    return 1;
+}
+private void end_app(class applying_player player_info)
+{
+    string message = "";
+    for (int i = 0; i < sizeof(APP_QUESTIONS); i++)
+    {
+        message += "%^CYAN%^" + sprintf("%2d) %-=*s\n", (i+1), 70,
+          APP_QUESTIONS[i]) + "%^RESET%^" +
+        sprintf("      %-=*s\n\n", 72, player_info->answers[i]);
+    }
+    tell_object(this_player(), "We have your application as:\n" + message+
+      "\nDo you wish to send it? ");
+    input_to((: confirm_apply($1,$(message),$(player_info)) :), 0);
+}
+private void end_complaint(string text)
+{
+    string *managers;
+    if (!text)
+    {
+        tell_object(this_player(), "Aborted.\n");
+        return;
+    }
+    if (!sizeof(managers = _office->get_managers()))
+        managers = ({_office->query_creator()});
+    AUTO_MAILER->auto_mail(implode(managers, ","),
+      this_player()->query_name(), _office->shop_very_short()+ " complaint",
+      "", text, 0, 0);
+    tell_object(this_player(), "Your complaint has now been sent to the "
+      "managers, and will be dealt with as soon as possible.\n");
+}
+private void end_suggestion(string text)
+{
+    string *managers;
+    if (!text)
+    {
+        tell_object( this_player(), "Aborted.\n" );
+        return;
+    }
+    if (!sizeof(managers = _office->get_managers()))
+        managers = ({_office->query_creator()});
+    AUTO_MAILER->auto_mail( implode( managers, "," ),
+      this_player()->query_name(), _office->shop_very_short()+ " suggestion",
+      "", text, 0, 0 );
+    tell_object(this_player(), "Your suggestion has been sent to the "
+      "managers, and will be dealt with as soon as possible.\n");
+}
+void event_death(object k, object *o, object k2, string r, string k3)
+{
+    _office->event_death(k,o,k2,r,k3);
+}
+void event_enter(object ob, string message, object from)
+{
+    mapping baddies;
+    int days;
+    string name = ob->query_name();
+    if (_office->query_baddie(name))
+    {
+        baddies = _office->get_baddies();
+        days = (((BAN_LENGTH*60*60*24) -
+            (time() - baddies[name][2])) / (60*60*24)) + 1;
+        tell_room(this_object(), ob->query_short()+
+          " drifts out of the door, seemingly against "+
+          ob->query_possessive()+ " will.\n", ({ob}));
+        tell_object(ob, "You feel yourself pushed out of the shop by "
+          "a mysterious force.\nYou have been banned from this shop for "+
+          baddies[name][0]+ " and will not be re-admitted for a maximum of "+
+          query_num(days)+ " days.\n");
+        ob->move(_outside);
+    }
+}
+string long(string word, int dark)
+{
+    int emps_in = 0;
+    if (find_object(_office->query_shopkeeper()) &&
+      _office->query_employee(_office->query_shopkeeper()->
+        query_name()) & CLOCKED_IN)
+    {
+        emps_in = 1;
+    }
+    emps_in += _office->num_employees_in();
+    return sprintf("%s%s %s currently clocked in.\n",
+      ::long(word,dark), _office->employees_clocked_in(),
+      (emps_in == 1)? "is" : "are");
+}
+private void finish_edit(string message, class applying_player player_info)
+{
+    if (!message || message == "")
+    {
+        abort_app(player_info);
+        return;
+    }
+    player_info->answers += ({message});
+    player_info->step++;
+    if (player_info->step == sizeof(APP_QUESTIONS)) end_app(player_info);
+    else continue_loop(player_info);
+}
+string query_office() { return copy(_office); }
+string query_outside() { return copy(_outside); }
+protected void set_exit_counter(string direction)
+{
+    _inside = direction;
+    add_exit(direction, _counter, "hidden");
+    modify_exit(direction, ({"function", "check_employee"}));
+}
+protected void set_exit_out(string direction, string path)
+{
+    _outside = path;
+    add_exit(direction, path, "door");
+    modify_exit(direction, ({"open/close func", ({this_object(),
+          "tinkle_bell"})}));
+}
+protected void set_office(string path)
+{
+    _office = path;
+    _counter = path->query_counter();
+    _mgr_office = path->query_mgr_office();
+    _storeroom = path->query_storeroom();
+    _channel = path->query_channel();
+    set_short( path->query_shop_name() );
+    add_sign("A small golden plaque with engraved text.\n",
+      (: sign_text :), "small plaque", "plaque",
+      "common")->add_property("there", "on one wall");
+}
+string sign_text()
+{
+    string *eom = _office->query_eom();
+    return sprintf("\n%%^YELLOW%%^  Employee Of The Month for %s : %s%%^RESET%%^\n\n",
+       eom[0], cap_name(eom[1]));
+}
+int tinkle_bell(string action)
+{
+    tell_room(this_object(), "The bell tinkles as the door "+
+      action+ "s.\n");
+    tell_room(find_object(_counter), "The bell over the shop door "
+      "tinkles.\n");
+    tell_room(find_object(_office), "You hear the bell tinkle in "
+      "the main room of the shop.\n");
+    tell_room(find_object(_storeroom), "You hear the bell tinkle in "
+      "the main room of the shop.\n");
+    tell_room(find_object(_mgr_office), "You hear the bell tinkle in "
+      "the main room of the shop.\n");
+    return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/README.NOW ===
+None of the files in this directory are ready to be implemented
+into DW yet.  They are all still seriously under test.
+
+Thank you
+
+Ringo
+
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/storeroom.c ===
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <move_failures.h>
+#include "patterns.h"
+private nosave string _office = "",
+_counter = "",
+_mgr_office = "",
+_shop_front = "",
+_office_dir = "",
+_counter_dir = "",
+_shop_dir = "";
+private nosave object *_cabinets = 0;
+private nosave int _num_cabinets, _call_cabs_clear;
+private nosave mapping _cache = ([]);
+int add_cabinet();
+private void clear_cabinets();
+string directions_to(string);
+private int do_add(object *, mixed *);
+private int do_list(mixed *, string);
+private int do_remove(mixed *);
+private void init_cabinets();
+private int pull_roll();
+int query_content(int);
+int query_num_items(string, int);
+string query_office();
+int query_stock(string);
+string remove_cabinet();
+protected void set_directions(string, string, string);
+protected void set_office(string);
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    add_property("no burial", 1);
+    add_property("determinate", "");
+    add_item("cabinet", "There are several cabinets in the room, holding "
+      "the entire stock of the shop.  If you are authorised to do so, you "
+      "may \"list\" the stock, as well as \"add\" and \"remove\" "
+      "items from the cabinets.");
+    add_item(({"roll", "bag"}), "You could probably \"pull\" a bag off "
+      "the roll and give it to a customer with their purchase.\n"
+      "Bags should only be handed out with purchases of 10 or more items.");
+    if (!do_setup)
+    {
+        this_object()->setup();
+        this_object()->reset();
+    }
+    add_help_file("player_shop_storeroom");
+}
+void init()
+{
+    ::init();
+    if (!_office || _office == "") return;
+    add_command("add", ({"<indirect:object:me'item(s)'>",
+        "<indirect:object:me'item(s)'> to cabinet <number'cabinet'>"}),
+      (: do_add($1,$4) :));
+    add_command("pull", "roll", (: pull_roll() :));
+    if (_office->query_employee(this_player()->query_name()) ||
+      this_player()->query_creator())
+    {
+        add_command("list", ({LIST_BLANK, LIST_CABINET,
+            LIST_ITEM, LIST_ITEM_CABINET}),
+          (: do_list($4,$5) :));
+        add_command("remove", ({"<number> <string'item(s)'>",
+            "<number> <string'item(s)'> from cabinet <number'cabinet'>"}),
+          (: do_remove($4) :));
+    }
+    else if (_office->query_retired(this_player()->query_name()))
+        add_command("list", ({LIST_BLANK, LIST_CABINET,
+            LIST_ITEM, LIST_ITEM_CABINET}), (: do_list($4,$5) :));
+}
+int add_cabinet()
+{
+    object cabinet;
+    string cab_name;
+    if (previous_object() && previous_object() != find_object(_office))
+    {
+        LOG_ERROR("storeroom.c", "add_cabinet()");
+        return 0;
+    }
+    if ((_num_cabinets) == MAX_CABINETS) return 0;
+    init_cabinets();
+    cab_name = "cabinet"+ _num_cabinets++;
+    cabinet = clone_object(CABINET);
+    cabinet->set_name(cab_name);
+    cabinet->set_save_file(_office->query_savedir()+ cab_name);
+    _cabinets += ({cabinet});
+    return 1;
+}
+private void clear_cabinets()
+{
+    if (!_cabinets) return;
+#ifdef DEBUG
+    tell_creator(CREATOR, "Clearing cabinets.\n");
+#endif
+    foreach (object cabinet in _cabinets) cabinet->dest_me();
+    _cabinets = 0;
+}
+void dest_me()
+{
+    remove_call_out(_call_cabs_clear);
+    clear_cabinets();
+    ::dest_me();
+}
+string directions_to(string place)
+{
+    if (place == _counter) return copy(_counter_dir);
+    if (place == _office) return copy(_office_dir);
+    if (place == _shop_front) return copy(_shop_dir);
+    return "here";
+}
+private int do_add(object *items, mixed *args)
+{
+    int cab_no = 0;
+    object *okay = ({}),
+    *failed = ({});
+    add_succeeded_mess("");
+    if (sizeof(args) > 1)
+    {
+        cab_no = args[1];
+        if (cab_no < 1 || cab_no > _num_cabinets)
+        {
+            tell_object(this_player(), "That cabinet does not exist!\n");
+            return 1;
+        }
+    }
+    init_cabinets();
+    foreach (string plural in _office->query_list_array())
+    {
+        int tot_i, number, temp_num;
+        mixed *test;
+        parse_command(plural, items, "%i", test);
+        if (!test || !sizeof(test)) continue;
+        if (!sizeof(_office->query_cabinet(plural)))
+        {
+            tell_object(this_player(), "There are no cabinets assigned to "+
+              plural+ "!\n");
+            return 1;
+        }
+        if ((tot_i = _office->query_max(plural) - query_stock(plural)) < 1)
+        {
+            tell_object(this_player(),
+              "The shop is already fully stocked on "+ plural +".\n");
+            test = ({});
+            continue;
+        }
+        test = test[1..];
+        if (test[0]->query_collective())
+        {
+            number = test[0]->query_amount();
+        }
+        else
+        {
+            number = sizeof(test);
+        }
+        if (cab_no)
+        {
+            int cab_i = 0;
+            foreach (object ob in all_inventory(_cabinets[cab_no-1]))
+            {
+                if (ob->query_collective())
+                {
+                    cab_i += ob->query_amount();
+                }
+                else
+                {
+                    cab_i += 1;
+                }
+            }
+            cab_i = STOCK_PER_CABINET - cab_i;
+            if (cab_i < 1)
+            {
+                tell_object(this_player(), "That cabinet is already full.\n");
+                return 1;
+            }
+            if (member_array(cab_no, _office->query_cabinet(plural)) == -1)
+            {
+                tell_object(this_player(), plural +
+                  " do not belong in that cabinet.\n");
+                return 1;
+            }
+            if (number > cab_i)
+            {
+                tell_object(this_player(), "You cannot add all of the "+ plural +
+                  " to cabinet "+ cab_no+ " without exceeding the maximum.\n");
+                if (test[0]->query_collective())
+                {
+                    object temp = test[0]->make_medium_clone(cab_i);
+                    test[0]->adjust_amount(-cab_i);
+                    test = ({temp});
+                    test->move(this_player());
+                }
+                else
+                {
+                    test = test[0 .. (cab_i - 1)];
+                }
+            }
+        }
+        else if (number > tot_i)
+        {
+            tell_object(this_player(), "You cannot add all of the "+ plural +
+              " to the stock without exceeding the maximum.\n");
+            if (test[0]->query_collective())
+            {
+                object temp = test[0]->make_medium_clone(tot_i);
+                test[0]->adjust_amount(-tot_i);
+                test = ({temp});
+                test->move(this_player());
+            }
+            else
+            {
+                test = test[0 .. (tot_i - 1)];
+            }
+            number = tot_i;
+        }
+        temp_num = number;
+        if (cab_no)
+        {
+            object *temp_fail;
+            okay += test;
+            temp_fail = _cabinets[cab_no - 1]->
+            add_items(test, this_player());
+            failed += temp_fail;
+            if (sizeof(temp_fail))
+            {
+                temp_num -= temp_fail[0]->query_amount();
+            }
+            else
+            {
+                temp_num -= sizeof(temp_fail);
+            }
+        }
+        else
+        {
+            int cab_i = 0;
+            foreach(cab_no in _office->query_cabinet(plural))
+            {
+                object *temp_fail;
+                if (!number) break;
+                foreach (object ob in all_inventory(_cabinets[cab_no-1]))
+                {
+                    if (ob->query_collective())
+                    {
+                        cab_i += ob->query_amount();
+                    }
+                    else
+                    {
+                        cab_i += 1;
+                    }
+                }
+                cab_i = STOCK_PER_CABINET - cab_i;
+                if (cab_i < 1) continue;
+                if (cab_i > number)
+                {
+                    cab_i = number;
+                }
+                if (test[0]->query_collective())
+                {
+                    object temp = test[0]->make_medium_clone(cab_i);
+                    test[0]->adjust_amount(-cab_i);
+                    okay += ({temp});
+                    temp_fail = _cabinets[cab_no - 1]->
+                    add_items(({temp}), this_player());
+                }
+                else
+                {
+                    okay += test[0..(cab_i-1)];
+                    temp_fail = _cabinets[cab_no - 1]->
+                    add_items(test[0 .. (cab_i - 1)], this_player());
+                    test -= test[0 .. (cab_i - 1)];
+                }
+                number -= cab_i;
+                failed += temp_fail;
+                if (sizeof(temp_fail))
+                {
+                    if (temp_fail[0]->query_collective())
+                    {
+                        temp_num -= temp_fail[0]->query_amount();
+                    }
+                    else
+                    {
+                        temp_num -= sizeof(temp_fail);
+                    }
+                }
+            }
+            if (sizeof(test) && test[0]->query_amount())
+            {
+                tell_object(this_player(), "There is not enough room in the "
+                  "assigned cabinets for "+ query_multiple_short(test)+ ".\n");
+                if (test[0]->query_collective())
+                {
+                    temp_num -= test[0]->query_amount();
+                }
+                else
+                {
+                    temp_num -= sizeof(test);
+                }
+            }
+            cab_no = 0;
+        }
+        test = ({});
+        _office->adjust_bought(plural, temp_num);
+        if (!_cache[plural])
+        {
+#ifdef DEBUG
+            tell_creator(CREATOR,"Creating %s cache entry.\n", plural);
+#endif
+            _cache += ([plural:({1,0})]);
+        }
+        else
+        {
+            _cache[plural][0] = 1;
+        }
+    }
+    okay -= failed;
+    if (sizeof(failed))
+    {
+        string short = query_multiple_short(failed);
+        tell_room(environment(this_player()), this_player()->query_short()+
+          " accidentally drops "+ short+
+          " on the floor.\n", ({this_player()}));
+        tell_object(this_player() , "You accidentally drop "+
+          short+ " on the floor.\n");
+    }
+    if (sizeof(okay))
+    {
+        string short = query_multiple_short(okay);
+        _office->shop_log(PURCHASE, this_player()->query_name(),
+          this_player()->convert_message(short)+
+          " added to stock", UNPAID);
+        add_succeeded_mess("$N $V "+ short+
+          " to the stock.\n");
+    }
+    return 1;
+}
+private int do_list(mixed *args, string pattern)
+{
+    object *found_items = ({});
+    int i = 0;
+    add_succeeded_mess("");
+    init_cabinets();
+    foreach (object cabinet in _cabinets)
+    i += sizeof(all_inventory(cabinet));
+    if (!i)
+    {
+        tell_object(this_player(),
+          "There is nothing in stock at the moment.\n");
+        return 1;
+    }
+    if (pattern == LIST_BLANK)
+    {
+        string result = sprintf("     Stock of %s\n     As at %s\n\n",
+          _office->query_shop_name(), ctime(time()));
+        foreach(string key in _office->query_list_array())
+        {
+            found_items = ({});
+            found_items += ((class obj_match)match_objects_in_environments(key, _cabinets))->objects;
+            if (sizeof(found_items))
+                result += query_multiple_short( found_items )+ "\n";
+        }
+        tell_object(this_player(), "$P$Stock list$P$"+ result);
+        return 1;
+    }
+    if (pattern == LIST_CABINET)
+    {
+        string result;
+        if (args[0] < 1 || args[0] > _num_cabinets)
+        {
+            tell_object(this_player(), "That cabinet does not exist!\n");
+            return 1;
+        }
+        if (!sizeof(all_inventory(_cabinets[args[0] - 1])))
+        {
+            result = "There is nothing in that cabinet at the moment.\n";
+        }
+        else
+        {
+            result = sprintf("     Stock of cabinet %d\n     As at %s\n\n",
+              args[0], ctime(time()));
+            foreach(string key in _office->query_list_array())
+            {
+                if (sizeof(found_items = ((class obj_match)match_objects_in_environments(key,
+                        _cabinets[args[0]-1]))->objects ))
+                {
+                    result += query_multiple_short(found_items)+ "\n";
+                }
+            }
+        }
+        tell_object(this_player(), "$P$Cabinet "+ args[0]+
+          " stock list$P$"+ result);
+        return 1;
+    }
+    if (pattern == LIST_ITEM)
+    {
+        string result;
+        found_items += ((class obj_match)match_objects_in_environments(args[0], _cabinets))->objects;
+        if (!sizeof(found_items))
+        {
+            tell_object(this_player(),  "There are no "+ args[0]+
+              " in stock.\n");
+            return 1;
+        }
+        result = sprintf("     List of %s\n     As at %s\n\n%s", args[0],
+          ctime(time()), query_multiple_short(found_items));
+        tell_object(this_player(), "$P$List of " + args[0]+ "$P$"+ result);
+        return 1;
+    }
+    if (args[1] < 1 || args[1] > _num_cabinets)
+    {
+        tell_object(this_player(), "That cabinet does not exist!\n");
+        return 1;
+    }
+    if (!sizeof(all_inventory(_cabinets[args[1] - 1])))
+    {
+        tell_object(this_player(), "There is nothing in that cabinet at "
+          "the moment.\n");
+        return 1;
+    }
+    found_items = ((class obj_match)match_objects_in_environments(args[0],
+        _cabinets[args[1]-1]))->objects;
+    if (!sizeof(found_items))
+    {
+        tell_object(this_player(), "There are no "+ args[0]+ " in stock.\n");
+        return 1;
+    }
+    tell_object(this_player(), "$P$List of "+ args[0]+ " in cabinet "+
+      args[1]+ "$P$"+ sprintf("     List of %s in cabinet %d\n     "
+        "As at %s\n\n%s", args[0], args[1], ctime(time()),
+        query_multiple_short(found_items)));
+    return 1;
+}
+private int do_remove(mixed *args)
+{
+    int cab_no = 0;
+    object *items = ({}), *failed;
+    failed = ({});
+    add_succeeded_mess("");
+    if (sizeof(args) > 2) cab_no = args[2];
+    if (query_num_items(args[1], cab_no) < args[0])
+    {
+        tell_object(this_player(), "The stock does not contain "+
+          args[0] + " "+ args[1]+ " to remove.\n");
+        return 1;
+    }
+    init_cabinets();
+    if (!cab_no)
+    {
+        int number = args[0];
+        for(int i = sizeof(_cabinets); i > 0; i--)
+        {
+            object *stock = ((class obj_match)match_objects_in_environments(args[1],
+                _cabinets[i-1]))->objects;
+            if (sizeof(stock))
+            {
+                if (stock[0]->query_collective())
+                {
+                    if (stock[0]->query_amount() > number)
+                    {
+                        object ob = stock[0]->make_medium_clone(number);
+                        items += ({ ob });
+                        stock[0]->adjust_amount(-number);
+                        if (ob->move(this_player()) != MOVE_OK)
+                        {
+                            ob->move(environment(this_player()));
+                            failed += ({ ob });
+                        }
+                    }
+                    else
+                    {
+                        number -= stock[0]->query_amount();
+                        items += stock;
+                        failed += _cabinets[i-1]->remove_items(stock, this_player());
+                    }
+                }
+                else
+                {
+                    if (sizeof(stock) > number) stock = stock[ 0 .. (number-1) ];
+                    items += stock;
+                    failed += _cabinets[i-1]->remove_items(stock, this_player());
+                    number -= sizeof(stock);
+                }
+            }
+            if (!number) break;
+        }
+    }
+    else
+    {
+        items = ((class obj_match)match_objects_in_environments(args[1],
+            _cabinets[cab_no-1]))->objects[0 .. (args[0] - 1)];
+        failed = _cabinets[cab_no - 1]->remove_items(items, this_player());
+    }
+    foreach (string vest in _office->query_list_array())
+    {
+        if (pluralize(args[1]) == vest)
+        {
+            args[1] = pluralize(args[1]);
+            break;
+        }
+    }
+    if (!_cache[args[1]])
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR,"Creating %s cache entry.\n", args[1]);
+#endif
+        _cache += ([args[1]:({1,0})]);
+    }
+    else
+    {
+        _cache[args[1]][0] = 1;
+    }
+    items -= failed;
+    if (sizeof(failed))
+    {
+        tell_room(environment(this_player() ), this_player()->query_short()+
+          " accidentally drops "+ query_multiple_short(failed)+
+          " on the floor.\n", ({this_player()}));
+        tell_object(this_player() , "You accidentally drop "+
+          query_multiple_short(failed)+ " on the floor.\n");
+    }
+    if (find_object(_office->query_shopkeeper()) &&
+      this_player() == find_object(_office->query_shopkeeper()))
+        _office->query_shopkeeper()->set_failed(sizeof(failed));
+    if (sizeof(items))
+    {
+        _office->shop_log(SALE, this_player()->query_name(),
+          this_player()->convert_message(query_multiple_short(items))+
+          " removed from stock", UNPAID);
+        foreach (string plural in _office->query_list_array())
+        {
+            object *test = ({});
+            parse_command(plural, items, "%i", test);
+            if (!test || !sizeof(test)) continue;
+            _office->adjust_sold(plural, sizeof(test) - 1);
+        }
+        add_succeeded_mess("$N $V "+ query_multiple_short(items)+
+          " from the stock.\n");
+    }
+    return 1;
+}
+void event_death(object k, object *o, object k2, string r, string k3)
+{
+    _office->event_death(k,o,k2,r,k3);
+}
+void event_enter(object ob, string message, object from)
+{
+    _office->event_enter(ob, message, from);
+}
+string long(string word, int dark)
+{
+    return sprintf("%sThere are currently %d store cabinets "
+      "in the room.\n", ::long(word,dark), _num_cabinets);
+}
+private void init_cabinets()
+{
+    if (remove_call_out(_call_cabs_clear) == -1 && !_cabinets)
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR, "Initialising cabinets.\n");
+#endif
+        _cabinets = ({});
+        for (int i = 0; i < _num_cabinets; i++)
+        {
+            string cab_name = "cabinet"+ i;
+            object cabinet = clone_object(CABINET);
+            cabinet->set_name(cab_name);
+            cabinet->set_save_file(_office->query_savedir()+ cab_name);
+            _cabinets += ({cabinet});
+        }
+    }
+    _call_cabs_clear = call_out((: clear_cabinets() :), CLEAR_DELAY);
+}
+private int pull_roll()
+{
+    object bag;
+    string message, day, day2, month;
+    bag = clone_object(SHOP_BAG);
+    sscanf(amtime(time()), "%*s %s %s %s", day, day2, month);
+    if (member_array( month, ({"Offle", "February", "March",
+          "April", "May", "June", "Grune", "August", "Spune", "Sektober",
+          "Ember", "December", "Ick"}) ) == -1)
+        message = sprintf("A very happy %s %s %s\n\nfrom everyone at\n\n%s, %s",
+          day, day2, month, _office->query_shop_name(),
+          _office->query_place());
+    else message = sprintf("With the compliments of\n\n%s, %s.",
+          _office->query_shop_name(), _office->query_place());
+    bag->set_read_mess(message);
+    bag->set_max_cond(400);
+    bag->set_cond(400);
+    if ((int)bag->move(this_player()) != MOVE_OK)
+    {
+        bag->move(this_object());
+        tell_object(this_player(),
+          "You drop the bag as you're carrying too much.\n");
+    }
+    add_succeeded_mess("$N $V the roll and $I comes off in $p hand.\n",
+      ({bag}) );
+    return 1;
+}
+int query_num_items(string item, int cabinet)
+{
+    object *obs;
+    init_cabinets();
+    if (cabinet)
+    {
+        obs = ((class obj_match)match_objects_in_environments(item,
+            _cabinets[cabinet-1]))->objects;
+        if (!sizeof(obs))
+        {
+            return 0;
+        }
+        else if (obs[0]->query_collective())
+        {
+            return obs[0]->query_amount();
+        }
+        else
+        {
+            return sizeof(obs);
+        }
+    }
+    else
+    {
+        return query_stock(item);
+    }
+}
+string query_office() { return copy(_office); }
+int query_stock(string item)
+{
+    object *obs;
+    init_cabinets();
+    if (!_cache[item])
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR,"Creating %s cache entry.\n", item);
+#endif
+        _cache += ([item:({1,0})]);
+    }
+    if (_cache[item][0])
+    {
+#ifdef DEBUG
+        tell_creator("ringo","Updating %s in cache.\n", item);
+#endif
+        obs = ((class obj_match)match_objects_in_environments(item, _cabinets))->objects;
+        if (!sizeof(obs))
+        {
+            _cache[item][1] = 0;
+        }
+        else if (obs[0]->query_collective())
+        {
+            _cache[item][1] = obs[0]->query_amount();
+        }
+        else
+        {
+            _cache[item][1] = sizeof(obs);
+        }
+        _cache[item][0] = 0;
+    }
+    return _cache[item][1];
+}
+string remove_cabinet()
+{
+    object cabinet;
+    if (previous_object() && previous_object() != find_object(_office))
+    {
+        LOG_ERROR("storeroom.c", "remove_cabinet()");
+        return "";
+    }
+    if ((_num_cabinets) == MIN_CABINETS) return "";
+    init_cabinets();
+    _num_cabinets--;
+    cabinet = _cabinets[_num_cabinets];
+    _cabinets -= ({cabinet});
+    cabinet->move("/room/rubbish");
+    return cabinet->query_name();
+}
+protected void set_directions(string office, string counter, string shop)
+{
+    _office_dir = office;
+    _counter_dir = counter;
+    _shop_dir = shop;
+}
+protected void set_long(string long_desc)
+{
+    long_desc += "Employees can \"add\" something to, \"remove\" "
+    "something from and \"list\" the stock.\nThere is a roll of "
+    "shopping bags conveniently located on one wall.\n";
+    ::set_long(long_desc);
+}
+protected void set_office(string path)
+{
+    _office = path;
+    _counter = _office->query_counter();
+    _mgr_office = _office->query_mgr_office();
+    _shop_front = _office->query_shop_front();
+    _num_cabinets = _office->query_num_cabinets();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/shopkeeper.c ===
+inherit "/obj/monster";
+#include <player_shop.h>
+#include <money.h>
+#include <living.h>
+#include <move_failures.h>
+#define set_busy(O) (_busy = O)
+#define reset_busy() (_busy = 0)
+#define NOT_EIGHT (({ "between seven and nine", \
+                     "just over seven", \
+                     "just under nine", \
+                     "seven plus one", \
+                     "nine minus one", \
+                     "two times four", \
+                  })[random(5)])
+#define num_str(i) ((i == 8)?NOT_EIGHT:query_num(i))
+#define DEARIE (", "+ _dearie[random(sizeof(_dearie)-1)])
+private nosave object _busy = 0;
+private nosave mixed _info = 0;
+private nosave string _office = "",
+_storeroom = "",
+_shop_front = "",
+_counter = "",
+_place = "",
+_smallest_in,
+_smallest_plural_in,
+*_dearie = ({""});
+private nosave int * _work_hrs = ({9,0,17,30,}),
+_smallest_value_in,
+_failed = 0;
+private nosave mapping _values_sing = ([]),
+_values_plural = ([]);
+private void announce_number();
+private void announce_price();
+private void buy_something(object *);
+private void check_money(mixed);
+private void deposit_money();
+int do_buy(string);
+int do_browse(string);
+int do_list(mixed  *);
+int do_sell(object *);
+private void end_shift();
+private void get_from_store();
+private void get_money();
+private void get_more_stuff();
+private void give_stuff();
+private void how_many(string);
+private void how_much(string);
+private void look_chart();
+private void look_how_much();
+private void no_coins();
+private int outside_hours(int);
+private void put_in_store();
+private int query_busy();
+string query_office();
+private void say_to_room(object, string, string);
+private void sell_something(string);
+protected object * item_test(object *);
+protected void set_dearie(string *);
+void set_failed(int);
+protected void set_office(string);
+protected void set_work_hours(int *);
+void shuffle_to(string,function);
+private int sort_keys(string, string, int);
+void start_shift();
+private void taken_over();
+private void what_items();
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    add_property("determinate", "");
+    add_property("unique", 1);
+    add_property("run away", -1);
+    add_alias("shopkeeper");
+    if (!do_setup)
+    {
+        this_object()->setup();
+        this_object()->reset();
+    }
+}
+private void announce_number()
+{
+    if (stringp(_info))
+    {
+        int number = _storeroom->query_num_items(_info);
+        if (!number) do_command("'I'm afraid we don't have any "+ _info +
+              " in stock"+ DEARIE+ ".");
+        else do_command("'You're in luck"+ DEARIE+ ".  We have "+
+              num_str(number) + " in stock.");
+    }
+    reset_busy();
+    _info = 0;
+}
+private void announce_price()
+{
+    if (stringp(_info))
+        do_command("'We sell "+ _info + " for "+
+          num_str(_office->query_sell(_info))+ " "+ _smallest_plural_in+
+          " each, and buy them for "+ num_str(_office->query_buy(_info))+
+          " "+ _smallest_plural_in + " each.");
+    reset_busy();
+    _info = 0;
+}
+void attack_by(object baddie)
+{
+    if (_office == "") return;
+    this_object()->stop_fight(baddie);
+    baddie->stop_fight(this_object());
+    do_command("'Why are you attacking me, "+ baddie->query_cap_name()+ "?");
+    do_command("'I'm not staying here for this!");
+    do_command(_office->query_channel()+ "@ is being attacked by "+
+      baddie->query_cap_name()+ ".");
+    call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
+    _office->event_death(this_object(), 0, baddie, 0, 0);
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Attacked by %s.\n", baddie->query_short());
+#endif
+}
+private void buy_something(object *obs)
+{
+    int spare, number, amount = 0;
+    object *give_back, cont = clone_object("/std/container");
+    obs->move(cont);
+    _info = ({});
+    foreach(string item in _office->query_list_array())
+    _info += ((class obj_match)match_objects_in_environments(item, cont))->objects;
+    give_back = obs - _info;
+    if (sizeof(give_back))
+    {
+        give_back->move(_busy);
+        do_command("'I'm afraid I can't buy "+
+          query_multiple_short(give_back)+ " from you"+ DEARIE+ ".");
+    }
+    if (number = sizeof(_info))
+    {
+        if (_info[0]->query_collective())
+            number = _info[0]->query_amount();
+    }
+    if (number > (MAX_INVEN + query_dex()))
+    {
+        _info->move(_busy);
+        do_command("'I'm sorry"+ DEARIE+ ", but I can only carry "+
+          num_str(MAX_INVEN+ query_dex())+ " items.");
+        cont->dest_me();
+        reset_busy();
+        return;
+    }
+    give_back = ({});
+    give_back = filter(_info, (: ($1)->query_continuous() :));
+    if (sizeof(give_back))
+    {
+        _info -= give_back;
+        do_command("'I have nothing to carry "+
+          query_multiple_short(give_back)+ " in.");
+        give_back->move(_busy);
+    }
+    give_back = item_test(_info);
+    if (sizeof(give_back))
+    {
+        give_back->move(_busy);
+        _info -= give_back;
+    }
+    if (!(number = sizeof(_info)))
+    {
+        do_command("'You don't have anything to sell"+ DEARIE+ ".");
+        cont->dest_me();
+        reset_busy();
+        return;
+    }
+    if (_info[0]->query_collective())
+        number = _info[0]->query_amount();
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Checking stock.\n");
+#endif
+    spare = _office->query_max(pluralize(_info[0]->query_name())) -
+    _office->query_stock(pluralize(_info[0]->query_name()));
+    if (spare < 1)
+        foreach(string alias in _info[0]->query_alias())
+    {
+        int check_spare;
+        if((check_spare = _office->query_max(pluralize(alias)) -
+            _office->query_stock(pluralize(alias))) > 0)
+            spare = check_spare;
+    }
+    if (spare < 1)
+        spare = _office->query_max(pluralize(_info[0]->query_short())) -
+        _office->query_stock(pluralize(_info[0]->query_short()));
+    if (spare < 1)
+    {
+        do_command("'I'm afraid we don't need any of those"+ DEARIE+ ".");
+        _info->move(_busy);
+        cont->dest_me();
+        reset_busy();
+        return;
+    }
+    if (number > spare)
+    {
+        do_command("'I'm afraid we don't need that many"+ DEARIE+
+          ", but I could take "+ num_str(spare)+ " from you.");
+        _info->move(_busy);
+        cont->dest_me();
+        reset_busy();
+        return;
+    }
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Checking money.\n");
+#endif
+    foreach(string item in _office->query_list_array())
+    {
+obs = ((class obj_match)match_objects_in_environments(item, this_object()))->objects;
+        if (number = sizeof(obs))
+        {
+            if (obs[0]->query_collective())
+                number = obs[0]->query_amount();
+            amount += _office->query_buy(item) * number;
+        }
+        if (_counter->query_register() < amount * _smallest_value_in)
+        {
+            do_command("'I'm afraid we don't have enough money to buy "+
+              query_multiple_short(_info) + " from you" + DEARIE+ ".");
+            _info->move(_busy);
+            cont->dest_me();
+            reset_busy();
+            return;
+        }
+    }
+    give_back = ({});
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Checking we can carry it.\n");
+#endif
+    if (sizeof(_info))
+    {
+        obs = _info;
+        foreach(object thing in obs)
+        if ((int)thing->move(this_object()) != MOVE_OK)
+        {
+#ifdef DEBUG
+            tell_creator(CREATOR,  "Can't carry %O.\n", thing);
+#endif            _info -= ({ thing });
+            give_back += ({ thing });
+        }
+        tell_room(environment(this_object()), query_short()+
+          " takes "+ query_multiple_short(_info) +".\n");
+    }
+    obs = all_inventory(cont) - give_back;
+    if (sizeof(give_back))
+    {
+        do_command("'I cannot carry "+ query_multiple_short(give_back, "the")
+          +DEARIE+".");
+        give_back->move(_busy);
+    }
+    if (sizeof(obs))
+    {
+        do_command("'I'm afraid we can't buy "+
+          query_multiple_short(obs, "the") +" from you"+ DEARIE+ ".");
+        obs->move(_busy);
+    }
+    obs = all_inventory(cont);
+    if (sizeof(obs)) obs->move(environment(_busy),
+          "$N manage$s to get knocked onto the floor.");
+    if (sizeof(_info))
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR,  "Buying: %O\n", _info);
+#endif
+        do_command("'I'll be right back.");
+        call_out("shuffle_to", NPC_DELAY, _counter, (: get_money() :));
+    }
+    else reset_busy();
+    cont->dest_me();
+}
+private void check_money(mixed monies)
+{
+#ifdef DEBUG
+    tell_creator(CREATOR, "Buying %d %s for %d each - total %d.\n", monies[1],
+      monies[2], monies[3], monies[0] );
+#endif
+    if (monies[0] > query_value_in(_place))
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR, "No correct change (%d).\n", query_value_in(_place));
+#endif
+        do_command("put coins in register");
+        call_out("shuffle_to", NPC_DELAY, _shop_front, (: no_coins() :));
+        return;
+    }
+    do_command("log shop bought "+ monies[1] +" "+ monies[2] +
+      " for "+ (monies[3] * monies[1]));
+#ifdef DEBUG
+    tell_creator(CREATOR, "Total: %d   My value: %d\n", monies[0],
+      query_value_in( _place ) );
+#endif
+    call_out("shuffle_to", NPC_DELAY, _storeroom, (: put_in_store() :));
+}
+private void deposit_money()
+{
+    if (pointerp(_info))
+    {
+        do_command("log shop sold "+ _info[1]+ " "+ _info[0]+ " for "+
+          _info[2]);
+        do_command("put coins in register");
+    }
+    call_out("shuffle_to", NPC_DELAY, _storeroom, (: get_from_store() :));
+}
+int do_buy(string stuff)
+{
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In do_buy()\n");
+#endif
+    if (outside_hours(TRUE)) return 1;
+    say_to_room(this_player(), "say", "I would like to buy "+ stuff +
+      ", please.\n%^RESET%^");
+    if (query_busy())
+        init_command(":seems busy at the moment.", NPC_DELAY);
+    else
+    {
+        set_busy(this_player());
+        call_out((: sell_something($(stuff)) :), NPC_DELAY);
+    }
+    return 1;
+}
+int do_browse(string item)
+{
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In do_browse()\n");
+#endif
+    if (outside_hours(TRUE)) return 1;
+    say_to_room(this_player(), "ask", "How much do "+ item +" cost?\n");
+    if (query_busy())
+        init_command(":seems busy at the moment.", NPC_DELAY);
+    else
+    {
+        set_busy(this_player());
+        call_out((: how_much($(item)) :), NPC_DELAY);
+    }
+    return 1;
+}
+int do_list(mixed *args)
+{
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In do_list()\n");
+#endif
+    if (outside_hours(TRUE)) return 1;
+    if (!sizeof(args) || !args[0] || args[0] == "")
+    {
+        say_to_room( this_player(), "ask", "What items do you buy and sell?\n");
+        if (query_busy())
+            init_command(":seems busy at the moment.", NPC_DELAY);
+        else
+        {
+            set_busy(this_player());
+            call_out((: what_items() :), NPC_DELAY);
+        }
+        return 1;
+    }
+    say_to_room(this_player(), "ask", "How many "+ args[0]+ " do you have?\n");
+    if (query_busy())
+        init_command(":seems busy at the moment.", NPC_DELAY);
+    else
+    {
+        set_busy(this_player());
+        call_out((: how_many($(args[0])) :), NPC_DELAY);
+    }
+    return 1;
+}
+int do_sell(object *obs)
+{
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In do_sell()\n" );
+#endif
+    if (outside_hours(TRUE)) return 1;
+    say_to_room(this_player(), "say", "I would like to sell " +
+      query_multiple_short(obs, "the")+ ", please.\n%^RESET%^");
+    if (query_busy())
+        init_command(":seems busy at the moment.", NPC_DELAY);
+    else
+    {
+        set_busy(this_player());
+        call_out((: buy_something($(obs)) :), NPC_DELAY);
+    }
+    return 1;
+}
+private void end_shift()
+{
+    if (environment() != find_object("/room/rubbish"))
+        do_command(_office->query_channel()+ "@ is clocking out.");
+    do_command("clock out");
+    move("/room/rubbish", "$N make$s some tea.", "$N go$s home for tea.");
+}
+void event_person_say(object thing, string start, string mess, string lang)
+{
+    string words;
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In event_person_say()\n" );
+#endif
+    if (outside_hours(TRUE)) return;
+    if (!mess || (mess == "")) return;
+    mess = lower_case(mess);
+    if (query_busy()) return;
+    set_busy(thing);
+    if (sscanf(mess, "%*s buy %s, please.", words) == 2)
+    {
+        call_out((: sell_something($(words)) :), NPC_DELAY);
+        return;
+    }
+    if (sscanf(mess, "%*show many %s", words) == 2)
+    {
+        call_out((: how_many($(words)) :), NPC_DELAY);
+        return;
+    }
+    if (sscanf(mess, "%*show much %s", words) == 2)
+    {
+        call_out((: how_much($(words)) :), NPC_DELAY);
+        return;
+    }
+    if (( sscanf( mess, "%*s take over%*s") == 2) &&
+      (_office->query_employee(thing->query_name()) ||
+        thing->query_name() == CREATOR))
+    {
+        call_out((: taken_over() :), NPC_DELAY);
+        return;
+    }
+    reset_busy();
+    ::event_person_say(thing, start, mess, lang);
+}
+private void get_from_store()
+{
+    if (pointerp(_info))
+    {
+        int number, bag_item_weight, info1 = to_int(_info[1]);
+        object *inven;
+        _failed = 0;
+        if (info1 > (MAX_INVEN + query_dex())) number = MAX_INVEN + query_dex();
+        else number = info1;
+#ifdef DEBUG
+        tell_creator(CREATOR, "Removing %d %s\n", number, _info[0]);
+#endif
+        inven = all_inventory();
+        do_command("remove " + number+ " "+ _info[0]);
+        if (_failed)
+        {
+            do_command("add "+ _failed+ " "+ _info[0]);
+            do_command("get "+ _info[0]);
+        }
+        inven = all_inventory() - inven;
+        number -= _failed;
+        info1 -= number;
+        foreach(object thing in inven)
+        if (thing->query_weight() < MAX_BAG_WEIGHT/5)
+            bag_item_weight += thing->query_weight();
+        bag_item_weight = (MAX_BAG_WEIGHT+bag_item_weight-1)/MAX_BAG_WEIGHT;
+        if ( number > 9 )
+        {
+            number = (((number+9)/10) > bag_item_weight)?
+            (number+9)/10:bag_item_weight;
+            for(int i=0; i < number; i++) do_command("pull roll");
+            for(int i=0; i < number; i++)
+                do_command("put "+ _info[0]+ " in bag "+ (i+1));
+        }
+        if (info1)
+        {
+            _info[1] = sprintf("%d",info1);
+            call_out("shuffle_to", NPC_DELAY, _shop_front,
+              (: get_more_stuff() :));
+            return;
+        }
+    }
+    call_out("shuffle_to", NPC_DELAY, _shop_front, (: give_stuff() :));
+}
+private void get_money()
+{
+    if (pointerp(_info))
+    {
+        int total;
+        mixed monies = ({0,0,0,0,});
+        string *sort_keys_sing = sort_array(keys(_values_sing),
+          (: sort_keys($1,$2,1) :));
+        string *sort_keys_plural = sort_array(keys(_values_plural),
+          (: sort_keys($1,$2,0) :));
+#ifdef DEBUG
+        tell_creator(CREATOR, "Singular: %O\n", sort_keys_sing);
+        tell_creator(CREATOR, "Plural: %O\n", sort_keys_plural);
+#endif
+        foreach(string item in _office->query_list_array())
+        {
+            object *things = ((class obj_match)match_objects_in_environments(item,
+              this_object()))->objects;
+#ifdef DEBUG
+            tell_creator(CREATOR, "We have %d %s\n", sizeof(things), item);
+#endif
+            if (monies[1] = sizeof(things))
+            {
+                if (things[0]->query_collective())
+                    monies[1] = things[0]->query_amount();
+                monies[3] = _office->query_buy(item);
+                do_command( "'"+ capitalize(item) +" are worth "+
+                  num_str(monies[3]) +" "+ _smallest_plural_in +
+                  " each, and I have "+ num_str(monies[1]) + ".");
+                monies[0] += monies[3] * monies[1];
+                monies[2] = item;
+                break;
+            }
+        }
+        monies[0] *= _smallest_value_in;
+        total = monies[0];
+        for (int i=0; i < sizeof(sort_keys_sing); i++)
+        {
+            if (total < _values_sing[sort_keys_sing[i]]) continue;
+            for (int c = total / _values_sing[sort_keys_sing[i]]; c > 0; c--)
+            {
+                string coins = sprintf("%d %s", c,
+                  (c == 1)?sort_keys_sing[i]:sort_keys_plural[i]);
+#ifdef DEBUG
+                tell_creator(CREATOR, "Trying to get %s\n", coins);
+#endif
+                do_command("get "+ coins+ " from register");
+                if (sizeof(match_objects_for_existence(coins, this_object())))
+                {
+                    total -= (c * _values_sing[sort_keys_sing[i]]);
+#ifdef DEBUG
+                    tell_creator(CREATOR, "New total: %d\n", total);
+#endif
+                    break;
+                }
+            }
+        }
+#ifdef DEBUG
+        tell_creator(CREATOR, "Buying %d %s for %d each.\n", monies[1],
+          monies[2], monies[3]);
+#endif
+        call_out((: check_money($(monies)) :), 1);
+    }
+    else
+        call_out("shuffle_to", NPC_DELAY, _storeroom, (: put_in_store() :));
+}
+private void get_more_stuff()
+{
+    if (query_busy())
+    {
+        do_command("give all to "+ _busy->query_name());
+        do_command("drop all");
+        do_command("'I still need to get you "+ num_str(to_int(_info[1]))+ " "+
+          _info[0]+ DEARIE+ ".  I won't be long.");
+        call_out( "shuffle_to", NPC_DELAY, _storeroom,
+          (: get_from_store() :) );
+        return;
+    }
+    else
+    {
+        do_command("'Well now.  I wonder where they could have gone.");
+        do_command("ponder");
+    }
+    do_command("drop all");
+    reset_busy();
+    _info = 0;
+}
+private void give_stuff()
+{
+    if (query_busy())
+    {
+        do_command("give all to "+ _busy->query_name());
+        do_command("'Thank you for your custom" + DEARIE+ ".");
+    }
+    else
+    {
+        do_command("'Well now.  I wonder where they could have gone.");
+        do_command("ponder");
+    }
+    do_command("drop all");
+    reset_busy();
+    _info = 0;
+}
+private void how_many(string item)
+{
+    _info = 0;
+    foreach (string thing in _office->query_list_array())
+    if (sscanf(item, "%*s"+ thing +"%*s") == 2) _info = item;
+    if (!_info)
+    {
+        do_command("'I'm afraid we don't deal in those" + DEARIE+ ".");
+        reset_busy();
+        return;
+    }
+    do_command("'"+ capitalize( _info ) +"?  I'll just go and see.");
+    call_out("shuffle_to", NPC_DELAY, _office, (: look_chart() :));
+}
+private void how_much(string item)
+{
+    _info = 0;
+    foreach (string thing in _office->query_list_array())
+    if (sscanf(item, "%*s"+ thing +"%*s") == 2) _info = thing;
+    if (!_info)
+    {
+        do_command("'I'm afraid we don't deal in those"+ DEARIE+ ".");
+        reset_busy();
+        return;
+    }
+    do_command("'"+ capitalize( _info ) +"?  I'll just go and see.");
+    call_out("shuffle_to", NPC_DELAY, _office, (: look_how_much() :));
+}
+void init()
+{
+    object tp = this_player();
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In init()\n" );
+#endif
+    if (environment(this_object()) == find_object("/room/rubbish")) return;
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Not in /room/rubbish\n");
+#endif
+    ::init();
+    tp->add_command("buy", this_object(), "<string'item(s)'>",
+      (: do_buy($4[0]) :));
+    tp->add_command("sell", this_object(), "<indirect:object:me>",
+      (: do_sell($1) :));
+    tp->add_command("list", this_object(), ({"", "<string'item(s)'>"}),
+      (: do_list($4) :));
+    tp->add_command("browse", this_object(), "<string'item(s)'>",
+      (: do_browse($4[0]) :));
+    outside_hours(TRUE);
+}
+private void look_chart()
+{
+    if (stringp(_info)) do_command("'Now, let me see, "+ _info +"...");
+    call_out("shuffle_to", NPC_DELAY, _shop_front, (: announce_number() :));
+}
+private void look_how_much()
+{
+    if (stringp(_info)) do_command("'Now, let me see, "+ _info +"...");
+    call_out("shuffle_to", NPC_DELAY, _shop_front, (: announce_price() :));
+}
+private void no_coins()
+{
+    if (query_busy())
+    {
+        do_command("give all to "+ _busy->query_name());
+        do_command("'I'm sorry" + DEARIE+ ".  I don't have the correct "
+          "change to give you.  Please call again later.");
+    }
+    else
+    {
+        do_command("'Well now.  I wonder where they could have gone.");
+        do_command("ponder");
+    }
+    do_command("drop all");
+    reset_busy();
+    _info = 0;
+}
+private int outside_hours(int working)
+{
+    int hrs, mins;
+    string am_pm;
+    if (query_busy())
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR, "Outside working hours but already busy.  "
+          "Continuing.\n");
+#endif
+        return FALSE;
+    }
+    if (sscanf(amtime(time()), "%d:%d%s,%*s", hrs, mins, am_pm) == 4)
+    {
+#ifdef DEBUG
+        tell_creator(CREATOR, "Time is %02d:%02d%s.\n", hrs, mins, am_pm);
+#endif
+        if (am_pm == "am")
+        {
+            if (hrs == 12) hrs = 0;
+        }
+        else
+        if (hrs != 12) hrs += 12;
+#ifdef DEBUG
+        tell_creator(CREATOR, "Which is %02d:%02d.\n", hrs, mins);
+#endif
+        if ((hrs < _work_hrs[0] ||
+            (hrs == _work_hrs[0] && mins < _work_hrs[1])) ||
+          (hrs > _work_hrs[2] ||
+            (hrs == _work_hrs[2] && mins > _work_hrs[3])))
+        {
+            if (!working)
+            {
+#ifdef DEBUG
+                tell_creator(CREATOR, "Outside working hours & not "
+                  "working.  Sending to /room/rubbish.\n");
+#endif
+                move("/room/rubbish");
+                return TRUE;
+            }
+#ifdef DEBUG
+            tell_creator(CREATOR, "Outside working hours & working.  "
+              "Sending home now.\n");
+#endif
+            call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+private void put_in_store()
+{
+    if (pointerp(_info)) do_command("add all");
+    do_command("drop all");
+    foreach (string value in keys(_values_sing))
+    do_command("get every "+ value);
+    call_out("shuffle_to", NPC_DELAY, _shop_front, (: give_stuff() :));
+}
+private int query_busy()
+{
+    if (!objectp(_busy) || !interactive(_busy) || _busy->query_invis())
+        return 0;
+    if (environment(_busy) != find_object(_shop_front)) return 0;
+    return (_busy != 0);
+}
+string query_office() { return copy(_office); }
+private void say_to_room(object me, string t, string message)
+{
+    tell_object(me, "You "+ t+ ": "+ message);
+    foreach(object player in all_inventory(environment(this_object())))
+    if (interactive(player) && player != me)
+        tell_object(player, player->colour_event("say", "%^CYAN%^")+
+          me->query_short()+ " "+ t + "s: "+ message);
+}
+private void sell_something(string items)
+{
+    int each, number, in_stock;
+    mixed *money_array;
+    _info = 0;
+    foreach (string item in _office->query_list_array())
+    if (sscanf(items, "%*s"+ item +"%*s") == 2) _info = item;
+    else if (sscanf(pluralize(items), "%*s"+ item +"%*s") == 2)
+        _info = item;
+    if (!_info)
+    {
+        do_command("'I'm afraid we don't deal in those"+ DEARIE+ ".");
+        reset_busy();
+        return;
+    }
+    if (sscanf(items, "%*s%d "+ _info +"%*s", number) != 3) number = 1;
+#ifdef DEBUG
+    tell_creator(CREATOR, "Customer asked for %d %s.\n", number, _info);
+#endif
+    if (number > (in_stock = _storeroom->query_num_items(_info)))
+    {
+        if (!in_stock)
+        {
+            do_command("'I'm afraid we don't have any "+ _info+ " in stock"+
+              DEARIE+ ".");
+            reset_busy();
+            return;
+        }
+        do_command("'I'm afraid we don't have that many "+ _info +
+          " in stock, but I can sell you "+ num_str(in_stock)+ ".");
+        reset_busy();
+        return;
+    }
+    if (number < 1)
+    {
+        do_command("'My, my.  You are amusing aren't you" + DEARIE+ "?");
+        do_command("peer "+ _busy->query_name());
+        reset_busy();
+        return;
+    }
+    each = _office->query_sell(_info);
+    do_command( "'"+ capitalize(_info) +" are worth "+
+      num_str(each) +" "+ _smallest_plural_in + " each, and you want "+
+      num_str(number) + ".");
+    each *= number;
+    if (_busy->query_value_in(_place) < (each * _smallest_value_in))
+    {
+        do_command("'I'm afraid you don't have enough money" + DEARIE+ ".");
+        reset_busy();
+        return;
+    }
+    money_array = MONEY_HAND->create_money_array(each * _smallest_value_in,
+      _place);
+    _busy->pay_money(money_array, _place);
+    adjust_money(money_array);
+#ifdef DEBUG
+    tell_creator(CREATOR, "Monies adjusted by %O.\n", money_array);
+#endif
+    tell_room( environment( this_object() ), query_short()+
+      " takes the money.\n" );
+    do_command("'I'll be right back"+ DEARIE+ ".");
+    _info = ({ _info, sprintf("%d", number), sprintf("%d", each) });
+#ifdef DEBUG
+    tell_creator(CREATOR,  "Selling: %O\n", _info);
+#endif
+    call_out("shuffle_to", NPC_DELAY, _counter, (: deposit_money() :));
+}
+protected object * item_test(mixed * items) { return ({}); }
+protected void set_dearie(string *dearie) { _dearie = dearie; }
+void set_failed(int failed) { _failed = failed; }
+protected void set_office(string path)
+{
+    mapping values;
+    string new_key;
+    _office = path;
+    _place = _office->query_place();
+    _smallest_in = MONEY_HAND->smallest_in( _place );
+    _smallest_value_in = MONEY_HAND->smallest_value_in(_place);
+    _smallest_plural_in = MONEY_HAND->query_plural_for(_smallest_in);
+    values = MONEY_HAND->query_mapped_values_in(_place);
+    foreach(string key in keys(values))
+    {
+        new_key = MONEY_HAND->query_aliases_for(key)[0];
+        _values_sing += ([new_key:values[key]]);
+    new_key = MONEY_HAND->query_details_for(key)[5];
+    _values_plural += ([new_key:values[key]]);
+}
+#ifdef DEBUG
+tell_creator(CREATOR, "Singular values: %O.\n", _values_sing);
+tell_creator(CREATOR, "Plural values: %O.\n", _values_plural);
+#endif
+_storeroom = _office->query_storeroom();
+_counter = _office->query_counter();
+_shop_front = _office->query_shop_front();
+add_respond_to_with(({ "@say", "hello" }), "'Hello, $hcname$.  What can I do for you?");
+add_respond_to_with(({ "@smile", query_name() }), "smile at $hname$");
+}
+protected void set_work_hours(int *hours) { _work_hrs = hours; }
+void shuffle_to(string location, function next_action)
+{
+    string direc = environment()->directions_to(location);
+    if (!direc)
+    {
+        if (environment() == find_object("/room/rubbish")) return;
+        if (environment() == _shop_front->query_outside())
+        {
+            move(_shop_front, "$N enter$s the shop.",
+              "$N enter$s _shop_front->query_short().");
+        }
+        else
+        {
+            do_command("'I seem to be lost...");
+            do_command("sob");
+            move(_office, "$N runs in, sobbing.", "$N leave$s, sobbing.");
+            end_shift();
+            return;
+        }
+        call_out("shuffle_to", NPC_DELAY, location, next_action);
+        return;
+    }
+    if (direc == "here")
+    {
+        do_command("smile brightly");
+        do_command("'Here we are.");
+        if (next_action) call_out(next_action, NPC_DELAY);
+        else reset_busy();
+        return;
+    }
+    do_command(direc);
+    call_out("shuffle_to", NPC_DELAY, location, next_action);
+}
+private int sort_keys(string s1, string s2, int sing)
+{
+    if (sing) return (_values_sing[s1] < _values_sing[s2])?1:-1;
+    else return (_values_plural[s1] < _values_plural[s2])?1:-1;
+}
+void start_shift()
+{
+#ifdef DEBUG
+    tell_creator(CREATOR,  "In start_shift()\n" );
+#endif
+    if (outside_hours(FALSE)) return;
+    set_busy(this_object());
+    move(_office, "$N arrive$s for " + query_possessive()+ " shift.");
+    if (_office->query_employee(query_name()) & CLOCKED_IN)
+        do_command("clock out");
+    do_command("claim badge");
+    do_command("wear badge");
+    do_command("clock in");
+    do_command(_office->query_channel()+ "@ is clocking in.");
+    call_out("shuffle_to", NPC_DELAY, _shop_front, 0);
+}
+private void taken_over()
+{
+    do_command("'Okay then" + DEARIE+ ".  See you later.");
+    set_busy(this_object());
+    call_out("shuffle_to", NPC_DELAY, _office, (: end_shift() :));
+}
+private void what_items()
+{
+    do_command("'Well" + DEARIE+ ", we trade in "+
+      _office->query_list_string()+ ".");
+    reset_busy();
+}

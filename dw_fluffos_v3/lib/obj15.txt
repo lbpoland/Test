@@ -1,0 +1,2763 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/weather.c ===
+#include <climate.h>
+#include <am_time.h>
+#include <weather.h>
+#define FILE_NAME "/save/nweather"
+#define UPDATE_SPEED 300
+#define CYCLE_SPEED  3600
+#define DIY 400
+#define DIF(x, y) (x > y) ? (x-y) : (y-x)
+private mapping _pattern;
+private mapping _current;
+private int *_variance;
+private nosave mapping _rooms;
+private nosave int _lastupdate;
+private nosave int _day;
+private nosave int _sunrise;
+private nosave int _sunset;
+private nosave int _toy;
+private int mooncycle;
+private int moonupdate;
+void set_day();
+void update_pattern();
+int calc_actual(object env, int type);
+int cloud_index(object env);
+int query_day(object env);
+int query_rain_type(int temp, int rain);
+string sun_direction(int which);
+int temperature_index(object env);
+int rain_index(object env);
+void create() {
+  string str;
+  _rooms = ([ ]);
+  unguarded((: restore_object, FILE_NAME :));
+  if(!_pattern)
+    _pattern = ([ ]);
+  if(!_current)
+    _current = ([ ]);
+  if(!_variance)
+    _variance = ({ 10, 75, 20 });
+  foreach(str in CLIMATES) {
+    if(!_pattern[str])
+      _pattern[str] =  ({ 0, 0, 0 });
+    if(!_current[str])
+      _current[str] =  ({ 0, 0, 0 });
+  }
+  call_out("update_weather", UPDATE_SPEED);
+  set_day();
+  update_pattern();
+}
+int weather_notify( object which_room, int notifications ) {
+  if(notifications < 0 || notifications >
+     (NOTIFY_TEMPERATURE | NOTIFY_CLOUD | NOTIFY_RAIN | NOTIFY_DAY)) {
+    return 0;
+  }
+  _rooms[which_room] = notifications;
+  return 1;
+}
+void test_notifications() {
+  object room;
+  string w;
+  foreach( room in keys(_rooms)) {
+    w = sprintf("%O notified of %s%s%s%s\n", room,
+    ((_rooms[room] & NOTIFY_TEMPERATURE) ? "Temperature " : ""),
+                ((_rooms[room] & NOTIFY_CLOUD) ? "Clouds " : ""),
+                ((_rooms[room] & NOTIFY_RAIN) ? "Rain " : ""),
+                ((_rooms[room] & NOTIFY_DAY) ? "Day" : ""));
+    write( w );
+  }
+  write("test_notifications() done\n");
+}
+int day_number() {
+  return ( time() % AM_SECONDS_PER_HALF_YEAR ) / AM_SECONDS_PER_DAY;
+}
+int minute_number() {
+  return (( time() % AM_SECONDS_PER_DAY ) / AM_SECONDS_PER_MINUTE);
+}
+string query_moon_string(object env) {
+  string str;
+  if(mooncycle > 10)
+    return "It is night and there is no moon.\n";
+  if(calc_actual(env, CLOUD) > 70)
+    str = "It is night and the %s is hidden by the clouds.\n";
+  else if(env && env->query_water())
+    str = "The water is lit up by the eerie light of the %s.\n";
+  else
+    str = "The land is lit up by the eerie light of the %s.\n";
+  return sprintf(str, ({"waxing crescent moon",
+                        "waxing quarter moon",
+                        "waxing half moon",
+                        "waxing three quarter moon",
+                        "waxing gibbous moon",
+                        "full moon",
+                        "waning gibbous moon",
+                        "waning three quarter moon",
+                        "waning half moon",
+                        "waning quarter moon",
+                        "waning crescent moon",
+                        "no moon",
+                        "no moon",
+                        "no moon",
+                      })[mooncycle]);
+}
+int query_moon_state() {
+  if(mooncycle < 6)
+    return mooncycle+1;
+  if(mooncycle < 11)
+    return (11 - mooncycle);
+  return 0;
+}
+string query_moon_phase() {
+  return ({"crescent",
+           "quarter",
+           "half",
+           "three quarter",
+           "gibbous",
+           "full",
+           "gibbous",
+           "three quarter",
+           "half",
+           "quarter",
+           "crescent",
+           "",
+           "",
+           "",
+         })[mooncycle];
+}
+int query_stars( object env ) {
+    int clouds, stars ;
+    clouds = cloud_index(env) ;
+    if ( query_day(env) || clouds > 70 ) {
+        return 0 ;
+    }
+    switch( clouds ) {
+        case 0:
+            stars = 100 ;
+            break ;
+        case 1..39:
+            stars = 80 ;
+            break ;
+        case 40..59:
+            stars = 40 ;
+            break ;
+        case 60..69:
+            stars = 20 ;
+            break ;
+        default:
+            stars = 10 ;
+            break ;
+    }
+    return stars ;
+}
+string query_star_string( object env ) {
+    string str ;
+    if ( query_day(env) ) {
+        return "There are no stars visible during the day.\n" ;
+    }
+    switch( query_stars(env) ) {
+        case 1..20:
+            str = "one or two bright stars" ;
+            break ;
+        case 21..40:
+            str = "a few stars" ;
+            break ;
+        case 41..60:
+            str = "quite a few stars" ;
+            break ;
+        case 61..80:
+            str = "lots of stars" ;
+            break ;
+        case 81..100:
+            str = "countless stars" ;
+            break ;
+        default:
+            str = "no stars" ;
+            break ;
+    }
+    return "Tonight, there are " + str + " visible.\n" ;
+}
+string query_season() {
+  switch(day_number()) {
+  case 0..50: return "winter";
+  case 51..150: return "spring";
+  case 151..250: return "summer";
+  case 251..350: return "autumn";
+  case 351..400: return "winter";
+  }
+}
+string query_tod() {
+  if((minute_number() < _sunrise) || (minute_number() > _sunset))
+    return "night";
+  switch(minute_number()) {
+  case 0..700:
+    return "morning";
+  case 701..740:
+    return "midday";
+    break;
+  case 741..1080:
+    return "afternoon";
+    break;
+  default:
+    return "evening";
+  }
+}
+int query_day(object env) {
+  return _day;
+}
+int query_darkness(object env) {
+  int result, cloud, day;
+  result = 10;
+  day = query_day(env);
+  if(day == 10)
+    return 100;
+  if(mooncycle <= 10) {
+    if(mooncycle < 6)
+      result += mooncycle * 10;
+    else
+      result += (5 - (mooncycle % 6)) * 10;
+    }
+  if((cloud = cloud_index(env)) > 0)
+    result -= (cloud_index(env) / 15);
+  if(result < 0)
+    result = 0;
+  if(day > 0)
+    result += (100 - result) / (10 - day);
+  return result;
+}
+int query_visibility(object env) {
+  int result;
+  int temp;
+  int rain;
+  int rt;
+  result = 100;
+  temp = temperature_index(env);
+  rain = rain_index(env);
+  rt = query_rain_type(temp, rain);
+  if (rt ==  WEATHER_SNOW_TYPE) {
+     rain += 50;
+  } else if (rt == WEATHER_SLEET_TYPE) {
+     rain += 20;
+  }
+  if (rain > 0) {
+     if (rain > 100) {
+        result = 0;
+     } else {
+        result = (result * (100 - rain)) / 100;
+     }
+  }
+  return result;
+}
+int calc_actual(object env, int type) {
+  int *clim;
+  string climate;
+  if(env) {
+    climate = env->query_climate();
+    clim = (int *)env->query_property("climate");
+  }
+  if(!climate)
+    climate = DEFAULT_CLIMATE;
+  if(!clim)
+    return _current[climate][type];
+  return _current[climate][type] + clim[type];
+}
+int temperature_index(object env) {
+  int temp, tod, j, diurnal;
+  string climate;
+  temp = calc_actual(env, TEMP);
+  if(env)
+    climate = env->query_climate();
+  if(!climate)
+    climate = DEFAULT_CLIMATE;
+  tod = 10 - query_day(env);
+  if(tod) {
+    switch(climate) {
+    case "Af":
+    case "Am":
+    case "Aw":
+      diurnal = 10;
+      break;
+    case "Bw":
+    case "Bs":
+      diurnal = 15 + (_pattern[climate][0] / 2);
+      break;
+    case "Cfa":
+    case "Cs":
+    case "Cfb":
+    case "Dw":
+    case "Ds":
+    case "Df":
+      diurnal = 15;
+      break;
+    case "Et":
+    case "Ef":
+    case "H":
+      diurnal = 20;
+      break;
+    }
+    temp -= (diurnal * tod) / 10;
+  }
+  j = sqrt(_current[climate][CLOUD]);
+  if(j < 0)
+    j = 0;
+  if(temp < 10 && tod == 10)
+    temp += j;
+  else if(temp > 30 && !tod)
+    temp -= j;
+  temp -= sqrt(_current[climate][WINDSP]);
+  return temp;
+}
+int cloud_index(object env) {
+  int cloud;
+  cloud = calc_actual(env, CLOUD);
+  if(cloud < 0)
+    cloud = 0;
+  return cloud;
+}
+int rain_index(object env) {
+  int rain;
+  rain = calc_actual(env, CLOUD) - (calc_actual(env, TEMP) / 2) - 100;
+  return (rain > 0)? rain : 0;
+}
+string temp_string(int temp) {
+  switch(temp) {
+    case 51..1000: return "incredibly, unbelievably hot"; break;
+    case 46..50: return "amazingly hot"; break;
+    case 41..45: return "damn hot"; break;
+    case 36..40: return "very hot"; break;
+    case 31..35: return "hot"; break;
+    case 26..30: return "reasonably hot"; break;
+    case 23..25: return "very warm"; break;
+    case 20..22: return "warm"; break;
+    case 16..19: return "pleasantly warm"; break;
+    case 13..15: return "cool"; break;
+    case 10..12: return "slightly chilly"; break;
+    case 7..9: return "chilly"; break;
+    case 4..6: return "very chilly"; break;
+    case 1..3: return "cold"; break;
+    case -3..0: return "very cold"; break;
+    case -10..-4: return "freezing cold"; break;
+    case -20..-11: return "damn cold"; break;
+    case -30..-21: return "dangerously cold"; break;
+    case -50..-31: return "incredibly, unbelievably cold"; break;
+  }
+}
+private string precipitation_string(int rain, int rt, int wind) {
+  switch(rain) {
+  case -1000..20:
+    return "lightly";
+    break;
+  case 21..40:
+    if(wind < 20) {
+      return "steadily";
+    } else {
+      return "hard";
+    }
+    break;
+  case 41..60:
+    return "heavily";
+    break;
+  case 61..500:
+    if(rt == WEATHER_RAIN_TYPE) {
+      return "torrentially";
+    } else {
+      return "very heavily";
+    }
+    break;
+  }
+}
+string rain_string(object env) {
+  int rt, rain, wind, temp;
+  temp = temperature_index(env);
+  rain = rain_index(env);
+  rt = query_rain_type(temp, rain);
+  if (rt != WEATHER_RAIN_TYPE) {
+    return "There is no rain";
+  }
+  return "It is raining " + precipitation_string(rain, rt, wind);
+}
+string snow_string(object env) {
+  int rt, rain, wind, temp;
+  temp = temperature_index(env);
+  rain = rain_index(env);
+  rt = query_rain_type(temp, rain);
+  if (rt != WEATHER_SNOW_TYPE) {
+    return "There is no snow";
+  }
+  return "It is snowing " + precipitation_string(rain, rt, wind);
+}
+string sleet_string(object env) {
+  int rt, rain, wind, temp;
+  temp = temperature_index(env);
+  rain = rain_index(env);
+  rt = query_rain_type(temp, rain);
+  if (rt != WEATHER_SLEET_TYPE) {
+    return "There is no sleet";
+  }
+  return "It is sleeting " + precipitation_string(rain, rt, wind);
+}
+string cloud_string(object env) {
+  int cloud;
+  string str;
+  cloud = cloud_index(env);
+  switch(cloud) {
+    case -1000..5:
+       str = "a beautifully clear sky";
+       break;
+    case 6..10:
+       str = "a few high level cirrus clouds";
+       break;
+    case 11..25:
+       str = "scattered puffy clouds";
+       break;
+    case 26..40:
+       str = "some puffy clouds";
+       break;
+    case 41..60:
+       str = "many puffy clouds";
+       break;
+    case 61..80:
+       str = "medium cloud cover";
+       break;
+    case 81..110:
+       str = "dense cloud cover";
+       break;
+    case 111..130:
+       str = "packed cloud cover";
+       break;
+    case 131..160:
+       str = "thick black clouds";
+       break;
+    case 161..1000:
+       str = "thick heavy storm clouds";
+       break;
+  }
+  return str;
+}
+varargs string weather_string(object env, string obscured) {
+  int temp, cloud, wind, rain, rt;
+  int *warray;
+  string str, tstr;
+   if ( !env )
+     return 0;
+  temp = temperature_index(env);
+  cloud = cloud_index(env);
+  wind = calc_actual(env, WINDSP);
+  rain = rain_index(env);
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temp, cloud, wind, rain))) {
+    temp = warray[0];
+    cloud = warray[1];
+    wind = warray[2];
+    rain = warray[3];
+  }
+  rt = query_rain_type(temp, rain);
+  str = "It is ";
+  tstr = temp_string(temp);
+  switch(tstr[0]) {
+  case 'a':
+  case 'e':
+  case 'i':
+  case 'o':
+  case 'u':
+    str += "an ";
+    break;
+  default:
+    str += "a ";
+  }
+  str += tstr + " ";
+  switch((time() % (AM_SECONDS_PER_HALF_YEAR*2)) / AM_SECONDS_PER_DAY) {
+  case 51..150:
+    str += "spring prime";
+    break;
+  case 151..250:
+    str += "summer prime";
+    break;
+  case 251..350:
+    str += "autumn prime";
+    break;
+  case 351..450:
+    str += "spindlewinter";
+    break;
+  case 451..550:
+    str += "secundus spring";
+    break;
+  case 551..650:
+    str += "secundus summer";
+    break;
+  case 651..750:
+    str += "secundus autumn";
+    break;
+  default:
+    str += "backspindlewinter";
+  }
+  str += "'s "+ query_tod() +" with ";
+  switch(wind) {
+    case -1000..5: str += "almost no wind"; break;
+    case 6..10: str += "a gentle breeze"; break;
+    case 11..15: str += "a steady breeze"; break;
+    case 16..20: str += "a strong breeze"; break;
+    case 21..30: str += "a steady wind"; break;
+    case 31..40: str += "gusty winds"; break;
+    case 41..50: str += "strong winds"; break;
+    case 51..60: str += "gale-force winds"; break;
+    case 61..1000: str += "storm-force winds"; break;
+    default: str += "no wind at all"; break;
+  }
+  if (!obscured) {
+    if(rain)
+      str += ", ";
+    else
+      str += " and ";
+    switch(cloud) {
+      case -1000..5: str += "a beautifully clear sky"; break;
+      case 6..10: str += "a few high level cirrus clouds"; break;
+      case 11..25: str += "scattered puffy clouds"; break;
+      case 26..40: str += "some puffy clouds"; break;
+      case 41..60: str += "many puffy clouds"; break;
+      case 61..80: str += "medium cloud cover"; break;
+      case 81..110: str += "dense cloud cover"; break;
+      case 111..130: str += "packed cloud cover"; break;
+      case 131..160: str += "thick black clouds"; break;
+      case 161..1000: str += "thick heavy storm clouds"; break;
+    }
+  }
+  if(rain) {
+    str += " and ";
+    switch(rain) {
+      case -1000..20: str += "light"; break;
+      case 21..40:
+        if(wind < 20)
+          str += "steady";
+        else
+          str += "driving";
+      break;
+      case 41..60: str += "heavy"; break;
+      case 61..500:
+        if(rt == WEATHER_RAIN_TYPE)
+          str += "torrential";
+        else
+          str += "very heavy";
+      break;
+    }
+    str += " ";
+    str += ({"", "snow", "sleet", "rain"})[rt];
+  }
+  if (obscured) {
+    str += ".  " + obscured;
+  }
+  if((rain > 20) && (wind > 30)) {
+    if (obscured)
+      str += ".\nPeals of thunder echo overhead";
+    else
+      str += ".\nPeals of thunder and streaks of lightning rend the sky";
+  }
+  return str;
+}
+int next_update() {
+  return _lastupdate + UPDATE_SPEED;
+}
+void dest_me() {
+  unguarded((: save_object, FILE_NAME :));
+}
+int query_rain_type(int temp, int rain) {
+  int type;
+  if (rain > 0)
+    switch(temp) {
+    case -1000..-2:
+      type = WEATHER_SNOW_TYPE;
+      break;
+    case -1..3:
+      type = WEATHER_SLEET_TYPE;
+      break;
+    case 4..1000:
+      type = WEATHER_RAIN_TYPE;
+      break;
+    }
+  else
+    type = WEATHER_NO_RAIN_TYPE;
+  return type;
+}
+int query_snowing(object env) {
+  int *warray;
+  if(!env)
+    return 0;
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temperature_index(env),
+                                              cloud_index(env),
+                                              calc_actual(env, WINDSP),
+                                              rain_index(env))))
+    return (query_rain_type(warray[0], warray[3]) == WEATHER_SNOW_TYPE)? 1 : 0;
+  return (query_rain_type(temperature_index(env),
+                          rain_index(env)) == WEATHER_SNOW_TYPE) ? 1 : 0;
+}
+int query_raining(object env) {
+  int *warray;
+  if(!env)
+    return 0;
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temperature_index(env),
+                                              cloud_index(env),
+                                              calc_actual(env, WINDSP),
+                                              rain_index(env))))
+  {
+    return (query_rain_type(warray[0], warray[3]) > WEATHER_SNOW_TYPE) ? 1 : 0;
+  }
+  return (query_rain_type(temperature_index(env),
+                          rain_index(env)) > WEATHER_SNOW_TYPE) ? 1 : 0;
+}
+int query_temperature(object env) {
+  int *warray;
+  if(!env)
+    return 0;
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temperature_index(env),
+                                              cloud_index(env),
+                                              calc_actual(env, WINDSP),
+                                              rain_index(env))))
+    return warray[0];
+  return temperature_index(env);
+}
+int query_cloud(object env) {
+  int *warray;
+  if(!env)
+    return 0;
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temperature_index(env),
+                                              cloud_index(env),
+                                              calc_actual(env, WINDSP),
+                                              rain_index(env))))
+    return warray[1];
+  return cloud_index(env);
+}
+int query_windsp(object env) {
+  int *warray;
+  if(!env)
+    return 0;
+  if(function_exists("room_weather", env) &&
+     !catch(warray = (int *)env->room_weather(temperature_index(env),
+                                              cloud_index(env),
+                                              calc_actual(env, WINDSP),
+                                              rain_index(env))))
+    return warray[2];
+  return calc_actual(env, WINDSP);
+}
+int calc_variance(string climate, int type, int seasonal) {
+  int diff, ret;
+  diff = seasonal - _pattern[climate][type];
+  if(diff < 0)
+    ret = - random(diff * 2);
+  else
+    ret = random(diff * 2);
+  if(random(2))
+    ret += random(_variance[type]);
+  else
+    ret -= random(_variance[type]);
+  return ret;
+}
+void set_day() {
+  int min;
+  _toy = (day_number() < (DIY / 2)) ? day_number() :
+  (DIY / 2) - (day_number() % (DIY / 2));
+  min = minute_number();
+  _sunrise = 6 * AM_MINUTES_PER_HOUR;
+  _sunset = 20 * AM_MINUTES_PER_HOUR;
+  _sunrise += (100 - _toy);
+  _sunset -= (100 - _toy);
+  if((min <= _sunrise) || (min >= _sunset))
+    _day = 0;
+  else {
+    if((min > _sunrise) && (min < _sunrise + 30))
+      _day = (min-_sunrise) / 3;
+    else if((min < _sunset) && (min > _sunset - 30))
+      _day = (_sunset-min) / 3;
+    else
+      _day = 10;
+  }
+}
+void migrate(string climate, int type) {
+  int diff;
+  diff = _pattern[climate][type] - _current[climate][type];
+  if(diff > (_variance[type] / 2))
+    diff = _variance[type] / 2;
+  if(diff < 0)
+    _current[climate][type] -= random(random(-diff));
+  else
+    _current[climate][type] += random(random(diff));
+}
+int check_umbrella(object ob) {
+  if ( ob )
+    return (int)ob->query_property( "umbrella" );
+  return 0;
+}
+void do_inform(object who, int old_temp, int old_cloud, int old_rain,
+               int old_day) {
+  string str, where;
+  int new_temp, new_cloud, new_wind, new_rain;
+  int old_rain_type, new_rain_type;
+  int *warray;
+  new_temp = temperature_index(environment(who));
+  new_rain = rain_index(environment(who));
+  new_wind = calc_actual(environment(who), WINDSP);
+  new_cloud = cloud_index(environment(who));
+  if(function_exists("room_weather", environment(who)) &&
+     !catch(warray = (int *)environment(who)->room_weather(new_temp, new_cloud,
+                                                   new_wind, new_rain))) {
+    new_temp = warray[0];
+    new_cloud = warray[1];
+    new_wind = warray[2];
+    new_rain = warray[3];
+  }
+  if(who->query_name() == "ceres")
+    tell_object(who, sprintf("%s: ot %d, or: %d, oc: %d, "
+                             "nt %d, nr: %d, nc: %d, nw: %d",
+                             who->query_name(),
+                             old_temp, old_rain, old_cloud, new_temp,
+                             new_rain, new_cloud, new_wind));
+  old_rain_type = query_rain_type(old_temp, old_rain);
+  new_rain_type = query_rain_type(new_temp, new_rain);
+  str = "";
+  if(_day != old_day) {
+    where = sun_direction( 1 );
+    if((old_day == 10)  && (_day < 10))
+      str += "The sun starts to set slowly on the "+where+" horizon.\n";
+    else if((old_day > 0) && (_day == 0))
+      str += "The sun disappears from view below the "+where+" horizon.\n";
+    else if((old_day > _day) && (_day < 9) && (_day > 0))
+      str += "The sun sinks further below the "+where+" horizon.\n";
+    where = sun_direction( 0 );
+    if((_day > 0) && (old_day == 0))
+      str += "The "+where+" sky starts to lighten as the sun peeks over the "+
+        "horizon.\n";
+    else if((_day == 10) && (old_day < 10))
+      str += "The sun rises above the "+where+" horizon and greets you "+
+        "for a new day.\n";
+    else if((_day > old_day) && (_day < 9) && (_day > 0))
+      str += "The sun rises further above the "+where+" horizon lightening "+
+        "the sky as morning arrives.\n";
+  }
+  if(_day && (old_cloud != new_cloud)) {
+    if((old_cloud < 60) && (new_cloud > 20) && (!(new_cloud % 2)))
+      str += "The " + query_tod()+ " sun disappears behind a cloud.\n";
+    else if((old_cloud > 20) && (new_cloud < 60) && (new_cloud % 2))
+      str += "The " + query_tod() + " sun peeks out from behind a cloud.\n";
+  }
+  if(old_rain_type != new_rain_type) {
+    str += ({"", "It has stopped snowing", "It has stopped sleeting",
+             "It has stopped raining"})[old_rain_type];
+    if(old_rain_type && new_rain_type)
+      str += " and started ";
+    else if(new_rain_type)
+      str += "It has started ";
+    str += ({"", "snowing", "sleeting", "raining"})[new_rain_type];
+    str += ".\n";
+  } else if(new_rain_type > 0)
+    str += "The "+({"", "snow", "sleet", "rain"})[new_rain_type]+
+      " continues to fall.\n";
+  if(new_rain_type)
+    if((!sizeof(filter_array(who->query_holding(), "check_umbrella",
+                            this_object())) &&
+       !sizeof(filter_array(who->query_wearing(), "check_umbrella",
+                          this_object()))) || !random(50))
+    {
+      who->add_effect("/std/effects/other/wetness",
+                      ((new_rain * new_rain_type) / 2) * (UPDATE_SPEED/60));
+    }
+  if(str != "")
+    tell_object(who, who->colour_event("weather", "%^ORANGE%^")+str+
+                "%^RESET%^");
+}
+string sun_direction(int which) {
+  switch(((time()+(AM_SECONDS_PER_HALF_YEAR * which)) %
+          (AM_SECONDS_PER_HALF_YEAR*2)) / AM_SECONDS_PER_DAY) {
+  case 0..174:
+    return "widdershins";
+  case 175..225:
+    return "hubwards";
+  case 226..574:
+    return "turnwise";
+  case 575..625:
+    return "rimward";
+  default:
+    return "widdershins";
+  }
+}
+void do_room_inform(object what, int old_temp, int old_cloud, int old_rain,
+        int old_day, int notifications) {
+  int new_cloud, new_rain, new_wind, new_temp;
+  int *warray;
+  int has_changed = 0;
+  new_temp = temperature_index(what);
+  new_cloud = cloud_index(what);
+  new_wind = calc_actual(what, WINDSP);
+  new_rain = rain_index(what);
+  if(function_exists("room_weather", what) &&
+     !catch(warray = (int *)what->room_weather(new_temp, new_cloud,
+                                       new_wind, new_rain))) {
+    new_temp = warray[0];
+    new_cloud = warray[1];
+    new_wind = warray[2];
+    new_rain = warray[3];
+  }
+  if(_day != old_day && (notifications & NOTIFY_DAY))
+    has_changed += NOTIFY_DAY;
+  if(old_temp != new_temp && (notifications & NOTIFY_TEMPERATURE))
+    has_changed += NOTIFY_TEMPERATURE;
+  if(old_cloud != new_cloud && (notifications & NOTIFY_CLOUD))
+    has_changed += NOTIFY_CLOUD;
+  if(old_rain != new_rain && (notifications & NOTIFY_RAIN))
+    has_changed += NOTIFY_RAIN;
+  if(has_changed) {
+    call_out( "notify_room", 1, what, has_changed,
+      _day, new_temp, new_cloud, new_rain );
+  }
+}
+void notify_room( object what, int has_changed,
+  int day, int temp, int cloud, int rain)
+{
+  if(what)
+    what->event_weather( has_changed, day, temp, cloud, rain);
+}
+int query_sunrise(int doy) {
+  int toy;
+  toy = (doy < (DIY / 2)) ? doy : (DIY / 2) - (doy % (DIY / 2));
+  return (6 * AM_MINUTES_PER_HOUR) + (100 - toy);
+}
+int query_sunset(int doy) {
+  int toy;
+  toy = (doy < (DIY / 2)) ? doy : (DIY / 2) - (doy % (DIY / 2));
+  return (20 * AM_MINUTES_PER_HOUR) - (100 - toy);
+}
+void update_pattern() {
+  int toy, temp, wind, cloud, tvar, wvar, cvar;
+  string climate;
+  call_out("update_pattern", CYCLE_SPEED);
+  toy = (day_number() < (DIY / 2)) ? day_number() :
+    (DIY / 2) - (day_number() % (DIY / 2));
+  foreach(climate in CLIMATES) {
+    switch(climate) {
+    case "Af":
+      temp = 30 + (toy / 40);
+      cloud = 50 + random(100);
+      wind = random(10);
+      break;
+    case "Am":
+      temp = 30 + (toy / 20);
+      cloud = -25 + sqrt(toy) * 10;
+      wind = random(10);
+      break;
+    case "Aw":
+      temp = 20 + (toy / 10);
+      cloud = toy - 50;
+      wind = random(10);
+      break;
+    case "Bw":
+      temp = 30 + (toy / 20);
+      cloud = (100 - toy/2) - 50;
+      wind = random(10);
+      break;
+    case "Bs":
+      temp = 25 + (toy / 20);
+      cloud = ((200 - toy) / 2) - 12;
+      wind = random(10);
+      break;
+    case "Cfa":
+      temp = (toy / 8) + 15;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 10 - (toy / 8);
+      break;
+    case "Cs":
+      temp = (toy / 12) + 10;
+      cloud = ((225 - toy) / 2) - 50;
+      wind = 10 - (toy / 8);
+      break;
+    case "Cfb":
+      temp = (toy / 6) - 5;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 10 - (toy / 8);
+      break;
+    case "Dw":
+      temp = (toy / 5) - 10;
+      cloud = toy / 2;
+      wind = 15 - (toy / 8);
+      break;
+    case "Ds":
+      temp = (toy / 5) - 10;
+      cloud = (200 - toy) / 2;
+      wind = 15 - (toy / 8);
+      break;
+    case "Df":
+      temp = (toy / 5) - 10;
+      cloud = ((200 - toy) / 4) + 50;
+      wind = 15 - (toy / 8);
+      break;
+    case "Et":
+      temp = (toy / 20) - 10;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 25 - (toy / 8);
+      break;
+    case "Ef":
+      temp = (toy / 10) - 30;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 25 - (toy / 8);
+      break;
+    case "H":
+      temp = (toy / 10) - 10;
+      cloud = ((225 - toy) / 2);
+      wind = 35 - (toy / 8);
+      break;
+    }
+    tvar = calc_variance(climate, TEMP, temp);
+    cvar = calc_variance(climate, CLOUD, cloud);
+    wvar = calc_variance(climate, WINDSP, wind);
+    _pattern[climate] =  ({ temp + tvar, cloud + cvar, wind + wvar });
+  }
+  unguarded((: save_object, FILE_NAME :));
+}
+void update_weather() {
+  int *warray, notifications;
+  mapping list, roomlist, newrooms;
+  object user, room;
+  string climate;
+  _lastupdate = time();
+  call_out("update_weather", UPDATE_SPEED);
+  list = ([ ]);
+  roomlist = ([ ]);
+  foreach(user in filter(users(),
+                         (: $1 && environment($1) &&
+                          environment($1)->query_property("location") ==
+                          "outside" :))) {
+    if(function_exists("room_weather", environment(user)) &&
+       !catch(warray = (int *)environment(user)->room_weather(
+                                 (int)temperature_index(environment(user)),
+                                 (int)cloud_index(environment(user)),
+                                 (int)calc_actual(environment(user), WINDSP),
+                                 (int)rain_index(environment(user))))) {
+      list[user] = ({ warray[0], warray[1], warray[3], _day});
+    } else {
+      list[user] = ({ (int)temperature_index(environment(user)),
+                        (int)cloud_index(environment(user)),
+                        (int)rain_index(environment(user)),
+                        _day});
+    }
+  }
+  newrooms = ([ ]);
+  foreach (room, notifications in _rooms)  {
+    if (room)
+      newrooms[room] = notifications;
+  }
+  _rooms = copy(newrooms);
+  foreach(room, notifications in _rooms) {
+    if(function_exists("room_weather", room) &&
+       !catch(warray = (int *)room->room_weather((int)temperature_index(room),
+                                                 (int)cloud_index(room),
+                                               (int)calc_actual(room, WINDSP),
+                                                 (int)rain_index(room) ))) {
+      roomlist[room] = ({ warray[0], warray[1], warray[3], _day});
+    } else {
+      roomlist[room] = ({ (int)temperature_index(room),
+                            (int)cloud_index(room),
+                            (int)rain_index(room),
+                            _day });
+    }
+  }
+  if((moonupdate + (AM_SECONDS_PER_DAY * 2)) < time()) {
+    mooncycle++;
+    mooncycle %= 14;
+    moonupdate = time();
+  }
+  foreach(climate in CLIMATES) {
+    migrate(climate, TEMP);
+    migrate(climate, CLOUD);
+    migrate(climate, WINDSP);
+  }
+  set_day();
+  unguarded((: save_object, FILE_NAME :));
+  foreach(user, warray in list) {
+    do_inform(user, warray[0], warray[1], warray[2], warray[3]);
+  }
+  foreach(room, notifications in _rooms) {
+      do_room_inform(room, roomlist[room][0], roomlist[room][1],
+                     roomlist[room][2], roomlist[room][3], notifications);
+      map_delete(_rooms, room);
+  }
+}
+void print_stats(object here) {
+  string climate, *weather;
+  if(here)
+    climate = here->query_climate();
+  weather = ({ temperature_index(here), cloud_index(here),
+                 calc_actual(here, WINDSP) });
+  printf("Climate: %s toy: %d tod: %s [%d]\n"
+         "here: %O\ncurrent: %O\npattern: %O\nvariance: %O\n",
+         climate, _toy, query_tod(), 10 - query_day(here), weather,
+         _current[climate], _pattern[climate], _variance);
+  printf("Sunrise at: %d:%02d, sunset at: %d:%02d\n",
+         _sunrise/60, _sunrise%60, _sunset/60, _sunset%60);
+}
+int *query_mooncycle() {
+  return ({ mooncycle, 0});
+}
+void set_variance(int temp, int cloud, int wind) {
+  _variance = ({temp, cloud, wind});
+  unguarded((: save_object, FILE_NAME :));
+}
+void reset_weather() {
+  int toy, temp, wind, cloud;
+  string climate;
+  toy = (day_number() < (DIY / 2)) ? day_number() :
+    (DIY / 2) - (day_number() % (DIY / 2));
+  foreach(climate in CLIMATES) {
+    switch(climate) {
+    case "Af":
+      temp = 25 + (toy / 40);
+      cloud = 50 + random(100);
+      wind = random(10);
+      break;
+    case "Am":
+      temp = 20 + (toy / 20);
+      cloud = -25 + sqrt(toy) * 10;
+      wind = random(10);
+      break;
+    case "Aw":
+      temp = 20 + (toy / 20);
+      cloud = toy - 50;
+      wind = random(10);
+      break;
+    case "Bw":
+      temp = 30 + (toy / 20);
+      cloud = (100 - toy/2) - 50;
+      wind = random(10);
+      break;
+    case "Bs":
+      temp = 25 + (toy / 20);
+      cloud = ((200 - toy) / 2) - 12;
+      wind = random(10);
+      break;
+    case "Cfa":
+      temp = (toy / 8) + 15;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 10 - (toy / 8);
+      break;
+    case "Cs":
+      temp = (toy / 12) + 10;
+      cloud = ((225 - toy) / 2) - 50;
+      wind = 10 - (toy / 8);
+      break;
+    case "Cfb":
+      temp = (toy / 6) - 5;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 10 - (toy / 8);
+      break;
+    case "Dw":
+      temp = (toy / 5) - 10;
+      cloud = toy / 2;
+      wind = 15 - (toy / 8);
+      break;
+    case "Ds":
+      temp = (toy / 5) - 10;
+      cloud = (200 - toy) / 2;
+      wind = 15 - (toy / 8);
+      break;
+    case "Df":
+      temp = (toy / 5) - 10;
+      cloud = ((200 - toy) / 4) + 50;
+      wind = 15 - (toy / 8);
+      break;
+    case "Et":
+      temp = (toy / 20) - 10;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 25 - (toy / 8);
+      break;
+    case "Ef":
+      temp = (toy / 10) - 30;
+      cloud = ((225 - toy) / 2) - 25;
+      wind = 25 - (toy / 8);
+      break;
+    case "H":
+      temp = (toy / 10) - 10;
+      cloud = ((225 - toy) / 2);
+      wind = 35 - (toy / 8);
+      break;
+    }
+    _pattern[climate] =  ({ temp, cloud, wind });
+    _current[climate] = ({ temp, cloud, wind });
+  }
+  unguarded((: save_object, FILE_NAME :));
+}
+mapping query_dynamic_auto_load() {
+   return ([ "rooms" : _rooms ]);
+}
+void init_dynamic_arg(mapping map, object) {
+   _rooms = map["rooms"];
+   if (!_rooms) {
+      _rooms = ([ ]);
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/room_handler.c ===
+#include <climate.h>
+#include <living.h>
+#include <move_failures.h>
+#include <player.h>
+#include <room.h>
+#include <weather.h>
+#include <position.h>
+#define CHATSIZE 80
+#define DOORSIZE 60
+mapping exit_types;
+mapping door_types;
+mapping opposite;
+mixed *chatters, *doors;
+void add_door( object thing );
+void create() {
+   seteuid( (string)"/secure/master"->
+           creator_file( file_name( this_object() ) ) );
+   exit_types = ([
+"standard" :({ 0, 1,   400, 0 }),
+"corridor" :({ 0, 1,   250, 0 }),
+"plain"    :({ 0, 1, 10000, 0 }),
+"door"     :({ 0, 1,   300, 0 }),
+"stair"    :({ 0, 1,   300, 0 }),
+"hidden"   :({ 0, 0,   300, 0 }),
+"secret"   :({ 0, 0,   300, 0 }),
+"gate"     :({ 0, 1,   450, 0 }),
+"road"     :({ 0, 1,  1300, 0 }),
+"path"     :({ 0, 1,   800, 0 }),
+"window"   :({ "$N climb$s through a window.\n", 0, 75, 0 }),
+]);
+   door_types = ([
+"door"      : ({ 0, 0, "generic_key", 2, 0, 0, "door" }),
+"secret"    : ({ 0, 0, "generic_key", 3, 1, 0, "door" }),
+"gate"      : ({ 1, 0, "generic_key", 1, 0, 1, "door" }),
+"window"    : ({ 1, 0, "generic_key", 1, 0, 1, "window" }),
+]);
+   opposite = ([
+"north" : ({ 0, "$R$[the ]+south$R$" }),
+"south" : ({ 0, "$R$[the ]+north$R$" }),
+"east" : ({ 0, "$R$[the ]+west$R$" }),
+"west" : ({ 0, "$R$[the ]+east$R$" }),
+"northeast" : ({ 0, "$R$[the ]+southwest$R$" }),
+"southwest" : ({ 0, "$R$[the ]+northeast$R$" }),
+"southeast" : ({ 0, "$R$[the ]+northwest$R$" }),
+"northwest" : ({ 0, "$R$[the ]+southeast$R$" }),
+"up":({0,"below"}), "down":({0,"above"}),
+"out":({0,"inside"}), "in":({0,"outside"}),
+"exit":({0,"inside"}), "enter":({0,"outside"}),
+"hubward":({0,"rimward"}), "rimward":({0,"hubward"}),
+"turnwise":({0,"widdershins"}),
+"widdershins":({0,"turnwise"}) ]);
+   chatters = allocate( CHATSIZE );
+   doors = allocate( DOORSIZE );
+   call_out( "housekeeping", 4 );
+}
+string query_opposite_direction(string dir) {
+   if (opposite[dir]) {
+      return opposite[dir][1];
+   }
+   return 0;
+}
+mixed *query_chatters() { return chatters; }
+mixed *query_doors() { return doors; }
+int add_exit_type(string type, mixed message, mixed obvious,
+                            int size, mixed func) {
+  if (exit_types[type]) {
+    return 0;
+  }
+  exit_types[type] = ({ message, obvious, size, func });
+  return 1;
+}
+int remove_exit_type(string type) {
+   map_delete(exit_types, type);
+   return 1;
+}
+mixed *query_door_type(string type, string direc, string dest) {
+   if (!door_types[type]) {
+      return 0;
+   }
+   call_out( "check_door", 1, ({ previous_object(), direc }) );
+   return door_types[type];
+}
+void check_door( mixed args ) {
+   string direc, dest;
+   string door_name;
+   if ( !args[ 0 ] ) {
+      return;
+   }
+   args[ 0 ]->set_destination( args[ 1 ] );
+   dest = (string)args[ 0 ]->query_destination( args[ 1 ] );
+   if ( !dest ) {
+      tell_room( args[ 0 ], "Error: "+ args[ 1 ] +
+            " is no longer an exit.\n" );
+      return;
+   }
+   if ( !find_object( dest ) ) {
+      return;
+   }
+   door_name = args[0]->call_door(args[1], "query_door_name");
+   direc = (string)dest->query_door( args[ 0 ], door_name );
+   if ( !direc &&
+       !args[ 0 ]->call_door( args[ 1 ], "query_one_way" ) ) {
+      tell_room( args[ 0 ], "Error: "+ dest +
+                "does not have a door coming back here.\n" );
+      return;
+   }
+   args[ 0 ]->modify_exit( args[ 1 ], ({ "other", direc }) );
+   args[ 0 ]->modify_exit( args[ 1 ], ({
+      "closed", (int)dest->call_door( direc, "query_closed" ),
+      "locked", (int)dest->call_door( direc, "query_locked" ) }) );
+   if ( !args[ 0 ]->call_door( args[ 1 ], "query_closed" ) &&
+       ( (string)args[ 0 ]->query_property( "location" ) == "outside" ) ) {
+      add_door( (object)args[ 0 ]->query_door_control( args[ 1 ], door_name ) );
+   }
+}
+mixed *query_exit_type(string type, string dir) {
+  mixed s;
+   if (!(s = opposite[dir])) {
+      s = ({ 0, "elsewhere" });
+   }
+   if (!exit_types[type]) {
+      return exit_types["standard"] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+   }
+   return exit_types[ type ] + ({ s, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+}
+int move_thing( object thing, string dir, string dest, mixed exit,
+                mixed enter, string move ) {
+  int ret;
+  string arrive, leave;
+  object dragging;
+  dragging = (object)thing->query_dragging();
+  if (dragging && environment(dragging) != environment(thing)) {
+    thing->reset_dragging();
+    dragging = 0;
+  }
+  if ( ( exit != "none" ) || objectp( dragging ) ) {
+    if ( stringp( enter ) )
+      enter = ({ 1, enter });
+    else if ( functionp(enter) )
+      enter = ({ 1, evaluate(enter, thing) });
+    else if ( !pointerp( enter ) )
+      enter = ({ 0, "somewhere" });
+    switch ( enter[ 0 ] ) {
+    case 0 :
+      arrive = replace( (string)thing->query_msgin(),
+                        ({"$F", enter[ 1 ],
+                          "$r", thing->query_pronoun() }) );
+      break;
+    default :
+      arrive = enter[ 1 ];
+    }
+    if ( stringp( exit) )
+      leave = exit;
+    else if ( functionp( exit ) )
+      leave = evaluate(exit, thing);
+    else if ( pointerp( exit ) )
+      leave = exit[ 0 ];
+    else
+      leave = (string)thing->query_msgout();
+    leave = replace( leave, ({"$T", "$R$-"+ dir +"$R$",
+                              "$r", thing->query_pronoun() }) );
+  }
+  thing->return_to_default_position(1);
+  if ( arrive || objectp( dragging ) ) {
+    thing->remove_hide_invis( "hiding" );
+    if ( stringp( arrive ) && objectp( dragging ) ) {
+      arrive += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
+        (string)dragging->a_short() +" in behind "+
+        (string)thing->query_objective() +".";
+    }
+    if ( stringp( leave ) && objectp( dragging ) ) {
+      leave += "\n$C$"+ (string)thing->query_pronoun() +" drags "+
+        (string)dragging->the_short() +" away behind "+
+        (string)thing->query_objective() +".";
+    }
+    if ( stringp( move ) ) {
+      tell_object( thing, move );
+    }
+    ret = (int)thing->move( dest, arrive, leave );
+    if ( ( ret == MOVE_OK ) && objectp( dragging ) ) {
+      if(dragging->move(environment(thing)) == MOVE_OK) {
+        tell_object( thing, "You drag "+
+                     (string)dragging->the_short() +" behind you.\n" );
+        thing->adjust_time_left( -DEFAULT_TIME );
+      } else {
+        tell_object( thing, "You fail to drag "+
+                     (string)dragging->the_short() +" behind you.\n" );
+      }
+    }
+  } else {
+    if ( stringp( move ) ) {
+      tell_object( thing, move );
+    }
+    ret = (int)thing->move( dest );
+  }
+  if ( ret == MOVE_OK ) {
+    thing->adjust_time_left( -DEFAULT_TIME );
+    return 1;
+  }
+  return 0;
+}
+int exit_move_door_checks(object thing, mixed closed) {
+  closed->force_other();
+  if(closed->query_open())
+    return 1;
+  if(thing->query_property( "demon" ) || thing->query_property("dead")) {
+    tell_object(thing, "You ghost through "+(string)closed->the_short()+
+                ".\n");
+    return 1;
+  }
+  if(thing->query_weight() < 300)
+    return 0;
+  if(closed->query_locked() && !closed->moving_unlock(thing)) {
+    if(!closed->query_visible(thing)) {
+      return 0;
+    }
+    tell_object(thing, (string)closed->the_short() +
+                ({ " is ", " are " })[(int)closed->query_how_many()] +
+                "locked.\n");
+    return notify_fail("");
+  }
+  if(!closed->moving_open(thing)) {
+    return 0;
+  }
+  return 1;
+}
+int exit_move_func_checks(string verb, string special, object thing,
+                          mixed func, object place) {
+  if(stringp(func))
+    return call_other(place, func, verb, thing, special);
+  if(functionp(func))
+    return evaluate(func, verb, thing, special);
+  if(pointerp(func) && sizeof(func) > 1 && func[0] && func[1])
+    return call_other(func[0], func[1], verb, thing, special);
+  return 1;
+}
+int exit_move( string verb, string extra, mixed special, object thing ) {
+   string leave;
+   object place;
+   object follower;
+   object *okay;
+   mixed closed;
+   int locked;
+   mixed func;
+   mixed *dest_other;
+   object *all_followers;
+   object *tmp_followers;
+   object *more_followers;
+   place = environment( thing );
+   verb = (string)place->expand_alias( verb );
+   place->set_destination( verb );
+   dest_other = (mixed *)place->query_dest_other( verb );
+   if (!pointerp(dest_other))
+      return 0;
+   if(thing->cannot_walk( verb, dest_other ))
+      return notify_fail( "" );
+   closed = (object)place->query_door_control( verb );
+   if(objectp(closed)) {
+     closed->force_other();
+     if(!closed)
+       closed = (object)place->query_door_control( verb );
+   }
+   if (!interactive(thing) && living(thing)
+         && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
+      return 0;
+   if (objectp(closed)) {
+      locked = closed->query_locked();
+   }
+   if(objectp(closed) && closed->query_open()) {
+     closed = 0;
+   }
+   if(objectp(closed) && !exit_move_door_checks(thing, closed)) {
+     return 0;
+   }
+   if ( place->block_exit_move( verb, thing ) ) {
+     return notify_fail( "" );
+   }
+   func = dest_other[ROOM_FUNC];
+   if(func && !thing->query_property( "demon" ) &&
+      !exit_move_func_checks(verb, special, thing, func, place))
+     return 0;
+   if ( place->query_relative( verb ) )
+     leave = (string)thing->find_rel( verb, 0 );
+   else
+     leave = verb;
+   if((int)thing->query_height() > dest_other[ ROOM_SIZE ] &&
+      !(thing->query_crawling() &&
+        (int)thing->query_height()/3 <= dest_other[ ROOM_SIZE ])) {
+     tell_object( thing, "You are too tall to go that way.\n" );
+     return notify_fail( "" );
+   }
+   if ( !stringp( special ) ) {
+      special = dest_other[ ROOM_EXIT ];
+   }
+   if ( !move_thing( thing, verb, dest_other[ ROOM_DEST ], special,
+                     dest_other[ ROOM_ENTER ], dest_other[ ROOM_MESS ] ) ) {
+     return 0;
+   }
+   thing->return_to_default_position(1);
+   okay = ({ });
+   if (place) {
+     all_followers = thing->query_followers();
+     more_followers = all_followers;
+     do {
+       tmp_followers = ({ });
+       foreach (follower in more_followers) {
+         if (follower &&
+             environment( follower ) == place ) {
+           tmp_followers |= follower->query_followers();
+         }
+       }
+       more_followers = tmp_followers - all_followers;
+       all_followers |= tmp_followers;
+     } while (sizeof(more_followers));
+     foreach ( follower in all_followers) {
+       if ( !objectp( follower ) ) {
+         thing->remove_follower( follower );
+         continue;
+       }
+       if(environment(follower) != place ||
+          (userp(follower) && !interactive(follower)) ||
+          (!thing->query_visible(follower) || (special == "none")) ||
+          follower->query_property( PASSED_OUT) ||
+          follower->cannot_walk( verb, dest_other ))
+         continue;
+       if(objectp(closed) && !exit_move_door_checks(follower, closed))
+         continue;
+       if ( func && !follower->query_property( "demon" ) &&
+            !exit_move_func_checks(verb, special, follower, func, place))
+         continue;
+       if (!interactive(follower) && living(follower)
+           && sizeof(dest_other) > ROOM_NPC_STOP && dest_other[ROOM_NPC_STOP])
+         continue;
+       if ( place->query_relative( verb ) ) {
+         leave = (string)follower->find_rel( verb, 0 );
+         follower->reorient_rel( leave );
+       } else {
+         leave = verb;
+         follower->reorient_abs( leave );
+       }
+       if ( (int)follower->query_height() > dest_other[ ROOM_SIZE ] ) {
+         tell_object( follower, "You are too tall to follow "+
+                      (string)thing->the_short() +" "+ leave +".\n" );
+         continue;
+       }
+       if (function_exists("check_doing_follow", follower) &&
+           !follower->check_doing_follow(thing, verb, special)) {
+         continue;
+       }
+       if(move_thing( follower, verb, dest_other[ROOM_DEST], special,
+                      dest_other[ROOM_ENTER], dest_other[ROOM_MESS]) &&
+          living(follower)) {
+         tell_object(follower, "You follow "+ (string)thing->the_short() +
+                     " "+ leave +".\n");
+         if(follower->query_visible(thing))
+           okay += ({ follower });
+         follower->return_to_default_position(1);
+       } else {
+         tell_object( follower, "You fail to follow "+
+                      (string)thing->the_short() +" "+ leave +".\n" );
+       }
+     }
+   }
+   thing->room_look();
+   if(sizeof(okay)) {
+     okay->room_look();
+     tell_object(thing, query_multiple_short(okay) +
+                 " $V$0=follows,follow$V$ you.\n" );
+   }
+   if(objectp(closed)) {
+      closed->moving_close(thing);
+      if (locked)
+        closed->moving_lock(thing);
+   }
+   return 1;
+}
+void housekeeping() {
+   call_out( "check_chatters", 1 );
+   call_out( "check_doors", 2 );
+   call_out( "housekeeping", 4 );
+}
+void add_chatter(object thing, int number) {
+   number /= 4;
+   if ( number > CHATSIZE - 1 )
+      number = CHATSIZE - 1;
+   if ( !pointerp( chatters[ number ] ) )
+      chatters[ number ] = ({ thing });
+   else
+      chatters[ number ] += ({ thing });
+}
+void check_chatters() {
+   object thing, *things;
+   things = chatters[ 0 ];
+   chatters[ 0 .. <2 ] = chatters[ 1 .. <1 ];
+   chatters[ <1 ] = 0;
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( objectp( thing ) )
+         thing->make_chat();
+   }
+}
+void add_door( object thing ) {
+   int number;
+   number = random( DOORSIZE );
+   if ( !pointerp( doors[ number ] ) )
+      doors[ number ] = ({ thing });
+   else
+      doors[ number ] += ({ thing });
+}
+void check_doors() {
+   int wind;
+   string dest, other, mess;
+   object mine, thing, *things;
+   things = doors[ 0 ];
+   doors[ 0 .. <2 ] = doors[ 1 .. <1 ];
+   doors[ <1 ] = 0;
+   if ( !pointerp( things ) )
+      return;
+   foreach ( thing in things ) {
+      if ( !objectp( thing ) )
+         continue;
+      if ( thing->query_closed() )
+         continue;
+      if(thing->query_stuck())
+         continue;
+      dest = (string)thing->query_dest();
+      other = (string)thing->query_other_id();
+      mine = (object)thing->query_my_room();
+      wind = (int)WEATHER->calc_actual( mine, WINDSP );
+      if ( random( 25 ) > wind ) {
+         add_door( thing );
+         return;
+      }
+      switch ( wind ) {
+       case -1000 .. 20 :
+         mess = "blow$s shut in the breeze.\n";
+         break;
+       case 21 .. 40 :
+         mess = "blow$s shut in the wind.\n";
+         break;
+       default :
+         mess = "slam$s shut in the wind.\n";
+      }
+      if ( find_object( dest ) ) {
+         dest->modify_exit( other, ({ "closed", 1 }) );
+         if(thing->query_autolock())
+           dest->modify_exit(other, ({ "locked", 1 }));
+         dest->tell_door( other, "The $D "+ mess, 0 );
+      }
+      thing->set_closed( 1 );
+      if(thing->query_autolock())
+        thing->set_locked();
+      thing->tell_door( "The $D "+ mess, 0 );
+   }
+}
+mapping query_dynamic_auto_load() {
+   mapping tmp;
+   tmp = ([ "exit_types" : exit_types,
+            "door_types" : door_types,
+            "opposite" : opposite,
+            "chatters" : chatters,
+            "doors" : doors,
+          ]);
+   return tmp;
+}
+void init_dynamic_arg(mapping maps) {
+   if (maps["exit_types"])
+      exit_types = maps["exit_types"];
+   if (maps["door_types"])
+      door_types = maps["door_types"];
+   if (maps["opposite"])
+      opposite = maps["opposite"];
+   if (maps["chatters"])
+      chatters = maps["chatters"];
+   if (maps["doors"])
+      doors = maps["doors"];
+}
+mixed *stats() {
+   int door_count, chatter_count;
+   mixed temp;
+   foreach (temp in chatters)
+      chatter_count += sizeof( temp );
+   foreach (temp in doors)
+      door_count += sizeof( temp );
+   return ({
+      ({ "exit types", sizeof( exit_types ) }),
+      ({ "door types", sizeof( door_types ) }),
+      ({ "opposites",  sizeof( opposite ) }),
+      ({ "chatters",  chatter_count }),
+      ({ "doors", door_count }),
+   });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/co_ordinate_handler.c ===
+#include <dirs.h>
+class room_data {
+   string other;
+   string direction;
+   int* coords;
+   int last_update;
+}
+private mapping _rooms = ([ ]);
+private nosave mapping _dirs;
+int setup_room(string path);
+void create() {
+   mixed* bits;
+   int i;
+   bits = STD_ORDERS;
+   _dirs = ([ ]);
+   for (i = 0; i < sizeof(bits); i += 2) {
+      _dirs[bits[i]] = bits[i + 1];
+   }
+}
+private void setup_specific_room(string path, string new_path, string dir) {
+   int* delta;
+   int* co_ord;
+   int k;
+   class room_data data;
+   delta = new_path->query_room_size_array() + path->query_room_size_array();
+   co_ord = copy( _rooms[new_path]->coords);
+   for ( k = 0; k < 3; k++ ) {
+     co_ord[ k ] += _dirs[dir][ k ] *
+                    ( delta[ k ] + delta[ k + 3 ] );
+   }
+   data = new(class room_data);
+   data->other = new_path;
+   data->coords = co_ord;
+   data->direction = dir;
+   data->last_update = _rooms[new_path]->last_update;
+   _rooms[path] = data;
+}
+int* query_room_co_ords(string path) {
+   class room_data data;
+   data = _rooms[path];
+   if (data) {
+      if (!_rooms[data->other]) {
+         map_delete(_rooms, path);
+      } else {
+         if (data->last_update != _rooms[data->other]->last_update) {
+            setup_specific_room(path, data->other, data->direction);
+         }
+         return data->coords;
+      }
+   }
+   if (setup_room(path)) {
+      data = _rooms[path];
+      return data->coords;
+   }
+   return 0;
+}
+int setup_room(string path) {
+   string* bits;
+   int i;
+   string new_path;
+   if (path->query_property("location") != "outside" ||
+       !path->query_terrain_handler()) {
+      return 0;
+   }
+   bits = path->query_dest_dir();
+   for (i = 0; i < sizeof(bits); i += 2) {
+      if (find_object(bits[i+1])) {
+         new_path = file_name(find_object(bits[i+1]));
+      } else {
+         new_path = bits[i+1];
+      }
+      if (_rooms[new_path]) {
+         setup_specific_room(path, new_path, bits[i]);
+         return 1;
+      }
+   }
+   return 0;
+}
+void setup_fixed_room(string path, int* coords) {
+   class room_data data;
+tell_creator("pinkfish", "%O %O %O\n", path, path->query_property("location"),
+               path->query_terrain_handler());
+   if (path->query_property("location") != "outside" ||
+       !path->query_terrain_handler()) {
+      return 0;
+   }
+   if (_rooms[path]) {
+      data = _rooms[path];
+      if (data->coords[0] == coords[0] &&
+          data->coords[1] == coords[1] &&
+          data->coords[2] == coords[2]) {
+         return ;
+      }
+   } else {
+      data = new(class room_data);
+   }
+   data->coords = coords;
+   data->last_update = time();
+   _rooms[path] = data;
+}
+mapping query_rooms() {
+   return _rooms;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/hospital.c ===
+#include <armoury.h>
+#include <data.h>
+#include <weather.h>
+#define CREATE_NPCS 1
+#define REGEN_TIME 1 * 60 * 60
+#define DEFAULT_MAX_CACHE 10
+#define DEFAULT_LOG_DIRECTORY "/log"
+#define DEFAULT_POPULATION 3
+#define MINIMUM_DEATH_REGEN 3
+#define POPULATION_UPDATE_TIME 15 * 60
+#define TOTAL_CHANCE 150
+#define CENTRE 0
+#define LIMIT_ONE     35
+#define LIMIT_TWO     68
+#define LIMIT_THREE   95
+#define LIMIT_FOUR   115
+#define LIMIT_FIVE   130
+#define LIMIT_SIX    139
+#define LIMIT_SEVEN  145
+#define LIMIT_EIGHT  147
+#define LIMIT_NINE   149
+inherit "/std/room";
+class regenerated_npc {
+    string type;
+    string load_position;
+}
+class zone_info {
+   int wealth;
+   int busy;
+   int npc_chance;
+   mapping npcs;
+   int group_chance;
+   mapping groups;
+   int zone_chance;
+   mapping zones;
+}
+class unique_npc {
+   int next_regen_time;
+}
+class npc_info {
+   string path;
+   int unique;
+   int delay;
+   int transient;
+   int nocturnal;
+   int diurnal;
+   string* seasonal;
+   int max_population;
+   string* move_zones;
+   string* commands;
+   object* population;
+   int no_deaths;
+   int no_created;
+   int no_reused;
+   int next_update;
+}
+class group_info {
+   string* move_zones;
+   mapping npcs;
+   mapping npc_commands;
+   int protect;
+   int defend;
+   int transient;
+   int max_population;
+   mixed* storage;
+   int no_creates;
+   int next_update;
+}
+object* load_random_npc(string zone, int wealth, int busy);
+protected void load_file();
+protected void save_file();
+protected void set_save_file(string new_save);
+public void hospital_log_file(string file, string format, mixed *args ...);
+public int get_item(object destination, string *items);
+public string query_save_file();
+public int *query_npcs();
+public mapping query_hospital_npcs();
+public void add_npc_type(string type, string *data);
+public void regen_after_death( object dead_npc );
+private nosave string _save_file;
+private nosave string _hospital_type;
+private nosave mixed *_regenerated_npcs;
+private nosave int _hospital_call_id;
+private nosave mapping _log_file_info;
+private nosave string _hospital_log_directory;
+private nosave string _data_directory;
+private nosave string _npc_path;
+private nosave string _domain;
+private nosave int _max_cache;
+private nosave int _disable_npc_generation;
+private mapping _unique_npcs;
+private mapping _hospital_npcs;
+private mapping _cache_inventory;
+private int _last_npc_check;
+private int _zone_npcs;
+private mapping _group_info;
+private mapping _npc_info;
+private mapping _zone_info;
+private mapping _path_to_npc;
+private mapping _file_modified_time;
+void create() {
+    seteuid(master()->creator_file(file_name(this_object())));
+    do_setup++;
+    ::create();
+    do_setup--;
+    if (!_group_info) {
+        _group_info = ([ ]);
+    }
+    if (!_npc_info) {
+        _npc_info = ([ ]);
+    }
+    if (!_zone_info) {
+        _zone_info = ([ ]);
+    }
+    if (!_path_to_npc) {
+        _path_to_npc = ([ ]);
+    }
+    if (!_file_modified_time) {
+        _file_modified_time = ([ ]);
+    }
+    if (!_unique_npcs) {
+        _unique_npcs = ([ ]);
+    }
+    if (!_cache_inventory) {
+      _cache_inventory = ([ ]);
+    }
+    _regenerated_npcs = ({ });
+    _log_file_info = ([ ]);
+    if(!_max_cache)
+      _max_cache = DEFAULT_MAX_CACHE;
+    if (!do_setup) {
+        set_short( "Un-configured Hospital" );
+        set_long("This is an unconfigured hospital.  Find the right one.\n");
+        add_property("determinate", "the ");
+        set_light(60);
+        this_object()->setup();
+    }
+}
+int ok_to_clone() {
+   return 1;
+}
+int pick_al( int average, int range ) {
+   int choice, section, section_width, result;
+   if( range < 0 ) {
+      range = -range;
+   }
+   if( range < 10 ) {
+      range = 10;
+   }
+   section_width = floor( range / 10 );
+   choice = random( TOTAL_CHANCE );
+   switch( choice ) {
+      case CENTRE..LIMIT_ONE:
+         section = 0;
+         break;
+      case ( LIMIT_ONE + 1 )..LIMIT_TWO:
+         section = 1;
+         break;
+      case ( LIMIT_TWO + 1 )..LIMIT_THREE:
+         section = 2;
+         break;
+      case ( LIMIT_THREE + 1 )..LIMIT_FOUR:
+         section = 3;
+         break;
+      case ( LIMIT_FOUR + 1 )..LIMIT_FIVE:
+         section = 4;
+         break;
+      case ( LIMIT_FIVE + 1 )..LIMIT_SIX:
+         section = 5;
+         break;
+      case ( LIMIT_SIX + 1 )..LIMIT_SEVEN:
+         section = 6;
+         break;
+      case ( LIMIT_SEVEN + 1 )..LIMIT_EIGHT:
+         section = 7;
+         break;
+      case ( LIMIT_EIGHT + 1 )..LIMIT_NINE:
+         section = 8;
+         break;
+      default:
+         section = 9;
+         break;
+   }
+   result = section * section_width;
+   result = result + random( section_width );
+   switch( random( 2 ) ) {
+      case( 0 ):
+         result = average + result;
+         break;
+      default:
+         result = average - result;
+         break;
+   }
+   result = result + average;
+   return result;
+}
+public string *query_deities() {
+   return ({ "fish", "pishe", "sek", "hat", "gapp",
+      "gufnork", "sandelfon" });
+}
+public int get_item(object destination, string *items) {
+    int i;
+    object item;
+    if (!objectp(destination)) {
+        return 0;
+    }
+    while (!item) {
+        i = random(sizeof(items));
+        item = ARMOURY->request_item(items[i], 80 + random(21), _domain);
+        if (!item) {
+            item = ARMOURY->request_item(items[i], 80 + random(21) );
+            if ( !item ) {
+                items = items[0..i-1] + items[i+1..];
+                continue;
+            }
+        }
+        if (!sizeof(items)) {
+            hospital_log_file("BROKEN_ITEMS", "Unable to select any items "
+                "for %s in the Ankh-Morpork hospital.\n",
+                previous_object()->short());
+            break;
+        }
+    }
+    if (objectp(item)) {
+        item->move(destination);
+        return 1;
+    }
+    return 0;
+}
+protected void load_file() {
+    class npc_info npc;
+    class group_info group;
+    string name;
+    if (file_size(_save_file + ".o") > -1) {
+        unguarded((: restore_object, _save_file :));
+        if (!_group_info) {
+            _group_info = ([ ]);
+        } else {
+            foreach (name, group in _group_info) {
+                group->storage = 0;
+            }
+        }
+        if (!_npc_info) {
+            _npc_info = ([ ]);
+        } else {
+            foreach (name, npc in _npc_info) {
+                npc->population = ({ });
+            }
+        }
+        if (!_zone_info) {
+            _zone_info = ([ ]);
+        }
+        if (!_path_to_npc) {
+            _path_to_npc = ([ ]);
+        }
+        if (!_file_modified_time) {
+            _file_modified_time = ([ ]);
+        }
+        if (!_unique_npcs) {
+            _unique_npcs = ([ ]);
+        }
+    }
+}
+protected void save_file() {
+    unguarded((: save_object, _save_file :));
+}
+protected void set_save_file(string new_save) {
+    _save_file = new_save;
+    load_file();
+}
+public string query_save_file() {
+    return _save_file;
+}
+void set_data_directory(string dir) {
+   _data_directory = dir;
+   call_out("scan_for_new_data", 2);
+}
+string query_data_directory() {
+   return _data_directory;
+}
+void set_npc_path(string path) {
+  _npc_path = path;
+}
+void set_domain(string domain) {
+  _domain = domain;
+}
+void set_max_cache(int num) {
+  _max_cache = num;
+}
+void set_disable_npc_generation(int value) {
+   _disable_npc_generation = value;
+}
+int query_disable_npc_generation() {
+   return _disable_npc_generation;
+}
+public int make_unique(mixed who) {
+    int delay;
+    if (!_unique_npcs) {
+        return 0;
+    }
+    if (objectp(who)) {
+        who = who->query_name();
+    }
+    if (!_unique_npcs[who]) {
+        _unique_npcs[who] = new(class unique_npc);
+    }
+    if ( _unique_npcs[who]->next_regen_time > time() ) {
+        return 0;
+    }
+    if (_npc_info[who] && _npc_info[who]->delay) {
+        delay = _npc_info[who]->delay;
+    } else {
+        delay = REGEN_TIME;
+    }
+    _unique_npcs[who]->next_regen_time = time() + delay;
+    save_file();
+    return 1;
+}
+public void reset_unique(string who) {
+    if (!_unique_npcs[who]) {
+        return ;
+    }
+    _unique_npcs[who]->next_regen_time = 0;
+}
+#ifdef REGENERATE_AFTER_DEATH
+public void regen_after_death( object dead_npc ) {
+    object *monsters, destination;
+    class regenerated_npc new_npc;
+    int i, max;
+    if ( !dead_npc )
+        return;
+    _regenerated_npcs += ({ new( class regenerated_npc,
+        type : dead_npc->query_property("monster_type"),
+        load_position : previous_object()->query_property("start location") ) });
+    if ( !ok_to_clone(_hospital_type) || sizeof(_regenerated_npcs) < MINIMUM_DEATH_REGEN )
+        return;
+    new_npc = _regenerated_npcs[0];
+    if ( !classp( new_npc ) )
+        return;
+    _regenerated_npcs = _regenerated_npcs[1..];
+    if (!new_npc->load_position || !new_npc->type );
+        return;
+    max = random(5);
+    for ( i = 0; i < max; i++ ){
+        destination = find_object( new_npc->load_position );
+        if ( !objectp( destination ) )
+            return;
+        monsters = get_monster(new_npc->type);
+        destination->replace_monster(previous_object(), monsters);
+        call_out((: $1->announce_entry($2) :), 8 + random(6), destination,
+            monsters);
+    }
+}
+#endif
+string npc_path(string str) {
+   return _npc_path + "/" + str;
+}
+public void hospital_log_file(string file, string format, mixed *args ...) {
+    string filename;
+    filename = _hospital_log_directory;
+    if (file[0] == '/') {
+        file = file[ strsrch( file, "/", -1 ) + 1 .. ];
+    }
+    log_file( _hospital_log_directory + "/" + file, ctime(time()) + ": " + format, args ...);
+}
+protected void set_log_directory(string new_dir) {
+    if (file_size(new_dir) != -2) {
+        tell_creator( previous_object( 1 ), "%s: Invalid "
+            "log directory -- defaulting to %s.\n",
+            file_name( this_object() ), DEFAULT_LOG_DIRECTORY );
+        new_dir = DEFAULT_LOG_DIRECTORY;
+    }
+    _hospital_log_directory = new_dir;
+}
+private void parse_zone(string fname, mapping data) {
+   string name;
+   class zone_info info;
+   mapping bing;
+   int chance;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for zone %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for zone %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (data["group"] && !arrayp(data["group"])) {
+      data["group"] = ({ data["group"] });
+   } else if (!arrayp(data["groups"])) {
+      data["group"] = ({ });
+   }
+   if (data["npc"] && !arrayp(data["npc"])) {
+      data["npc"] = ({ data["npc"] });
+   } else if (!arrayp(data["npc"])) {
+      data["npc"] = ({ });
+   }
+   if (data["zone"] && !arrayp(data["zone"])) {
+      data["zone"] = ({ data["zone"] });
+   } else if (!arrayp(data["zone"])) {
+      data["zone"] = ({ });
+   }
+   info = new(class zone_info, npcs : ([ ]), groups : ([ ]), zones : ([ ]));
+   chance = 0;
+   foreach (bing in data["npc"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->npcs[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
+      }
+   }
+   info->npc_chance = chance;
+   chance = 0;
+   foreach (bing in data["group"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->groups[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
+      }
+   }
+   info->group_chance = chance;
+   chance = 0;
+   foreach (bing in data["zone"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) || !intp(bing["chance"])) {
+         debug_printf("Invalid data for zone (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for zone (%s) %O\n", name,  bing);
+      } else {
+         info->zones[bing["name"]] = bing["chance"];
+         chance += bing["chance"];
+      }
+   }
+   info->zone_chance = chance;
+   info->busy = data["busy"];
+   bits = keys(data) - ({ "zone", "group", "npc", "name", "busy" });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in zone %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in %s\n",
+                         query_multiple_short(bits), name);
+   }
+   _zone_info[name] = info;
+   save_file();
+}
+private void parse_npc(string fname, mapping data) {
+   string name;
+   class npc_info info;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for npc %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for npc %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (!data["path"]) {
+      hospital_log_file("COMPILE_ERROR", "Required path field not present for npc %s\n", name);
+      return 0;
+   }
+   if (file_size(npc_path(data["path"]) + ".c") < 0) {
+      hospital_log_file("BAD_NPC_PATH", "Bad path for npc %s (%s)\n", name, data["path"]);
+   }
+   if (data["command"] && !arrayp(data["command"])) {
+      data["command"] = ({ data["command"] });
+   }
+   if (data["move_zone"] && !arrayp(data["move_zone"])) {
+      data["move_zone"] = ({ data["move_zone"] });
+   }
+   info = new(class npc_info, move_zones : ({ }), commands : ({ }));
+   info->unique = data["unique"];
+   info->path = data["path"];
+   info->delay = data["delay"];
+   info->max_population = data["population"];
+   if(data["transient"])
+     info->transient = 1;
+   if(data["nocturnal"])
+     info->nocturnal = 1;
+   if(data["diurnal"])
+     info->diurnal = 1;
+   if(data["seasonal"]) {
+     if(!arrayp(data["group"]))
+       info->seasonal = ({ data["seasonal"] });
+     else
+       info->seasonal = data["seasonal"];
+   }
+   if (data["move_zone"]) {
+      info->move_zones = data["move_zone"];
+   }
+   if (data["command"]) {
+      info->commands = data["commands"];
+   }
+   bits = keys(data) - ({ "unique", "path", "move_zone", "population", "name", "delay", "transient", "nocturnal" });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in npc %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in npc %s\n",
+                         query_multiple_short(bits), name);
+   }
+   if (_path_to_npc[info->path] && _path_to_npc[info->path] != name) {
+      hospital_log_file("NPC_NAME_CLASH", "NPC path %s is used by %s and %s.\n",
+                         info->path, name, _path_to_npc[info->path]);
+   }
+   _path_to_npc[info->path] = name;
+   if (_npc_info[name]) {
+      info->population = _npc_info[name]->population;
+      info->no_created = _npc_info[name]->no_created;
+      info->no_reused = _npc_info[name]->no_reused;
+      info->no_deaths = _npc_info[name]->no_deaths;
+   }
+   _npc_info[name] = info;
+   save_file();
+}
+private void parse_group(string fname, mapping data) {
+   string name;
+   class group_info info;
+   mapping bing;
+   int chance;
+   string* bits;
+   if (!data["name"]) {
+      debug_printf("No name for group %O\n", data);
+      hospital_log_file("COMPILE_ERROR", "No name for group %O\n", data);
+      return 0;
+   }
+   name = data["name"];
+   if (data["npc"] && !arrayp(data["npc"])) {
+      data["npc"] = ({ data["npc"] });
+   } else if (!arrayp(data["npc"])) {
+      data["npc"] = ({ });
+   }
+   info = new(class group_info, npcs : ([ ]), move_zones : ({ }),
+                                npc_commands : ([ ]));
+   chance = 0;
+   foreach (bing in data["npc"]) {
+      if (!mapp(bing) || !stringp(bing["name"]) ||
+          (!intp(bing["quantity"]) && !classp(bing["quantity"]))) {
+         debug_printf("Invalid data for group (%s) %O\n", name, bing);
+         hospital_log_file("COMPILE_ERROR", "Invalid data for group (%s) %O\n", name,  bing);
+      } else {
+         info->npcs[bing["name"]] = bing["quantity"];
+         if (bing["command"]) {
+            if (arrayp(bing["command"])) {
+               info->npc_commands[bing["name"]] = bing["command"];
+            } else {
+               info->npc_commands[bing["name"]] = ({ bing["command"] });
+            }
+         }
+      }
+   }
+   if (data["move_zone"]) {
+      info->move_zones = data["move_zone"];
+   }
+   info->max_population = data["population"];
+   info->protect = data["protect"];
+   info->defend = data["defend"];
+   info->transient = data["transient"];
+   bits = keys(data) - ({ "npc", "name", "population", "move_zone", "protect", "defend", "transient", });
+   if (sizeof(bits)) {
+      debug_printf("Unknown keys %s in group %s\n", query_multiple_short(bits),
+                   name);
+      hospital_log_file("COMPILE_ERROR", "Unknown keys %s in group %s\n",
+                         query_multiple_short(bits), name);
+   }
+   if (_group_info[name]) {
+     info->storage = _group_info[name]->storage;
+   }
+   _group_info[name] = info;
+}
+protected void finish_compiling(string fname, mapping data) {
+   mixed* bits;
+   mapping thing;
+   string name;
+   foreach (name, bits in data) {
+      switch (name) {
+      case "zone" :
+         foreach (thing in bits) {
+            parse_zone(fname, thing);
+         }
+         break;
+      case "npc" :
+         foreach (thing in bits) {
+            parse_npc(fname, thing);
+         }
+         break;
+      case "group" :
+         foreach (thing in bits) {
+            parse_group(fname, thing);
+         }
+         break;
+      default :
+         debug_printf("Unknown data area %s in %s\n", name, fname);
+         hospital_log_file("COMPILE_ERROR", "Unknown data area %s in %s\n", name, fname);
+         break;
+      }
+   }
+   _file_modified_time[fname] = unguarded( (: stat($(fname)) :))[1];
+   save_file();
+}
+void scan_for_new_data() {
+   string *files;
+   string fname;
+   string *bits;
+   debug_printf("Scan for new data.");
+   if (unguarded( (: stat(__FILE__)[1] :)) !=
+       _file_modified_time[__FILE__]) {
+      _file_modified_time = ([ ]);
+   }
+   files = ({ _data_directory });
+   while (sizeof(files)) {
+      fname = files[0];
+      files = files[1..];
+      if (unguarded( (: file_size($(fname)) :)) == -2) {
+         bits = get_dir(fname + "/");
+         if (bits) {
+            bits -= ({ "RCS", ".", ".." });
+            bits = filter(bits, (: $1[0] != '.' :));
+            files += map(bits, (: $2 + "/" + $1 :), fname);
+         }
+      } else {
+         if (unguarded( (: stat($(fname)) :))[1] != _file_modified_time[fname]) {
+           debug_printf("Compiling %s", fname);
+            DATA_HANDLER->compile_file(fname,
+                     (: finish_compiling :));
+         }
+      }
+   }
+   _file_modified_time[__FILE__] =
+                unguarded( (: stat(__FILE__)[1] :));
+}
+int roll_dice(mixed die) {
+   int result;
+   int i;
+   if (intp(die)) {
+      return die;
+   }
+   if (classp(die)) {
+      for (i = 0; i < die->number; i++) {
+         result += random(die->die) + 1;
+      }
+      result += die->modifier;
+      return result;
+   }
+   return 0;
+}
+int query_npc_max_population( string npc) {
+   if (!_npc_info[npc]) {
+      return -1;
+   }
+   return ((class npc_info)_npc_info[npc])->max_population;
+}
+int query_npc_current_population( string npc, int clean) {
+   class npc_info data;
+   if (!_npc_info[npc]) {
+      return -1;
+   }
+   data = _npc_info[npc];
+   if (!data->population) {
+      data->population = children(npc_path(data->path));
+      data->next_update = time() + POPULATION_UPDATE_TIME;
+   }
+   if (clean || data->next_update < time()) {
+      data->population = filter(data->population, (: objectp($1) :));
+      data->next_update = time() + POPULATION_UPDATE_TIME;
+   }
+   return sizeof(data->population);
+}
+int is_npc_under_max_population(string name) {
+    class npc_info info;
+    info = _npc_info[name];
+    if (!info) {
+       return 0;
+    }
+    if(info->transient)
+      return 1;
+    if (info->max_population) {
+       return query_npc_current_population(name, 1) < info->max_population;
+    }
+    return 1;
+}
+int is_group_under_max_population(string name) {
+    class group_info group;
+    group = _group_info[name];
+    if (!group) {
+       return 0;
+    }
+    if (!group->max_population || group->transient) {
+       return 1;
+    }
+    if (!group->storage) {
+        group->storage = ({ });
+    } else if (group->next_update < time()) {
+        group->storage = map(group->storage, (: filter($1, (: objectp($1) :)) :));
+        group->storage = filter(group->storage, (: sizeof($1) :));
+        group->next_update = time() + POPULATION_UPDATE_TIME;
+    }
+    if (sizeof(group->storage) >= group->max_population) {
+        return 0;
+    }
+    return 1;
+}
+public object load_npc_object(string npc_name) {
+    class npc_info info;
+    object npc;
+    string zone;
+    string cmd;
+    if ( undefinedp(_npc_info[npc_name])) {
+        debug_printf("Unable to find npc %O", npc_name);
+        return 0;
+    }
+    info = _npc_info[npc_name];
+    if(info->diurnal && !WEATHER->query_day(previous_object()))
+      return 0;
+    if(info->nocturnal && !WEATHER->query_day(previous_object()))
+      return 0;
+    if(info->seasonal &&
+       member_array(WEATHER->query_season(), info->seasonal) == -1)
+      return 0;
+    if (stringp(info->path)) {
+        if ( info->unique ) {
+            npc = find_object( npc_path(info->path) );
+            if ((!npc || !environment(npc)) && make_unique(npc_name)) {
+               debug_printf("Unique npc %O", info);
+               if (catch(npc = load_object( npc_path(info->path) ))) {
+                   hospital_log_file("BAD_NPC_PATH", "Error loading %s (%s)\n", npc_name, info->path);
+                   return 0;
+               }
+               if (!objectp(npc) || npc == 0) {
+                   hospital_log_file("BAD_NPC_PATH", "Failed to load %s (%s)\n", npc_name, info->path);
+                   return 0;
+               }
+               if ( environment( npc ) ) {
+                   debug_printf("NPC unique and already exists %O", npc_name);
+                   return 0;
+               }
+            }
+        } else if(info->transient) {
+          if(!_cache_inventory)
+            _cache_inventory = ([ ]);
+          else if(_cache_inventory[npc_name])
+            _cache_inventory[npc_name] -= ({ 0 });
+          if(sizeof(_cache_inventory[npc_name])) {
+            npc = _cache_inventory[npc_name][0];
+            _cache_inventory[npc_name] -= ({ npc });
+            info->no_reused++;
+          } else {
+            npc = clone_object( npc_path(info->path) );
+            if(npc) {
+              npc->add_property("transient", 1);
+              npc->add_property("npc_id", npc_name);
+              npc->add_property("hospital", base_name(this_object()));
+              info->no_created++;
+            } else
+              debug_printf("Failed to clone %s", npc_path(info->path));
+          }
+        } else {
+            if (is_npc_under_max_population(npc_name)) {
+               npc = clone_object( npc_path(info->path) );
+               info->no_created++;
+               if (!npc) {
+                  debug_printf("Npc path does not exist %O (%O)", npc, npc_path(info->path));
+               }
+            } else {
+               debug_printf("NPC over max population %O", npc_name);
+            }
+        }
+    } else {
+        debug_printf("Broken npc data %O", info->path);
+        return 0;
+    }
+    if (npc && !info->transient) {
+        if( info->population == 0 )
+            info->population = ({ });
+        info->population += ({ npc });
+        npc->add_property("npc_id", npc_name);
+        foreach (zone in info->move_zones) {
+            npc->add_move_zone(zone);
+        }
+        foreach (cmd in info->commands) {
+            npc->init_command(cmd, 2);
+        }
+    }
+    return npc;
+}
+object *load_group_npcs(string group_name) {
+    class group_info group;
+    int quantity;
+    int i;
+    object *npcs;
+    string npc_name;
+    object ob;
+    object ob_bing;
+    string cmd;
+    if ( undefinedp(_group_info[group_name]) ||
+         !is_group_under_max_population(group_name)) {
+        return 0;
+    }
+    group = _group_info[group_name];
+    npcs = ({ });
+    foreach (npc_name, quantity in group->npcs) {
+        quantity = roll_dice(quantity);
+        for (i = 0; i < quantity; i++) {
+            ob = load_npc_object(npc_name);
+            if (!ob) {
+               npcs->move("/room/rubbish");
+               return ({ });
+            }
+            npcs += ({ ob });
+            if (group->npc_commands[npc_name]) {
+               foreach (cmd in group->npc_commands[npc_name]) {
+                  ob->init_command(cmd, 2);
+               }
+            }
+        }
+    }
+    if (!group->storage) {
+        group->storage = ({ });
+    }
+    group->storage += ({ npcs });
+    npcs->add_property("group_id", group_name);
+    foreach (ob in npcs) {
+       foreach (ob_bing in npcs) {
+          if (ob != ob_bing) {
+             ob->add_follower(ob_bing);
+             if (group->defend) {
+               ob->add_defender(ob_bing);
+             }
+             if (group->protect) {
+                ob->add_protector(ob_bing);
+             }
+          }
+       }
+    }
+    return npcs;
+}
+public class npc_info query_npc_info( string npc ) {
+    if ( !_npc_info ) {
+        return 0;
+    }
+    return _npc_info[ npc ];
+}
+mapping query_debug_npc_info() {
+   return _npc_info;
+}
+public class group_info query_group_info( string group ) {
+    if ( !_group_info ) {
+        return 0;
+    }
+    return _group_info[ group ];
+}
+void npc_died(object ob) {
+   string npc_id;
+   class npc_info info;
+   int i;
+   mixed* stuff;
+   npc_id = ob->query_property("npc_id");
+   info = _npc_info[npc_id];
+   if (!info || !npc_id) {
+      return ;
+   }
+   info->population -= ({ ob });
+   info->no_deaths++;
+   npc_id = ob->query_property("group_id");
+   stuff = _group_info[npc_id]->storage;
+   if (sizeof(stuff)) {
+      for (i = 0; i < sizeof(stuff); i++) {
+         stuff[i] -= ({ ob, 0 });
+      }
+      _group_info[npc_id]->storage = filter(_group_info[npc_id]->storage,
+                                             (: sizeof($1) :));
+   }
+}
+mapping query_all_npc_info() {
+   return _npc_info;
+}
+mapping query_all_group_info() {
+   return _group_info;
+}
+mapping query_all_zone_info() {
+   return _zone_info;
+}
+private int count_chances_in_zone(string zone) {
+    class zone_info info;
+    int chance;
+    info = _zone_info[zone];
+    if (!zone) {
+       return 0;
+    }
+    chance = info->npc_chance + info->group_chance + info->zone_chance;
+    return chance;
+}
+private object* create_npcs_in_zone(string zone, int pos) {
+    class zone_info info;
+    string extra;
+    string npc;
+    object ob;
+    object* obs;
+    int chance;
+    info = _zone_info[zone];
+    if (!zone) {
+       return ({ });
+    }
+    if(_zone_info[zone]->busy &&
+       _zone_info[zone]->busy < random(random(100)))
+      return ({ });
+    if (pos < info->npc_chance) {
+       foreach (npc, chance in info->npcs) {
+          if (pos < chance) {
+             ob = load_npc_object(npc);
+             if (ob) {
+                return ({ ob });
+             }
+          }
+          pos -= chance;
+       }
+    }
+    pos -= info->npc_chance;
+    if (pos < info->group_chance) {
+       foreach (npc, chance in info->groups) {
+          if (pos < chance) {
+             obs = load_group_npcs(npc);
+             if (sizeof(obs)) {
+                return obs;
+             }
+          }
+          pos -= chance;
+       }
+    }
+    pos -= info->group_chance;
+    foreach (extra, chance in info->zones) {
+        if (pos < chance) {
+           return load_random_npc(extra, -1, -1);
+        }
+    }
+    return ({ });
+}
+object* load_random_npc(string zone, int wealth, int busy) {
+    int chance;
+    int pos;
+    if (_disable_npc_generation) {
+        return ({ });
+    }
+    if (_zone_info[zone + "-w" + wealth + "-b" + busy]) {
+       zone = zone + "-w" + wealth + "-b" + busy;
+    } else if (_zone_info[zone + "-w" + wealth]) {
+       zone = zone + "-w" + wealth;
+    } else if (_zone_info[zone + "-b" + busy]) {
+       zone = zone + "-b" + busy;
+    }
+    if (!_zone_info[zone]) {
+        return ({ });
+    }
+    chance = count_chances_in_zone(zone);
+    if (!chance) {
+       return ({ });
+    }
+    pos = random(chance);
+    return create_npcs_in_zone(zone, pos);
+}
+int do_report() {
+    string name;
+    class group_info group;
+    class npc_info npc;
+    string txt;
+    int total;
+    int max;
+    int pop;
+    txt = "";
+    total = 0;
+    txt += "%^WHITE%^NPCs%^RESET%^\n";
+    foreach( name, npc in _npc_info ) {
+      if(stringp(npc->path) && file_size(npc_path(npc->path) + ".c") > 0) {
+        pop = query_npc_current_population(name, 0);
+      } else {
+        pop = 0;
+      }
+      if(npc->transient)
+        txt += sprintf( "$I$5=Name: %s. (%s) (Transient) Reused %d Created %d Died %d\n", name + "",
+                        (stringp(npc->path)?npc->path:"Broken!"),
+                        npc->no_reused, npc->no_created, npc->no_deaths);
+      else
+        txt += sprintf( "$I$5=Name: %s. (%s) Population: (%d/%d) Created %d Died %d\n", name + "",
+                        (stringp(npc->path)?npc->path:"Broken!"),
+            pop, npc->max_population, npc->no_created, npc->no_deaths );
+        total += pop;
+        max += npc->max_population;
+    }
+    txt += "$I$0=%^WHITE%^Groups%^RESET%^\n";
+    foreach( name, group in _group_info ) {
+      if(group->transient)
+        txt += sprintf( "$I$5=Name: %s. (%s) (Transient)\n", name,
+            query_multiple_short(keys(group->npcs)));
+      else
+        txt += sprintf( "$I$5=Name: %s. (%s) Population: (%d/%d)\n", name,
+            query_multiple_short(keys(group->npcs)),
+            sizeof( group->storage ), group->max_population );
+    }
+    txt += "$I$0=%^WHITE%^Cache%^RESET%^\n";
+    foreach(name in keys(_cache_inventory))
+      _cache_inventory[name] -= ({ 0 });
+    foreach(name, group in _cache_inventory)
+      txt += sprintf("$I$5=Name: %s %d\n", name, sizeof(group));
+    txt += "\nTotal NPCs in hospital: " + total + "/" +
+            max + ".\n";
+    write("$P$Report$P$" + txt );
+    return 1;
+}
+void init() {
+  object ob;
+  ob = this_player();
+  add_command("report", "", (: do_report :));
+  if(ob->query_property("npc_id") && ob->query_property("hospital") &&
+     ob->query_property("hospital") == base_name(this_object())) {
+    if(!_cache_inventory[ob->query_property("npc_id")])
+      _cache_inventory[ob->query_property("npc_id")] = ({ ob });
+    else if(sizeof(_cache_inventory[ob->query_property("npc_id")]) >
+            _max_cache)
+      ob->move("/room/rubbish");
+    else
+      _cache_inventory[ob->query_property("npc_id")] += ({ ob });
+  } else if(base_name(ob) == "/obj/corpse")
+    ob->move("/room/rubbish");
+}
+int no_attack() { return 1; }
+mapping query_dynamic_auto_load() {
+    string group_name;
+    string npc;
+    class group_info data;
+    class npc_info npc_data;
+    mapping tmp;
+    mapping tmp2;
+    tmp = allocate_mapping( sizeof( _group_info ) );
+    foreach( group_name, data in _group_info ) {
+        tmp[ group_name ] = data->storage;
+    }
+    tmp2 = allocate_mapping( sizeof( _npc_info) );
+    foreach( npc, npc_data in _npc_info ) {
+        tmp2[ npc ] = npc_data->population;
+    }
+    return ([ file_name( this_object() ) : tmp, "npcs" : tmp2 ]);
+}
+void init_dynamic_arg( mapping tmp ) {
+    string group_name;
+    object *npcs;
+    if ( tmp[ file_name( this_object() ) ] ) {
+        foreach( group_name, npcs in tmp[ file_name( this_object() ) ] ) {
+            if (_group_info[group_name]) {
+               _group_info[ group_name ]->storage = npcs;
+            }
+        }
+        foreach( group_name, npcs in tmp[ "npcs" ]) {
+            if (_npc_info[group_name]) {
+               _npc_info[ group_name ]->population = npcs;
+            }
+        }
+    }
+}
+mixed query_all_npcs() {
+    return values( map( _group_info, (: $2->storage :) ) );
+}
+mapping query_inventory_cache() {
+  return copy(_cache_inventory);
+}
+string* query_registered_npcs() {
+    return keys( _npc_info );
+}

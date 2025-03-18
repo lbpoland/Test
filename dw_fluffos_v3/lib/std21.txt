@@ -1,0 +1,2508 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/shop_event.c ===
+private nosave object* _events;
+void create() {
+   _events = ({ });
+}
+void add_shop_observer(object observer) {
+   if (!_events) {
+      _events = ({ });
+   }
+   if (member_array(observer, _events) == -1) {
+      _events += ({ observer });
+   }
+}
+void remove_shop_observer(object observer) {
+   _events -= ({ observer });
+}
+int broadcast_shop_event(string type, object player, mixed args ...) {
+   debug_printf("Calling %O on %O\n", "event_shop_" + type, _events);
+   if (sizeof(filter(call_other(_events, "event_shop_" + type, this_object(),
+                                player, args ...),
+                    (: $1 :)))) {
+      return 1;
+   }
+   return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/open_shop.c ===
+private nosave function _open_func;
+void set_open_function(function func) {
+   _open_func = func;
+}
+function query_open_function() {
+   return _open_func;
+}
+int is_open(object player, int type) {
+   if (_open_func) {
+      return evaluate(_open_func, player, type);
+   }
+   return 1;
+}
+int test_open() {
+    return is_open( this_player(), 0 );
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/craft_shop.c ===
+#include <money.h>
+#include <shops/craft_shop.h>
+inherit "/std/shops/inherit/open_shop";
+private nosave object _controller;
+private nosave string _save_dir_name;
+private nosave function _allowed_to_sell;
+private nosave function _when_sold_func;
+private nosave int _max_sell_per_person;
+private nosave int _cut;
+private nosave int _minimum_cost;
+private nosave function _extra_sell_check;
+private nosave int _always_ask_price;
+private nosave int _use_name;
+private nosave int _no_royalty_commands;
+int do_sell(object *obs);
+void set_controller(string name);
+int do_buy(object *obs, int force);
+int do_delete(string id);
+int do_browse(object *obs);
+int do_change(object *obs, string str);
+int do_change_name(object *obs, string str);
+void set_allowed_to_sell(function f);
+void set_minimum_cost(int i);
+protected void sell_name(string name, object *sellable);
+protected void sell_choice(string choice, object *sellable, string *names);
+protected void determine_cost(string cost, string name, object *sellable);
+protected void confirm_sale(string answer, int value, string name,
+                            object *sellable, string category);
+protected void confirm_sell_name_choice(string answer, string name,
+                                        object *sellable);
+protected void complete_sale(int value, string name, object *sellable, string category);
+protected void do_confirm_sale(int value, string name, object *sellable);
+void set_cut(int value);
+int query_cut();
+int check_open(object player, string command);
+mixed query_property(string name);
+string the_short();
+string query_craft_shop_save_dir();
+void create() {
+   if (!_allowed_to_sell) {
+      set_allowed_to_sell((: 1 :));
+   }
+   if (!_cut) {
+      set_cut(10);
+   }
+   if (!_minimum_cost) {
+      set_minimum_cost(12 * 4);
+   }
+   if (!_controller && _save_dir_name) {
+      set_controller("/std/shops/controllers/craft_shop_controller");
+      _controller->load_it();
+   }
+}
+int value_from_string(string str, string place) {
+   return MONEY_HAND->value_from_string(str, place);
+}
+protected void do_save_file(int type, mixed value, string fname) {
+   string tmp, file;
+   string dir;
+   switch (type) {
+   case CRAFT_SHOP_MAIN_SAVE_FILE :
+     debug_printf("attempting to write main");
+#ifdef USE_RAMDISK
+     tmp = replace_string(query_craft_shop_save_dir(), "/save/",
+                          "/save/ramdisk/");
+     file = tmp + ".o";
+#endif
+     if(!file) {
+       file = query_craft_shop_save_dir() + ".o";
+     }
+     debug_printf("writing main %s", file);
+     tmp = save_variable(value);
+     if (file_size(query_craft_shop_save_dir() + ".o") != -1) {
+       unguarded( (: rename(query_craft_shop_save_dir() + ".o",
+                            query_craft_shop_save_dir() + ".o.bak") :));
+     }
+     if(unguarded( (: write_file($(file), $(tmp), 1) :) )) {
+       unguarded( (: rm($(file) + ".bak") :));
+     } else {
+       unguarded( (: rename($(file) + ".bak", $(file)) :));
+     }
+     break;
+   case CRAFT_SHOP_DATA_SAVE_FILE :
+#ifdef USE_RAMDISK
+     dir = replace_string(query_craft_shop_save_dir(), "/save/", "/save/ramdisk/");
+     if (file_size(dir) == -2) {
+        file = dir + "/" + fname;
+     }
+#endif
+     if(!file) {
+       file = query_craft_shop_save_dir() + "/" + fname;
+     }
+     debug_printf("writing data %s", file);
+     tmp = save_variable(value);
+     if (!unguarded( (: write_file($(file), $(tmp), 1) :))) {
+        debug_printf("failed to write data to %s", file);
+     }
+     break;
+   case CRAFT_SHOP_REMOVE_DATA_SAVE_FILE :
+#ifdef USE_RAMDISK
+     file = replace_string(query_craft_shop_save_dir() + "/" + fname, "/save/",
+                          "/save/ramdisk/");
+     unguarded( (: rm($(file)) :) );
+#endif
+     unguarded((: rm(query_craft_shop_save_dir() + "/" + $(fname)) :));
+     break;
+   default :
+     printf("Unknown file type to write in %O, of %O\n", __FILE__, type);
+     break;
+   }
+}
+protected string do_read_file(int type, string fname) {
+   string tmp, file;
+   switch (type) {
+   case CRAFT_SHOP_MAIN_SAVE_FILE :
+#ifdef USE_RAMDISK
+     tmp = replace_string(query_craft_shop_save_dir(), "/save/",
+                          "/save/ramdisk/");
+     if(unguarded((: file_size($(tmp) + ".o") :)) > 0) {
+       file = tmp + ".o";
+     }
+#endif
+     if(!file) {
+       tmp = query_craft_shop_save_dir();
+       if(unguarded((: file_size($(tmp) + ".o") :)) > 0) {
+         file = tmp + ".o";
+       }
+       if(unguarded((: file_size($(tmp) + ".o.bak") :)) > 0) {
+         file = tmp + ".o.bak";
+       }
+     }
+     if (!file) {
+        debug_printf("No file found at %s or %s\n", tmp + ".o", tmp + ".o.bak");
+        return 0;
+     }
+     tmp = unguarded( (: read_file($(file)) :) );
+     if(tmp)
+       return restore_variable(tmp);
+     return 0;
+   case CRAFT_SHOP_DATA_SAVE_FILE :
+#ifdef USE_RAMDISK
+     tmp = replace_string(query_craft_shop_save_dir() + "/" + fname,
+                           "/save/", "/save/ramdisk/");
+     if(unguarded((: file_size($(tmp)) :)) > 0)
+       file = tmp;
+#endif
+     if(!file)
+       file = query_craft_shop_save_dir() + "/" + fname;
+     debug_printf("reading %s", file);
+     tmp = unguarded( (: read_file($(file)) :) );
+     if (tmp) {
+       return restore_variable(tmp);
+     }
+     return 0;
+   default :
+     printf("Unknown file type to read in %O, of %O\n", __FILE__, type);
+     break;
+   }
+}
+void reload_shop() {
+   set_controller("/std/shops/controllers/craft_shop_controller");
+   _controller->load_it();
+}
+void set_controller(string name) {
+   if (_controller) {
+      _controller->dest_me();
+   }
+   _controller = clone_object(name);
+   _controller->set_save_function((: do_save_file($1, $2, $3) :));
+   _controller->set_load_function((: do_read_file($1, $2) :) );
+}
+object query_controller() {
+   return _controller;
+}
+void set_save_dir(string fname) {
+   _save_dir_name = fname;
+}
+string query_craft_shop_save_dir() {
+   return _save_dir_name;
+}
+void set_allowed_to_sell(function func) {
+   _allowed_to_sell = func;
+}
+function query_allowed_to_sell() {
+   return _allowed_to_sell;
+}
+void set_max_sell_per_person(int num) {
+   _max_sell_per_person = num;
+}
+int query_max_sell_per_person() {
+   return _max_sell_per_person;
+}
+void set_always_ask_price(int ask_price) {
+   _always_ask_price = ask_price;
+}
+int query_always_ask_price() {
+   return _always_ask_price;
+}
+void set_use_name(int flag) {
+   _use_name = flag;
+}
+int query_use_name() {
+   return _use_name;
+}
+int query_maximum_sale_value(string person, object *obs) {
+   return 0;
+}
+string query_extra_price_information(string person, object *obs) {
+   return "";
+}
+int query_shop() {
+   return 1;
+}
+object *query_shop_lift_items(string str, object player) {
+   object *stuff;
+   object *pk_ok;
+   object ob;
+   stuff = match_objects_for_existence(str, ({ _controller->query_sell_list() }));
+   pk_ok = ({ });
+   foreach (ob in stuff) {
+      if (!pk_check(_controller->query_owner_of_shop_object(ob),
+                      player, 1)) {
+         pk_ok += ({ ob });
+      }
+   }
+   if (sizeof(pk_ok) != sizeof(stuff)) {
+      player->add_failed_mess(previous_object(),
+                      "You cannot shoplift $I since you cannot "
+                      "shoplift from non-player killers.\n", stuff);
+   }
+   return pk_ok;
+}
+void inform_of_buy(int value, object *obs, object player, string *sellers,
+                   string *names, string *cats, int *values) {
+}
+int query_no_steal() {
+   return 1;
+}
+int is_able_to_change(object ob) {
+   return _controller->query_owner_of_shop_object(ob) ==
+       this_player()->query_name();
+}
+int is_allowed_to_sell(object* obs, string name, string *sellable_names) {
+   if ((sizeof(sellable_names)+sizeof(obs)) > query_max_sell_per_person() &&
+       query_max_sell_per_person()) {
+      add_failed_mess("Cannot sell $I, since you already have " +
+                      number_as_string(sizeof(sellable_names)) +
+                      " items listed with a maximum of " +
+                      number_as_string(query_max_sell_per_person()) +
+                      ".\n", obs);
+      return 0;
+   }
+   return 1;
+}
+void init() {
+   string storeroom;
+   add_command("sell", "<indirect:object:me>");
+   add_command("list", "");
+   if (query_controller()) {
+      storeroom = file_name(_controller->query_sell_list());
+      add_command("buy", "<indirect:object:" + storeroom + ">",
+                  (: do_buy($1, 0) :));
+      add_command("browse", "<indirect:object:" + storeroom + ">",
+                  (: do_browse($1) :));
+      add_command("change", "price of <indirect:object:" + storeroom +
+                            "> to <string>", (: do_change($1, $4[1]) :));
+      add_command("change", "name of <indirect:object:" + storeroom +
+                            "> to <string>", (: do_change_name($1, $4[1]) :));
+   }
+   if (!_no_royalty_commands) {
+      add_command("collect", "royalties");
+      add_command("royalties", "");
+   }
+   add_command("delete", "<string'sell id'>",
+               (: do_delete($4[0]) :));
+}
+int do_sell_id(object* obs, string id, int force) {
+   object *sellable;
+   object *cannot;
+   object *worn;
+   string name;
+   string *sellable_names;
+   if (!check_open(this_player(), "sell")) {
+      return 0;
+   }
+   sellable = filter(obs, query_allowed_to_sell());
+   if (!sizeof(sellable)) {
+      add_failed_mess("This shop does not deal in $I.\n", obs);
+      return 0;
+   }
+   worn = this_player()->query_holding() + this_player()->query_armours();
+   cannot = filter(sellable, (: member_array($1, $2) != -1 :), worn);
+   if (sizeof(cannot)) {
+       sellable -= cannot;
+       tell_object(this_player(), "You decide not to sell " +
+         query_multiple_short(cannot, "the") + ", because "
+         "you are wearing or holding $V$0=it,them$V$.\n");
+      if (!sizeof(sellable))  return 0;
+   }
+   name = this_player()->query_name();
+   if (!is_allowed_to_sell(sellable, name, sellable_names)) {
+      return 0;
+   }
+   if (query_cut() != 100) {
+      write("Selling an item to this shop does not automatically give you the "
+            "money.  You will get a cut of " + (100 - query_cut()) +
+            "% of the sale price once the item has been sold by the shop.\n");   }
+}
+int do_sell(object *obs) {
+   object *sellable;
+   object *cannot;
+   object *worn;
+   string name;
+   string *sellable_names;
+   int i;
+   int cost;
+   string place;
+   if (!check_open(this_player(), "sell")) {
+      return 0;
+   }
+   sellable = filter(obs, query_allowed_to_sell());
+   if (!sizeof(sellable)) {
+      add_failed_mess("This shop does not deal in $I.\n", obs);
+      return 0;
+   }
+   worn = this_player()->query_holding() + this_player()->query_armours();
+   cannot = filter(sellable, (: member_array($1, $2) != -1 :), worn);
+   if (sizeof(cannot)) {
+       sellable -= cannot;
+       tell_object(this_player(), "You decide not to sell " +
+         query_multiple_short(cannot, "the") + ", because "
+         "you are wearing or holding $V$0=it,them$V$.\n");
+      if (!sizeof(sellable))  return 0;
+   }
+   name = this_player()->query_name();
+   if (!is_allowed_to_sell(sellable, name, sellable_names)) {
+      return 0;
+   }
+   if (query_cut() != 100) {
+      write("Selling an item to this shop does not automatically give you the "
+            "money.  You will get a cut of " + (100 - query_cut()) +
+            "% of the sale price once the item has been sold by the shop.\n");
+   }
+   if (_use_name) {
+      sell_name(query_multiple_short(sellable, 0, 1), sellable);
+      add_succeeded_mess(({ "", "$N starts to sell $I to the shop.\n" }),
+                         sellable);
+      return 1;
+   }
+   obs->set_no_join();
+   sellable_names = _controller->query_owner_sellables(name);
+   sellable_names = uniq_array(sellable_names);
+   if (!sizeof(sellable_names)) {
+      write("You are not currently selling any items.  What item name "
+            "would you like to list " + query_multiple_short(sellable) +
+            " under?  (Blank line to quit)\nList name: ");
+      input_to((: sell_name :), 0, sellable);
+   } else {
+      place = query_property("place");
+      if (!place) {
+         place = "default";
+      }
+      write("You currently have the following listed for sale:\n");
+      for (i = 0; i < sizeof(sellable_names); i++) {
+         cost = _controller->query_list_object_cost(sellable_names[i],
+                                   this_player()->query_name());
+         write(sprintf("  %c) %s (%s)\n", 'a' + i, sellable_names[i],
+                       MONEY_HAND->money_value_string(cost, place)));
+      }
+      write("Select the letter of the choice to add to the item, or type "
+            "'create' to create a new listing name.\n"
+            "Your choice ([a-" + sprintf("%c", 'a' + sizeof(sellable_names) -1) +
+            "],create) ? ");
+      input_to((: sell_choice :), 0, sellable, sellable_names);
+   }
+   add_succeeded_mess(({ "", "$N starts to sell $I to the shop.\n" }),
+                      sellable);
+   return 1;
+}
+protected int check_sell_name( string name ) {
+   if (strlen(name) > CRAFT_SHOP_MAX_NAME_LENGTH) {
+      write("Sorry, that name is too long.  It can be a maximum of " +
+            CRAFT_SHOP_MAX_NAME_LENGTH + " characters.\n");
+      return 0;
+   }
+   if (strsrch(name, "%^") != -1) {
+      write("Sorry, you cannot use colour sequences in names.\n");
+      return 0;
+   }
+   return 1;
+}
+protected void sell_name(string name, object *sellable) {
+   if (name == "" || name == 0) {
+      write("Ok, cancelling the sale of " + query_multiple_short(sellable) +
+            ".\n");
+      return ;
+   }
+   if ( !check_sell_name( name ) ) {
+      input_to((: sell_name :), 0, sellable);
+      write("What name would you like to list " +
+            query_multiple_short(sellable) + " under? ");
+      return;
+   }
+   write("You wish to sell " + query_multiple_short(sellable) +
+         " as '" + name + "' (y/n)? ");
+   input_to((: confirm_sell_name_choice :), 0, name, sellable);
+}
+protected void confirm_sell_name_choice(string answer, string name,
+                                        object *sellable) {
+   answer = lower_case(answer);
+   if (strlen(answer) > 0 && ( answer[0] == 'n' || answer[0] == 'q' ) ) {
+      write("Ok, cancelling the sale of " + query_multiple_short(sellable) +
+            ".\n");
+      return ;
+   }
+   if (!strlen(answer) || answer[0] != 'y') {
+      write("Unknown selection.\n");
+      write("You wish to sell " + query_multiple_short(sellable) +
+            " as '" + name + "' (y/n)? ");
+      input_to( (: confirm_sell_name_choice :), 0, name, sellable);
+      return ;
+   }
+   write(query_extra_price_information(this_player()->query_name(), sellable));
+   write("How much money do you wish to sell the item '" + name + "' for? ");
+   input_to((: determine_cost :), 0, name, sellable);
+}
+protected void sell_choice(string answer, object *sellables, string *names) {
+   int cost;
+   string place;
+   int pos;
+   if (sizeof(names) >= 17) {
+      if (answer == "" || answer[0..1] == "qu") {
+         write("Ok, cancelling the sale of " + query_multiple_short(sellables) +
+             ".\n");
+         return 0;
+      }
+   } else if (answer == "" || answer[0] == 'q') {
+      write("Ok, cancelling the sale of " + query_multiple_short(sellables) +
+            ".\n");
+      return ;
+   }
+   answer = lower_case(answer);
+   if (answer == "create") {
+      write("Please enter the name you wish to list " +
+            query_multiple_short(sellables) + " as.\nList name: ");
+      input_to((: sell_name :), 0, sellables);
+      return ;
+   }
+   if (strlen(answer) > 1 ||
+       (answer[0] < 'a' || answer[0] >= 'a' + sizeof(names))) {
+      write(sprintf("Your response must be between 'a' and '%c' or "
+                    "'create'.\nChoice? ", 'a' + sizeof(names) - 1));
+      input_to((: sell_choice :), 0, sellables, names);
+      return ;
+   }
+   pos = answer[0] - 'a';
+   cost = _controller->query_list_object_cost(names[pos],
+                                              this_player()->query_name());
+   if (!cost || _always_ask_price) {
+      write("How much money do you wish to list the item '" + names[pos] +
+            "' for? ");
+      write(query_extra_price_information(this_player()->query_name(),
+                                          sellables));
+      input_to((: determine_cost :), 0, names[pos], sellables);
+   } else {
+      place = query_property("place");
+      if (!place) {
+         place = "default";
+      }
+      do_confirm_sale(cost, names[pos], sellables);
+   }
+}
+protected void determine_cost(string cost, string name, object *sellable) {
+   int max;
+   int value;
+   string place;
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   value = value_from_string(cost, place);
+   if (value < _minimum_cost) {
+      if (!strlen(cost) ||
+          lower_case(cost)[0] == 'q') {
+         write("Aborting.\n");
+         return ;
+      }
+      write("You must list your item as costing more than " +
+            MONEY_HAND->money_value_string(_minimum_cost, place) + ".\n");
+      write(query_extra_price_information(this_player()->query_name(),
+                                          sellable));
+      write("What do you wish to list " + name + " for? ");
+      input_to("determine_cost", 0, name, sellable);
+      return ;
+   }
+   max = query_maximum_sale_value(this_player()->query_name(), sellable);
+   if (value > max && max) {
+      write("You must list your item as costing less than " +
+            MONEY_HAND->money_value_string(max, place) + ".\n");
+      write(query_extra_price_information(this_player()->query_name(),
+                                          sellable));
+      write("What do you wish to list " + name + " for? ");
+      input_to("determine_cost", 0, name, sellable);
+      return ;
+   }
+   do_confirm_sale(value, name, sellable);
+}
+private void confirm_sale_question(int value,
+                                   string name,
+                                   object *sellables,
+                                   string category) {
+   string place;
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   write("Confirming your sale of " + query_multiple_short(sellables) +
+         " as '" + name +
+         "' " + (category?"in category " + category + " ":"") +
+         "for " + MONEY_HAND->money_value_string(value, place) + " (y/n)? ");
+   input_to((: confirm_sale :), 0, value, name, sellables, category);
+}
+protected void do_confirm_sale(int value, string name, object *sellables) {
+   if (_extra_sell_check) {
+      evaluate(_extra_sell_check,
+               (: confirm_sale_question :),
+               value, name, sellables);
+   } else {
+      confirm_sale_question(value, name, sellables, 0);
+   }
+}
+protected void confirm_sale(string answer, int value, string name,
+                            object *sellable,
+                            string category) {
+   if (answer == "" || answer[0] == 'q' || answer[0] == 'Q' ||
+       answer[0] == 'n' || answer[0] == 'N') {
+      write("Ok, aborting sale of " + query_multiple_short(sellable) + ".\n");
+      return 0;
+   }
+   if (answer[0] != 'y' && answer[0] != 'Y') {
+      write("Please answer yes or no.\n");
+      confirm_sale_question(value, name, sellable, category);
+      return 0;
+   }
+   complete_sale(value, name, sellable, category);
+}
+protected void complete_sale(int value, string name, object *sellable,
+                             string category) {
+   object *bought;
+   string place;
+   object ob;
+   if (_when_sold_func) {
+      foreach (ob in sellable) {
+         evaluate(_when_sold_func, ob);
+      }
+   }
+   bought = _controller->buy_objects(sellable, name, value,
+                                   this_player()->query_cap_name(), category);
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   if (sizeof(bought)) {
+      write("Sold " + query_multiple_short(bought) + ", listed as '" +
+            name + "' " + (category?"in category " + category + " ":"") +
+            "for " + MONEY_HAND->money_value_string(value, place) +
+            ".\nYou will need to come back later to pick up your royalties "
+            "for the sale.\n");
+      say(this_player()->query_cap_name() + " sold " +
+          query_multiple_short(bought) + " to " + the_short() + ".\n");
+   } else {
+      write("Unable to sell " + query_multiple_short(sellable) + ".\n");
+   }
+}
+int do_list() {
+   string place;
+   object *obs;
+   object ob;
+   mixed *stuff;
+   string ret;
+   if (!check_open(this_player(), "list")) {
+      return 0;
+   }
+   obs = _controller->query_sell_list_obs();
+   if (!sizeof(obs)) {
+      add_failed_mess("The shop is empty.\n", ({ }));
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   stuff = unique_array(obs, (: _controller->query_id_of_shop_object($1) :) );
+   stuff = sort_array(stuff, (:
+                strcmp(_controller->query_id_of_shop_object($1[0]),
+                       _controller->query_id_of_shop_object($2[0])) :) );
+   ret = "";
+   foreach (obs in stuff) {
+      ob = obs[0];
+      ret += "$I$9=$C$" + _controller->query_id_of_shop_object(ob) +
+            ") $C$" + ob->short() + " for " +
+            MONEY_HAND->money_value_string(ob->query_value(), place) + "; " +
+            query_num(sizeof(obs)) + " left.\n";
+   }
+   write("$P$Shop list$P$" + ret);
+   add_succeeded_mess( ({ "", "$N browses through the inventory.\n" }) );
+   return 1;
+}
+int do_buy(object *obs, int force) {
+   int value;
+   string place;
+   int player_money;
+   object *bought;
+   string *sellers;
+   string *names;
+   string *cats;
+   int *values;
+   if (!check_open(this_player(), "buy")) {
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   player_money = this_player()->query_value_in(place);
+   value = _controller->value_of_objects(obs);
+   if (value > player_money) {
+      add_failed_mess("You cannot buy $I as "+
+                      ( sizeof( obs ) > 1 ? "they cost ":"it costs " )+
+                      MONEY_HAND->money_value_string(value, place) +
+                      " and you do not have that much money.\n", obs );
+      return 0;
+   }
+   sellers = map(obs, (: _controller->query_owner_of_shop_object($1) :));
+   names = map(obs, (: _controller->query_name_of_shop_object($1) :));
+   cats = map(obs, (: _controller->query_category_of_shop_object($1) :));
+   values = map(obs, (: $1->query_value() :));
+   bought = _controller->sell_objects(obs, place, this_player(),
+                                     query_cut(), force, ref value);
+   if (!sizeof(bought)) {
+      if (sizeof(bought) > 1) {
+         add_failed_mess("Cannot move any of $I into your inventory, nothing "
+                         "bought.\n", obs);
+      } else {
+         add_failed_mess("Unable to find any objects to buy, the shop "
+                         "seems to have some stock problems.\n");
+      }
+      return 0;
+   }
+   inform_of_buy(value, bought, this_player(), sellers, names, cats, values);
+   add_succeeded_mess(({ "You buy $I for " +
+                       MONEY_HAND->money_value_string(value, place) + ".\n",
+                         "$N buys $I.\n" }), bought);
+   return 1;
+}
+int do_delete(string id ) {
+   if( !this_player()->query_director() ) {
+      add_failed_mess( "This command is reserved for directors.\n", ({ }) );
+      return 0;
+   }
+   if( !id || id == "" ) {
+      add_failed_mess( "You have to choose a valid sell id.\n", ({ }) );
+      return 0;
+   }
+   _controller->delete_objects(id);
+   add_succeeded_mess( "$N $V some things.\n", ({ }) );
+   return 1;
+}
+int do_browse(object *obs) {
+   object *real_obs;
+   object ob;
+   string mess;
+   string read;
+   if (!check_open(this_player(), "browse")) {
+      return 0;
+   }
+   if (sizeof(obs) > 10) {
+      add_failed_mess("You cannot browse more than 10 things at once.\n");
+      return 0;
+   }
+   real_obs = _controller->create_all_real_objects(this_player(), obs);
+   mess = "$P$Browse$P$";
+   foreach (ob in real_obs) {
+      mess += ob->the_short() + ":\n" + ob->long();
+      read = ob->query_readable_message();
+      if (read) {
+         mess += "You read " +
+                 replace(ob->query_read_short(this_player()), "$name$",
+                         ob->a_short()) + ":\n" +
+                 ob->query_readable_message();
+      }
+   }
+   real_obs->move("/room/rubbish");
+   add_succeeded_mess(({ mess, "$N $V $I.\n" }), obs);
+   return 1;
+}
+int do_change(object *obs, string change) {
+   object *frog;
+   int value;
+   string place;
+   if (!check_open(this_player(), "change")) {
+      return 0;
+   }
+   frog = filter(obs, (: $1->short() == $2->short() :), obs[0]);
+   if (sizeof(frog) != sizeof(obs)) {
+      add_failed_mess("You cannot change the value of more than one "
+                      "type of object at once.\n", obs);
+      return 0;
+   }
+   if (!is_able_to_change(obs[0])) {
+      add_failed_mess("You do not own $I.\n", obs);
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   value = value_from_string(change, place);
+   if (value < _minimum_cost) {
+      add_failed_mess("You cannot set $I to a value less than " +
+                 MONEY_HAND->money_value_string(_minimum_cost, place) + ".\n",
+                 obs);
+      return 0;
+   }
+   _controller->change_value_of_shop_object(obs[0], value);
+   add_succeeded_mess( ({ "You change the value of $I to " +
+         MONEY_HAND->money_value_string(value, place) + ".\n",
+         "$N changes the value of $I.\n" }), obs[0..0]);
+   return 1;
+}
+int do_change_name(object *obs, string new_name) {
+   object *frog;
+   if (!check_open(this_player(), "change")) {
+      return 0;
+   }
+   frog = filter(obs, (: $1->short() == $2->short() :), obs[0]);
+   if (sizeof(frog) != sizeof(obs)) {
+      add_failed_mess("You cannot change the value of more than one "
+                      "type of object at once.\n", obs);
+      return 0;
+   }
+   if (!is_able_to_change(obs[0])) {
+      add_failed_mess("You do not own $I.\n", obs);
+      return 0;
+   }
+   if( !check_sell_name( new_name ) ) {
+      add_failed_mess( "Try another name.\n", ({ }) );
+      return 0;
+   }
+   if (_controller->change_name_of_shop_object(obs[0], new_name,
+                               _controller->query_dont_use_name())) {
+      add_succeeded_mess(({ "You change the name of $I to " +
+                               new_name + ".\n",
+                               "$N changes the name of $I.\n" }),
+                         ({ obs[0] }) );
+   } else {
+      add_failed_mess("The name " + new_name + " is already in use.\n", obs);
+   }
+   return 1;
+}
+int do_collect() {
+   string name;
+   string place;
+   int value;
+   if (!check_open(this_player(), "collect")) {
+      return 0;
+   }
+   name = this_player()->query_name();
+   value = _controller->query_royalty(name);
+   if (!value) {
+      add_failed_mess("You have no money owed to you here.\n");
+      return 0;
+   }
+   if (value < 0) {
+      add_failed_mess("You owe money to " + the_short() + ".\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   _controller->pay_out_royalty(name, place);
+   log_file(__FILE__ + ".log",
+            name + " collects " +
+                      MONEY_HAND->money_value_string(value, place) +
+                      " in royalties.\n");
+   add_succeeded_mess(({ "You collect " +
+                      MONEY_HAND->money_value_string(value, place) +
+                      " in royalties.\n",
+                      "$N collects some money in royalties.\n" }));
+   return 1;
+}
+int do_royalties() {
+   string name;
+   string place;
+   int value;
+   if (!check_open(this_player(), "royalties")) {
+      return 0;
+   }
+   name = this_player()->query_name();
+   value = _controller->query_royalty(name);
+   if (!value) {
+      add_failed_mess("You have no money owed to you here.\n");
+      return 0;
+   }
+   if (value < 0) {
+      add_failed_mess("You owe money to " + the_short() + ".\n");
+      return 0;
+   }
+   place = query_property("place");
+   if (!place) {
+      place = "default";
+   }
+   add_succeeded_mess(({ "You have " +
+                      MONEY_HAND->money_value_string(value, place) +
+                      " in royalties currently.\n",
+                      "$N checks $p royalties.\n" }));
+   return 1;
+}
+void set_cut(int new_cut) {
+   _cut = new_cut;
+}
+int query_cut() {
+   return _cut;
+}
+void set_minimum_cost(int cost) {
+   _minimum_cost = cost;
+}
+int query_minimum_cost() {
+   return _minimum_cost;
+}
+void set_when_sold_function(function func) {
+   _when_sold_func = func;
+}
+function query_when_sold_function() {
+   return _when_sold_func;
+}
+int check_open(object player, string type) {
+   if (!is_open(player, 0)) {
+      add_failed_mess("The shop is not open.\n");
+      return 0;
+   }
+   return 1;
+}
+void set_extra_sell_check(function func) {
+   _extra_sell_check = func;
+}
+function query_extra_sell_check() {
+   return _extra_sell_check;
+}
+void set_no_royalty_commands(int flag) {
+   _no_royalty_commands = flag;
+}
+int query_no_royalty_commands() {
+   return _no_royalty_commands;
+}
+void dest_me() {
+  if(_controller) {
+     _controller->dest_me();
+  }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/bank_master.c ===
+inherit "/std/shops/inherit/bank_base";
+#include <money.h>
+int query_float();
+int do_process(object *obs) {
+   object ob;
+   int amount;
+   int found;
+   object* not_credit;
+   object* not_valid;
+   string place;
+   place = query_money_place();
+   not_valid = ({ });
+   not_credit = ({ });
+   foreach (ob in obs) {
+      if (ob->query_credit_note() ||
+          ob->query_bank_name() != query_bank_name()) {
+         not_credit += ({ ob });
+         obs -= ({ ob });
+      } else if (ob->is_valid_note()) {
+         amount += ob->query_credit_balance();
+      } else {
+         not_valid += ({ ob });
+         obs -= ({ ob });
+      }
+   }
+   if (!sizeof(obs)) {
+      if (sizeof(not_credit)) {
+         add_failed_mess("None of $I are credit notes.\n", not_credit);
+      }
+      if (sizeof(not_valid)) {
+         add_failed_mess("None of $I are valid credit notes.\n", not_valid);
+      }
+      return 0;
+   }
+   foreach (ob in obs) {
+      amount = ob->query_amount();
+      if (amount > 0) {
+         if (this_player()->query_value_in(query_money_place()) < amount) {
+            add_failed_mess("You do not have the needed " +
+                            MONEY_HAND->money_value_string(amount, place) +
+                            " to deposit.\n");
+            continue;
+         }
+         else if (ob->do_process()) {
+            this_player()->pay_money(MONEY_HAND->create_money_array(amount,
+                   place), place);
+            add_succeeded_mess("$N $V depositing " +
+                               MONEY_HAND->money_value_string(amount, place) +
+                               " from $I.\n", ({ ob }));
+            found++;
+         } else {
+            add_failed_mess("You cannot process $I for some reason.\n",
+                            ({ ob }));
+            continue;
+         }
+      } else if (amount < 0) {
+         if (ob->do_process()) {
+            this_player()->adjust_money(MONEY_HAND->create_money_array(-amount, place));
+            add_succeeded_mess("$N $V withdrawing " +
+                               MONEY_HAND->money_value_string(-amount, place) +
+                               " from $I.\n", ({ ob }));
+            found++;
+         } else {
+            add_failed_mess("You cannot process $I for some reason.\n",
+                            ({ ob }));
+            continue;
+         }
+      }
+      ob->move("/room/rubbish");
+   }
+   return found;
+}
+void init() {
+   ::init();
+   add_command("process", "<indirect:object>");
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/store_close.c ===
+#include <weather.h>
+#include <climate.h>
+#include <am_time.h>
+void open_up();
+void close_up();
+private string _keeper;
+private string *_outside_rooms;
+private string *_exits;
+private string _burglar;
+private string _file;
+private int _flag;
+private int _open;
+private int _closed;
+private nosave object _keeper_ob;
+void event_weather(int whats_changed){
+   if(whats_changed >= 8){
+      if (_flag) {
+         call_out("night_time_check", 1);
+      } else {
+         call_out("day_time_check", 1);
+      }
+   }
+}
+protected void night_time_check(){
+   int bing;
+   bing = AM_TIME_HANDLER->query_am_hour(time() );
+   if (bing > 12 && bing < 23 && !_closed) {
+      _open = 0;
+      _closed = 1;
+      close_up();
+   }
+   if (bing > 0 && bing < 12 && !_open) {
+      _closed = 0;
+      _open = 1;
+      open_up();
+   }
+}
+protected void day_time_check(){
+   int bing;
+   bing = AM_TIME_HANDLER->query_am_hour(time() );
+   if (bing > 0 && bing < 12 && !_closed) {
+      _open = 0;
+      _closed = 1;
+      close_up();
+   }
+   if (bing > 12 && bing < 23 && !_open) {
+      _closed = 0;
+      _open = 1;
+      open_up();
+   }
+}
+void set_night_close(int night, string shopkeeper, string *outside,
+    string burglar_func){
+   int i;
+   _flag = night;
+   WEATHER->weather_notify( this_object(), NOTIFY_DAY );
+   _keeper = _file = shopkeeper;
+   if (sizeof(outside) && !(sizeof(outside)%2)) {
+      _exits = allocate(sizeof(outside)/2);
+      _outside_rooms = allocate(sizeof(outside)/2);
+      for(i=0; i<sizeof(outside); i++) {
+         if(!i%2)
+            _outside_rooms[i] = outside[i];
+         else
+            _exits[i-1] = outside[i];
+      }
+   }
+   _burglar = burglar_func;
+}
+void close_up(){
+   object *obs;
+   object *people;
+   object bing;
+   object *keeper_ob;
+   int i;
+   if (_keeper == "none") {
+     event (this_object(), "person_say", "The shopkeeper says: ",
+       "I'm sorry, it's time to close!", "common");
+     tell_room (this_object(), "The shopkeeper ushers you out of "
+          "the store.\n");
+   }
+   else {
+      keeper_ob = children(_keeper);
+      if (!sizeof(keeper_ob)) {
+         return;
+      }
+      if (keeper_ob[0]->query_fighting()) {
+         call_out("close_up", 60);
+         return;
+      }
+      keeper_ob[0]->do_command("'I'm sorry, it's time to close!");
+      keeper_ob[0]->do_command(":ushers you out of the store.");
+      keeper_ob[0]->move("/room/rubbish");
+   }
+   obs = all_inventory( this_object() );
+   people = filter(obs, (: $1->query_property("player") :));
+   foreach(bing in people){
+      bing->move_with_look(_outside_rooms[0]);
+   }
+   for(i=0; i<sizeof(_outside_rooms); i++){
+      _outside_rooms[i]->modify_exit(_exits[i], ({"open", 0, "locked", 1,
+          "difficulty", 4}));
+   }
+}
+void open_up(){
+   int i;
+   for(i=0; i<sizeof(_outside_rooms); i++){
+     _outside_rooms[i]->modify_exit(_exits[i], ({"open", 1, "locked", 0,
+        "difficulty", 4}));
+   }
+   if (_keeper == "none") {
+      return;
+   }
+   _keeper_ob = clone_object(_file);
+   _keeper_ob->move(this_object());
+}
+void event_enter(object ob, string message, object from){
+   if (!_burglar) {
+      return;
+   }
+   if (!_closed) {
+      return;
+   }
+   if (ob->query_creator()) {
+      return;
+   }
+   if (!ob->query_property("player")) {
+      return;
+   }
+   call_out(_burglar, 1, ob);
+}
+mapping query_dynamic_auto_load() {
+   return ([ "keeper ob" : _keeper_ob ]);
+}
+void init_dynamic_arg(mapping map) {
+   _keeper_ob = map["keeper ob"];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/inherit/bank_base.c ===
+#include <money.h>
+#include <move_failures.h>
+#define NAME (string)this_player()->query_name()
+#define CAP_NAME (string)this_player()->one_short()
+#define POSS (string)this_player()->query_possessive()
+#define HANDLER "/obj/handlers/bank_handler"
+#define OLD_BANK "/d/am/save/bank"
+private string _franchise;
+private int _total_difference;
+private nosave int _account_cost;
+private nosave int _percentage;
+private nosave string _bank_name;
+string query_money_place();
+void adjust_float(int amount);
+int is_open_for(string type, string person);
+void event_save(object ob);
+void create() {
+  _account_cost = 400;
+  _total_difference = 0;
+  _percentage = 10;
+}
+int query_bank() {
+   return 1;
+}
+int query_account_cost() { return _account_cost; }
+void set_account_cost( int number ) { _account_cost = number; }
+int query_percentage() { return _percentage; }
+void set_percentage( int number ) { _percentage = number; }
+int query_total_difference() { return _total_difference; }
+void adjust_total_difference(int amount) {
+   _total_difference += amount;
+}
+void set_total_difference(int amount) {
+   _total_difference = amount;
+}
+string query_bank_name() { return _bank_name; }
+void set_bank_name( string word ) { _bank_name = word; }
+int get_account(string player) {
+  return HANDLER->query_account( player, _bank_name );
+}
+void set_account( string player, int amount ) {
+  HANDLER->set_account( player, _bank_name, amount );
+}
+void adjust_account(string person, int amount) {
+}
+string query_franchise() {
+   return _franchise;
+}
+void set_franchise(string franchise) {
+   _franchise = franchise;
+}
+int can_adjust_account(string person, int amount) {
+   if ( ( get_account( person ) + amount ) >= 0 ) {
+      return 1;
+   }
+   add_failed_mess("You do not have enough money to complete the "
+                   "transaction.\n");
+   return 0;
+}
+object find_main_bank() {
+   object office;
+   string room;
+   room = BANK_HANDLER->query_bank_master_office(_bank_name);
+   if (!room) {
+      return 0;
+   }
+   office = load_object(room);
+   if (!office) {
+      return 0;
+   }
+   if (office->query_bank()) {
+      return office;
+   }
+   return 0;
+}
+string query_main_branch_owner() {
+   object branch;
+   branch = find_main_bank();
+   if (!branch) {
+      return "no owner";
+   }
+   if (branch->query_owner()) {
+      return lower_case(branch->query_owner());
+   }
+   return "no owner";
+}
+int do_balance() {
+  int amount;
+   if (!query_bank_name()) {
+      add_failed_mess("This is a forgotten bank in a dusty land.\n");
+      return 0;
+   }
+   if (!is_open_for("bank", this_player()->query_name())) {
+      add_failed_mess("The bank is not open for withdrawals.\n");
+      return 0;
+   }
+   amount = get_account(this_player()->query_name());
+  if ( amount < 0 ) {
+    notify_fail( "You do not have an account here.\n" );
+    return 0;
+  }
+  if ( !amount ) {
+     add_succeeded_mess(
+       ({ "Your account is empty.\n",
+           "$N checks the balance of $p account.\n" }));
+    return 1;
+  }
+  add_succeeded_mess(
+     ({ "You have "+ (string)MONEY_HAND->money_value_string( amount,
+         query_money_place() ) +
+        " in your account.\n",
+        "$N checks the balance of $p account.\n" }));
+  return 1;
+}
+int do_withdraw( string type ) {
+  int amount;
+  int total;
+  object money;
+   if (this_player()->query_property("dead"))  {
+      add_failed_mess("You are dead.  You know what they say; you can't take "
+         "it with you.\n");
+      return 0;
+   }
+   if (!query_bank_name()) {
+      add_failed_mess("This is a forgotten bank in a dusty land.\n");
+      return 0;
+   }
+   if (!is_open_for("withdraw", this_player()->query_name())) {
+      add_failed_mess("The bank is not open for withdrawals.\n");
+      return 0;
+   }
+   total = get_account(this_player()->query_name());
+   if ( total < 0 ) {
+      notify_fail( "You do not have an account here.\n" );
+      return 0;
+   }
+   amount = MONEY_HAND->value_from_string(type, query_money_place());
+   if ( amount <= 0 ) {
+      notify_fail( "You must withdraw something.\n" );
+      return 0;
+   }
+   if ( amount > total ) {
+      add_failed_mess( "You don't have that much money in your account!\n" );
+      return 0;
+   }
+   if (!can_adjust_account(this_player()->query_name(), -amount)) {
+      add_failed_mess("The bank cannot handle this transaction.\n");
+      return 0;
+   }
+   money = MONEY_VAULT->get_money_ob();
+   money->set_money_array(MONEY_HAND->create_money_array(amount,
+       query_money_place()));
+   if (money->move(this_player()) != MOVE_OK)  {
+      if (money->move(this_object()) != MOVE_OK) {
+         add_failed_mess("Unable to put the money on the floor, cancelling "
+               "the transaction.\n");
+         money->move("/room/rubbish");
+         return 0;
+      } else {
+         write("You are carrying too much weight to accept your money, "
+               "So it is placed on the floor for you.\n");
+      }
+   }
+   set_account(this_player()->query_name(), total - amount );
+   adjust_account(this_player()->query_name(), -amount);
+   _total_difference -= amount;
+   event_save(this_object());
+   add_succeeded_mess( ({
+      "You withdraw "
+      + MONEY_HAND->money_value_string( amount, query_money_place() )
+      +".\nYou have "
+      + MONEY_HAND->money_value_string( get_account( this_player()->query_name() ),
+                                        query_money_place() )
+      + " in your account after the withdrawal.\n",
+      "$N withdraws some money from $p account.\n"
+   }) );
+   this_player()->save();
+   return 1;
+}
+int do_deposit( string words ) {
+   int amount;
+   int total;
+   int tmp;
+   int howmuch;
+   mixed money;
+   if (!query_bank_name()) {
+      add_failed_mess("This is a forgotten bank in a dusty land.\n");
+      return 0;
+   }
+   if (!is_open_for("deposit", this_player()->query_name())) {
+      add_failed_mess("The bank is not open for deposits.\n");
+      return 0;
+   }
+   total = get_account(this_player()->query_name());
+   if ( total < 0 ) {
+      notify_fail("You don't have an account here.\n");
+      return 0;
+   }
+   money = MONEY_HAND->parse_money(words, this_player(), query_money_place());
+   if( money == NO_MATCH ) {
+      add_failed_mess( "Deposit what?\n" );
+      return 0;
+   }
+   else if( money == NO_MONEY ) {
+      add_failed_mess( "You can't deposit that.\n" );
+      return 0;
+   }
+   else if( money == NO_LEGAL ) {
+      add_failed_mess( "You can only deposit legal tender.\n");
+      return 0;
+   }
+   amount = money->query_value_in(query_money_place());
+   if(amount < 200) {
+      money->move(this_player());
+      add_failed_mess("That is too small an amount, you must deposit "
+                      "at least " +
+                      MONEY_HAND->money_value_string(200, query_money_place()) +
+                      ".\n");
+      return 0;
+   }
+   if (!can_adjust_account(this_player()->query_name(), amount)) {
+      money->move(this_player());
+      add_failed_mess("The bank cannot handle this transaction.\n");
+      return 0;
+   }
+   tmp = ( amount * _percentage ) / 100;
+   adjust_float(tmp);
+   howmuch = amount;
+   amount = amount - tmp;
+   set_account(this_player()->query_name(), total + amount );
+   _total_difference += amount;
+   adjust_account(this_player()->query_name(), amount);
+   event_save(this_object());
+   money->move("/room/rubbish");
+   this_player()->save();
+   add_succeeded_mess(
+       ({  "You give the teller "+ MONEY_HAND->
+           money_string(money->query_money_array(), query_money_place()) +
+           ", which after expenses leaves "+ MONEY_HAND->
+           money_value_string( amount, query_money_place() ) +".\n"
+           "This gives a total of " + MONEY_HAND->
+           money_value_string(total + amount, query_money_place() ) +
+           " in your account.\n",
+           "$N deposits some money into $p account.\n" }) );
+   return 1;
+}
+int do_open() {
+  int amount;
+  if (!is_open_for("open account", this_player()->query_name())) {
+     add_failed_mess("The bank is not open for new accounts.\n");
+     return 0;
+  }
+  if ( get_account(this_player()->query_name()) >= 0 ) {
+    notify_fail( "You already have an account here.\n" );
+    return 0;
+  }
+  if ( _account_cost ) {
+    amount = this_player()->query_value_in( query_money_place() );
+    if ( amount < _account_cost ) {
+      notify_fail( "You do not have enough money to open an account.\n" );
+      return 0;
+    }
+    write( "It will cost you "+ (string)MONEY_HAND->money_value_string(
+      _account_cost, query_money_place() ) +
+      " to open the account.\nDo you still wish to "+
+      "open an account here? " );
+    input_to( "check_open" );
+    return 1;
+  }
+  set_account(this_player()->query_name(), 0 );
+  add_succeeded_mess( "$N $V an account.\n" );
+  return 1;
+}
+void check_open( string word ) {
+  object money;
+  int amount;
+  object main;
+  word = lower_case( word );
+  if (!strlen(word) || word [ 0 ] !=  'y') {
+    write( "Okay, not opening an account.\n" );
+    return ;
+  }
+  amount = this_player()->query_value_in( query_money_place() );
+  if (amount < _account_cost) {
+    write("You lost all your money!\n");
+    return ;
+  }
+  set_account(this_player()->query_name(), 0 );
+  write( "You now have an account here.\n" );
+  money = this_player()->query_money_object(0);
+  money = MONEY_HAND->pay_amount_from( _account_cost, money, query_money_place() );
+  if (money  &&  money->move(this_player()) != MOVE_OK)  {
+    write("Your change is too heavy and you drop it on the floor.\n");
+    money->move(this_object());
+  }
+  amount = BANK_HANDLER->query_cost_for_new_account(_bank_name,
+                                                    query_franchise());
+  main = find_main_bank();
+  if (main) {
+     main->adjust_float(amount);
+  }
+  adjust_float(_account_cost - amount);
+  return ;
+}
+int do_close() {
+  int total;
+  object money;
+  total = get_account(this_player()->query_name());
+  if ( total < 0 ) {
+    notify_fail( "You do not have an account here.\n" );
+    return 0;
+  }
+  if ( total ) {
+    if ( money = (object)MONEY_HAND->make_new_amount( total, query_money_place() ) ) {
+      write( "You receive "+ (string)money->short() +" on closing "+
+        "your account.\n" );
+      if ( (int)money->move( this_player() ) != MOVE_OK ) {
+        write( "You are too heavily burdened to accept all that money, so "+
+          "the teller puts it on the counter for you.\n" );
+        money->move( this_object() );
+      }
+      adjust_float(-total);
+      _total_difference -= total;
+    } else {
+      write( "The amount of money in your account was not even worth a "+
+        "coin of the lowest denomination in the local currency.  Sorry.\n"+
+        "Your account is now closed.\n" );
+    }
+  } else {
+    write( "You close your account.\n" );
+  }
+  add_succeeded_mess("$N $V an account.\n");
+  set_account(this_player()->query_name(), -1 );
+  event_save(this_object());
+  this_player()->save();
+  return 1;
+}
+mixed *stats() {
+  return ({
+    ({ "account cost", _account_cost }),
+    ({ "percentage", _percentage }),
+    ({ "total difference", _total_difference }),
+    ({ "bank name", _bank_name }),
+    ({ "place", query_money_place() }) });
+}
+void init() {
+  add_command( "balance", "" );
+  add_command( "withdraw", "<string>",
+               (: do_withdraw($4[0]) :) );
+  add_command( "open", "account" );
+  add_command( "close", "account" );
+  add_command( "deposit", "<string>", (: do_deposit($4[0]) :) );
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/objs/counter.c ===
+#include <position.h>
+inherit "/std/surface";
+void create() {
+   ::create();
+   set_name( "counter" );
+   set_short( "counter" );
+   set_long( "The counter seems to be where you should leave glasses and "
+      "plates to be cleared away.\n" );
+   reset_get();
+   add_property(CAN_POSITION_PROPERTY, 1);
+}
+void clear_item( object item ) {
+   if( environment( item ) == this_object()
+       && !sizeof( all_inventory( item ) ) )
+      item->move( "/room/rubbish" );
+}
+void event_enter( object ob, string mess, object from ) {
+   if( ob->query_property( "pub item" )
+       && !sizeof( all_inventory( ob ) ) )
+      call_out( "clear_item", 3, ob );
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/counter.c ===
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <money.h>
+private nosave mixed *_money;
+private nosave object _register = 0;
+private nosave string _save_file = "",
+                      _place = UNSET_STR,
+                      _office = "",
+                      _storeroom = "",
+                      _mgr_office = "",
+                      _shop_front = "",
+                      _store_dir = "",
+                      _office_dir = "",
+                      _shop_dir = "";
+private nosave int _call_save = 0;
+int action(string);
+void add_money_ob(object);
+int adjust_register(string, int);
+string directions_to(string);
+private int do_calc(int,string,int);
+private int do_correction(mixed);
+private int do_log(mixed *);
+int query_register();
+private void save_me(string);
+void save_register(int);
+protected void set_office(string);
+protected void set_directions(string, string, string);
+void create()
+{
+   do_setup++;
+   ::create();
+   do_setup--;
+   add_property("no burial", 1);
+   add_property("determinate", "");
+   if (!do_setup)
+   {
+      this_object()->setup();
+      this_object()->reset();
+   }
+   add_item("calculator", "A standard shop's calculator used to total "
+     "up all those difficult prices.  To use, see \"syntax calc\".");
+   add_help_file("player_shop_counter");
+}
+void init()
+{
+   ::init();
+   if (!_office || _office == "") return;
+   this_player()->command_override((: action :));
+   add_command("calc", "<number> {+|-|*|/} <number>",
+     (: do_calc($4[0],$4[1],$4[2]) :));
+   if (_office->query_employee(this_player()->query_name()) ||
+     this_player()->query_creator())
+   {
+      add_command("log",
+        "shop {bought|sold} <number> <string'item(s)'> for <word'amount'>",
+        (: do_log($4) :));
+      add_command("correction",
+        "shop {bought|sold} <number> <string'item(s)'> for <word'amount'>",
+        (: do_correction($4) :));
+   }
+}
+int action(string str)
+{
+   string st1;
+   if (_office->query_employee(this_player()->query_name()) ||
+     this_player()->query_creator())
+     return 0;
+   sscanf(str,"%s %s",str,st1);
+   if(str == "get" || str == "take")
+      if (strsrch(st1, "register") != -1)
+      {
+         tell_object(this_player(), "You are not an active employee here!\n");
+         return 1;
+      }
+   return 0;
+}
+void add_money_ob(object money)
+{
+   if (previous_object() && previous_object() != find_object(_office))
+   {
+      LOG_ERROR("counter.c", "add_money_ob()");
+      return;
+   }
+   if (!money) return;
+   money->move( _register );
+   save_register(TRUE);
+}
+int adjust_register(string player, int amount)
+{
+   int value;
+   object cash, change;
+   if (previous_object() && previous_object() != find_object(_office))
+   {
+      LOG_ERROR("counter.c", "adjust_register(" + player+","+amount+")");
+      return 0;
+   }
+   if (amount < 0) return 0;
+   cash = present(MONEY_ALIAS, _register);
+   if ( !cash ) return 0;
+   _money = cash->query_money_array() + ({});
+   value = MONEY_HAND->query_total_value(_money, _place);
+   if (value < amount) amount = value;
+   change = MONEY_HAND->pay_amount_from( amount, cash, _place );
+   if (change) change->move( _register );
+   _office->shop_log(ACCOUNTS, player, "adjusted the register by "+
+     MONEY_HAND->money_value_string(amount, _place), UNPAID);
+   save_register(TRUE);
+   return amount;
+}
+string directions_to(string place)
+{
+   if (place == _storeroom) return _store_dir;
+   if (place == _office) return _office_dir;
+   if (place == _shop_front) return _shop_dir;
+   return "here";
+}
+private int do_calc(int a, string sign, int b)
+{
+   int c = 0;
+   string result = a+ " "+ sign+ " "+ b+ " = ",
+          temp;
+   switch (sign)
+   {
+     case "+" :
+        result += sprintf("%d\n", a+b);
+        break;
+     case "-" :
+        result += sprintf("%d\n", a-b);
+        break;
+     case "*" :
+        result += sprintf("%d\n", a*b);
+        break;
+     case "/" :
+        if (!b)
+        {
+           tell_object( this_player(),
+             "Trying to divide by zero?  Whatever next?\n");
+           return 1;
+        }
+        if (a % b) c = ((a%b) * 100)/b;
+        temp = sprintf("%02d",c);
+        result += sprintf("%d.%s\n", a/b, temp[0..1]);
+        break;
+   }
+   tell_object(this_player(), result);
+   add_succeeded_mess("$N use$s the calculator.\n");
+   return 1;
+}
+private int do_correction(mixed *args)
+{
+   _office->shop_log(LOG_ENTRY, this_player()->query_name(),
+     "ERROR IN LOG - correct entry follows:", UNPAID);
+   _office->shop_log(LOG_ENTRY, this_player()->query_name(),
+     args[0]+ " "+ args[1]+ " "+ args[2]+ " for "+ args[3], UNPAID);
+   add_succeeded_mess("$N make$s a correction in the transaction log book.\n");
+   return 1;
+}
+private int do_log(mixed *args)
+{
+   _office->shop_log(LOG_ENTRY, this_player()->query_name(),
+     args[0]+ " "+ args[1]+ " "+ args[2]+ " for "+ args[3], PAID);
+   add_succeeded_mess("$N make$s an entry in the transaction log book.\n");
+   return 1;
+}
+void event_death(object k, object *o, object k2, string r, string k3)
+{
+   _office->event_death(k, o, k2, r, k3);
+}
+void event_enter(object ob, string message, object from)
+{
+   _office->event_enter(ob, message, from);
+}
+int query_register()
+{
+   object cash = present(MONEY_ALIAS, _register);
+   if (!cash) return 0;
+   _money = cash->query_money_array() + ({});
+   return MONEY_HAND->query_total_value(_money, _place);
+}
+private void save_me(string name)
+{
+   int difference;
+   object cash;
+   mixed *old = _money + ({});
+   if (!_register) return;
+   cash = present(MONEY_ALIAS, _register);
+   if (!cash) _money = ({});
+   else _money = (mixed *)cash->query_money_array() + ({});
+#ifdef DEBUG
+   tell_creator(CREATOR, "Register contains: %O.\n", _money);
+#endif
+   _office->save_register(_money);
+   difference = MONEY_HAND->query_total_value(_money, _place) -
+     MONEY_HAND->query_total_value(old, _place);
+   if (!difference) return;
+   _office->adjust_takings(difference);
+   if (!name || name == "") return;
+   if (difference < 0)
+      _office->shop_log(PURCHASE, name, "removed "+
+        MONEY_HAND->money_value_string(-difference, _place)+
+        " from register", UNPAID);
+   else
+      _office->shop_log(SALE, name, "added "+
+        MONEY_HAND->money_value_string(difference, _place)+
+        " to register", UNPAID);
+}
+void save_register(int no_player)
+{
+   remove_call_out(_call_save);
+   _call_save = call_out((: save_me($((!no_player)?
+      this_player()->query_name():"shop")) :), 1);
+}
+protected void set_directions(string office, string storeroom, string shop)
+{
+   _office_dir = office;
+   _store_dir = storeroom;
+   _shop_dir = shop;
+}
+protected void set_long(string long_desc)
+{
+   long_desc += "Employees of the shop can \"log\" transactions or "
+     "\"correction\"s here.  The shop's cash register is under the "
+     "counter and there is a calculator next to that.\n";
+   ::set_long(long_desc);
+}
+protected void set_office(string path)
+{
+   object cash;
+   _office = path;
+   _storeroom = _office->query_storeroom();
+   _mgr_office = _office->query_mgr_office();
+   _shop_front = _office->query_shop_front();
+   _place = _office->query_place();
+   if (_register) return;
+   _register = clone_object("/obj/misc/cash_register");
+   _register->set_name("register");
+   _register->set_short("cash register");
+   _register->add_adjective("cash");
+   _register->set_long("The cash register is really just an iron drawer "
+     "mounted underneath the counter.  In a certain light, it almost "
+     "seems tongue-shaped.\n");
+   _register->set_shop(this_object());
+   add_hidden_object(_register);
+   _register->reset_get();
+   _money = _office->restore_register();
+   if (!_money || !sizeof(_money)) return;
+   cash = clone_object(MONEY_OBJECT);
+   cash->set_money_array(_money);
+   cash->move(_register);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/patterns.h ===
+#define CHART_ADDITEM       "add <string'item'>"
+#define CHART_REMITEM       "remove <string'item'>"
+#define CHART_MAXITEM       "max <string'item'> <number>"
+#define CHART_BUYITEM       "buy <string'item'> <number>"
+#define CHART_SELLITEM      "sell <string'item'> <number>"
+#define CHART_ASSIGN_ITEM   "assign <string'item'> <number'cabinet number'>"
+#define CHART_UNASSIGN_ITEM "unassign <string'item'> <number'cabinet number'>"
+#define LOG_BLANK  ""
+#define LOG_NUMBER "<number>"
+#define LOG_MGR    "{personnel|accounts|chart}"
+#define LOG_CHART  "chart"
+#define LIST_BLANK  ""
+#define LIST_CHOICE "{employees|applicants|baddies}"
+#define SET_EMPS "maximum <number> [employees]"
+#define SET_PAY  "pay <number'amount'> <string'type'>"
+#define VOTE_APPLICANT "<word'applicant'> {y|n|a}"
+#define VOTE_POLICY    "policy <word'name'> {y|n}"
+#define VIEW_EMP "<string'employee'>"
+#define VIEW_APP "application [by] <string'applicant'>"
+#define POLICY_SUGGEST "suggest {manager|shop} <word'policy'>"
+#define POLICY_REMOVE  "remove <word'policy'>"
+#define LIST_CABINET      "cabinet <number'cabinet'>"
+#define LIST_ITEM         "<string'item'>"
+#define LIST_ITEM_CABINET "<string'item'> in cabinet <number'cabinet'>"
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/mgr_office.c ===
+inherit "/std/room/basic_room";
+#include <player_shop.h>
+#include <mail.h>
+#include <move_failures.h>
+#include <money.h>
+#include "patterns.h"
+private nosave string _office = "",
+_place = "",
+_shop_front = "",
+_counter = "",
+_storeroom = "";
+private nosave object _notice = 0;
+private string cap_name(string);
+private int do_accounts();
+private int do_ban(mixed *);
+private int do_check();
+private int do_claim();
+private int do_commend(string);
+private int do_demote(string);
+private int do_fire(mixed *);
+private int do_leave(mixed *);
+private int do_list(mixed *);
+private int do_logs(mixed *, string);
+private int do_mail(string);
+private int do_memo();
+private int do_office();
+private int do_policies();
+private int do_policy(mixed *,string);
+private int do_project(string);
+private int do_query(string);
+private int do_remove();
+private int do_rent();
+private int do_retire();
+private int do_set(mixed *, string);
+private int do_suspend(mixed *);
+private int do_transfer(mixed *);
+private int do_unban(string);
+private int do_view(string,string);
+private int do_vote(mixed *, string);
+private int do_warn(mixed *);
+private void end_memo(string,string);
+private void end_policy_suggest(string,string,int);
+private void send_memo(string, string, string);
+protected void set_office(string);
+private void write_memo(string);
+void create()
+{
+    do_setup++;
+    ::create();
+    do_setup--;
+    add_property("determinate", "");
+    if (!do_setup)
+    {
+        this_object()->setup();
+        this_object()->reset();
+    }
+    add_help_file("player_shop_mgr_office");
+}
+void init()
+{
+    ::init();
+    if (!_office || _office == "") return;
+    if ( !_office->query_manager(this_player()->query_name()) &&
+      !_office->query_retired(this_player()->query_name()) &&
+      !this_player()->query_creator()) return;
+    add_command("list", ({LIST_BLANK, LIST_CHOICE}),
+      (: do_list($4) :));
+    add_command("memo", "", (: do_memo() :));
+    add_command("office", "", (: do_office() :));
+    add_command("claim", "", (: do_claim() :));
+    add_command("accounts", "", (: do_accounts() :));
+    add_command("logs", ({LOG_BLANK, LOG_NUMBER, LOG_MGR}),
+      (: do_logs($4,$5) :));
+    add_command("mail", ({"", "<string>"}), (: do_mail($4) :));
+    add_command("query", "{pay|employees}", (: do_query($4[0]) :));
+    add_command("view", ({VIEW_EMP, VIEW_APP}), (: do_view($4[0],$5) :));
+    add_command("project", "{pay|bonus}", (: do_project($4[0]) :));
+    add_command("vote", VOTE_POLICY, (: do_vote($4,$5) :));
+    add_command("policy", ({POLICY_SUGGEST, POLICY_REMOVE}),
+      (: do_policy($4,$5) :));
+    add_command("policies", "", (: do_policies() :));
+    if (_office->query_retired(this_player()->query_name())) return;
+    add_command("rent", "cabinet", (: do_rent() :));
+    add_command("remove", "cabinet", (: do_remove() :));
+    add_command("retire", "", (: do_retire() :));
+    add_command("vote", VOTE_APPLICANT, (: do_vote($4,$5) :));
+    add_command("check", "votes", (: do_check() :));
+    add_command("commend", "<word'employee'>", (: do_commend($4[0]) :));
+    add_command("fire", "<word'employee'> [for] <string'reason'>",
+      (: do_fire($4) :));
+    add_command("warn", "<word'employee'> [for] <string'reason'>",
+      (: do_warn($4) :));
+    add_command("demote", "<word'employee'>", (: do_demote($4[0]) :));
+    add_command("suspend", "<word'employee'> [for] <number> [months]",
+      (: do_suspend($4) :));
+    add_command("leave", "<word'employee'> [for] <number> [days]",
+      (: do_leave($4) :));
+    add_command("ban", "<word'person'> [for] <string'reason'>",
+      (: do_ban($4) :));
+    add_command("unban", "<word'person'>", (: do_unban($4[0]) :));
+    add_command("set", ({SET_EMPS, SET_PAY}), (: do_set($4,$5) :));
+    add_command("transfer", "<number'amount'> <string'type'> [from] "
+      "{register|bonus|profit} [to] {register|bonus|profit}",
+      (: do_transfer($4) :));
+}
+private string cap_name(string name)
+{
+    if (test_player(name))
+        return PLAYER_HANDLER->query_cap_name(name);
+    else return capitalize(name);
+}
+void dest_me()
+{
+    if (_notice) _notice->dest_me();
+    ::dest_me();
+}
+private int do_accounts()
+{
+    tell_object(this_player(), "The shop's accounts are as follows:\n"+
+      sprintf("   Cash   : %s\n   Bonus  : %s\n   Profit : %s\n",
+        MONEY_HAND->money_value_string(_counter->query_register(), _place),
+        MONEY_HAND->money_value_string(_office->query_bonus(), _place),
+        MONEY_HAND->money_value_string(_office->query_profit(), _place)));
+    return 1;
+}
+private int do_ban(mixed *args) { return _office->do_ban(args); }
+private int do_check()
+{
+    string results,
+    name = this_player()->query_name();
+    mapping applicants;
+    add_succeeded_mess("");
+    applicants = _office->get_applicants();
+    applicants = filter(applicants, (: $(applicants)[$1][APP_TYPE] == 1 :));
+    if (this_player()->query_creator())
+    {
+        results = "The following votes have been cast:\n\n";
+        foreach (string word in sort_array(keys(applicants), 1))
+        {
+            results += cap_name(word)+ " - applied " +
+            ctime(applicants[word][APP_TIME] )+ "\n   Votes for:     ";
+            foreach (string vote in applicants[word][APP_FOR])
+            results += cap_name(vote) + "  ";
+            results += "\n   Votes against: ";
+            foreach (string vote in applicants[word][APP_AGAINST])
+            results += cap_name(vote) + "  ";
+            results += "\n   Abstentions:   ";
+            foreach (string vote in applicants[word][APP_ABSTAIN])
+            results += cap_name(vote) + "  ";
+            results += "\n\n";
+        }
+        tell_object(this_player(), "$P$Votes cast$P$"+ results);
+        return 1;
+    }
+    results = "You have cast the following votes:\n\nFor: ";
+    foreach (string vote in sort_array(keys(applicants), 1))
+    if (member_array(name, applicants[vote][APP_FOR]) != -1)
+        results += cap_name(vote)+ "  ";
+    results += "\nAgainst: ";
+    foreach (string vote in sort_array(keys(applicants), 1))
+    if (member_array(name, applicants[vote][APP_AGAINST]) != -1)
+        results += cap_name(vote)+ "  ";
+    results += "\nAbstentions: ";
+    foreach (string vote in sort_array(keys(applicants), 1))
+    if (member_array(name, applicants[vote][APP_ABSTAIN]) != -1)
+        results += cap_name(vote)+ "  ";
+    tell_object(this_player(), results + "\n");
+    return 1;
+}
+private int do_claim()
+{
+    object thing;
+    if (!_office || _office == "") return 0;
+    thing = clone_object(MGR_BOOK);
+    thing->set_read_mess("\n   "+ _office->query_shop_name()+ "\n\n"
+      "   Manager's Handbook\n\n   This handbook belongs to: "+
+      this_player()->query_short()+ "\n\n", "common", 100);
+    thing->set_office(_office);
+    if (thing->move(this_player()) != MOVE_OK)
+    {
+        thing->move(this_object());
+        tell_object(this_player(),
+          "You drop your handbook as you're carrying too much.\n");
+    }
+    add_succeeded_mess("$N $V a new handbook.\n");
+    return 1;
+}
+private int do_commend(string emp) { return _office->do_commend(emp); }
+private int do_demote(string emp) { return _office->do_demote(emp); }
+private int do_fire(mixed *args) { return _office->do_fire(args); }
+private int do_leave(mixed *args) { return _office->do_leave(args); }
+private int do_list(mixed *args)
+{
+    string results, word;
+    mapping baddies, applicants;
+    string *applied, *hired, *awaiting;
+    if (!sizeof(args)) args = ({"employees"});
+    add_succeeded_mess("");
+    switch (args[0])
+    {
+    case "applicants" :
+        results = "      Applications for employment as at " +
+        ctime(time()) + "\n\n";
+        applicants = _office->get_applicants();
+        if (!applicants || applicants == ([]))
+        {
+            tell_object(this_player(), results+
+              "No applications outstanding.\n");
+            return 1;
+        }
+        applied = sort_array(keys(filter(applicants,
+              (: $(applicants)[$1][APP_TYPE] == APPLIED :))),
+          (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
+        hired = sort_array(keys(filter(applicants,
+              (: $(applicants)[$1][APP_TYPE] == HIRED :))),
+          (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
+        awaiting = sort_array(keys(filter(applicants,
+              (: $(applicants)[$1][APP_TYPE] == AWAITING :))),
+          (: $(applicants)[$1][APP_TIME] - $(applicants)[$2][APP_TIME] :));
+        if ( sizeof(awaiting))
+        {
+            results += "Applicants awaiting vacancies:\n";
+            foreach (word in awaiting)
+            results += "     "+ cap_name(word)+
+            " - confirmed employment " +
+            ctime(applicants[word][1])+ "\n";
+            results += "\n";
+        }
+        if (sizeof(hired))
+        {
+            results += "Applicants yet to confirm their employment:\n";
+            foreach (word in hired)
+            results += "     "+ cap_name(word)+ " - voted in " +
+            ctime(applicants[word][1])+ "\n";
+            results += "\n";
+        }
+        if (sizeof(applied))
+        {
+            results += "Applicants yet to be hired or rejected.  Vote now!\n";
+            foreach (word in applied)
+            {
+                results += "     "+ cap_name(word)+ " - applied " +
+                ctime(applicants[word][1])+ "\n";
+                results += sprintf("     %-12s%-5d%-16s%-5d%-13s%-5d\n",
+                  "Votes for:", sizeof(applicants[word][APP_FOR]),
+                  "Votes against:", sizeof(applicants[word][APP_AGAINST]),
+                  "Abstentions:", sizeof(applicants[word][APP_ABSTAIN]));
+            }
+        }
+        tell_object(this_player(), "$P$Applications list$P$"+ results);
+        break;
+    case "baddies" :
+        if (!m_sizeof(baddies = _office->get_baddies()))
+        {
+            tell_object(this_player(),
+              "There are no people on the list at the moment.\n");
+            return 1;
+        }
+        results = "This is a list of people banned from the shop:\n\n";
+        foreach (word in sort_array(keys(baddies), 1))
+        {
+            results += cap_name(word)+ " banned by "+
+            baddies[word][BAD_BANNER]+ " on "+
+            ctime(baddies[word][BAD_TIME] )+ ".\n   Banned for "+
+            baddies[word][BAD_REASON]+ ".\n\n";
+        }
+        tell_object(this_player(), "$P$Baddies$P$\n"+ results);
+        break;
+    default :
+        return _office->do_list();
+    }
+    return 1;
+}
+private int do_logs(mixed *args, string pattern)
+{
+    return _office->do_logs(args, pattern);
+}
+private int do_mail(string words) { return MAIL_TRACK->mail(words); }
+private int do_memo()
+{
+    tell_object(this_player(), "Subject: (hit enter for general memo)\n");
+    input_to((: write_memo($1) :), 0);
+    add_succeeded_mess("");
+    return 1;
+}
+private int do_office()
+{
+    int retired = _office->query_retired(this_player()->query_name());
+    string result = (retired)?
+    "As a retired manager, you can use the following commands:\n":
+    "As a manager, you can use the following commands:\n";
+    result +=
+    "   accounts  - view register, bonus & profit accounts\n"
+    "   claim     - claim a manager's handbook\n"
+    "   list      - list employees, applicants or banned people\n"
+    "   logs      - review the shop's logs\n"
+    "   mail      - read / send mail\n"
+    "   memo      - send a message to the other managers\n"
+    "   policy    - suggest a new (or remove an old) policy for the shop\n"
+    "   policies  - check on the proposed policies\n"
+    "   project   - view anticipated paypacket & bonus values\n"
+    "   query     - query pay amount or number of employees\n"
+    "   view      - view a person's history with this shop\n"
+    "               or an applicant's application form\n"
+    "   vote      - vote for a policy to be implemented into the shop\n";
+    if (!retired)
+        result +=
+        "               or for an applicant to work for the shop\n"
+        "   (un)ban   - (un)ban a person from the shop for "+
+        BAN_LENGTH+ " days\n"
+        "   rent      - rent storeroom cabinets\n"
+        "   remove    - remove storeroom cabinets\n"
+        "   check     - check votes you have made on applications\n"
+        "   commend   - reward an outstanding employee\n"
+        "   demote    - demote an employee\n"
+        "   fire      - end someone's employment\n"
+        "   leave     - place an employee on leave for up to "+
+        MAX_LEAVE+ " days\n"
+        "   retire    - end your active employment at the shop\n"
+        "   set       - set number of employees, and pay amount\n"
+        "   suspend   - suspend an employee's bonus entitlement\n"
+        "   transfer  - transfer money between register, bonus & profit\n"
+        "   warn      - issue a formal warning to an employee\n";
+    tell_object(this_player(), result+ "\n");
+    add_succeeded_mess("");
+    return 1;
+}
+private int do_policies()
+{
+    mapping policies = _office->get_new_policies();
+    if (!m_sizeof(policies))
+        tell_object(this_player(), "There are no policies awaiting sanction.\n");
+    else
+    {
+        int i = 1;
+        tell_object(this_player(), "The following policies have been suggested."
+          "  Policies in existence are proposed to be overturned.\n");
+        foreach(string policy in m_indices(policies))
+        tell_object(this_player(), sprintf("%d. %s - %s [%s]. %s\n", i++,
+            (policies[policy][POLICY_TYPE])?"MGR":"EMP", policy,
+            policies[policy][POLICY_MGR], policies[policy][POLICY_TEXT]));
+    }
+    return 1;
+}
+private int do_policy(mixed *args, string pattern)
+{
+    string *managers, mgr;
+    if (pattern == POLICY_SUGGEST)
+    {
+        if (_office->query_policy(args[1]))
+        {
+            tell_object(this_player(), "This name is already in use.\n");
+            return 1;
+        }
+        this_player()->do_edit(0, (: end_policy_suggest($1,
+              $(lower_case(args[1])),$((args[0] == "manager")?1:0)) :));
+        add_succeeded_mess("");
+        return 1;
+    }
+    if (_office->query_policy(args[0]) < 2)
+    {
+        tell_object(this_player(), "This policy does not exist.\n");
+        return 1;
+    }
+    args[0] = lower_case(args[0]);
+    tell_object(this_player(), "You suggest that the "+ args[0]+
+      " policy should be removed.\n");
+    mgr = this_player()->query_name();
+    managers = _office->get_managers();
+    managers += _office->get_retired();
+    managers += ({_office->query_creator()});
+    managers -= ({mgr});
+    AUTO_MAILER->auto_mail(implode(managers, ","),
+      mgr, "TFQC policy suggestion",
+      "", "Please note that I would like you to vote on removing the "+
+      args[0]+ " policy.\n", 0, 0);
+    _office->add_policy_suggest(args[0], "", mgr);
+    return 1;
+}
+private int do_project(string projection)
+{
+    add_succeeded_mess("");
+    switch (projection)
+    {
+    case "bonus" :
+        _office->calc_bonus();
+        break;
+    case "pay" :
+        tell_object(this_player(),
+          "For the month to date, the staff wages total "+
+          MONEY_HAND->money_value_string( _office->calc_pay(),
+            _place)+ ".\n");
+        break;
+    }
+    return 1;
+}
+private int do_query(string query)
+{
+    add_succeeded_mess("");
+    switch(query)
+    {
+    case "pay" :
+        tell_object(this_player(), "The pay is currently set at "+
+          MONEY_HAND->money_value_string(_office->query_pay(),
+            _place)+ ".\n");
+        break;
+    case "employees" :
+        tell_object(this_player(),
+          "The maximum number of employees is currently "+
+          _office->query_maxemp()+ ".\n");
+        break;
+    default :
+    }
+    return 1;
+}
+private int do_remove() { return _office->do_remove(); }
+private int do_rent() { return _office->do_rent(); }
+private int do_retire() { return _office->do_retire(); }
+private int do_set(mixed *args, string pattern)
+{
+    return _office->do_set(args, pattern);
+}
+private int do_suspend(mixed *args) { return _office->do_suspend(args); }
+private int do_transfer(mixed *args) { return _office->do_transfer(args); }
+private int do_unban( string person ) { return _office->do_unban(person); }
+private int do_view(string person, string pattern)
+{
+    _office->view_record(person, pattern);
+    return 1;
+}
+private int do_vote(mixed *args, string pattern)
+{
+    return _office->do_vote(args, pattern);
+}
+private int do_warn(mixed *args) { return _office->do_warn(args); }
+private void end_memo(string text, string subject)
+{
+    if (!text)
+    {
+        tell_object(this_player(), "Aborted.\n");
+        return;
+    }
+    tell_object(this_player(),
+      "Do you want to keep a copy of the memo? ");
+    input_to((: send_memo($1,$(subject),$(text)) :), 0);
+}
+private void end_policy_suggest(string text, string name, int type)
+{
+    string mgr, *managers;
+    if (!text)
+    {
+        tell_object(this_player(), "Aborted.\n");
+        return;
+    }
+    text = replace_string(text, "\n", " ");
+    text = replace_string(text, "  ", " ");
+    mgr = this_player()->query_name();
+    managers = _office->get_managers();
+    managers += _office->get_retired();
+    managers += ({_office->query_creator()});
+    managers -= ({lower_case(mgr)});
+    AUTO_MAILER->auto_mail(implode(managers, ","),
+      mgr, _office->shop_very_short()+ " policy suggestion",
+      "", "Please note that there is a new policy, "+ name+
+      ", on which I would like you to vote.\n", 0, 0);
+    _office->add_policy_suggest(name, text, mgr, type);
+}
+void event_death(object k, object *o, object k2, string r, string k3)
+{
+    _office->event_death(k, o, k2, r, k3);
+}
+void event_enter(object ob, string message, object from)
+{
+    _office->event_enter(ob, message, from);
+}
+private void send_memo(string ans, string subject, string text)
+{
+    string *managers;
+    ans = lower_case(ans);
+    if (strlen(ans) < 1 || (ans[0] != 'y' && ans[0] != 'n'))
+    {
+        tell_object(this_player(),
+          "Do you want to keep a copy of the memo? (Yes or No)? ");
+        input_to((: send_memo($1,$(subject),$(text)) :), 0);
+        return;
+    }
+    managers = _office->get_managers();
+    managers += _office->get_retired();
+    if ( this_player()->query_creator() &&
+      this_player()->query_name() != _office->query_creator())
+        managers += ({lower_case(this_player()->query_name())});
+    managers += ({_office->query_creator()});
+    if ( ans[0] == 'n' )
+        managers -= ({lower_case(this_player()->query_name())});
+    if (!sizeof(managers))
+    {
+        tell_object(this_player(), "\nNo recipients!\n");
+        return;
+    }
+    tell_object(this_player(), "\nSending your memo.\n");
+    subject = (subject && subject != "")?" - "+ subject:"";
+    AUTO_MAILER->auto_mail(implode(managers, ","),
+      this_player()->query_name(), _office->shop_very_short()+
+      " manager memo" + subject, "", text, 0, 0);
+}
+protected void set_long(string long_desc)
+{
+    long_desc += "Managers can use their own \"office\" commands "
+    "from in here.  There is a management policy notice on the wall.\n";
+    ::set_long( long_desc );
+}
+protected void set_office(string path)
+{
+    _office = path;
+    _place = _office->query_place();
+    _shop_front = _office->query_shop_front();
+    _counter = _office->query_counter();
+    _storeroom = _office->query_storeroom();
+    _notice = clone_object(SHOP_NOTICE);
+    _notice->set_office(_office);
+    _notice->set_type(1);
+    add_hidden_object(_notice);
+}
+private void write_memo(string text)
+{
+    this_player()->do_edit(0, (: end_memo($1,$(text)) :));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/shops/player_shop/office.h ===
+#define clear_applicants() _call_apps_clear = \
+                         call_out((: _applicants = 0 :), CLEAR_DELAY)
+#define clear_history() _call_hist_clear = \
+                         call_out((: _history = 0 :), CLEAR_DELAY)
+#define clear_new_policies() _call_newpols_clear = \
+                             call_out((: _new_policies = 0 :), CLEAR_DELAY)
+#define clear_policies() _call_pols_clear = \
+                         call_out((: _policies = 0 :), CLEAR_DELAY)
+#define save_applicants() _call_apps = \
+                          call_out((: do_save_applicants() :), SAVE_DELAY);
+#define save_hist() _call_hist = \
+                          call_out((: do_save_hist() :), SAVE_DELAY);
+#define save_new_policies() _call_newpols = \
+                          call_out((: do_save_new_policies() :), SAVE_DELAY);
+#define save_policies() _call_pols = \
+                          call_out((: do_save_policies() :), SAVE_DELAY);
+void     add_applicant(string,string);
+private void add_baddie( string, string, string);
+private void add_board_message(string, string);
+private void add_chart_cabinet(string, int);
+private void add_declined(string);
+private void add_employee(string);
+protected void add_manager_exit(string, string);
+private void add_policy(string);
+void     add_policy_suggest(string, string, string, int);
+private void add_vote(string, int);
+private void adjust_bonus(string, int);
+void     adjust_bought(string, int);
+private void adjust_profit(string, int);
+void     adjust_sold(string, int);
+void     adjust_takings(int);
+string   badge_list();
+void     calc_bonus();
+int      calc_pay();
+private string cap_name(string);
+void check_hire_list();
+int      check_manager(string);
+void     confirm_cabinet(string, int);
+private void demote(string, string);
+string   directions_to(string);
+private int do_ban(mixed *);
+private int do_bank(mixed);
+int do_cancel();
+private int do_chart(mixed *, string);
+private int do_check();
+private int do_claim(string);
+private int do_clock(string);
+int      do_commend(string);
+private int do_confirm();
+int      do_demote(string);
+int      do_fire(mixed *);
+int      do_leave(mixed *);
+int      do_list();
+int      do_logs(mixed *, string);
+private int do_memo();
+private int do_office();
+private int do_policy_vote(string, string, string);
+private int do_promote(string);
+int      do_remove();
+int      do_rent();
+private int do_resign();
+int      do_retire();
+private void do_save();
+private void do_save_applicants();
+private void do_save_emps();
+private void do_save_hist();
+private void do_save_new_policies();
+private void do_save_policies();
+int      do_set(mixed *, string);
+int      do_suspend(mixed *);
+int      do_transfer(mixed *);
+int      do_unban(string);
+int      do_vote(mixed *, string);
+int      do_warn(mixed *);
+private void employee_log(string, string);
+string   employees_clocked_in();
+private void end_memo(string,string);
+private void fire_them(string, string, string);
+mapping  get_applicants();
+mapping  get_baddies();
+string  *get_employees();
+string  *get_managers();
+mapping  get_new_policies();
+mapping  get_policies(int);
+string  *get_retired();
+string   get_stock_policy();
+string  *get_supervisors();
+private void hire(string);
+private string list_stuff(string);
+private void load_applicants();
+private void load_history();
+private void load_new_policies();
+private void load_policies();
+private void mail_hirees();
+private void monthly_review();
+int      num_employees_in();
+private void put_on_list(string);
+int      query_applicant(string);
+int      query_ave(string);
+int      query_baddie(string);
+int      query_bonus();
+int      query_buy(string);
+int     *query_cabinet(string);
+int      query_cabinet_used(int);
+string   query_channel();
+string   query_counter();
+void     query_creator(string);
+int      query_declined(string);
+int      query_employee(string );
+mapping  query_employees();
+string  *query_list_array();
+string   query_list_string();
+int      query_manager(string);
+int      query_max(string);
+int      query_maxemp();
+string   query_mgr_office();
+int      query_num_cabinets();
+int      query_on_list(string);
+int      query_pay();
+string   query_place();
+int      query_policy(string);
+int      query_profit();
+string   query_proprietor();
+int      query_retired(string);
+int      query_sell(string);
+string   query_shop_front();
+string   query_shop_name();
+string   query_shopkeeper();
+int      query_stock(string);
+string   query_storeroom();
+int      query_supervisor(string);
+private string query_worked(string);
+private void remove_applicant(string);
+private void remove_baddie(string);
+private void remove_chart_cabinet(string, int);
+private void remove_declined(string);
+private void remove_employee(string);
+private void remove_policy(string);
+private void remove_retired(string);
+private void reset_employee(string, int);
+mixed   *restore_register();
+private void review_employees();
+private void rm_cab();
+protected void save_emps();
+private void save_list();
+protected void save_me();
+void     save_register(mixed *);
+private void save_times();
+private void send_memo(string, string, string);
+private void set_buy(string, int);
+protected void set_channel(string, int);
+protected void set_counter(string);
+protected void set_creator(string);
+protected void set_directions(string, string, string);
+private void set_emp_time(string);
+private void set_employee(string, int);
+private void set_max(string, int);
+protected void set_place(string);
+protected void set_proprietor(string);
+private void set_sell(string, int);
+protected void set_shop_front(string);
+protected void set_shop_name(string);
+protected void set_shopkeeper(string);
+protected void set_stock_policy(string);
+protected void set_storeroom(string);
+protected void set_very_short(string);
+void     shop_log(int, string, string, int);
+string   shop_very_short();
+void     summon_shopkeeper();
+private void take_off_list(string);
+private void update_averages();
+void     view_record(string,string);
+private void write_memo(string);
+#define CHART_ADDITEM       "add <string'item'>"
+#define CHART_REMITEM       "remove <string'item'>"
+#define CHART_MAXITEM       "max <string'item'> <number>"
+#define CHART_BUYITEM       "buy <string'item'> <number>"
+#define CHART_SELLITEM      "sell <string'item'> <number>"
+#define CHART_ASSIGN_ITEM   "assign <string'item'> <number'cabinet number'>"
+#define CHART_UNASSIGN_ITEM "unassign <string'item'> <number'cabinet number'>"
+#define LOG_BLANK  ""
+#define LOG_NUMBER "<number>"
+#define LOG_MGR    "{personnel|accounts|chart}"
+#define LOG_CHART  "chart"
+#define LIST_BLANK  ""
+#define LIST_CHOICE "{employees|applicants|baddies}"
+#define SET_EMPS "maximum <number> [employees]"
+#define SET_PAY  "pay <number'amount'> <string'type'>"
+#define VOTE_APPLICANT "<word'applicant'> {y|n|a}"
+#define VOTE_POLICY    "policy <word'name'> {y|n}"
+#define VIEW_EMP "<string'employee'>"
+#define VIEW_APP "application [by] <string'applicant'>"
+#define POLICY_SUGGEST "suggest {manager|shop} <word'policy'>"
+#define POLICY_REMOVE  "remove <word'policy'>"
+#define LIST_CABINET      "cabinet <number'cabinet'>"
+#define LIST_ITEM         "<string'item'>"
+#define LIST_ITEM_CABINET "<string'item'> in cabinet <number'cabinet'>"

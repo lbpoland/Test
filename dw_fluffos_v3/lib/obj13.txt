@@ -1,0 +1,2317 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/soul_compiler.c ===
+#include "soul.h"
+#include "user_parser.h"
+private nosave string _current_file;
+private nosave int _current_line;
+private nosave int _file_len;
+private nosave int _depth;
+private nosave int _look_for;
+private nosave int _last_chunk_compile;
+private nosave mixed *_to_compile;
+private nosave mixed *_arguments;
+private nosave object _current_player;
+void start_compile();
+void parse_chunk(string chunk);
+void make_into_soul_commands(mapping commands);
+#define CHUNK_SIZE 20
+#define OPEN_BRACKET 1
+#define START_ARGUMENT 2
+#define END_BRACKET 3
+#define END_STRING 4
+#define ARGUMENT_VALUE 5
+#define ARGUMENT_NAME 6
+#define REST_OF_ARGUMENT 7
+void create() {
+   _to_compile = ({ });
+   seteuid("Root");
+}
+int test_security(string fname) {
+   return 1;
+}
+void notify(string mess) {
+   if (_current_player)
+      tell_object(_current_player, mess);
+}
+void compile_file(string fname) {
+   if (file_size(SOUL_DIR+fname) == -1) {
+      tell_object(this_player(), "The file "+
+                         SOUL_DIR+fname+" does not exist.\n");
+      return ;
+   }
+   if (file_size(SOUL_DIR+fname) == -2) {
+      tell_object(this_player(), "The file "+
+                         SOUL_DIR+fname+" is a directory exist.\n");
+      return ;
+   }
+   _to_compile += ({ SOUL_DIR+fname, this_player() });
+   start_compile();
+}
+void compile_directory(string fname) {
+   string *bits, start;
+   int i;
+   if (file_size(SOUL_DIR+fname) != -2) {
+      tell_object(this_player(), "The file "+
+                         fname+" is not a directory exist.\n");
+      return ;
+   }
+   bits = explode(fname, "/");
+   start = implode(bits[0..<1], "/");
+   if (start != "") {
+      start += "/";
+   }
+   fname = SOUL_DIR+fname;
+   if (fname[<1] == '/') {
+      fname += "*.s";
+   } else {
+      fname += "
+void start_compile() {
+   if ((_current_file || !sizeof(_to_compile)) &&
+       (time() - _last_chunk_compile) > 10) {
+      return ;
+   }
+   write("Starting to compile " + _to_compile[0] + "\n");
+   _current_file = _to_compile[0];
+   _current_player = _to_compile[1];
+   _to_compile = _to_compile[2..];
+   _current_line = 1;
+   _depth = 0;
+   _look_for = OPEN_BRACKET;
+   _file_len = file_length(_current_file);
+   _arguments = ({ 0, ([ ]) });
+   call_out("compile_chunk", 2);
+}
+void compile_chunk() {
+   string chunk;
+   int end;
+   _last_chunk_compile = time();
+   if (_current_line+CHUNK_SIZE > _file_len) {
+      end = _file_len+1;
+   } else {
+      end = _current_line+CHUNK_SIZE;
+   }
+   chunk = unguarded((: read_file, _current_file, _current_line,
+                               end-_current_line :));
+   _current_line = end;
+   parse_chunk(chunk);
+   if (end > _file_len) {
+      call_out("start_compile", 2);
+      _current_file = 0;
+      make_into_soul_commands(_arguments[1]);
+   } else {
+      call_out("compile_chunk", 2);
+   }
+}
+void parse_chunk(string chunk) {
+   string *bits, s1, s2;
+   int pos, chunk_size, start;
+   chunk_size = strlen(chunk);
+   pos = 0;
+   bits = explode(chunk, "(");
+   while (pos < chunk_size) {
+      switch (_look_for) {
+         case OPEN_BRACKET :
+            if (sscanf(chunk[pos..], "%s(%s", s1, s2)) {
+               chunk = s2;
+               chunk_size = strlen(chunk);
+               pos = 0;
+               _depth++;
+               _arguments += ({ 0, 0 });
+               _look_for = ARGUMENT_NAME;
+            } else {
+               pos = chunk_size;
+            }
+            break;
+         case ARGUMENT_NAME :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos == chunk_size) {
+               break;
+            }
+            start = pos;
+            while (pos < chunk_size && chunk[pos] != ' ' &&
+                      chunk[pos] != '\t' && chunk[pos] != '\n') {
+               pos++;
+            }
+            _arguments[_depth*2] = chunk[start..pos-1];
+            _look_for = ARGUMENT_VALUE;
+            break;
+         case ARGUMENT_VALUE :
+            while (pos < chunk_size && (chunk[pos] == ' ' ||
+                      chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos >= chunk_size) {
+               break;
+            }
+            switch (chunk[pos]) {
+               case '(' :
+                  _arguments[_depth*2+1] = ([ ]);
+                  _depth++;
+                  _arguments += ({ 0, 0 });
+                  _look_for = ARGUMENT_NAME;
+                  pos++;
+                  break;
+               case '"' :
+                  _arguments[_depth*2+1] = "";
+                  _look_for = END_STRING;
+                  pos++;
+                  break;
+               default :
+                  start = pos;
+                  if (sscanf(chunk[pos..], "%s)%s", s1, s2) == 2) {
+                     _arguments[_depth*2+1] = replace(implode(explode(replace(s1,
+                            ({ "\n", " ", "\r", "" })), " ")-({ "" }), " "), ", ", ",");
+                     pos = 0;
+                     chunk = ")"+s2;
+                     _look_for = END_BRACKET;
+                  } else {
+                     _arguments[_depth*2+1] = chunk[pos..];
+                     _look_for = REST_OF_ARGUMENT;
+                     pos = 0;
+                     chunk = "";
+                  }
+                  chunk_size = strlen(chunk);
+                  break;
+            }
+            break;
+         case REST_OF_ARGUMENT :
+            if (sscanf(chunk[pos..], "%s)%s", s1, s2) == 2) {
+               _arguments[_depth*2+1] = replace(implode(explode(
+                                                    replace(_arguments[_depth*2+1]+s1, "\n", " "),
+                                                                         " ") - ({ "" }),
+                                                             " "), ", ", ",");
+               pos = 0;
+               chunk = ")"+s2;
+               _look_for = END_BRACKET;
+            } else {
+               _arguments[_depth*2+1] += chunk[pos..];
+               pos = 0;
+               chunk = "";
+            }
+            chunk_size = strlen(chunk);
+            break;
+         case END_BRACKET :
+            if (sscanf(chunk[pos..], "%s)%s", s1, s2)) {
+               switch (_depth) {
+                  case 2 :
+                  case 3 :
+                     if (pointerp(_arguments[_depth*2-1][_arguments[_depth*2]]))
+                        _arguments[_depth*2-1][_arguments[_depth*2]] += ({ _arguments[_depth*2+1] });
+                     else
+                        _arguments[_depth*2-1][_arguments[_depth*2]] = ({ _arguments[_depth*2+1] });
+                     break;
+                  case 1 :
+                  case 4 :
+                  case 5 :
+                  case 6 :
+                  case 7 :
+                     _arguments[_depth*2-1][_arguments[_depth*2]] = _arguments[_depth*2+1];
+                     break;
+               }
+               chunk = s2;
+               chunk_size = strlen(s2);
+               _depth--;
+               pos = 0;
+               _arguments = _arguments[0.._depth*2+1];
+               if (_depth) {
+                  _look_for = START_ARGUMENT;
+               } else {
+                  _look_for = OPEN_BRACKET;
+               }
+            }
+            break;
+         case START_ARGUMENT :
+            while (pos < chunk_size && (chunk[pos] == ' '
+                   || chunk[pos] == '\t' || chunk[pos] == '\n')) {
+               pos++;
+            }
+            if (pos >= chunk_size) {
+               break;
+            }
+            switch (chunk[pos]) {
+               case ')' :
+                  _look_for = END_BRACKET;
+                  break;
+               case '(' :
+                  _look_for = OPEN_BRACKET;
+                  break;
+               default :
+                  if (!sscanf(chunk[pos..], "%s\n%s", s1, s2)) {
+                     s1 = chunk;
+                  }
+                  printf("Syntax error in file %s, near %s\n", _current_file, s1);
+                  _look_for = END_BRACKET;
+                  break;
+            }
+            break;
+         case END_STRING :
+            if (sscanf(chunk[pos..], "%s\"%s", s1, s2)) {
+               if (strlen(s1) > 0 && s1[strlen(s1)-1] == '\\') {
+                  _arguments[_depth*2+1] += replace(s1[0..strlen(s1)-2], "\n", "")+"\"";
+                  chunk = s2;
+                  pos = 0;
+                  chunk_size = strlen(s2);
+               } else {
+                  _arguments[_depth*2+1] += replace(s1, "\n", "");
+                  _look_for = END_BRACKET;
+                  chunk = s2;
+                  pos = 0;
+                  chunk_size = strlen(s2);
+               }
+            } else {
+               _arguments[_depth*2+1] += replace(chunk, "\n", "");
+               pos = chunk_size;
+            }
+            break;
+         default :
+            notify("Horrible error "+_look_for+"\n");
+            pos = chunk_size;
+            break;
+      }
+   }
+}
+int check_sort(string pat1, string pat2) {
+   int lvl1, lvl2;
+   lvl1 = ((mixed *)PATTERN_OB->compile_pattern(pat1))[0];
+   lvl2 = ((mixed *)PATTERN_OB->compile_pattern(pat2))[0];
+   return lvl2-lvl1;
+}
+string *sort_patterns(string *inp) {
+   if (!pointerp(inp)) {
+      printf("%O\n", inp);
+      return ({ });
+   }
+   return sort_array(inp, "check_sort", this_object());
+}
+void make_into_soul_commands(mapping comms) {
+   string *fluff;
+   int i, failed, j;
+   mapping ret, tmp;
+   fluff = keys(comms);
+   ret = ([ ]);
+   for (i=0;i<sizeof(fluff);i++) {
+      ret[fluff[i]] = ({ comms[fluff[i]]["pattern"], 0, 0 });
+      if (comms[fluff[i]]["single"]) {
+         if (comms[fluff[i]]["single"][0]["no-arguments"]) {
+            tmp = comms[fluff[i]]["single"][0]["no-arguments"][0];
+            if (!tmp["self"]) {
+               notify("The 'self' type is missing in the no-argument, single for the soul command "+fluff[i]+"\n");
+               failed = 1;
+            } else if (!tmp["rest"]) {
+               notify("The 'rest' type is missing in the no-argument, single for the soul command "+fluff[i]+"\n");
+               failed = 1;
+            } else {
+               ret[fluff[i]][SINGLE] = ({ ({ tmp["self"], tmp["rest"],
+                                                            tmp["position"] }),
+                                                         0 });
+            }
+         }
+         if (comms[fluff[i]]["single"][0]["arguments"]) {
+            j = sizeof(comms[fluff[i]]["single"][0]["arguments"]);
+            if (!ret[fluff[i]][SINGLE]) {
+               ret[fluff[i]][SINGLE] = ({ 0, allocate(j*SMALL_ARG_SIZE) });
+            } else {
+               ret[fluff[i]][SINGLE][ARGUMENTS] = allocate(j*SMALL_ARG_SIZE);
+            }
+            for (j=0;j<sizeof(comms[fluff[i]]["single"][0]["arguments"]);j++) {
+               tmp = comms[fluff[i]]["single"][0]["arguments"][j];
+               if (!mapp(tmp)) {
+                  notify("The soul command "+fluff[i]+" is totaly stuffed.\n");
+                  failed = 1;
+               } else if (!tmp["self"]) {
+                  notify("The 'self' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else if (!tmp["rest"]) {
+                  notify("The 'rest' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else if (!tmp["arguments"]) {
+                  notify("The 'arguments' type is missing in the argument, single for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else {
+                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+SELF] = tmp["self"];
+                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+REST] = tmp["rest"];
+                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+ARGS] = explode(tmp["arguments"], ",");
+                  ret[fluff[i]][SINGLE][ARGUMENTS][j*SMALL_ARG_SIZE+POSITION_SINGLE] = tmp["position"];
+               }
+            }
+         }
+      }
+      if (comms[fluff[i]]["targeted"]) {
+         if (comms[fluff[i]]["targeted"][0]["no-arguments"]) {
+            tmp = comms[fluff[i]]["targeted"][0]["no-arguments"][0];
+            if (!tmp["self"]) {
+               notify("The 'self' type is missing in the no-argument, target for the soul command "+fluff[i]+"\n");
+               failed = 1;
+            } else if (!tmp["rest"]) {
+               notify("The 'rest' type is missing in the no-argument, target for the soul command "+fluff[i]+"\n");
+               failed = 1;
+            } else {
+               ret[fluff[i]][TARGET] = ({ ({ tmp["self"], tmp["rest"],
+                                     tmp["target"], 0, tmp["force"], tmp["position"] }),
+                                                         0 });
+            }
+         }
+         if (comms[fluff[i]]["targeted"][0]["arguments"]) {
+            j = sizeof(comms[fluff[i]]["targeted"][0]["arguments"]);
+            if (!ret[fluff[i]][TARGET])
+               ret[fluff[i]][TARGET] = ({ 0, allocate(j*ARG_SIZE) });
+            else
+               ret[fluff[i]][TARGET][ARGUMENTS] = allocate(j*ARG_SIZE);
+            for (j=0;j<sizeof(comms[fluff[i]]["targeted"][0]["arguments"]);j++) {
+               tmp = comms[fluff[i]]["targeted"][0]["arguments"][j];
+               if (!tmp["self"]) {
+                  notify("The 'self' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else if (!tmp["rest"]) {
+                  notify("The 'rest' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else if (!tmp["arguments"]) {
+                  notify("The 'arguments' type is missing in the argument, target for the soul command "+fluff[i]+"\n");
+                  failed = 1;
+               } else {
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+SELF] = tmp["self"];
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+REST] = tmp["rest"];
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+TARG] = tmp["target"];
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+ARGS] = explode(tmp["arguments"], ",");
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+FORCE] = tmp["force"];
+                  ret[fluff[i]][TARGET][ARGUMENTS][j*ARG_SIZE+POSITION] = tmp["position"];
+               }
+            }
+         }
+      }
+   }
+   fluff = keys(ret);
+   for (i=0;i<sizeof(fluff);i++) {
+      ret[fluff[i]][PATTERNS] = sort_patterns(ret[fluff[i]][PATTERNS]);
+      SOUL_OBJECT->add_soul_command(fluff[i], ret[fluff[i]]);
+      notify("Added soul command "+fluff[i]+".\n");
+   }
+}
+void blue() {
+   printf("%O\n", sort_patterns(({ "[at] <indirect:object>", "<string>" })));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/library.c ===
+#include <quest_handler.h>
+#include <player_handler.h>
+#define XP 10000
+#define XP_QUESTS ({"womble's brooch", "balance quest", "easy post quest", \
+                    "hard post quest", "apprentice baker" })
+#define RESTORE_PATH  "save/library/"
+#define MAX_CACHE_SIZE 100
+#define CACHE_TIMEOUT 900
+inherit "/std/object";
+int *times;
+string player_name, *quests, text_file;
+mapping player_quest_info;
+nosave mapping qps;
+nosave int requests, cache_hits;
+class qinfo {
+  int cached;
+  string player_name;
+  string *quests;
+  int *times;
+  string text_file;
+  mapping player_quest_info;
+}
+nosave mapping player_cache = ([ ]);
+int new_top_quest();
+int query_quest_time(string, string);
+private void init_data(string pl_name) {
+  player_name = pl_name;
+  quests = ({ });
+  times = ({ });
+  text_file = "";
+  player_quest_info = ([ ]);
+}
+void clean_cache() {
+  string name;
+  foreach(name in keys(player_cache))
+    if(player_cache[name]->cached < time() - CACHE_TIMEOUT)
+      map_delete(player_cache, name);
+}
+private int get_data_file(string name) {
+  int success;
+  class qinfo tmp;
+  requests++;
+  if(player_cache[name]) {
+    player_cache[name]->cached = time();
+    cache_hits++;
+    return 1;
+  }
+  success = unguarded((: restore_object, RESTORE_PATH+name[0..0]+"/"+name :));
+  if(!success)
+    init_data(name);
+  tmp = new(class qinfo,
+            cached : time(),
+            player_name : player_name,
+            quests : quests,
+            times : times,
+            text_file : text_file,
+            player_quest_info : player_quest_info);
+  player_cache[name] = tmp;
+  if((sizeof(player_cache) > MAX_CACHE_SIZE) &&
+     (find_call_out("clean_cache") == -1))
+    call_out("clean_cache", 60);
+  return success;
+}
+private void save_data_file(string name) {
+  if(!player_cache[name])
+    return;
+  player_name = player_cache[name]->player_name;
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  text_file = player_cache[name]->text_file;
+  player_quest_info = player_cache[name]->player_quest_info;
+  unguarded((: save_object, RESTORE_PATH+name[0..0]+"/"+name :));
+  return ;
+}
+string query_title( string name ) {
+  string quest;
+  get_data_file( name );
+  if(!player_cache[name]->quests || !sizeof(player_cache[name]->quests)) {
+    return 0;
+  }
+  quest = player_cache[name]->
+    quests[random(sizeof(player_cache[name]->quests))];
+  return (string)QUEST_HANDLER->query_quest_title(quest);
+}
+string *query_quests(string name) {
+  get_data_file(name);
+  if(!player_cache[name]->quests ) {
+    return ({ });
+  }
+  return player_cache[name]->quests + ({ });
+}
+string get_most_recent_quest(string name) {
+  int loop, highest;
+  string quest_name;
+  string *quests;
+  int *times;
+  if(!get_data_file(name))
+    return "Sorry";
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  if(sizeof(quests) == 0)
+    return "None";
+  for(highest = loop = 0; loop < sizeof(quests); loop++) {
+    if(times[loop] > highest) {
+      highest = times[loop];
+      quest_name = quests[loop];
+    }
+  }
+  return quest_name;
+}
+int get_most_recent_time(string name) {
+  int loop, hightime;
+  string *quests;
+  int *times;
+  if(!get_data_file(name)) {
+    return -1;
+  }
+  quests = player_cache[name]->quests;
+  times = player_cache[name]->times;
+  if(sizeof(quests) == 0) {
+    return 0;
+  }
+  for(hightime = loop = 0; loop < sizeof(quests); loop++) {
+    if(times[loop] > hightime) {
+      hightime = times[loop];
+    }
+  }
+  return hightime;
+}
+int set_quest(string pl_name, string qu_name, int no_xp) {
+  int qu_level;
+  object ob;
+  object card;
+  int i;
+  if(!find_player(pl_name) || find_player(pl_name)->query_property("guest"))
+    return 0;
+  i = QUEST_HANDLER->query_quest_status(qu_name);
+  ob = find_player (pl_name);
+  if (i == 0 && ob->query_playtester()) {
+    tell_object (ob, "%^BOLD%^If this quest weren't inactive, you'd be "
+      "showered in riches right about now!\n%^RESET%^");
+  }
+  if(i < 1) {
+   user_event( "inform", pl_name +" completes "+ qu_name + " (inactive)", "quest");
+    return 0;
+  }
+  if (ob && ob->advancement_restriction()) {
+    log_file ("/log/secure/playtesters/protection_log", "%s: %s "
+      "completed quest %s while advancement restricted active.\n", ctime(time()),
+      pl_name, qu_name);
+    return 0;
+  }
+  if(qps && qps[pl_name])
+    map_delete(qps, pl_name);
+  get_data_file(pl_name);
+  if ( member_array( qu_name, player_cache[pl_name]->quests ) != -1 )
+    return 0;
+  player_cache[pl_name]->quests += ({ qu_name });
+  player_cache[pl_name]->times += ({ time() });
+  qu_level = (int)QUEST_HANDLER->query_quest_level(qu_name);
+  if ( qu_level < 1 )
+    return 0;
+  QUEST_HANDLER->quest_completed( pl_name, qu_name, previous_object() );
+  save_data_file( pl_name );
+  if ( !ob ) {
+    return 0;
+  }
+  if(member_array(qu_name, XP_QUESTS) != -1) {
+    ob->adjust_xp(XP*qu_level, 0);
+    call_out("save_them", 1, ob);
+  }
+  ob->set_title( "quest",
+                 (string)QUEST_HANDLER->query_quest_title( qu_name ) );
+  card = clone_object ("/d/underworld/creator_cards/creator_card");
+  card->move (ob, "$N appear$s in your inventory with a flash.");
+  return 1;
+}
+int unset_quest(string pl_name, string qu_name) {
+  int qu_level;
+  get_data_file(pl_name);
+  if ( member_array( qu_name, player_cache[pl_name]->quests ) == -1 )
+    return 0;
+  qu_level = (int)QUEST_HANDLER->query_quest_level(qu_name);
+  if ( qu_level < 1 )
+    return 0;
+  player_cache[pl_name]->quests -= ({ qu_name });
+  player_cache[pl_name]->times -= ({ time() });
+  save_data_file( pl_name );
+  return 1;
+}
+void save_them( object thing ) {
+  if ( thing )
+    thing->save_me();
+}
+void set_player_quest_info( string pl_name, string qu_info, mixed *details ) {
+  get_data_file( pl_name );
+  if(!player_cache[pl_name]->player_quest_info )
+    player_cache[pl_name]->player_quest_info = ([ ]);
+  player_cache[pl_name]->player_quest_info[qu_info] = details;
+  save_data_file(pl_name);
+}
+mapping query_all_player_quest_info( string pl_name ) {
+  if(!get_data_file( pl_name ))
+    return 0;
+  if ( !player_cache[pl_name]->player_quest_info )
+    return 0;
+  return copy(player_cache[pl_name]->player_quest_info);
+}
+mixed *query_player_quest_info( string pl_name, string qu_info ) {
+  if(!get_data_file( pl_name))
+    return 0;
+  if(!player_cache[pl_name]->player_quest_info)
+    return 0;
+  player_cache[pl_name]->player_quest_info =
+    player_cache[pl_name]->player_quest_info + ([ ]);
+  return player_cache[pl_name]->player_quest_info[qu_info];
+}
+int query_quest_time(string name, string qu_name) {
+  int time;
+  if(!get_data_file(name)) {
+    return 0;
+  }
+  time = member_array(qu_name, player_cache[name]->quests);
+  if(time < 0) {
+    return 0;
+  }
+  return player_cache[name]->times[time];
+}
+string query_story(string name) {
+  string story, *quests;
+  int loop;
+  if(!get_data_file(name)) {
+    return "You can find nothing in the library on " + name + "\n";
+  }
+  story = "";
+  if(player_cache[name]->text_file != "") {
+    return unguarded((: read_file, text_file :));
+  }
+  quests = player_cache[name]->quests;
+  if(!sizeof(quests)) {
+    return "That person has lead a most unadventureous life";
+  }
+  for(loop = 0; loop < sizeof(quests); loop++) {
+    story += capitalize(QUEST_HANDLER->query_quest_story(quests[loop])) +".\n";
+  }
+  return story;
+}
+int query_quest_done(string player, string quest) {
+  if(!get_data_file(player))
+    return 0;
+  return (member_array(quest, player_cache[player]->quests) != -1);
+}
+int flush_cache (string name) {
+  qps[name] = 0;
+}
+int query_quest_points( string name ) {
+   int points;
+   string word;
+   string *quests;
+   if(!qps)
+     qps = ([ ]);
+   if(qps[name])
+     return qps[name]-1;
+   get_data_file( name );
+   quests = player_cache[name]->quests;
+   if ( !quests || !sizeof( quests ) )
+      points = 0;
+   else {
+     foreach( word in quests ) {
+       points += (int)QUEST_HANDLER->query_quest_level( word );
+     }
+   }
+   qps[name] = points+1;
+   return points;
+}
+int restart(mixed name) {
+  class qinfo tmp;
+  if(objectp(name))
+    name = name->query_name();
+  if(!PLAYER_HANDLER->test_user(name))
+    return 0;
+  init_data(name);
+  tmp = new(class qinfo,
+            cached : time(),
+            player_name : player_name,
+            quests : quests,
+            times : times,
+            text_file : text_file,
+            player_quest_info : player_quest_info);
+  player_cache[name] = tmp;
+  save_data_file(name);
+  return 1;
+}
+mixed *stats() {
+  int percentage;
+  if(requests)
+    percentage = (cache_hits * 100) / requests;
+  return ({
+    ({ "cache size", sizeof(player_cache) }),
+      ({ "requests", requests }),
+      ({ "cache hits", cache_hits }),
+      ({ "cache misses", requests - cache_hits }),
+      ({ "percentage hits", percentage }),
+      });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/english_handler.c ===
+float *freq=({ 0.070012, 15.782218, 0.011949, 43.328090, 0.021800, 31.780955,
+                 0.041222, 22.534301, 0.081093, 11.110506, 0.016799, 34.952377,
+                 0.019235, 35.094824, 0.031751, 21.939816, 0.055348, 15.959625,
+                 0.001028, 116.456628, 0.007624, 57.669862, 0.029144,
+                 22.558570, 0.028764, 31.148966, 0.047194, 18.490345, 0.054178,
+                 15.319177, 0.014415, 36.228697, 0.001335, 116.456628,
+                 0.047561, 18.817823, 0.050139, 17.975454, 0.058789, 13.617099,
+                 0.020638, 32.978418, 0.005222, 63.346619, 0.011713, 42.180909,
+                 0.001264, 116.456628, 0.014661, 40.185678, 0.000530,
+                 116.456628, 0.171614, 40.0, 0.000666, 116.456628,
+                 0.084311, 10.304674
+});
+int FreqTest( string line ) {
+  int len,i,ch;
+  float badness,term;
+  int *let;
+  let=allocate(29);
+  i = len = strlen(line);
+  while (i--) {
+    ch = line[i];
+    if ((ch>=65 && ch<65+26) || (ch>=97 && ch<97+26)) let[(ch&31)-1]++;
+    else if (ch==' ') let[26]++;
+    else if (ch>='0' && ch<='9') let[27]++;
+    else let[28]++;
+  }
+  badness = 0.0;
+  for (i=0;i<29;i++) {
+    term = to_float((to_float(let[i]) - freq[i<<1] * len) * freq[(i<<1)+1]);
+    badness += (term>0 ? term : -term);
+  }
+  badness /= (29.0*len);
+  i = 100 - 50*badness*badness;
+  if (i<1) i=1;
+  return i;
+}
+int ProfaneTest( string strin ) {
+  int i,profane=0;
+  string str,s;
+  if (sizeof(strin)<1) return 0;
+  strin=lower_case(strin)+" ";
+  str="";
+  for (i=0;i<sizeof(strin);i++) {
+    if (strin[i]>='a' && strin[i]<='z') str+=strin[i..i];
+  }
+  if (sizeof(str)<2) return 0;
+  s=str[0..0];
+  for (i=1;i<sizeof(str);i++) {
+    if (s[<1]!=str[i]) s+=str[i..i];
+  }
+  if (regexp(s,"bastard|tit|shaft|viag")
+     || regexp(str,"poo|ass|butt")) profane+=25;
+  if (regexp(s,"arse|sex|sux|crap|testic|fart|orgasm|orgy|turd|porn|niple|nazi|jesus|christ|satan|sperm|smeg|toilet|genital")
+     || regexp(str,"piss|root|buttw|assho")
+     || regexp(strin,"butt |ass ")) profane+=50;
+  if (regexp(s,"netsex|arse|shit|screw|urine|rectum|tampon|vibrator|rectal|scatol|semen|suck|lick|dyke|dike|wank|mutha|prost|fag|feck|gay|homo|fuq|horny|blowjob|cuni")
+     || regexp(str,"phall|hooter|poof")) profane+=100;
+  if (regexp(s,"anal|rape|rapist|fuck|fuk|fuch|kuck|cunt|kunt|whor|slut|clit|masturb|masterb|penis|cock|dick|pusy|bitch|vagina")) profane+=200;
+  return profane;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/converter.c ===
+mixed *mail;
+nosave string *names;
+nosave int no_more;
+int query_busy(string name);
+void create() {
+  seteuid("mailer");
+  names = ({ });
+  no_more = 0;
+}
+int ok_to_shut() {
+  no_more = 1;
+  return (sizeof(names) == 0);
+}
+void convert_it(string pname) {
+  int i, bing;
+  if (no_more) {
+    write("Can't start converting mail, try again after the reboot.\n");
+    return;
+  }
+  if (query_busy(pname)) {
+    write("Argh ! Already busy converting mail for "+pname+".\n");
+    return;
+  }
+  mail = ({ });
+  if (file_size("/save/post/"+pname+".o") == -1)
+    return;
+  unguarded((: restore_object, "/save/post/"+pname :));
+  bing = sizeof(mail);
+  if (!bing) {
+    unguarded((: rm, "/save/post/"+pname+".o" :));
+    return;
+  }
+  write("Converting mail for "+pname+".\n");
+  names += ({ pname });
+  for (i = 0; i < bing; i++) {
+    reset_eval_cost();
+    call_out("do_it", (i+1)*3, (mail[i] + ({ pname })));
+  }
+  call_out("reset_busy", (i+1)*3, pname);
+  unguarded((: rm, "/save/post/"+pname+".o" :));
+}
+void do_it(mixed *arg) {
+  object handler = clone_object("/obj/handlers/folder_handler");
+  handler->add_it((["to" : ({ arg[6] }),
+    "cc" : ({ }), "from" : arg[1], "subject" : arg[3], "body" :
+    "From "+arg[1]+" "+ctime(arg[0])+
+    "\nDate: "+ctime(arg[0])+
+    "\nFrom: "+arg[1]+
+    "\nTo: "+arg[2]+
+    "\nSubject: "+arg[3]+
+    "\nCc: "+(arg[4]?arg[4]:"")+"\n\n"+
+    arg[5] ]), 1);
+}
+int query_busy(string name) {
+  return (member_array(name, names) != -1);
+}
+void reset_busy(string name) {
+  names -= ({ name });
+  if (no_more && !sizeof(names)) {
+    "/obj/shut"->shut(2);
+  }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/fairy_godmothers.c ===
+#include <panic.h>
+#include <config.h>
+#include <playerinfo.h>
+#include <cwc.h>
+#define HARRY_SHADOW "/std/shadows/misc/harry_shadow"
+object* _panicers;
+object* _godmothers;
+object* _queue;
+#define FREE_NAME "free trip"
+#define THRESHOLD 50
+#define DAY (60*60*24)
+public  void   continue_panicing(string str, object panicer);
+private object startup_godmother(object ob);
+private void   finish_with_person(object ob, int ok);
+void create() {
+  _panicers = ({ });
+  _godmothers = allocate(NUM_GODMOTHERS);
+  _queue = ({ });
+}
+object *query_godmothers() { return copy(_godmothers); }
+int free_godmothers() {
+  int i;
+  for (i=0;i<sizeof(_godmothers);i++) {
+    if (!_godmothers[i]) {
+      return 1;
+    }
+  }
+  return 0;
+}
+int do_startup(object panicer) {
+  if (environment(panicer) &&
+      environment(panicer)->query_property("no godmother")) {
+    notify_fail(environment(panicer)->query_property("no godmother"));
+    return 0;
+  }
+  if (panicer->query_property("attacked godmother") &&
+      (panicer->query_property("attacked godmother") + DAY * 10) > time())
+  {
+    notify_fail("You attacked a godmother!  No help for you!\n");
+    return 0;
+  }
+  if (sizeof(panicer->query_attacker_list())) {
+    notify_fail("You cannot use a godmother whilst you are in a fight.\n");
+    return 0;
+  }
+  panicer->remove_property("attacked godmother");
+  _panicers -= ({ 0 });
+  if (member_array(panicer, _panicers) != -1  ||
+      member_array(panicer, _queue) != -1)
+  {
+    notify_fail("You are already requesting assistance.  Be patient.\n");
+    return 0;
+  }
+  if (!panicer) {
+    panicer = this_player();
+  }
+  if (panicer->query_level() < 10 ||
+      !arrayp(environment(panicer)->query_exits()) ||
+      !sizeof(environment(panicer)->query_exits()) ||
+      !environment(panicer))
+  {
+    write("You feel help is on its way.\n");
+    panicer->add_property("godmother", FREE_NAME);
+    continue_panicing("y", panicer);
+  }
+  else {
+    panicer->remove_property("godmother");
+    if (panicer->query_level() < 50) {
+      int max_gp;
+      max_gp = panicer->query_max_gp();
+      if (panicer->query_gp() < max_gp / 3) {
+        notify_fail("You do not have enough guild points to summon "
+                    "a godmother.  You need at least " +
+                    (max_gp / 3) + ".\n");
+        return 0;
+      }
+      write("This will cost you all of your current guild points and "
+            "social points, and leave you feeling a little weak.  "
+            "Do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+    }
+    else {
+      if (panicer->query_max_deaths() <= panicer->query_deaths()) {
+        notify_fail("You do not have a life to spend on a godmother.\n");
+        return 0;
+      }
+      write("This will cost you a life, do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+    }
+  }
+  return 1;
+}
+private void do_check_queue() {
+   _queue -= ({ 0 });
+   if (sizeof(_queue)) {
+      if (startup_godmother(_queue[0])) {
+         _queue = _queue[1..];
+      }
+   }
+}
+private void setup_harrass_callout() {
+  int i;
+  int check_queue;
+  int waiting;
+  int max_wait;
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      waiting = _godmothers[i]->query_waiting();
+      if (waiting > FIRST_WAIT_TIME && environment(_godmothers[i])) {
+        _godmothers[i]->hurry_up();
+      }
+      if (!environment(_godmothers[i])) {
+         _godmothers[i]->dest_me();
+         check_queue = 1;
+      }
+      if (waiting > max_wait) {
+        max_wait = waiting;
+      }
+    }
+  }
+  if (max_wait < FIRST_WAIT_TIME) {
+    call_out("do_hurry_up", FIRST_WAIT_TIME-max_wait+2);
+  }
+  if (check_queue) {
+    do_check_queue();
+  }
+}
+void continue_panicing(string str, object panicer) {
+  str = lower_case(str);
+  if (!str || str == "" || (str[0] != 'y' && str[0] != 'n')) {
+    if (panicer->query_level() < 100) {
+      write("This will cost you all of your current guild points and "
+            "social points and leave you feeling a little weak.  "
+            "Do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+      return ;
+    }
+    else {
+      write("This will cost you a life, do you wish to continue? ");
+      input_to("continue_panicing", 0, panicer);
+      return ;
+    }
+  }
+  if (str[0] == 'n') {
+    write("Ok.  They do not show up to help you.  Good luck.\n");
+    return ;
+  }
+  if (!startup_godmother(panicer)) {
+    write("You hope a godmother will turn up sometime soon.\n");
+    _queue += ({ panicer });
+    setup_harrass_callout();
+  }
+}
+void do_panic_callout(object godmother, object ob) {
+  godmother->do_panic(ob);
+}
+private object startup_godmother(object ob) {
+  object godmother;
+  int    i, num;
+  i = random(NUM_GODMOTHERS);
+  if (_godmothers[i]) {
+    for (num = 1; num < NUM_GODMOTHERS; num++)  {
+      i = (i + 1) % NUM_GODMOTHERS;
+      if (!_godmothers[i])  break;
+    }
+  }
+  if (num == NUM_GODMOTHERS)
+     return 0;
+  switch (i) {
+    case 0:
+      godmother = clone_object(GODMOTHER_DIR + "granny");
+      break;
+    case 1:
+      godmother = clone_object(GODMOTHER_DIR + "magrat");
+      break;
+    default:
+      write("Something is hosed.  Please file a bug report.\n");
+      break;
+  }
+  _godmothers[i] = godmother;
+  godmother->move(environment(ob), "As if by magic $N appears.", "");
+  call_out("do_panic_callout", 1, godmother, ob);
+  _panicers += ({ ob });
+  return godmother;
+}
+void finish_panic(object person, int ok) {
+  int i;
+  if (person)  {
+     finish_with_person(person, ok);
+  }
+  _panicers -= ({ person });
+  for (i = 0; i < sizeof(_godmothers); i++)  {
+    if (_godmothers[i] == previous_object()) {
+      call_out("do_move", 10, _godmothers[i] );
+      break;
+    }
+  }
+  do_check_queue();
+  if (!sizeof(_queue)) {
+     remove_call_out("do_hurry_up");
+  }
+}
+void do_move (object fairy) {
+      fairy->move("/room/rubbish", "",
+          "With a quick flick of her wand, the fairy godmother is gone.");
+      fairy = 0;
+}
+private void finish_with_person(object person, int ok)  {
+  if (member_array(person, _panicers) == -1) {
+    log_file("GODMOTHER_ERROR", "person == %O, godmother == %s\n", person, previous_object()->query_short());
+    write("Consistancy error, they never paniced.\n");
+    return ;
+  }
+  if (ok) {
+    if (person->query_property("godmother") == FREE_NAME) {
+    }
+    else if (person->query_level() < THRESHOLD) {
+      person->adjust_tmp_con(-2);
+      person->set_gp(0);
+      person->set_sp(0);
+    }
+    else if (person->query_level() >= THRESHOLD &&
+             person->query_max_deaths() > person->query_deaths()) {
+      PLAYERINFO_HANDLER->add_entry(person,
+        person->query_name(), "misc", "Lost a life to the Godmother");
+      log_file("GODMOTHER_DEATH", "%s: %s lost a life to the Godmother\n",
+        ctime(time()), person->query_name());
+      person->adjust_deaths(1);
+    }
+    call_out(function(object person) {
+      string destination;
+      destination = person->query_nationality()->query_default_start_location();
+      person->move_with_look(destination,
+                             "$N appears out of nowhere.",
+                             "$N disappears with a pop.");
+      if (person->query_ghost()) {
+        person->remove_ghost();
+        clone_object(HARRY_SHADOW)->setup_shadow(person,
+                                                 "a fairy godmother" );
+      }
+    }, 2, person);
+  }
+  person->remove_property("godmother");
+}
+void do_hurry_up() {
+  int i;
+  int waiting;
+  int max_wait;
+  if (!sizeof(_queue)) {
+    return ;
+  }
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      if (!environment(_godmothers[i])) {
+        _godmothers[i]->dest_me();
+        _godmothers[i] = 0;
+      }
+      else {
+        waiting = _godmothers[i]->query_waiting();
+        if (waiting > FIRST_WAIT_TIME) {
+          if (waiting > FINISH_WAIT_TIME) {
+            _godmothers[i]->finish_up();
+          } else {
+            _godmothers[i]->hurry_up();
+          }
+        }
+        if (waiting > max_wait) {
+          max_wait = waiting;
+        }
+      }
+    }
+  }
+  if (max_wait > 0) {
+    if (FINISH_WAIT_TIME - max_wait < 10) {
+      call_out("do_hurry_up", 10);
+    } else {
+      call_out("do_hurry_up", FINISH_WAIT_TIME-max_wait);
+    }
+  }
+}
+void dest_me() {
+  int i;
+  for (i = 0; i < sizeof(_godmothers); i++) {
+    if (_godmothers[i]) {
+      _godmothers[i]->dest_me();
+    }
+  }
+  destruct(this_object());
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/playtesters.c ===
+#include <board.h>
+#include <project_management.h>
+#include <player_handler.h>
+#include <playtesters.h>
+#include <login.h>
+#define SAVE_FILE "/save/playtesters"
+#define LEVEL 150
+#define NORMAL_PLAYTESTER 1
+#define SENIOR_PLAYTESTER 2
+#define BUG_SKIP 10
+private int count = 0;
+private nosave int updating = 0;
+private string* months = ({});
+private mapping pts = ([]);
+private mapping playtesters = ([]);
+private mapping ages = ([]);
+private mapping guilds = ([]);
+private mapping bugs = ([]);
+private mapping leave = ([]);
+private mapping tmp_pts = ([ ]);
+private mapping _jump_points;
+private string *executives = ({ });
+int query_leave (string);
+void save_file() {
+    unguarded( (: save_object, SAVE_FILE :) );
+}
+void create() {
+   seteuid( master()->creator_file( file_name( this_object() ) ) );
+   months = ({ });
+   pts = ([ ]);
+   ages = ([ ]);
+   guilds = ([ ]);
+   bugs = ([ ]);
+   playtesters = ([ ]);
+   leave = ([ ]);
+   tmp_pts = ([ ]);
+   _jump_points = ([ ]);
+   executives = ({ });
+   if ( file_size( SAVE_FILE + ".o" ) > 0 )
+      unguarded( (: restore_object, SAVE_FILE, 1 :) );
+   call_out( "reset", 2 );
+}
+string* query_playtesters() {
+    return copy( keys( pts ) );
+}
+int query_playtester( string name ) {
+  return !undefinedp( pts[ name ] );
+}
+int check_playtester( string ) {
+    log_file( "PLAYTESTERS", file_name( previous_object() ) + " using "
+              "deprecated check_playtester() call\n" );
+    return 0;
+}
+int query_tester( mixed person ) {
+    object ob;
+    string str;
+    if ( stringp( person ) ) {
+        ob = find_player( person );
+        if ( !ob ) {
+            return 0;
+        }
+        str = person;
+    } else if ( objectp( person ) ) {
+        ob = person;
+        str = person->query_name();
+    } else {
+        return 0;
+    }
+    return ( ob->query_creator() ||
+             ob->query_property( "test character" ) ||
+             query_playtester( str ) );
+}
+protected int get_age_raw( string name ) {
+    int fu = PLAYER_HANDLER->test_age( name );
+    if ( fu < 0 )
+        fu = -fu;
+    return fu;
+}
+int get_age_cached( string name ) {
+    if ( ages[ name ] < 0 )
+        ages[ name ] = -ages[ name ];
+    return ages[ name ];
+}
+int get_age_uncached( string name ) {
+    if ( find_player( name ) )
+        ages[ name ] = find_player( name )->query_time_on();
+    return get_age_cached( name );
+}
+int get_age_uncached_offline( string name ) {
+    ages[ name ] = get_age_raw( name );
+    return get_age_cached( name );
+}
+int query_senior_playtester( string name ) {
+    return ( pts[ name ] == SENIOR_PLAYTESTER );
+}
+int add_playtester( string name ) {
+    if ( pts[ name ] )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " added as a playtester by %s\n", this_player()->query_name() );
+    pts[ name ] = NORMAL_PLAYTESTER;
+    ages[ name ] = get_age_uncached_offline( name );
+    guilds[ name ] = PLAYER_HANDLER->test_guild( name );
+    bugs[ name ] = ([ ]);
+    if (tmp_pts[name]) {
+      if (tmp_pts[name] == SENIOR_PLAYTESTER) {
+        pts[name] = SENIOR_PLAYTESTER;
+      }
+      map_delete (tmp_pts, name);
+    }
+    PT_APPLICATION_HANDLER->delete_applicant (name);
+    save_file();
+    return 1;
+}
+int add_senior_playtester( string name ) {
+    if ( pts[ name ] != NORMAL_PLAYTESTER )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " promoted to senior playtester by %s\n",
+              this_player()->query_name() );
+    pts[ name ] = SENIOR_PLAYTESTER;
+    save_file();
+    return 1;
+}
+int remove_senior_playtester( string name, string reason ) {
+    if ( pts[ name ] != SENIOR_PLAYTESTER )
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " demoted from senior playtester; Reason: " + reason +
+              " by "+ this_player()->query_name() + "\n" );
+    pts[ name ] = NORMAL_PLAYTESTER;
+    save_file();
+    return 1;
+}
+int remove_playtester( string name, string reason ) {
+    string str;
+    if ( !query_playtester( name ) )
+        return 0;
+    str = ctime( time() ) +": "+ name + " removed as a playtester";
+    if ( reason ) {
+        str += "; Reason: " + reason;
+    }
+    str += " by "+ this_player()->query_name() + "\n" ;
+    log_file( "PLAYTESTERS", str + "\n" );
+    map_delete( pts, name );
+    map_delete( ages, name );
+    map_delete( guilds, name );
+    map_delete( bugs, name );
+    PROJECT_HANDLER->clear_playtesting_projects (({name }));
+    save_file();
+    return 1;
+}
+string reason_invalid_playtester(string name) {
+    if ( !PLAYER_HANDLER->test_user( name ) ) {
+        return "not a user";
+    }
+    if ( PLAYER_HANDLER->test_creator( name ) ) {
+        return "currently a creator";
+    }
+    if ( PLAYER_HANDLER->test_level( name ) < LEVEL ) {
+        return "level is too low";
+    }
+    return 0;
+}
+int valid_playtester( string name ) {
+    return ( !stringp( reason_invalid_playtester( name ) ) );
+}
+int hire_playtester( object thing ) {
+    string name;
+    if ( !objectp( thing ) )
+        return 0;
+    name = thing->query_name();
+    if ( !stringp( name ) )
+        return 0;
+    if ( !valid_playtester( name ) )
+        return 0;
+    return add_playtester( name );
+}
+void adjust_quota( string name, int amount ) {
+    string* bits;
+    string right_now;
+    int* bing;
+    int age;
+    bits = explode( ctime( time() ), " " ) - ({ "" });
+    right_now = bits[ 1 ] + " " + bits[ 4 ];
+    if (!bugs[name][right_now]) {
+      bugs[name][right_now] = 0;
+    }
+    bing = bugs[ name ][ right_now ];
+    age = get_age_uncached( name );
+    if ( arrayp( bing ) && ( sizeof( bing ) == 3 ) ) {
+        bing[ 0 ] += amount;
+        bing[ 1 ] += age - bing[ 2 ];
+        bing[ 2 ] = age;
+    } else {
+        bing = ({ amount, 0, age });
+    }
+    bugs[ name ][ right_now ] = bing;
+    save_file();
+}
+protected void check_playtesters_one( string name ) {
+    if ( !valid_playtester( name ) ) {
+        remove_playtester( name, reason_invalid_playtester( name ) +
+                           " [automatic]" );
+    } else {
+        adjust_quota( name, 0 );
+    }
+}
+void check_playtesters( string* who ) {
+    string* bits;
+    string right_now;
+    if ( sizeof( who ) ) {
+        check_playtesters_one( who[ 0 ] );
+        if ( sizeof( who ) > 1 ) {
+            call_out( "check_playtesters", random( 10 ) + 5, who[ 1.. ] );
+        } else {
+            bits = explode( ctime( time() ), " " ) - ({ "" });
+            right_now = bits[ 1 ] + " " + bits[ 4 ];
+            if ( member_array( right_now, months ) < 0 ) {
+                months += ({ right_now });
+                save_file();
+            }
+        }
+    }
+}
+void reset() {
+    if ( !updating )
+        call_out( "check_playtesters", 30, copy( keys( pts ) ) );
+    updating++;
+    updating %= 12;
+}
+void report_made( string name, string type, string file, string text ) {
+    int post = 0;
+    if ( !query_playtester( name ) )
+        return;
+    if ( regexp( type, "IDEA" ) ) {
+        post = 1;
+    } else if ( regexp( type, "BUG" ) ) {
+        count = ( count + 1 ) % BUG_SKIP;
+        post = ( count == 0 );
+    }
+    if ( post ) {
+        BOARD_HAND->add_message( "playtester_bugs", capitalize( name ),
+                                 type + " for " + file,
+                                 sprintf( "%75-=s", text ) );
+    }
+    adjust_quota( name, 1 );
+}
+string query_show_list() {
+    string result;
+    result = "              ";
+    foreach ( string month in months[ <5.. ] ) {
+        result += "    " + month;
+    }
+    result += "\n";
+    foreach ( string name in sort_array( query_playtesters(), 1 ) ) {
+        if ( query_senior_playtester( name ) ) {
+            result += "S ";
+        } else {
+            result += "  ";
+        }
+        if ( stringp( leave[ name ] ) )
+            result += sprintf( "%-14s", "[" + name + "]" );
+        else
+            result += sprintf( " %-12s ", name );
+        foreach ( string month in months[ <5.. ] ) {
+            if ( sizeof( bugs[ name ][ month ] ) >= 2 )
+                result += sprintf( "   %4d %4d", bugs[ name ][ month ][ 0 ],
+                                   ( bugs[ name ][ month ][ 1 ] / 3600 ) );
+            else
+                result += "   ---- ----";
+        }
+        result += "\n";
+    }
+    return result;
+}
+string query_show_list_colour() {
+    string result;
+    string colour;
+    int online, reports;
+    string temp;
+    result = "              ";
+    foreach ( string month in months[ <5.. ] ) {
+        result += "    " + month;
+    }
+    result += "\n";
+    foreach ( string name in sort_array( query_playtesters(), 1 ) ) {
+        reports = 0;
+        online = 0;
+        if ( query_senior_playtester( name ) ) {
+            temp = "S ";
+        } else {
+            temp = "  ";
+        }
+        temp += sprintf( "%%s%-12s%%%%^RESET%%%%^", name );
+        foreach ( string month in months[ <5.. ] ) {
+	          if (query_leave (name)) {
+                    colour = "%%^WHITE%%^";
+	          }
+            else if ( sizeof( bugs[ name ][ month ] ) >= 2 ) {
+                reports += bugs[ name ][ month ][ 0 ];
+                online += bugs[ name ][ month ][ 1 ];
+                if ( bugs[ name ][ month ][ 1 ] == 0 )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^MAGENTA%%^" :
+                               "%%^BOLD%%^%%^MAGENTA%%^" );
+                else if ( bugs[ name ][ month ][ 0 ] >=
+                     ( bugs[ name ][ month ][ 1 ] / 7200 ) )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^GREEN%%^" :
+                               "%%^BOLD%%^%%^GREEN%%^" );
+                else if ( bugs[ name ][ month ][ 0 ] <
+                          ( bugs[ name ][ month ][ 1 ] / 24000 ) )
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^RED%%^" :
+                               "%%^BOLD%%^%%^RED%%^" );
+                else
+                    colour = ( stringp( leave[ name ] ) ?
+                               "%%^ORANGE%%^" :
+                               "%%^YELLOW%%^" );
+                temp += sprintf( "   %s%4d %4d%%%%^RESET%%%%^",
+                                 colour,
+                                 bugs[ name ][ month ][ 0 ],
+                                 ( bugs[ name ][ month ][ 1 ] / 3600 ) );
+            } else
+                temp += "   ---- ----";
+        }
+        temp += "\n";
+        if ( online == 0 )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^BOLD%^%^WHITE%^" :
+                       "%^BOLD%^%^MAGENTA%^" );
+        else if ( reports >= ( online / 7200 ) )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^GREEN%^" :
+                       "%^BOLD%^%^GREEN%^" );
+        else if ( reports < ( online / 24000 ) )
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^RED%^" :
+                       "%^BOLD%^%^RED%^" );
+        else
+            colour = ( stringp( leave[ name ] ) ?
+                       "%^ORANGE%^" :
+                       "%^YELLOW%^" );
+        result += sprintf( temp, colour );
+    }
+    return result;
+}
+mapping query_playtester_guilds() {
+    mapping r = ([]);
+    foreach ( string pt, string guild in guilds ) {
+        if ( arrayp( r[ guild ] ) )
+            r[ guild ] += ({ pt });
+        else
+            r[ guild ] = ({ pt });
+    }
+    return r;
+}
+mapping query_guilds() {
+    return copy( guilds );
+}
+void update_guilds() {
+  string guild;
+    foreach( string player, mapping data in playtesters ) {
+        if ( !sizeof (data[ "guild" ]) ) {
+            guild = PLAYER_HANDLER->test_guild( player );
+            if (!sizeof (guild)) {
+              guild = "/std/guilds/standard";
+            }
+            data[ "guild" ] = guild;
+        }
+    }
+    save_file();
+}
+mixed query_pt_data( string name ) {
+    if ( !undefinedp( playtesters[ name ] ) )
+        return copy( playtesters[ name ] );
+    return 0;
+}
+mapping query_bugs( string name ) {
+    return copy( bugs[ name ] );
+}
+string* query_months() {
+    return copy( months );
+}
+int set_leave( string name, string reason ) {
+    if ( pts[ name ] ) {
+        leave[ name ] = reason;
+        log_file( "PLAYTESTERS", ctime( time() ) + ": " + name + " marked as "
+                  "on leave: " + reason + "\n" );
+        save_file();
+        return 1;
+    } else {
+        return 0;
+    }
+}
+int reset_leave( string name ) {
+    if ( leave[ name ] ) {
+        map_delete( leave, name );
+        log_file( "PLAYTESTERS", ctime( time() ) + ": " + name + " no longer "
+                  "marked as on leave\n" );
+        save_file();
+        return 1;
+    } else {
+        return 0;
+    }
+}
+int query_leave( string name ) {
+    return stringp( leave[ name ] );
+}
+#ifdef PLAYTESTERS_HANDLER_OLD_STYLE_CONVERSION
+void transfer_data_callout( string* pts ) {
+    string pt;
+    mixed bing;
+    int lastage;
+    int nowage;
+    if ( sizeof( pts ) ) {
+        pt = pts[ 0 ];
+        nowage = get_age_uncached_offline( pt );
+        lastage = nowage - playtesters[ pt ][ "age" ];
+        guilds[ pt ] = PLAYER_HANDLER->test_guild( pt );
+        ages[ pt ] = nowage;
+        bugs[ pt ] = ([ ]);
+        foreach ( string s in keys( playtesters[ pt ] ) -
+                  ({ "senior", "age", "current age", "guild" }) ) {
+            bing = playtesters[ pt ][ s ];
+            if ( arrayp( bing ) ) {
+                bugs[ pt ][ s ] = ({ bing[ 0 ], bing[ 1 ], nowage });
+            } else if ( intp( bing ) ) {
+                bugs[ pt ][ s ] = ({ bing, lastage, nowage });
+            }
+        }
+        tell_creator( "arienne", "Done " + pt + "!\n" );
+        if ( sizeof( pts ) > 1 ) {
+            call_out( "transfer_data_callout", 5, pts[ 1.. ] );
+        } else {
+            save_file();
+            tell_creator( "arienne", "Done the transfer!\n" );
+        }
+    }
+}
+void transfer_data_to_new_system() {
+    foreach ( string pt in keys( playtesters ) ) {
+        if ( playtesters[ pt ][ "senior" ] )
+            pts[ pt ] = SENIOR_PLAYTESTER;
+        else
+            pts[ pt ] = NORMAL_PLAYTESTER;
+    }
+    call_out( "transfer_data_callout", 5, copy( keys( playtesters ) ) );
+}
+#endif
+mapping query_jump_points() {
+   if (!_jump_points) {
+      _jump_points = ([ ]);
+   }
+   return copy(_jump_points);
+}
+void add_jump_point(string from, string to) {
+   if (!_jump_points[from]) {
+      _jump_points[from] = ({ });
+   }
+   _jump_points[from] += ({ to });
+   save_file();
+}
+void remove_jump_point_from(string from) {
+   map_delete(_jump_points, from);
+   save_file();
+}
+void remove_jump_point(string from, string to) {
+   if (_jump_points[from]) {
+      _jump_points[from] -= ({ to });
+      if (!sizeof(_jump_points[from])) {
+         map_delete(_jump_points, from);
+      }
+      save_file();
+   }
+}
+string* query_jump_destination(string from) {
+   return _jump_points[from];
+}
+int add_pt_exec( string name ) {
+    if ( undefinedp (pts[ name ]))
+        return 0;
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " promoted to playtester executive by %s\n",
+              this_player()->query_name() );
+    executives += ({ name });
+    save_file();
+    return 1;
+}
+int remove_pt_exec( string name ) {
+    if ( !undefinedp (pts[ name ]))
+        return 0;
+    if (member_array (name, executives) == -1) {
+      return 0;
+    }
+    log_file( "PLAYTESTERS", ctime( time() ) + ": " + name +
+              " removed from playtester executive by %s\n",
+              this_player()->query_name() );
+    executives -= ({ name });
+    save_file();
+    return 1;
+}
+int query_pt_exec(string name) {
+  if (member_array (name, executives) == -1) {
+    return 0;
+  }
+  return 1;
+}
+int query_exec_access (string name) {
+  if (master()->query_senior(name)) {
+    return 1;
+  }
+  if (query_pt_exec (name)) {
+    return 1;
+  }
+  if (query_senior_playtester (name)) {
+    return 1;
+  }
+  if (load_object ("/d/playtesters/master")->query_deputy (name)) {
+    return 1;
+  }
+  return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/login_handler.c ===
+#include <login.h>
+#ifdef LOGIN_DEBUG
+#undef MAX_COMPRESSED_PLAYERS
+#undef MAX_UNCOMPRESSED_PLAYERS
+#undef MAX_PLAYERS
+#define LOGIN_MAX_COMPRESSED_PLAYERS 2
+#define MAX_UNCOMPRESSED_PLAYERS 1
+#define MAX_PLAYERS (MAX_COMPRESSED_PLAYERS + MAX_UNCOMPRESSED_PLAYERS)
+#endif
+#ifdef LOGIN_DEBUG
+#define is_compressed_login(x) (strsrch((x)->query_name(), "test") > -1)
+#else
+#define is_compressed_login(x) (compressedp(x))
+#endif
+#define COMPRESSED_INTAKE_COUNT 5
+#ifdef USE_RAMDISK
+#define SAVE_TIME 300
+#else
+#define SAVE_TIME 900
+#endif
+#define NEW_SAVE_TIME 15
+#define SAVE_NAME "/save/login_handler"
+#define BUFFER_TIME 30
+#define LOCKDOWN_TIME 900
+#define MAX_FAILURES 3
+class login_information {
+    mixed ob;
+    string funct;
+}
+mapping _static_login_calls;
+nosave mapping _dynamic_login_calls;
+nosave string _best;
+nosave string _worst;
+nosave string *_players_on;
+nosave mapping _compressed_players_on;
+nosave mapping _telnet_players_on;
+nosave object *_compressed_login_queue;
+nosave object *_telnet_login_queue;
+nosave int _compressed_login_count;
+nosave string enter_log;
+nosave int last_entry;
+nosave mapping messages;
+nosave mapping lockdowns;
+nosave int _creators;
+nosave int _players;
+nosave int _login_q;
+nosave int _next_user_log;
+nosave int _title_call;
+nosave int _save_call;
+nosave int _out_q;
+nosave int _q_time;
+nosave int _last_queue_time;
+nosave int _last_queue_result;
+int is_discworld_full(int test_login_queue);
+void write_log(string event, string name, int guest, string other);
+void save_users();
+private void store_user_count();
+private void log_user_count();
+protected void check_all_titles( string player );
+private void do_all_calls(string player, string event);
+private void do_call(class login_information login_inf,
+  string player, int event);
+int is_uncompressed_full( int );
+void create() {
+    object pl;
+    string name;
+    _static_login_calls = ([ ]);
+    _dynamic_login_calls = ([ ]);
+    seteuid( "Root" );
+    unguarded((: restore_object, SAVE_NAME :));
+    foreach(name in keys(_static_login_calls)) {
+      if(!sizeof(_static_login_calls[name])) {
+        map_delete(_static_login_calls, name);
+      }
+      catch(unguarded((: save_object, SAVE_NAME :)));
+    }
+    _compressed_players_on = ([ ]);
+    _telnet_players_on = ([ ]);
+    _players_on = ({ });
+    foreach(pl in users()) {
+        if (is_compressed_login(pl)) {
+            _compressed_players_on[ pl->query_name() ] = 1;
+        }
+        else {
+            _telnet_players_on[ pl->query_name() ] = 1;
+        }
+        _players_on += ({ pl->query_name() });
+    }
+    _compressed_login_queue = ({ });
+    _telnet_login_queue = ({ });
+    _compressed_login_count = 1;
+    _save_call = call_out( "save_users", NEW_SAVE_TIME );
+    _next_user_log = time() + 3601 - (time() % 3600);
+    enter_log = "";
+    last_entry = time();
+    call_out("clean_lockdowns", 3600);
+    write_log("Periodic", "", 0, "");
+}
+mapping query_static_login_calls() {
+    return copy(_static_login_calls);
+}
+mapping query_dynamic_login_calls() {
+    return copy(_dynamic_login_calls);
+}
+string query_best() { return _best; }
+string query_worst() { return _worst; }
+string *query_players_on() {
+    return keys( _compressed_players_on ) + keys( _telnet_players_on );
+}
+object *query_login_queue() {
+    return _compressed_login_queue + _telnet_login_queue;
+}
+void add_to_login_queue(object login_ob) {
+    if ( is_compressed_login( login_ob ) ) {
+        _compressed_login_queue += ({ login_ob });
+    }
+    else {
+        _telnet_login_queue += ({ login_ob });
+    }
+}
+void remove_from_login_queue(object ob) {
+    _compressed_login_queue -= ({ ob });
+    _telnet_login_queue -= ({ ob });
+}
+int can_jump_queue( object ob ) {
+    return ob->query_creator() || ob->query_net_dead() ||
+        ob->query_property( "test character" );
+}
+object pop_from_login_queue() {
+    object ob;
+    object *login_queue;
+    login_queue = query_login_queue();
+    if ( !sizeof( login_queue ) ) {
+        return 0;
+    }
+    if(time() != _q_time){
+      _q_time = time();
+      _out_q = 0;
+    }
+    _out_q++;
+    foreach( ob in _compressed_login_queue ) {
+        if ( can_jump_queue( ob ) ) {
+            remove_from_login_queue( ob );
+            return ob;
+        }
+    }
+    reset_eval_cost();
+    if(sizeof(_telnet_login_queue) &&
+       !is_uncompressed_full(WITHOUT_LOGIN_QUEUE)) {
+      foreach( ob in _telnet_login_queue ) {
+        if ( can_jump_queue( ob ) ) {
+          remove_from_login_queue( ob );
+          return ob;
+        }
+      }
+    }
+    if ( sizeof( _compressed_login_queue) &&
+         _compressed_login_count < COMPRESSED_INTAKE_COUNT ) {
+        _compressed_login_count++;
+        ob = _compressed_login_queue[ 0 ];
+        _compressed_login_queue = _compressed_login_queue[ 1.. ];
+    } else {
+        _compressed_login_count = 0;
+        ob = _telnet_login_queue[ 0 ];
+        _telnet_login_queue = _telnet_login_queue[ 1.. ];
+    }
+    return ob;
+}
+int add_static_login_call(string player, mixed funct, mixed obj) {
+  class login_information login_inf;
+  if (!stringp(funct) || !stringp(obj) || !stringp(player)) {
+    return 0;
+  }
+  if(obj[0..3] == "/w/")
+    return 0;
+  if(_static_login_calls[player]) {
+    foreach (login_inf in _static_login_calls[player]) {
+      if (login_inf->ob == obj &&
+    login_inf->funct == funct) {
+  return 1;
+      }
+    }
+  }
+  if (!_static_login_calls[player]) {
+    _static_login_calls[player] = ({ });
+  }
+  login_inf = new (class login_information, funct : funct, ob : obj);
+  _static_login_calls[player] += ({ login_inf });
+  catch(unguarded((: save_object, SAVE_NAME :)));
+  return 1;
+}
+int remove_static_login_call(string player, mixed funct, mixed obj) {
+  class login_information login_inf;
+  if (!stringp(funct) || !stringp(obj) || !stringp(player)) {
+    return 0;
+  }
+  if (_static_login_calls[player]) {
+    foreach (login_inf in _static_login_calls[player]) {
+      if (login_inf->ob == obj &&
+          login_inf->funct == funct) {
+        _static_login_calls[player] -= ({ login_inf });
+        if(!sizeof(_static_login_calls[player]))
+          map_delete(_static_login_calls, player);
+        catch(unguarded((: save_object, SAVE_NAME :)));
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+int add_dynamic_login_call(string player, mixed funct, mixed obj) {
+    class login_information login_inf;
+    if (stringp(obj) || objectp(obj)) {
+        if (!stringp(funct)) {
+            return 0;
+        }
+    } else if (!functionp(funct)) {
+        return 0;
+    }
+    if (!_dynamic_login_calls[player]) {
+        _dynamic_login_calls[player] = ({ });
+    }
+    login_inf = new (class login_information, funct : funct, ob : obj);
+    _dynamic_login_calls[player] += ({ login_inf });
+    return 1;
+}
+int remove_dynamic_login_call(string player, mixed funct, mixed obj) {
+    class login_information login_inf;
+    if (stringp(obj) || objectp(obj)) {
+        if (!stringp(funct)) {
+            return 0;
+        }
+    } else if (!functionp(funct)) {
+        return 0;
+    }
+    if (_dynamic_login_calls[player]) {
+        foreach (login_inf in _dynamic_login_calls[player]) {
+            if (login_inf->ob == obj &&
+              login_inf->funct == funct) {
+                _dynamic_login_calls[player] -= ({ login_inf });
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+void update_players_on( string player ) {
+    object ob = find_player( player );
+    if ( !ob ) {
+        return;
+    }
+    if ( is_compressed_login( ob ) ) {
+        if ( undefinedp( _compressed_players_on[ player ] ) ) {
+            _compressed_players_on[ player ] = 1;
+        }
+    }
+    else {
+        if ( undefinedp( _telnet_players_on[ player ] ) ) {
+            _telnet_players_on[ player ] = 1;
+        }
+    }
+    if ( member_array( player, _players_on ) == -1 ) {
+        _players_on += ({ player });
+    }
+}
+int tidy_players_on( string player ) {
+    int pos;
+    int ret;
+    ret = 0;
+    if ( _compressed_players_on[ player ] ) {
+        map_delete( _compressed_players_on, player );
+        ret = 1;
+    }
+    if ( _telnet_players_on[ player ] ) {
+        map_delete( _telnet_players_on, player );
+        ret = 1;
+    }
+    pos = member_array( player, _players_on );
+    if ( pos != -1 ) {
+        _players_on = _players_on[0..pos-1] + _players_on[pos+1..];
+        ret = 1;
+    }
+    return ret;
+}
+int player_logon(string player, int guest, string ip) {
+    if(lower_case(player) != (string)previous_object()->query_name()) {
+        return 0;
+    }
+    update_players_on( player );
+    do_all_calls(player, LOGIN);
+    if (find_call_out(_title_call) == -1) {
+        _title_call = call_out("check_all_titles", 5, player );
+    }
+    write_log("Enter", player, guest, ip);
+}
+private void do_all_calls(string player, string event_t) {
+  class login_information login_inf;
+  if (_static_login_calls[player]) {
+    foreach (login_inf in _static_login_calls[player]) {
+      call_out((: do_call :), 1, login_inf,
+               player, event_t );
+    }
+  }
+  if (_static_login_calls["all"]) {
+    foreach (login_inf in _static_login_calls["all"]) {
+      call_out((: do_call :), 1, login_inf,
+               player, event_t );
+    }
+  }
+  if (_dynamic_login_calls[player]) {
+    foreach (login_inf in _dynamic_login_calls[player]) {
+      call_out((: do_call :), 1, login_inf,
+               player, event_t );
+    }
+  }
+  if (_dynamic_login_calls["all"]) {
+    foreach (login_inf in _dynamic_login_calls["all"]) {
+      call_out((: do_call :), 1, login_inf,
+               player, event_t );
+    }
+  }
+}
+private void do_call(class login_information login_inf,
+                     string player, int event_t) {
+  object ob;
+  if (!find_player(player) || find_player(player)->query_invis() < 2) {
+    if (!functionp(login_inf->funct)) {
+      if(login_inf->ob && login_inf->funct)
+        catch(ob = load_object(login_inf->ob));
+      if ( ob ) {
+        catch(call_other(ob, login_inf->funct, player,
+                         event_t));
+      } else {
+        tell_creator("ceres", "failed to load %s", login_inf->ob);
+      }
+    } else {
+      catch(evaluate(login_inf->funct, player, event_t));
+    }
+  }
+}
+int player_logout(string player) {
+    object ob;
+    do_all_calls(player, LOGOUT);
+    if ( tidy_players_on( player ) ) {
+        if (find_call_out(_title_call) == -1) {
+            _title_call = call_out("check_all_titles", 5, player );
+        }
+    }
+    if(find_call_out(_save_call) == -1) {
+        _save_call = call_out("save_users", NEW_SAVE_TIME );
+    }
+    while (sizeof(query_login_queue()) &&
+        !is_discworld_full(WITHOUT_LOGIN_QUEUE) ) {
+        ob = pop_from_login_queue();
+        if (ob) {
+            ob->remove_from_login_queue();
+        }
+    }
+    write_log("Exit", player, 0, "");
+    return 1;
+}
+int player_net_dead(string player) {
+    object ob;
+    if ( tidy_players_on( player ) ) {
+        do_all_calls(player, NETDEATH);
+        if (find_call_out(_title_call) == -1) {
+            _title_call = call_out("check_all_titles", 5, player );
+        }
+    }
+    while ( sizeof(query_login_queue()) && !is_discworld_full(WITHOUT_ANY_LOGINS) ) {
+        ob = pop_from_login_queue();
+        if (ob) {
+            ob->remove_from_login_queue();
+        }
+    }
+    write_log("NDead", player, 0, "");
+    return 1;
+}
+int player_reconnected(string player) {
+    update_players_on(player);
+    do_all_calls(player, RECONNECT);
+    if (find_call_out(_title_call) == -1) {
+        _title_call = call_out("check_all_titles", 5, player);
+    }
+    write_log("Recon", player, 0, query_ip_name(find_player(player)));
+}
+protected void check_all_titles( string player ) {
+    int al, good, bad;
+    object good_thing, bad_thing, thing, *things;
+    good = -250;
+    bad = 250;
+    things = users();
+    foreach( thing in things ) {
+      if (!thing || thing->query_creator() ) {
+        continue;
+      }
+      al = (int)thing->query_al();
+      if ( al > bad ) {
+        bad = al;
+        bad_thing = thing;
+      }
+      if ( al < good ) {
+        good = al;
+        good_thing = thing;
+      }
+    }
+    if ( bad_thing ) {
+      if ( stringp( _worst ) && ( _worst != player ) ) {
+        thing = find_player( _worst );
+      } else {
+        thing = 0;
+      }
+      if ( bad_thing != thing ) {
+        if ( thing ) {
+          thing->remove_title( "align" );
+        }
+        switch ( (int)bad_thing->query_gender() ) {
+        case 1 :
+          bad_thing->set_title( "align", "Lord of Darkness" );
+          break;
+        case 2 :
+          bad_thing->set_title( "align", "Lady of Darkness" );
+          break;
+        default :
+          bad_thing->set_title( "align", "Monster of Darkness" );
+        }
+        _worst = (string)bad_thing->query_name();
+      }
+    }
+    if ( good_thing ) {
+      if ( stringp( _best ) && ( _best != player ) ) {
+        thing = find_player( _best );
+      } else {
+        thing = 0;
+      }
+      if ( good_thing != thing ) {
+        if ( thing ) {
+          thing->remove_title( "align" );
+        }
+        switch ( (int)good_thing->query_gender() ) {
+        case 1 :
+          good_thing->set_title( "align", "Lord of Light" );
+          break;
+        case 2 :
+          good_thing->set_title( "align", "Lady of Light" );
+          break;
+        default :
+          good_thing->set_title( "align", "Creature of Light" );
+        }
+        _best = (string)good_thing->query_name();
+      }
+    }
+}
+void save_users() {
+    int number;
+    int next_time;
+    string word;
+    object thing;
+    number = sizeof( _players_on );
+    if ( !number ) {
+        _players_on = query_players_on();
+        _save_call = call_out("save_users", NEW_SAVE_TIME );
+        return;
+    }
+    store_user_count();
+    if(_next_user_log < time()) {
+        log_user_count();
+    }
+    word = _players_on[ 0 ];
+    thing = find_player( word );
+    if ( objectp( thing ) && ( number > 1 ) ) {
+        if ( environment( thing ) ) {
+            thing->save_me();
+        }
+        _players_on = _players_on[1..] + ({ word });
+    } else {
+        _players_on = _players_on[1..] + ({ word });
+    }
+    next_time = SAVE_TIME / number;
+    if ( next_time > 10 ) {
+        next_time = 10;
+    }
+    _save_call = call_out( (: save_users :), next_time );
+}
+int int_is_discworld_full(int logins) {
+    object *players;
+    int compressed;
+    int uncompressed;
+    int ret;
+    int ext;
+    players = users();
+    switch (logins) {
+    case WITHOUT_LOGINS_NOT_IN_QUEUE :
+        players = filter(players, (: objectp($1) && !$1->query_login_ob() &&
+            !$1->query_creator() :)) + query_login_queue();
+        break;
+    case WITHOUT_LOGIN_QUEUE :
+        players -= query_login_queue();
+        players = filter(players, (: objectp($1) && !$1->query_creator() :));
+        break;
+    case WITHOUT_ANY_LOGINS :
+        players = filter(players, (: objectp($1) && !$1->query_login_ob() &&
+            !$1->query_creator() :));
+        ext = _out_q;
+        break;
+    default :
+        players = filter(players, (: objectp($1) && !$1->query_creator() :));
+        break;
+    }
+    if(time() != _q_time){
+      ext = 0;
+      _out_q = 0;
+      _q_time = time();
+    }
+    compressed = sizeof( filter( players, (: is_compressed_login($1) :) )  ) + ext;
+    uncompressed = sizeof( players ) - compressed;
+    ret = DISCWORLD_IS_EMPTY;
+    if ( compressed >= MAX_COMPRESSED_PLAYERS ) {
+        ret |= COMPRESSED_FULL;
+    }
+    if ( uncompressed >= MAX_UNCOMPRESSED_PLAYERS ) {
+        ret |= UNCOMPRESSED_FULL;
+    }
+    return ret;
+}
+int is_compressed_full( int logins ) {
+    return int_is_discworld_full( logins ) & COMPRESSED_FULL;
+}
+int is_uncompressed_full( int logins ) {
+    return int_is_discworld_full( logins ) & UNCOMPRESSED_FULL;
+}
+int is_discworld_full(int logins) {
+    int ret;
+    ret = int_is_discworld_full( logins );
+    ret = (ret & COMPRESSED_FULL) && (ret & UNCOMPRESSED_FULL);
+    return ret;
+}
+private void store_user_count() {
+    object pl;
+    int current_players, current_creators, current_login_q;
+    string *logins_n;
+    foreach(pl in users()) {
+      if (pl && !pl->query_login_ob()) {
+        if (pl->query_creator()) {
+          current_creators++;
+        } else {
+          current_players++;
+        }
+      }
+    }
+    logins_n = map(LOGIN_HANDLER->query_login_queue(),
+      (: $1->query_cap_name() :));
+    logins_n = sort_array(logins_n, 1);
+    current_login_q = sizeof(logins_n);
+    if(current_players + current_login_q > _players + _login_q) {
+        _players = current_players;
+        _creators = current_creators;
+        _login_q = current_login_q;
+    }
+}
+private void log_user_count() {
+    log_file("USERS", "%s %d %d %d\n" ,ctime(time()), _creators, _players,
+      _login_q);
+    _creators = 0;
+    _players = 0;
+    _login_q = 0;
+    _next_user_log = time() + 3601 - (time() % 3600);
+}
+void write_log(string event, string name, int guest, string other) {
+    switch(event) {
+    case "Enter":
+        enter_log += sprintf( "%s [Enter] %-15s %s%s\n",
+          ctime(time())[4..18], name,
+          guest?"(guest) ":"",
+          other);
+        break;
+    case "Su":
+        enter_log += sprintf( "%s [Su]    %15-s %15-s\n",
+          ctime(time())[4..18], name, other);
+        break;
+    case "Periodic":
+        call_out("write_log", BUFFER_TIME, "Periodic", "", 0, "");
+        if (sizeof(enter_log) && time() - last_entry > BUFFER_TIME) {
+            unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
+            enter_log = "";
+            last_entry = time();
+        }
+        return;
+    case "Recon":
+        enter_log += sprintf( "%s [Recon] %15-s %s\n",
+          ctime(time())[4..18], name, other);
+        break;
+    default:
+        enter_log += sprintf("%s %-7s %15-s\n", ctime(time())[4..18],
+          "["+event+"]", name);
+        break;
+    }
+    last_entry = time();
+    if(sizeof(enter_log) > 1024) {
+        unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
+        enter_log = "";
+    }
+}
+void dest_me() {
+    unguarded((: write_file, "/d/admin/log/ENTER.log", enter_log :));
+    enter_log = "";
+    destruct(this_object());
+}
+string get_message(string mess_name) {
+    if(!messages)
+        messages = ([ ]);
+    if(mess_name[0..4] != "/doc/")
+        return 0;
+    if(!messages[mess_name])
+        messages[mess_name] = read_file(mess_name);
+    return messages[mess_name];
+}
+void clear_messages() {
+    messages = ([ ]);
+}
+int site_lockeddown(string ip_addr) {
+    if(!lockdowns)
+        lockdowns = ([ ]);
+    if(lockdowns[ip_addr] &&
+      (sizeof(lockdowns[ip_addr]) >= MAX_FAILURES) &&
+      (lockdowns[ip_addr][0] > time() - LOCKDOWN_TIME))
+        return 1;
+    return 0;
+}
+void failed_login(string ip_addr) {
+  int i;
+  if(!lockdowns)
+    lockdowns = ([ ]);
+  if(!lockdowns[ip_addr])
+    lockdowns[ip_addr] = ({ time() });
+  else {
+    for(i=0; i<sizeof(lockdowns[ip_addr]); i++)
+      if(lockdowns[ip_addr][i] < time() - LOCKDOWN_TIME) {
+        lockdowns[ip_addr] -= ({ lockdowns[ip_addr][i] });
+        i--;
+      }
+    lockdowns[ip_addr] += ({ time() });
+    if(sizeof(lockdowns[ip_addr]) > MAX_FAILURES) {
+      lockdowns[ip_addr] =
+        lockdowns[ip_addr][sizeof(lockdowns[ip_addr])-MAX_FAILURES..];
+    }
+  }
+}
+void clean_lockdowns() {
+  string ip;
+  call_out("clean_lockdowns", 1800);
+  foreach(ip in keys(lockdowns)) {
+    if(lockdowns[ip][sizeof(lockdowns[ip])-1] < time() - LOCKDOWN_TIME) {
+      map_delete(lockdowns, ip);
+    }
+  }
+}
+void clear_lockdowns(string ip) {
+  if(!ip)
+    lockdowns = ([ ]);
+  else if(lockdowns[ip])
+    map_delete(lockdowns, ip);
+}
+void query_lockdowns() {
+    printf("%O\n", lockdowns);
+}
+void reset() {
+    if (find_call_out(_save_call) == -1) {
+        save_users();
+    }
+}

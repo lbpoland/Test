@@ -1,0 +1,2346 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/playerinfo.c ===
+#include <playerinfo.h>
+#include <player_handler.h>
+#include <refresh.h>
+#include <applications.h>
+#include <newbiehelpers.h>
+#define SAVE_DIR         "/save/playerinfo"
+#define SAVE_FILE        ( SAVE_DIR + "/handler_data" )
+#define NO_ACCESS_LOG    6
+#define LIAISON_WAND       "/d/liaison/items/wand"
+#define LIAISON_SCEPTRE    "/d/liaison/items/mort_sceptre"
+#define LIAISON_PEN        "/d/liaison/items/quota_pen"
+#define LIAISON_INTERVIEW  "/d/liaison/utils/interview"
+#define MULTIPLAY          "/obj/handlers/multiplayer"
+#define GAG                "/cmds/creator/gag"
+#define UNGAG              "/cmds/creator/ungag"
+#define METEOR             "/cmds/creator/meteor"
+#define FRY                "/cmds/creator/fry"
+#define REPORT_COMMAND     "/cmds/creator/playerinfo"
+#define ADD_COMMAND        "/cmds/creator/addevent"
+#define DELETE_COMMAND     "/cmds/creator/delevent"
+#define ADDALT_COMMAND     "/cmds/creator/addalt"
+#define DELALT_COMMAND     "/cmds/creator/delalt"
+#define FAMILY_COMMAND     "/cmds/creator/family"
+#define SUSPENDER          "/secure/bastards"
+#define SHOWHELP_COMMAND   "/cmds/creator/show_help"
+#define PATRICIAN_PALACE   "/d/am/patrician/patrician"
+#define REFRESH_HANDLER    "/obj/handlers/refresh"
+#define PRISON             "/d/sur/beta/prison/dungeon"
+#define FETCH_COMMAND      "/cmds/creator/fetch"
+#define REARRANGE_COMMAND  "/cmds/guild-race/rearrange"
+#define PATRICIAN_PT       "/d/playtesters/handlers/applications"
+#define PATRICIAN_COMPLAIN "/d/am/patrician/pat_complaints"
+#define RUN_HANDLER        "/obj/handlers/guild_things/run"
+#define BANISH_COMMAND     "/secure/cmds/creator/banish"
+#define FAIRY_GODMOTHER    "/obj/handlers/fairy_godmothers"
+#define CACHE_SIZE 150
+#define CL_CREATOR      "%^CYAN%^"
+#define CL_EVENT        "%^RED%^"
+#define CL_RESET        "%^RESET%^"
+#define CL_HEADER       "%^RED%^"
+#define DEBOUNCE_PERIOD (60*30)
+#define TIMEOUT_PERIOD  (60*60*24)
+#define ONE_WEEK           ( 60 * 60 * 24 * 7 )
+nosave inherit "/std/object";
+mapping          query_timeouts();
+protected string filename(string name);
+string *         query_events();
+protected int    query_debounced(string event);
+protected int    query_lord_only(string event);
+int              query_source_ok(string event, string source);
+protected int    query_deleter_ok(string event, object deleter);
+protected int    query_can_add(string e, object p);
+protected int    query_can_delete(string e, object p);
+protected int    query_can_handle_alts(object p);
+protected void   do_debouncing(string player, class dbentry entry);
+protected void   do_timeout();
+protected void   load_player(string player);
+protected void   save_player(string player);
+void             player_remove(string player);
+int              add_entry(object creator, string player, string event,
+                   string comment, mixed *extra);
+int              delete_entry(object creator, string player, string event,
+                   int n);
+protected string query_header(string player);
+protected string query_entry(int idx, class dbentry e,
+                   string display_name);
+string           query_access_log(object source, string player, int lastn);
+string           query_event(object source, string player, string event);
+string           add_alt(object creator, string player, string alt);
+string           delete_alt(object creator, string player, string alt);
+mapping          query_alerts();
+int              query_alerts_for( string player );
+int              is_alert( string player, int idx );
+int              acknowledge_alert( object creator, string player,
+                   string event, int idx, string update, mixed * extra );
+void             clear_alerts_for( string player );
+int              increment_alerts_for( string player );
+int              decrement_alerts_for( string player );
+void             correct_alts_for( string player );
+void player_deleted(mixed player, int deleted);
+void fix_alts(mixed player);
+class source {
+   string *add;
+   string *delete;
+}
+private class playerinfo    dossier;
+private nosave mapping      timeouts    = ([ "replace" : (60*60*24*30) ]);
+private int local_time;
+private nosave mapping _sources;
+nosave mapping _alerts;
+nosave string * _lordonly;
+private nosave int correcting_alts;
+private nosave int no_recurse;
+private nosave mapping _dossier_cache;
+private nosave int _dossier_cache_hits;
+private nosave int _dossier_total;
+void save_handler_data() {
+   mapping vars = ([ ]);
+   string tmp;
+   vars["alerts"] = _alerts;
+   tmp = save_variable( vars );
+   unguarded( (: write_file, SAVE_FILE, tmp, 1 :) );
+}
+void load_handler_data() {
+   mapping vars;
+   string tmp;
+   if( file_size( SAVE_FILE ) <= 0 )
+      return;
+   tmp = unguarded( (: read_file, SAVE_FILE :) );
+   vars = restore_variable( tmp );
+   _alerts = vars["alerts"];
+}
+void create() {
+    ::create();
+    _sources = ([
+        "cheat":        new(class source,
+                            add : ({ }),
+                            delete : ({ DELETE_COMMAND })),
+        "discipline":   new(class source,
+                            add : ({ ADD_COMMAND, PRISON, REPORT_COMMAND,
+                                     BANISH_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "email":        new(class source,
+                            add : ({ }),
+                            delete : ({ DELETE_COMMAND })),
+        "family":       new(class source,
+                            add : ({ FAMILY_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "gag":          new(class source,
+                            add : ({ GAG, UNGAG,
+                                     ADD_COMMAND, REPORT_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "harassment":   new(class source,
+                            add : ({ ADD_COMMAND, REPORT_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "meteor":       new(class source,
+                            add : ({ METEOR, FRY }),
+                            delete : ({ DELETE_COMMAND })),
+        "misc":         new(class source,
+                            add : ({ ADD_COMMAND, APPLICATIONS_HANDLER,
+                                     REARRANGE_COMMAND, PATRICIAN_PT,
+                                     PATRICIAN_COMPLAIN, RUN_HANDLER,
+                                     REPORT_COMMAND, NEWBIEHELPERS_HANDLER,
+                                     LIAISON_SCEPTRE,
+                                     LIAISON_PEN, FAIRY_GODMOTHER,
+                                     LIAISON_INTERVIEW }),
+                            delete : ({ DELETE_COMMAND })),
+        "multiplay":    new(class source,
+                            add : ({ MULTIPLAY, ADD_COMMAND,
+                                     REPORT_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "replace":      new(class source,
+                            add : ({ LIAISON_WAND,
+                                     ADD_COMMAND, FETCH_COMMAND,
+                                     REPORT_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "showhelp":     new(class source,
+                            add : ({ SHOWHELP_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "suspend":      new(class source,
+                            add : ({ SUSPENDER }),
+                            delete : ({ })),
+        "alert":        new(class source,
+                            add : ({ ADD_COMMAND, REPORT_COMMAND }),
+                            delete : ({ DELETE_COMMAND })),
+        "refresh":      new(class source,
+                            add : ({ REFRESH_HANDLER }),
+                            delete : ({ DELETE_COMMAND })),
+        "delete":      new(class source,
+                           add : ({ REFRESH_HANDLER }),
+                           delete : ({ DELETE_COMMAND }))
+    ]);
+    _alerts = ([ ]);
+    _lordonly = ({ });
+    _dossier_cache = ([ ]);
+    _dossier_cache_hits = 0;
+    _dossier_total = 0;
+    seteuid("Room");
+    load_handler_data();
+}
+mapping query_timeouts() {
+    return timeouts;
+}
+string query_name() {
+    return "playerinfo handler";
+}
+protected string filename(string name) {
+    string p = lower_case(name);
+    return sprintf("%s/%c/%s.o",SAVE_DIR,p[0],p);
+}
+string *query_events() {
+    return keys(_sources);
+}
+protected int query_debounced(string event) {
+    return (event == "replace" || event == "multiplay" ||
+            event == "gag" || event == "misc" ||
+            event == "discipline" || event == "showhelp" ||
+            event == "suspend");
+}
+protected int query_lord_only(string event) {
+    return ( member_array( event, _lordonly ) >= 0 ) ? 1 : 0;
+}
+int query_source_ok(string event, string source) {
+    string *reqd;
+    reqd = _sources[event]->add;
+    if(reqd == 0) {
+        return 1;
+    }
+    if(sizeof(reqd) == 0) {
+        return 0;
+    }
+    return member_array(source,reqd) >= 0;
+}
+protected int query_deleter_ok(string event, object deleter) {
+    string *reqd;
+    reqd = _sources[event]->delete;
+    if (reqd == 0) {
+        return 1;
+    }
+    if (sizeof(reqd) == 0) {
+        return 0;
+    }
+    return member_array(base_name(deleter),reqd) >= 0;
+}
+protected int query_can_add(string e, object p) {
+    if(member_array(e,query_events()) < 0)
+        return 0;
+    if(!interactive(p))
+        return 1;
+    return !(query_lord_only(e) && !p->query_lord());
+}
+protected int query_can_delete(string e, object p) {
+    if( !interactive(p) ) {
+        return 1;
+    }
+    if( e == "misc" || e == "replace" ) {
+        return master()->query_senior( p->query_name() ) ||
+               "/d/liaison/master"->query_deputy( p->query_name() );
+    }
+    return p->query_lord();
+}
+protected int query_can_handle_alts(object p) {
+    if( !interactive(p) ) {
+        return 1;
+    }
+    return master()->query_senior( p->query_name() ) ||
+           "/d/liaison/master"->query_deputy( p->query_name() );
+}
+protected void do_debouncing(string player, class dbentry entry) {
+    int             n;
+    class dbentry   last;
+    if (query_debounced(entry->event)) {
+        n = sizeof(dossier->data);
+        if ( n ) {
+            last = dossier->data[ n - 1 ];
+            if( entry->event == last->event &&
+                entry->creator == last->creator &&
+                entry->time - last->time <= DEBOUNCE_PERIOD)
+            {
+                last->comment += entry->comment;
+                last->time = entry->time;
+                if(last->extra != 0) {
+                    if(entry->extra == 0) {
+                        entry->extra = ({ });
+                    }
+                    last->extra += entry->extra;
+                }
+                return;
+            }
+        }
+    }
+    dossier->data += ({ entry });
+    return;
+}
+protected void do_timeout() {
+    function not_timed_out = function(class dbentry p)
+    {
+        int life = timeouts[p->event];
+        if(life == 0)
+            return 1;
+        return local_time <= (p->time + life);
+    };
+    local_time = time();
+    dossier->data = filter(dossier->data, not_timed_out);
+    dossier->last_check = time();
+}
+protected void load_player(string player) {
+    string  p = lower_case(player);
+    string  fn = filename(p);
+    class playerinfo tmp;
+    mixed result;
+    _dossier_total++;
+    if ( !undefinedp(_dossier_cache[ player ] ) ) {
+        dossier = _dossier_cache[ player ];
+        _dossier_cache_hits++;
+        return;
+    }
+    if( dossier != 0 && dossier->name == p ) {
+        return;
+    }
+    if(file_size(fn) > 0) {
+        result = unguarded( (: restore_object, fn, 0 :) );
+    } else {
+        dossier = new(class playerinfo,
+            name:       p,
+            last_check: time(),
+            alts:       ({ }),
+            data:       ({ }));
+    }
+    if (!classp(dossier)) {
+        dossier = new(class playerinfo,
+            name:       p,
+            last_check: time(),
+            alts:       ({ }),
+            data:       ({ }));
+    }
+    if(sizeof(dossier) == 5) {
+      tmp = new(class playerinfo,
+                name: dossier->name,
+                last_check: dossier->last_check,
+                alts: copy(dossier->alts),
+                data: copy(dossier->data),
+                main_alt: dossier->main_alt,
+                old_alts: ({ }));
+      dossier = tmp;
+    }
+    if(!dossier->old_alts)
+      dossier->old_alts = ({ });
+    if(!correcting_alts) {
+        correct_alts_for( dossier->name );
+    }
+    _dossier_cache[ player ] = dossier;
+}
+protected void save_player(string player) {
+    if( time() - dossier->last_check >= TIMEOUT_PERIOD ) {
+        do_timeout();
+    }
+    unguarded( (: save_object, filename(player) :) );
+}
+void player_remove(string player) {
+    string alt, new_main;
+    string * alts;
+    if ( !player ) {
+        return;
+    }
+    player = lower_case( player );
+    correcting_alts = 1;
+    load_player( player );
+    if ( sizeof( dossier->alts ) ) {
+        alts = copy( dossier->alts );
+        new_main = alts[0];
+        alts -= ({ new_main });
+        load_player( new_main );
+        dossier->main_alt = 0;
+        dossier->alts = uniq_array( alts + ({ player }) );
+        save_player( new_main );
+        foreach( alt in alts ) {
+            load_player( alt );
+            dossier->main_alt = new_main;
+            save_player( alt );
+        }
+    }
+    correcting_alts = 0;
+    unguarded( (: rm, filename(player) :) );
+    clear_alerts_for(player);
+}
+int add_entry(object creator, string player, string event, string comment,
+  mixed *extra) {
+    class dbentry   new_entry;
+    if(!query_can_add(event,creator))
+        return 0;
+    if(!query_source_ok(event,base_name(previous_object())))
+        return 0;
+    if(!PLAYER_HANDLER->test_user(lower_case(player)))
+        return 0;
+    if(comment[<1..<1] != "\n") {
+        comment += "\n";
+    }
+    load_player(player);
+    new_entry = new(class dbentry,
+            time:       time(),
+            creator:    capitalize(creator->query_name()),
+            event:      event,
+            comment:    (comment == 0 ? "" : comment),
+            extra:      extra);
+    do_debouncing(player, new_entry);
+    save_player(player);
+    if( event == "alert" )
+        increment_alerts_for(player);
+    return 1;
+}
+int delete_entry(object creator, string player, string event, int n) {
+   int idx = n - 1;
+   class dbentry * data;
+   class dbentry fluff;
+   if( !query_can_delete( event, creator ) )
+      return 0;
+   if( !query_deleter_ok( event, previous_object() ) )
+      return 0;
+   load_player(player);
+   if( ( idx < 0 ) || ( idx >= sizeof( dossier->data ) ) )
+      return 0;
+   fluff =  dossier->data[idx];
+   if( fluff->event != event )
+      return 0;
+   data = copy( dossier->data );
+   data = data[0 .. (idx - 1)] + data[(idx + 1) .. <1];
+   dossier->data = data;
+   save_player(player);
+   log_file("DELETE", ctime(time()) + ": " + event + " added by " +
+            fluff->creator + "\n");
+   if( event == "alert" )
+      decrement_alerts_for(player);
+   return 1;
+}
+protected string query_header( string player ) {
+  string aka, alts, str;
+  string *tmp, *tmp2;
+  aka = alts = str = "";
+  if( sizeof( dossier->alts ) > 0 )
+    alts = " aka " +
+      query_multiple_short(map(dossier->alts,
+                               (: CL_HEADER+capitalize($1)+CL_RESET :)));
+  if(sizeof(dossier->old_alts) > 0)
+    alts += " (and was " +
+      query_multiple_short(map(dossier->old_alts,
+                               (: CL_HEADER+capitalize($1)+CL_RESET :))) + ")";
+  if( dossier->main_alt ) {
+    if(!PLAYER_HANDLER->test_user(dossier->main_alt)) {
+      fix_alts(player);
+      load_player(player);
+    }
+    aka = " (alt of " + CL_HEADER + capitalize(dossier->main_alt) + CL_RESET;
+    load_player(dossier->main_alt);
+    tmp = copy(dossier->alts);
+    tmp2 = copy(dossier->old_alts);
+    if(!tmp) {
+      tmp = ({ });
+      dossier->alts = ({ });
+      save_player( dossier->name );
+    }
+    load_player(player);
+    tmp -= ({ player });
+    if(sizeof(tmp))
+      aka += ", aka " +
+        query_multiple_short(map(tmp, (: CL_HEADER+capitalize($1)+CL_RESET :)));
+    if( arrayp( tmp2 ) ) {
+      tmp2 -= ({ player });
+      if(sizeof(tmp2)) {
+        aka += " and was " +
+          query_multiple_short(map(tmp2, (: CL_HEADER+capitalize($1)+CL_RESET:)));
+      }
+    }
+    aka += ")";
+  }
+  return sprintf( "Report for: %s%s%s\n\n",
+                  CL_HEADER + capitalize(player) + CL_RESET, alts, aka );
+}
+protected string query_entry( int idx, class dbentry e,
+                              string display_name ) {
+   string  date      = ctime( e->time );
+   string  creator   = e->creator;
+   string  event     = e->event;
+   string  *comments = explode( e->comment, "\n" );
+   string  line, str;
+   int     lines = 0;
+   if( display_name )
+      display_name = sprintf( "%-31s ",
+        "(" + CL_CREATOR + display_name + CL_RESET + ")" );
+   else
+      display_name = "";
+   str = sprintf( "%2d. %s%s %s%|14s%s (by %s%s%s)\n",
+     idx + 1, display_name, date, CL_EVENT, event, CL_RESET,
+     CL_CREATOR, creator, CL_RESET );
+   foreach( line in comments ) {
+      if( sizeof(line) != 0 ) {
+         str += sprintf( "    %s\n", line );
+         lines++;
+      }
+   }
+   if( !lines ) {
+      str += sprintf( "    (no comments)\n" );
+   }
+   return str;
+}
+varargs string query_dossier( object source, string player, int lastn ) {
+   int             i;
+   class dbentry   * list;
+   string          msg, str;
+   mapping         log;
+   load_player(player);
+   str = query_header(player);
+   list = dossier->data;
+   if ( sizeof( dossier ) == NO_ACCESS_LOG ) {
+    dossier = new ( class playerinfo,
+        name: dossier->name,
+        last_check: dossier->last_check,
+        alts: dossier->alts,
+        data: dossier->data,
+        main_alt: dossier->main_alt,
+        old_alts: dossier->old_alts,
+        access_log: ([ ]) );
+   }
+   if ( mapp( dossier->access_log ) )
+     log = dossier->access_log;
+   else
+     log = ([ ]);
+   if( !lastn ||
+       sizeof(list) <= lastn ||
+       source->query_property(VERBOSE_PI) )
+   {
+      i = 0;
+   } else {
+      i = sizeof(list) - lastn;
+      msg = "%^RED%^NOTE:%^RESET%^ Only displaying this player's most "
+        "recent " + lastn + " entries.  Use 'playerinfo "
+        + player + " verbose' to see their entire dossier.\n";
+      str += msg + "\n";
+   }
+   for( ; i < sizeof( list ); i++ ) {
+      str += query_entry( i, list[i], 0 );
+   }
+   if( msg ) {
+      str += "\n" + msg;
+   }
+   log = filter( log, (: $2 > time() - ONE_WEEK :) );
+   if ( interactive( source ) )
+     log[ source->query_name() ] = time();
+  dossier->access_log = log;
+  save_player( player );
+  return str;
+}
+string query_event( object source, string player, string event ) {
+   int             i;
+   class dbentry   *list;
+   string          str;
+   load_player(player);
+   str = query_header(player);
+   list = dossier->data;
+   for( i = 0; i < sizeof(list); i++ ) {
+      if( list[i]->event == event )
+         str += query_entry( i, list[i], 0 );
+   }
+   return str;
+}
+string query_interleaved( object source, string player, string event ) {
+   class playerinfo * dossiers;
+   class dbentry * stuff;
+   string str;
+   string * alts;
+   int i, size, done, earliest, earliestt, count;
+   int * earliests;
+   load_player(player);
+   if( dossier->main_alt ) {
+      player = dossier->main_alt;
+      load_player(player);
+   }
+   str = query_header(player);
+   alts = ({ player }) + copy( dossier->alts );
+   size = sizeof(alts);
+   if( size == 1 ) {
+      if(event) {
+        str = query_event( source, player, event );
+      } else {
+        str = query_dossier( source, player );
+      }
+      return str;
+   }
+   dossiers = allocate(size);
+   earliests = allocate(size);
+   for( i = 0; i < size; i++ ) {
+     load_player( alts[i] );
+     if( sizeof( dossier->data ) ) {
+       dossiers[i] = copy(dossier);
+     } else {
+       dossiers[i] = 0;
+     }
+     earliests[i] = 0;
+   }
+   count = 0;
+   while( !done ) {
+      done = 1;
+      earliestt = 0;
+      for( i = 0; i < size; i++ ) {
+         if( !dossiers[i] ) {
+            continue;
+         }
+         done = 0;
+         stuff = dossiers[i]->data;
+         if( !earliestt || stuff[ earliests[i] ]->time < earliestt ) {
+            earliest = i;
+            earliestt = stuff[ earliests[i] ]->time;
+         }
+      }
+      if(done) {
+         continue;
+      }
+      stuff = dossiers[earliest]->data;
+      if( !event ||
+          stuff[ earliests[earliest] ]->event == event )
+      {
+         str += query_entry( count, stuff[ earliests[earliest] ],
+                             alts[earliest] );
+         count++;
+      }
+      earliests[earliest]++;
+      if( earliests[earliest] >= sizeof(stuff) ) {
+         dossiers[earliest] = 0;
+      }
+   }
+   return str;
+}
+string query_alt_of(string player) {
+  if(!PLAYER_HANDLER->test_user(player))
+    return 0;
+  load_player(player);
+  return dossier->main_alt;
+}
+string *query_alts(string player) {
+  if(!PLAYER_HANDLER->test_user(player))
+    return ({ });
+  load_player(player);
+  return dossier->alts;
+}
+string add_alt(object creator, string player, string alt) {
+  class dbentry new_entry;
+  int is_deleted;
+  string *alts, tmp;
+  if((base_name(previous_object()) != "/cmds/player/register") &&
+     !query_can_handle_alts(this_player()))
+    return "You are not allowed to add players' alts.\n";
+  alt = lower_case(alt);
+  if(!find_player(alt) && !PLAYER_HANDLER->test_user(alt)) {
+    if(!creator)
+      return "No such player: " + capitalize(alt) + ".\n";
+    if(file_size(filename(alt)) == -1)
+      return "No such player and no record for: " + capitalize(alt) + ".\n";
+    is_deleted = 1;
+  }
+  load_player(alt);
+  if(dossier->main_alt && PLAYER_HANDLER->test_user(dossier->main_alt) &&
+     !is_deleted)
+    return capitalize(alt) + " is already an alt of " +
+      capitalize(dossier->main_alt) + ".\n";
+  if(sizeof(dossier->alts)) {
+    if(is_deleted)
+      return capitalize(alt) + " already has alts.\n";
+    else {
+      alts = dossier->alts + dossier->old_alts;
+    }
+  }
+  player = lower_case(player);
+  if(!find_player(player) && !PLAYER_HANDLER->test_user(player))
+    return "No such player: "+ capitalize(player) +".\n";
+  correcting_alts = 1;
+  load_player(player);
+  if(dossier->main_alt == alt) {
+    correcting_alts = 0;
+    return capitalize(player) + " is already an alt of " +
+      capitalize(dossier->main_alt) + ".\n";
+  }
+  if(dossier->alts && member_array(alt, dossier->alts) != -1) {
+    correcting_alts = 0;
+    return capitalize(alt) + " is already an alt of " +
+      capitalize(player) + ".\n";
+  }
+  if(!dossier->alts)
+    dossier->alts = ({ });
+  dossier->alts += ({ alt });
+  if(alts) {
+    foreach(tmp in alts) {
+      if(PLAYER_HANDLER->test_user(tmp))
+        dossier->alts += ({ tmp });
+      else
+        dossier->old_alts += ({ tmp });
+    }
+  }
+  new_entry = new(class dbentry,
+                  time:       time(),
+                  creator:    creator ? capitalize(creator->query_name()) :
+                              player,
+                  event:      "register",
+                  comment:    "Registered " + capitalize(alt) +
+                              " as an alt.\n",
+                  extra:      0);
+  do_debouncing(player, new_entry);
+  save_player(player);
+  load_player(alt);
+  dossier->main_alt = player;
+  dossier->alts = ({ });
+  dossier->old_alts = ({ });
+  new_entry = new(class dbentry,
+                  time:       time(),
+                  creator:    creator ? capitalize(creator->query_name()) :
+                              player,
+                  event:      "register",
+                  comment:    "Registered as an alt of " + player + ".\n",
+                  extra:      0);
+  do_debouncing(alt, new_entry);
+  save_player(alt);
+  correcting_alts = 0;
+  return "Added " + capitalize(alt) + " as an alt of " + capitalize(player) +
+    ".\n";
+}
+string delete_alt(object creator, string player, string alt) {
+  string ret;
+  class dbentry new_entry;
+  if(!query_can_handle_alts(this_player()))
+    return "You are not allowed to delete players' alts.\n";
+  player = lower_case(player);
+  alt = lower_case(alt);
+  load_player(player);
+  if(!dossier->alts || member_array(alt, dossier->alts) == -1)
+    ret = capitalize(alt) + " was not an alt of " + capitalize(player);
+  else {
+    dossier->alts -= ({ alt });
+    new_entry = new(class dbentry,
+                    time:       time(),
+                    creator:    capitalize(creator->query_name()),
+                    event:      "register",
+                    comment:    "Removed " + capitalize(alt) + " as an alt.\n",
+                    extra:      0);
+    do_debouncing(alt, new_entry);
+    save_player(player);
+  }
+  load_player(alt);
+  if(dossier->main_alt != player) {
+    if(ret)
+      return capitalize(alt) + " is not an alt of " + capitalize(player) +
+        ".\n";
+    else
+      ret = capitalize(player) + " was not the main player for " +
+        capitalize(alt);
+  } else {
+    dossier->main_alt = 0;
+    dossier->alts = ({ });
+    dossier->old_alts = ({ });
+    new_entry = new(class dbentry,
+                    time:       time(),
+                    creator:    capitalize(creator->query_name()),
+                    event:      "register",
+                    comment:    "Removed as an alt of " + capitalize(player) +
+                    ".\n",
+                    extra:      0);
+    do_debouncing(alt, new_entry);
+    save_player(alt);
+  }
+  if(ret)
+    return "Deleted " + capitalize(alt) + " from " + capitalize(player) +
+      "'s list of alts (" + ret + ").\n";
+  else
+    return "Deleted " + capitalize(alt) + " from " + capitalize(player) +
+      "'s list of alts.\n";
+}
+mapping query_alerts() {
+   if( !_alerts ) {
+      _alerts = ([ ]);
+   }
+   return _alerts;
+}
+int query_alerts_for( string player ) {
+   player = lower_case(player);
+   if( !_alerts ) {
+      _alerts = ([ ]);
+   }
+   return _alerts[player];
+}
+int is_alert( string player, int idx ) {
+   load_player( player );
+   if( sizeof(dossier->data) < idx ) {
+      return 0;
+   }
+   return ( dossier->data[ idx - 1 ] )->event == "alert";
+}
+int acknowledge_alert( object creator, string player, string event,
+   int idx, string update, mixed * extra ) {
+   class dbentry entry;
+   string previnfo;
+   player = lower_case(player);
+   if( !query_can_add( event, creator ) )
+      return 0;
+   if( !query_source_ok( "alert", base_name( previous_object() ) ) )
+      return 0;
+   if( !query_source_ok( event,  base_name( previous_object() ) ) )
+      return 0;
+   if( !PLAYER_HANDLER->test_user(player) )
+      return 0;
+   if( member_array( event, keys(_sources) ) < 0 )
+      return 0;
+   idx--;
+   load_player( player );
+   entry = dossier->data[idx];
+   previnfo = sprintf( "Originally added by %s%s%s at %s:\n%s\n---\n",
+     CL_CREATOR, entry->creator, CL_RESET, ctime( entry->time ),
+     entry->comment );
+   entry->time    = time();
+   entry->creator = capitalize( creator->query_name() );
+   entry->event   = lower_case( event );
+   entry->comment = previnfo + update;
+   dossier->data[idx] = entry;
+   if( event != "alert" ) {
+      decrement_alerts_for(player);
+   }
+   save_player( player );
+   return 1;
+}
+void clear_alerts_for( string player ) {
+   player = lower_case(player);
+   if( !_alerts ) {
+      _alerts = ([ ]);
+   }
+   map_delete( _alerts, player );
+   save_handler_data();
+}
+int increment_alerts_for( string player ) {
+   player = lower_case(player);
+   if( !_alerts ) {
+      _alerts = ([ ]);
+   }
+   if( !PLAYER_HANDLER->test_user(player) ) {
+      return 0;
+   }
+   if( undefinedp( _alerts[player] ) ) {
+      _alerts[player] = 1;
+   } else {
+      _alerts[player] = _alerts[player] + 1;
+   }
+   save_handler_data();
+   return _alerts[player];
+}
+int decrement_alerts_for( string player ) {
+   player = lower_case(player);
+   if( !_alerts ) {
+      _alerts = ([ ]);
+   }
+   if( undefinedp( _alerts[player] ) ) {
+      return 0;
+   }
+   _alerts[player] = _alerts[player] - 1;
+   if(_alerts[player] <= 0 ) {
+      map_delete( _alerts, player );
+   }
+   save_handler_data();
+   return _alerts[player];
+}
+string * query_online_alerts() {
+   if ( !_alerts ) {
+      _alerts = ([ ]);
+      return ({ });
+   }
+   return filter( keys(_alerts), (: find_player($1) :) );
+}
+private void correct_alts_for(string player) {
+  string main;
+  string *alts, *tmp, alt;
+  if(!player)
+    return;
+  player = lower_case(player);
+  correcting_alts = 1;
+  load_player(player);
+  main = dossier->main_alt;
+  alts = copy(dossier->alts);
+  if(main && !no_recurse) {
+    if(sizeof(alts)) {
+      dossier->alts = ({ });
+      save_player(player);
+    }
+    if((!PLAYER_HANDLER->test_user(player) ||
+        !PLAYER_HANDLER->test_user(main))) {
+      correcting_alts = 0;
+      no_recurse = 1;
+      correct_alts_for(main);
+      load_player(player);
+    }
+    return;
+  }
+  if(!PLAYER_HANDLER->test_user(player)) {
+    if(!sizeof(alts)) {
+      if(this_player()->query_name("ceres"))
+        write("No alts for : " + player + "\n");
+      correcting_alts = 0;
+      return;
+    }
+    tmp = filter(alts, (: PLAYER_HANDLER->test_user($1) :));
+    if(sizeof(tmp)) {
+      main = tmp[0];
+    }
+  }
+  if(main) {
+    dossier->main_alt = main;
+    dossier->alts = ({ });
+    save_player(player);
+  }
+  if(main)
+    load_player(main);
+  if(sizeof(alts)) {
+    tmp = filter(alts, (: !find_player($1) &&
+                        !PLAYER_HANDLER->test_user($1) :));
+    tmp = uniq_array(dossier->old_alts + tmp);
+  } else
+    alts = ({ });
+  alts = uniq_array(alts + dossier->alts) - ({ main });
+  alts = filter(alts, (: find_player($1) || PLAYER_HANDLER->test_user($1) :));
+  if(main && (alts != dossier->alts || tmp != dossier->old_alts)) {
+    dossier->alts = copy(alts);
+    dossier->old_alts = copy(tmp);
+    save_player(main);
+    foreach(alt in alts) {
+      if(dossier->main_alt != main) {
+        load_player(alt);
+        dossier->main_alt = main;
+        save_player(alt);
+      }
+    }
+    foreach(alt in tmp) {
+      if(dossier->main_alt != main) {
+        load_player(alt);
+        dossier->main_alt = main;
+        save_player(alt);
+      }
+    }
+  }
+  load_player(player);
+  correcting_alts = 0;
+}
+void reregister_parent( string player ) {
+   string main;
+   string * alts;
+   if ( !player ) {
+      return;
+   }
+   player = lower_case(player);
+   correcting_alts = 1;
+   load_player( player );
+   main = dossier->main_alt;
+   if ( main ) {
+      load_player(main);
+      alts = dossier->alts;
+      if ( !alts || !sizeof( alts ) ) {
+         dossier->alts = ({ player });
+      } else if ( member_array( player, alts ) == -1 ) {
+         dossier->alts = alts + ({ player });
+      } else {
+         return;
+      }
+      save_player( main );
+   }
+}
+void player_refreshed(mixed player, int totally) {
+  class dbentry new_entry;
+  string comment;
+  if(objectp(player))
+    player = player->query_name();
+  switch (totally) {
+  case PARTIAL_REFRESH:
+    comment = "They did a partial refresh.";
+    break;
+  case TOTAL_REFRESH:
+    comment = "They did a total and complete refresh.  (Even refreshed their "
+      "breath)";
+    break;
+  default:
+    comment = "They did some weird sort of unknown refresh.";
+    break;
+  }
+  load_player(player);
+  new_entry = new(class dbentry,
+                  time:       time(),
+                  creator:    "Refresh Handler",
+                  event:      "refresh",
+                  comment:    comment,
+                  extra:      0);
+  do_debouncing(player, new_entry);
+  save_player(player);
+}
+void player_deleted(mixed player, int deleted) {
+  class dbentry new_entry;
+  string *tmp, *tmp2, alt, main;
+  if(objectp(player))
+    player = player->query_name();
+  if(file_size(filename(player)) == -1)
+    return;
+  clear_alerts_for(player);
+  load_player(player);
+  new_entry = new(class dbentry,
+                  time:       time(),
+                  creator:    "Refresh Handler",
+                  event:      "delete",
+                  comment:    "Player deleted",
+                  extra:      0);
+  do_debouncing(player, new_entry);
+  save_player(player);
+  if(dossier->main_alt) {
+    main = dossier->main_alt;
+    dossier->main_alt = 0;
+    save_player(player);
+    load_player(main);
+    dossier->alts -= ({ player });
+    dossier->old_alts += ({ player });
+    save_player(main);
+    return;
+  }
+  if(dossier->alts && sizeof(dossier->alts)) {
+    tmp = filter(dossier->alts, (: PLAYER_HANDLER->test_user($1) :));
+    if(sizeof(tmp))
+      main = tmp[0];
+    tmp2 = dossier->old_alts;
+    load_player(main);
+    dossier->main_alt = 0;
+    if(sizeof(tmp) > 1)
+      dossier->alts = copy(tmp[1..]);
+    dossier->old_alts = copy(tmp2 + ({ player }));
+    save_player(main);
+    foreach(alt in dossier->alts) {
+      load_player(alt);
+      dossier->main_alt = main;
+      save_player(alt);
+    }
+    return;
+  }
+}
+void player_created(string player) {
+  if(file_size(filename(player)) == -1)
+    return;
+  load_player(player);
+  if(dossier->main_alt) {
+    dossier->main_alt = 0;
+    dossier->alts = ({ });
+    save_player(player);
+  }
+  return;
+}
+void fix_alts(mixed player) {
+  string *alts, alt, main;
+  if(objectp(player))
+    player = player->query_name();
+  if(file_size(filename(player)) == -1)
+    return;
+  load_player(player);
+  if(dossier->main_alt) {
+    main = dossier->main_alt;
+    load_player(dossier->main_alt);
+    if(!PLAYER_HANDLER->test_user(dossier->main_alt)) {
+      if(sizeof(alts))
+        main = alts[0];
+    }
+  } else {
+    main = player;
+  }
+  alts = ({});
+  if( dossier->alts ) {
+     alts = alts + dossier->alts;
+  }
+  if( dossier->old_alts ) {
+     alts = alts + dossier->old_alts;
+  }
+  alts = uniq_array( alts + ({ player }));
+  alts -= ({ main });
+  dossier->main_alt = 0;
+  dossier->alts = filter(alts, (: PLAYER_HANDLER->test_user($1) :));
+  dossier->old_alts = filter(alts, (: !PLAYER_HANDLER->test_user($1) :));
+  foreach(alt in alts) {
+    load_player(alt);
+    dossier->main_alt = main;
+    dossier->alts = 0;
+    dossier->old_alts = 0;
+    save_player(alt);
+  }
+}
+void reset() {
+    if ( sizeof( _dossier_cache ) > CACHE_SIZE ) {
+        _dossier_cache = ([ ]);
+    }
+}
+string query_access_history( string player ) {
+  mapping history;
+  string ret = "";
+  load_player(player);
+  history = dossier->access_log;
+  ret += sprintf( "Access log for player %s:\n", capitalize( player ) );
+  foreach( string name in sort_array( keys( history ),
+                                      (: $(history)[$2] - $(history)[$1] :) ))
+    ret += sprintf( "%12s:\t%s.\n", capitalize(name),
+                    query_time_string( time() - history[name], 2 ) + " ago");
+  return ret;
+}
+mixed *stats() {
+    return ({
+        ({ "cache hits", _dossier_cache_hits }),
+        ({ "total requests", _dossier_total }),
+        ({ "cache hit %", to_int(_dossier_cache_hits * 100.0 /
+                                 _dossier_total) }),
+        ({ "current cache size", sizeof( _dossier_cache ) })
+    });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/top_ten_handler.c ===
+#include <library.h>
+#include <skills.h>
+#include <top_ten_tables.h>
+#include <clubs.h>
+#include <player.h>
+#include <player_handler.h>
+#define SAVE_FILE "/save/top_ten_tables"
+#define TOP_TEN_SIZE 15
+#define GUILD_TOP_TEN_SIZE 10
+#define ARCHIVE_TIME 50 * 24 * 60 * 60
+#define ARCHIVE_RATING 30000
+#define APEX_LIMIT 10000
+#define AGE_DIVIDER 100
+#define AGE calculate_age_modifier( thing, 0 )
+mapping guild_top_tens;
+mixed *archive, *top_ten;
+nosave int average;
+nosave mixed *skills;
+string _family_largest;
+int _family_largest_num;
+string _family_qp;
+int _family_qp_num;
+string _family_age;
+int _family_age_num;
+mapping _family_guilds;
+mapping _family_guilds_num;
+string _family_pk;
+int _family_pk_num;
+string _family_single_gender;
+int _family_single_gender_num;
+string _family_start_time;
+int _family_start_time_num;
+string _family_relationships;
+int _family_relationships_num;
+string _club_largest;
+int _club_largest_num;
+string _club_qp;
+int _club_qp_num;
+string _club_age;
+int _club_age_num;
+mapping _club_guilds;
+mapping _club_guilds_num;
+string _club_pk;
+int _club_pk_num;
+string _club_single_gender;
+int _club_single_gender_num;
+string _club_start_time;
+int _club_start_time_num;
+void calculate_family_and_club_info();
+void create() {
+    seteuid( (string)"/secure/master"->
+      creator_file( file_name( this_object() ) ) );
+    guild_top_tens = ([ ]);
+    _family_guilds = ([ ]);
+    _club_guilds = ([ ]);
+    _family_guilds_num = ([ ]);
+    _club_guilds_num = ([ ]);
+    archive = ({ });
+    top_ten = ({ });
+    call_out( "check_tables", 5 );
+    call_out( "check_family_and_club_info", 10 );
+    if ( file_size( SAVE_FILE +".o" ) > 0 ) {
+        unguarded( (: restore_object, SAVE_FILE :) );
+        if (!_family_guilds_num) {
+            _family_guilds_num = ([ ]);
+        }
+        if (!_club_guilds_num) {
+            _club_guilds_num = ([ ]);
+        }
+    }
+}
+private void save_me() {
+    unguarded( (: save_object, SAVE_FILE :) );
+}
+int query_average() { return average; }
+mixed *query_skills() { return skills; }
+mapping query_guild_top_tens() { return guild_top_tens; }
+void set_guild_top_tens( mapping map ) {
+    guild_top_tens = map;
+    save_me();
+}
+void add_guild_top_ten( string word ) {
+    if ( guild_top_tens[ word ] ) {
+        return;
+    }
+    guild_top_tens[ word ] = ({ });
+    save_me();
+}
+mixed *query_archive() { return archive; }
+void set_archive( mixed *args ) {
+    archive = args;
+    save_me();
+}
+mixed *query_top_ten() { return top_ten; }
+void set_top_ten( mixed *args ) {
+    top_ten = args;
+    save_me();
+}
+int check_person( mixed *args, string guild ) {
+    int i;
+    string word;
+    if ( !guild ) {
+        sscanf( args[ 0 ], "%s (%s)", word, guild );
+    } else {
+        word = args[ 0 ];
+    }
+    if ( !PLAYER_HANDLER->test_user( word ) ||
+      !PLAYER_HANDLER->test_active( word ) ||
+      PLAYER_HANDLER->test_creator( word ) ||
+      PLAYER_HANDLER->test_property( word, "no_score" ) ||
+      PLAYER_HANDLER->test_property( word, "no score" ) ) {
+        return 0;
+    }
+    if ( "/obj/handlers/player_handler"->test_guild( word, guild ) != "/std/guilds/"+ guild )
+        return 0;
+    if ( ( (int)PLAYER_HANDLER->test_last( word ) < time() - ARCHIVE_TIME ) ) {
+        if ( args[ 1 ] > ARCHIVE_RATING ) {
+            args[ 0 ] = word +" ("+ guild +")";
+            for ( i = sizeof( archive ) - 1; i > -1; i-- ) {
+                if ( archive[ i ][ 0 ] == args[ 0 ] ) {
+                    if ( archive[ i ][ 1 ] > args[ 1 ] )
+                        archive[ i ] = args + ({ time() });
+                    break;
+                }
+            }
+            if ( i == -1 ) {
+                archive += ({ args + ({ time() }) });
+            }
+        }
+        return 0;
+    }
+    return 1;
+}
+void check_tables() {
+    int i;
+    string word;
+    for ( i = sizeof( top_ten ) - 1; i > -1; i-- ) {
+        if ( !check_person( copy( top_ten[ i ] ), 0 ) ) {
+            top_ten = delete( top_ten, i, 1 );
+        }
+    }
+    foreach ( word in keys( guild_top_tens ) ) {
+        for ( i = sizeof( guild_top_tens[ word ] ) - 1; i > -1; i-- ) {
+            if ( !check_person( copy( guild_top_tens[ word ][ i ] ), word ) ) {
+                guild_top_tens[ word ] = delete( guild_top_tens[ word ], i, 1 );
+            }
+        }
+    }
+    save_me();
+}
+mixed *query_ordered_table( string table_name ) {
+    int i, highest_loc, highest_num;
+    mixed *ret, *args;
+    if ( !table_name || table_name == "main") {
+        args = top_ten;
+    } else {
+        if ( table_name == "archive" ) {
+            args = archive;
+        } else {
+            if ( !guild_top_tens[ table_name ] ) {
+                return ({ });
+            }
+            args = guild_top_tens[ table_name ];
+        }
+    }
+    ret = ({ });
+    while ( sizeof( args ) ) {
+        highest_loc = highest_num = 0;
+        for ( i = 0; i < sizeof( args ); i++ ) {
+            if ( args[ i ][ TOP_TEN_RATING ] > highest_num ) {
+                highest_num = args[ i ][ TOP_TEN_RATING ];
+                highest_loc = i;
+            }
+        }
+        ret += ({ args[ highest_loc] });
+        args = args[ 0 .. highest_loc - 1 ] + args[ highest_loc + 1 .. ];
+    }
+    return ret;
+}
+mixed *remove_name( string word, mixed *args ) {
+    int i;
+    if ( !sizeof( args ) ) {
+        return ({ });
+    }
+    for ( i = sizeof( args ) - 1; i > -1; i-- ) {
+        if ( word == explode( args[ i ][ TOP_TEN_NAME ], " " )[ 0 ] ) {
+            args = delete( args, i, 1 );
+        }
+    }
+    return args;
+}
+int *find_lowest( mixed *args ) {
+    int i, lowest_loc, lowest_num;
+    if ( !sizeof( args ) ) {
+        return ({ 0, 0 });
+    }
+    lowest_loc = 0;
+    lowest_num = args[ 0 ][ TOP_TEN_RATING ];
+    for ( i = 1; i < sizeof( args ); i++ ) {
+        if ( lowest_num > args[ i ][ TOP_TEN_RATING ] ) {
+            lowest_loc = i;
+            lowest_num = args[ i ][ TOP_TEN_RATING ];
+        }
+    }
+    return ({ lowest_loc, lowest_num });
+}
+int query_skill_weight( string skill ) {
+    int total;
+    string *next;
+    next = (string *)SKILL_OB->query_immediate_children( skill );
+    if ( !sizeof( next ) ) {
+        return 1;
+    }
+    foreach ( skill in next ) {
+        total += query_skill_weight( skill );
+    }
+    return total;
+}
+int calculate_age_modifier( object thing, int algorithm ) {
+    if ( algorithm ) {
+        return ( -( thing->query_time_on() - ( thing->query_refresh_time() ? ( time() - thing->query_refresh_time() ) + thing->query_time_on() : 0 ) ) / 86400 );
+    }
+    return ( -thing->query_time_on() / 86400 );
+}
+int calculate_rating( object thing ) {
+    int i, j, rating, *bonuses;
+    rating = (int)thing->query_level();
+    if ( !skills ) {
+        skills = ({ });
+        for ( i = 0; i < sizeof( STD_SKILLS ); i += SKILL_ARR_SIZE ) {
+            skills += ({
+              (string *)SKILL_OB->query_immediate_children( STD_SKILLS[ i ] )
+            });
+            skills += ({
+              sizeof( skills[ <1 ] ),
+              query_skill_weight( STD_SKILLS[ i ] )
+            });
+            average += skills[ <1 ];
+        }
+        average /= sizeof( skills ) / 3;
+    }
+    bonuses = allocate( sizeof( skills ) / 3 );
+    for ( i = sizeof( bonuses ) - 1; i > -1; i-- ) {
+        for ( j = skills[ 3 * i + 1 ] - 3; j > -1; j-- ) {
+            bonuses[ i ] +=
+            (int)thing->query_skill_bonus( skills[ 3 * i ][ j ], 1 );
+        }
+        bonuses[ i ] = ( ( bonuses[ i ] / skills[ 3 * i + 1 ] ) *
+          skills[ 3 * i + 2 ] ) / average;
+    }
+    bonuses = sort_array( bonuses, -1 );
+    j = sizeof( bonuses );
+    for ( i = 0; i < j; i++ ) {
+        rating = 2 * rating + bonuses[ i ];
+        if ( !i && userp( thing ) ) {
+            rating += (int)LIBRARY->
+            query_quest_points( (string)thing->query_name() );
+        }
+    }
+    if( rating > APEX_LIMIT && userp( thing ) ) {
+        rating = AGE * (rating - APEX_LIMIT) / AGE_DIVIDER + APEX_LIMIT;
+    }
+    return rating;
+}
+void player_skill_advance( string word, object thing ) {
+    int rating, *lowest;
+    string name;
+    mixed *guild_top_ten;
+    if ( thing->query_creator() ) {
+        return;
+    }
+    if ( thing->query_property( "guest" ) ) {
+        return;
+    }
+    if ( thing->query_property( "no_score" ) ) {
+        return;
+    }
+    if ( thing->query_property( "no score" ) ) {
+        return;
+    }
+    guild_top_ten = guild_top_tens[ word ];
+    if ( !guild_top_ten ) {
+        return;
+    }
+    name = (string)thing->query_name();
+    rating = calculate_rating( thing );
+    guild_top_ten = remove_name( name, guild_top_ten );
+    lowest = find_lowest( guild_top_ten );
+    if ( sizeof( guild_top_ten ) < GUILD_TOP_TEN_SIZE ) {
+        guild_top_ten += ({
+          ({ name, rating, (int)thing->query_level(),
+            -(int)thing->query_time_on() }) });
+    } else {
+        if ( rating > lowest[ 1 ] ) {
+            guild_top_ten[ lowest[ 0 ] ] =
+            ({ name, rating, (int)thing->query_level(),
+              -(int)thing->query_time_on() });
+        }
+    }
+    guild_top_tens[ word ] = guild_top_ten;
+    top_ten = remove_name( name, top_ten );
+    lowest = find_lowest( top_ten );
+    if ( sizeof( top_ten ) < TOP_TEN_SIZE ) {
+        top_ten += ({
+          ({ name +" ("+ word +")", rating,
+            (int)thing->query_level(), -(int)thing->query_time_on() }) });
+    } else {
+        if ( rating > lowest[ 1 ] ) {
+            top_ten[ lowest[ 0 ] ] =
+            ({ name +" ("+ word +")", rating,
+              (int)thing->query_level(), -(int)thing->query_time_on() });
+        }
+    }
+}
+varargs void excise_name( string word1, string word2 ) {
+    if ( !word2 ) {
+        top_ten = remove_name( word1, top_ten );
+    } else {
+        if ( guild_top_tens[ word2 ] ) {
+            guild_top_tens[ word2 ] = remove_name( word1,
+              guild_top_tens[ word2 ] );
+        }
+    }
+    save_me();
+}
+void check_family_and_club_info() {
+    int offset;
+    string bing;
+    string guild;
+    _family_qp_num = 0;
+    _family_age_num = 0;
+    _family_largest_num = 0;
+    if (!mapp(_family_guilds)) {
+        _family_guilds = ([ ]);
+    }
+    if (!mapp(_club_guilds)) {
+        _club_guilds = ([ ]);
+    }
+    if (_family_qp && !CLUB_HANDLER->is_family(_family_qp)) {
+        _family_qp = 0;
+        _family_qp_num = 0;
+    }
+    if (_family_age && !CLUB_HANDLER->is_family(_family_age)) {
+        _family_age = 0;
+        _family_age_num = 0;
+    }
+    if (_family_largest && !CLUB_HANDLER->is_family(_family_largest)) {
+        _family_largest = 0;
+        _family_largest_num = 0;
+    }
+    if (_family_single_gender && !CLUB_HANDLER->is_family(_family_single_gender)) {
+        _family_single_gender = 0;
+        _family_single_gender_num = 0;
+    }
+    if (_family_pk && !CLUB_HANDLER->is_family(_family_pk)) {
+        _family_pk = 0;
+        _family_pk_num = 0;
+    }
+    if (_club_qp && !CLUB_HANDLER->is_club(_club_qp)) {
+        _club_qp = 0;
+        _club_qp_num = 0;
+    }
+    if (_club_age && !CLUB_HANDLER->is_club(_club_age)) {
+        _club_age = 0;
+        _club_age_num = 0;
+    }
+    if (_club_largest && !CLUB_HANDLER->is_club(_club_largest)) {
+        _club_largest = 0;
+        _club_largest_num = 0;
+    }
+    if (_club_single_gender && !CLUB_HANDLER->is_club(_club_single_gender)) {
+        _club_single_gender = 0;
+        _club_single_gender_num = 0;
+    }
+    if (_club_pk && !CLUB_HANDLER->is_club(_club_pk)) {
+        _club_pk = 0;
+        _club_pk_num = 0;
+    }
+    offset = 3;
+    foreach (guild, bing in _family_guilds) {
+        if (stringp(bing)) {
+            if (!CLUB_HANDLER->is_family(bing)) {
+                map_delete(_family_guilds, guild);
+                map_delete(_family_guilds_num, guild);
+            }
+        } else {
+            map_delete(_family_guilds, guild);
+            map_delete(_family_guilds_num, guild);
+        }
+    }
+    foreach (guild, bing in _club_guilds) {
+        if (stringp(bing)) {
+            if (!CLUB_HANDLER->is_club(bing)) {
+                map_delete(_club_guilds, guild);
+                map_delete(_club_guilds_num, guild);
+            }
+        } else {
+            map_delete(_club_guilds, guild);
+            map_delete(_club_guilds_num, guild);
+        }
+    }
+    save_me();
+}
+void inform_of_club(string club,
+  int family,
+  int type,
+  mixed num) {
+    string str;
+    int bing;
+    if (family) {
+        switch (type) {
+        case TOP_TEN_LARGEST_FAMILY:
+            if (_family_largest_num < num ||
+              _family_largest == club) {
+                _family_largest_num = num;
+                _family_largest = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_OLDEST_FAMILY:
+            if (_family_age_num < num ||
+              _family_age == club) {
+                _family_age_num = num;
+                _family_age = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_MOST_QUEST_POINTS:
+            if (_family_qp_num < num ||
+              _family_qp == club) {
+                _family_qp_num = num;
+                _family_qp = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_MOST_GUILD:
+            foreach (str, bing in num) {
+                if (_family_guilds_num[str] < bing ||
+                  _family_guilds[str] == club) {
+                    _family_guilds_num[str] = bing;
+                    _family_guilds[str] = club;
+                    save_me();
+                }
+            }
+            break;
+        case TOP_TEN_MOST_PKS:
+            if (_family_pk_num < num ||
+              _family_pk == club) {
+                _family_pk_num = num;
+                _family_pk = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_SINGLE_GENDER:
+            if (_family_single_gender_num < num ||
+              _family_single_gender == club) {
+                _family_single_gender_num = num;
+                _family_single_gender = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_OLDEST_LOGONS:
+            if (_family_start_time_num < num ||
+              _family_start_time == club) {
+                _family_start_time_num = num;
+                _family_start_time = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_MOST_RELATIONSHIPS:
+            if (_family_relationships_num < num ||
+              _family_relationships == club) {
+                _family_relationships_num = num;
+                _family_relationships = club;
+                save_me();
+            }
+            break;
+        }
+    } else {
+        switch (type) {
+        case TOP_TEN_LARGEST_FAMILY:
+            if (_club_largest_num < num ||
+              _club_largest == club) {
+                _club_largest_num = num;
+                _club_largest = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_OLDEST_FAMILY:
+            if (_club_age_num < num ||
+              _club_age == club) {
+                _club_age_num = num;
+                _club_age = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_MOST_QUEST_POINTS:
+            if (_club_qp_num < num ||
+              _club_qp == club) {
+                _club_qp_num = num;
+                _club_qp = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_MOST_GUILD:
+            foreach (str, bing in num) {
+                if (_club_guilds_num[str] < bing ||
+                  _club_guilds[str] == club ||
+                  !_club_guilds[str]) {
+                    _club_guilds_num[str] = bing;
+                    _club_guilds[str] = club;
+                    save_me();
+                }
+            }
+            break;
+        case TOP_TEN_MOST_PKS:
+            if (_club_pk_num < num ||
+              _club_pk == club) {
+                _club_pk_num = num;
+                _club_pk = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_SINGLE_GENDER:
+            if (_club_single_gender_num < num ||
+              _club_single_gender == club) {
+                _club_single_gender_num = num;
+                _club_single_gender = club;
+                save_me();
+            }
+            break;
+        case TOP_TEN_OLDEST_LOGONS:
+            if (_club_start_time_num < num ||
+              _club_start_time == club) {
+                _club_start_time_num = num;
+                _club_start_time = club;
+                save_me();
+            }
+            break;
+        }
+    }
+}
+mixed *query_family_info() {
+    return ({ _family_largest,
+      _family_age,
+      _family_qp,
+      _family_guilds,
+      _family_pk,
+      _family_single_gender,
+      _family_start_time,
+      _family_relationships });
+}
+mixed *query_club_info() {
+    return ({ _club_largest,
+      _club_age,
+      _club_qp,
+      _club_guilds,
+      _club_pk,
+      _club_single_gender,
+      _club_start_time });
+}
+void dest_me() {
+    save_me();
+    destruct(this_object());
+}
+void reset() {
+    save_me();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/snmp_handler.c ===
+#include "snmp.h"
+void create()
+{
+}
+buffer BufferiseInt(int p)
+{
+  buffer buf1;
+  buf1=allocate_buffer(4);
+  if(p<0)
+  {
+    buf1[0]=(4294967296+p)/16777216;
+  } else {
+    buf1[0]=p/16777216;
+  }
+  buf1[1]=p/65536;
+  buf1[2]=p/256;
+  buf1[3]=p%256;
+  return buf1;
+}
+buffer GetData(buffer MIB)
+{
+  int i,j,k;
+  object *tmp;
+  buffer mibreply,mibdata,tmpbuf;
+  mibreply=allocate_buffer(4);
+  tmpbuf=allocate_buffer(1);
+  mibreply[0]=48;
+  mibreply[1]=0;
+  mibreply[2]=OBJECT_IDENT;
+  mibreply[3]=0;
+  mibreply+=MIB;
+  i=sizeof(mibreply);
+  switch(MIB[6])
+  {
+    case 101 :
+      j=sizeof(users());
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      tmpbuf=BufferiseInt(j);
+      mibreply+=tmpbuf;
+      mibreply[i+1]=sizeof(tmpbuf);
+      break;
+    case 102 :
+      j=0;
+      tmp=users();
+      for(k=0;k<sizeof(tmp);k++)
+        if(tmp[k] && (tmp[k])->query_creator())
+          j++;
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      tmpbuf=BufferiseInt(j);
+      mibreply+=tmpbuf;
+      mibreply[i+1]=sizeof(tmpbuf);
+      break;
+    case 100 :
+      tmpbuf[0]=2;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=1;
+      mibreply+=tmpbuf;
+      tmpbuf[0]=0;
+      mibreply+=tmpbuf;
+      break;
+    default :
+      mibreply[0]=255;
+      break;
+  }
+  mibreply[1]=sizeof(mibreply)-2;
+  mibreply[3]=sizeof(MIB);
+  return mibreply;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/change_skills.c ===
+#include <login_handler.h>
+#include <language.h>
+#include <tune.h>
+#include <skills.h>
+#include <combat.h>
+#define ORIGINAL "alpha"
+#define VERSION "beta"
+#define VERSION_2 "gamma"
+#define VERSION_3 "delta"
+#define VERSION_4 "epsilon"
+#define VERSION_5 "zeta"
+#define VERSION_6 "eta"
+#define OLD_SKILLS ({ \
+      "magic.spells.offensive.area", \
+      "magic.spells.offensive.target", \
+      "magic.spells.defensive.area", \
+      "magic.spells.defensive.self", \
+      "magic.spells.defensive.target", \
+      "magic.spells.misc.area", \
+      "magic.spells.misc.self", \
+      "magic.spells.misc.target", \
+      "magic.spells.special", \
+      "magic.items.held.wand", \
+      "magic.items.held.rod", \
+      "magic.items.held.staff", \
+      "magic.items.held.broom", \
+      "magic.items.worn.amulet", \
+      "magic.items.worn.ring", \
+      "magic.items.scroll", \
+      "magic.points", \
+      "occult.methods.brewing", \
+      "occult.methods.dancing", \
+      "occult.methods.chanting", \
+      "occult.methods.flying", \
+      "occult.spells.cursing", \
+      "occult.spells.summoning", \
+      "occult.spells.enchanting", \
+      "occult.spells.charming", \
+      "occult.spells.healing", \
+   })
+#define OTHER_SKILLS ({ \
+      "magic", \
+      "magic.spells", \
+      "magic.spells.offensive", \
+      "magic.spells.defensive", \
+      "magic.spells.misc", \
+      "magic.items", \
+      "magic.items.held", \
+      "magic.items.worn", \
+      "occult", \
+      "occult.methods", \
+      "occult.spells", \
+   })
+#define ETA_CHANGES (["other.tracking" : "crafts.hunting.tracking", \
+                      "other.swimming" : "other.movement.swimming", \
+                      "other.riding" : "other.movement.riding", \
+                      "other.riding.horse" : "other.movement.riding.horse", \
+                      "other.riding.camel" : "other.movement.riding.camel", \
+                      "other.climbing" : "other.movement.climbing", \
+                      "other.climbing.tree" : "other.movement.climbing.tree", \
+                      "other.climbing.rock" : "other.movement.climbing.rock", \
+                      "other.climbing.rope" : "other.movement.climbing.rope", \
+                      "other.valueing" : "other.trading.valueing", \
+                      "other.valueing.gems" : "other.trading.valueing.gems", \
+                      "other.valueing.jewellery" : "other.trading.valueing.jewellery", \
+                      "other.valueing.weapons" : "other.trading.valueing.weapons", \
+                      "other.valueing.armour" : "other.trading.valueing.armour"])
+#define EFFECTS ({"magic.defensive.floating", "magic.shield.impact", \
+                  "magic.defensive.skin.troll", "priest.shield" })
+int query_level_in( mapping skills, string skill ) {
+   string *bits;
+   if ( !undefinedp( skills[ skill ] ) )
+      return skills[ skill ];
+   bits = explode( skill, "." );
+   if ( sizeof( bits ) == 1 )
+      return 0;
+   bits = delete( bits, sizeof( bits ) - 1, 1 );
+   skill = implode( bits, "." );
+   return query_level_in( skills, skill );
+}
+void change_skills( object thing ) {
+   int i, total;
+   mapping skills;
+   skills = (mapping)thing->query_skills();
+   if ( !m_sizeof( skills ) )
+      return;
+   for ( i = 0; i < sizeof( OLD_SKILLS ); i++ ) {
+      total += query_level_in( skills, OLD_SKILLS[ i ] );
+      if ( !undefinedp( skills[ OLD_SKILLS[ i ] ] ) )
+         skills = m_delete( skills, OLD_SKILLS[ i ] );
+   }
+   for ( i = 0; i < sizeof( OTHER_SKILLS ); i++ )
+      if ( !undefinedp( skills[ OTHER_SKILLS[ i ] ] ) )
+         skills = m_delete( skills, OTHER_SKILLS[ i ] );
+   if ( !total )
+      return;
+   thing->add_property( "magic levels", total );
+   thing->set_skills( skills );
+   tell_object( thing, "\n\nAn imp that only you can see flashes into "+
+         "existence.\n" );
+   tell_object( thing, "The imp tells you: The magic and occult skill "+
+         "categories are being amalgamated and restructured.\n" );
+   tell_object( thing, "The imp tells you: You have a total of "+ total +
+         " levels that you can spend on the new magic skills.\n" );
+   tell_object( thing, "The imp tells you: Go and find the black "+
+         "monolith in the middle of Sator Square which you can use to "+
+         "to spend them.\n" );
+   tell_object( thing, "The imp flashes back to wherever it came from.\n\n" );
+}
+int query_minimum_skill_xp(int lvl) {
+   int i;
+   int xp;
+   xp = 0;
+   for (i = 0; i < lvl; i++) {
+      xp += ( DEFAULT_COST * STD_COST * 100 ) / (( LEVEL_DIV + 1) * 500);
+   }
+   return xp;
+}
+void change_language_skills( object thing, int lev ) {
+   int i;
+   int total_xp;
+   mapping skills;
+   string *bits;
+   string start;
+   string *langs;
+   string health;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   health = skills["other.health"];
+   start = "other.language.";
+   total_xp = 0;
+   for (i = 0; i < sizeof(bits); i++) {
+      if (bits[i][0..strlen(start)-1] == start) {
+         total_xp += query_minimum_skill_xp(skills[bits[i]]);
+         map_delete(skills, bits[i]);
+      }
+   }
+   langs = thing->query_languages();
+   for (i = 0; i < sizeof(langs); i++) {
+      thing->add_language(langs[i]);
+      thing->remove_language( langs[i] );
+   }
+   if (skills["other.language"]) {
+      total_xp += query_minimum_skill_xp(skills["other.language"]);
+      map_delete(skills, "other.language");
+   }
+   thing->add_language("common");
+   if(thing->query_guild_ob() == "/std/guilds/wizard") {
+     thing->add_language("wizard spells");
+   }
+   if(thing->query_guild_ob() == "/std/guilds/thief") {
+     thing->add_language("thieves' cant");
+   }
+   if(skills["other.health"] != health) {
+     tell_object(thing, "A fluffy cabbage tells you: Something has gone wrong "
+                 "with your language adjustment, please tell Ceres or "
+                 "Pinkfish\n");
+     return;
+   }
+   thing->adjust_xp( total_xp );
+   tell_object(thing,
+"A fluffy cabbage turns up and stares straight into your eyes.\n"
+"You feel that the fluffy cabbage has shuffled around some bits of your mind.\n"
+               );
+   if (total_xp > 0 && lev < 2) {
+      tell_object(thing,
+"Your languages have been shifted, you appear to have gained "+total_xp+" xp.\n"
+                 );
+   }
+}
+mapping recalc_parents(mapping skills, string skill) {
+  int i, j, lvl;
+  string *tree, *bits, this_skill;
+  bits = explode(skill, ".");
+  for(i=sizeof(bits)-1; i>=0; i--) {
+    this_skill = implode(bits[0..i], ".");
+    tree = (string *)SKILL_OB->query_immediate_children(this_skill);
+    lvl = 0;
+    for(j=0; j<sizeof(tree); j++) {
+      lvl += skills[tree[j]];
+    }
+    if(sizeof(tree))
+      skills[this_skill] = lvl / sizeof(tree);
+  }
+  return skills;
+}
+void change_skills_epsilon( object thing ) {
+  int lvl, rest;
+   mapping skills;
+   string *bits;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   tell_object(thing, "A squirrel appears and says: I'm just updating your "
+               "skill tree, will be just a jiffy.\n");
+   lvl = skills["covert.sleight-of-hand"];
+   if(lvl > 0) {
+     m_delete(skills, "covert.sleight-of-hand");
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["covert.manipulation.stealing"] = lvl;
+     skills["covert.manipulation.palming"] = lvl;
+     skills["covert.manipulation.passing"] = lvl;
+     skills["covert.manipulation.sleight-of-hand"] = lvl;
+     skills["covert.manipulation"] = lvl;
+     recalc_parents(skills, "covert");
+   }
+   lvl = skills["fighting.combat.melee.sharp"];
+   if(lvl > 0) {
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["fighting.combat.melee.sharp"] = lvl;
+     skills["fighting.combat.melee.pierce"] = lvl;
+     skills = recalc_parents(skills, "fighting.combat.melee");
+   }
+   lvl = skills["fighting.combat.parry.thrown"];
+   rest = skills["fighting.combat.parry.fired"];
+   if(lvl > 0 || rest > 0) {
+     if(rest > lvl)
+       lvl = rest + (lvl / 5);
+     else
+       lvl += (rest / 5);
+     m_delete(skills, "fighting.combat.parry.thrown");
+     m_delete(skills, "fighting.combat.parry.fired");
+     skills["fighting.combat.parry.range"] = lvl;
+     lvl = skills["fighting.combat.parry.held"];
+     m_delete(skills, "fighting.combat.parry.held");
+     skills["fighting.combat.parry.melee"] = lvl;
+     skills = recalc_parents(skills, "fighting.combat.parry");
+   }
+   lvl = skills["fighting.combat.special"];
+   if(lvl > 0) {
+     if(lvl > 300) {
+       rest = lvl - 300;
+       lvl = 300;
+       if(rest > 600) {
+         lvl += 300;
+         rest -= 600;
+         lvl += rest / 5;
+       } else
+         lvl += rest / 2;
+     }
+     skills["fighting.combat.special.weapon"] = lvl;
+     skills["fighting.combat.special.unarmed"] = lvl;
+     skills["fighting.combat.special.tactics"] = lvl - lvl / 4;
+     skills = recalc_parents(skills, "fighting.combat.special");
+   }
+   lvl = skills["other.tracking.woodland"];
+   m_delete(skills, "other.tracking.woodland");
+   lvl += skills["other.tracking.desert"];
+   m_delete(skills, "other.tracking.desert");
+   lvl += skills["other.tracking.mountain"];
+   m_delete(skills, "other.tracking.mountain");
+   lvl += skills["other.tracking.road"];
+   m_delete(skills, "other.tracking.road");
+   lvl += skills["other.tracking.field"];
+   m_delete(skills, "other.tracking.field");
+   if(lvl > 0)
+     skills["other.tracking"] = lvl;
+   thing->set_skills( skills );
+   tell_object(thing, "The squirrel says: Ok, all done now.\n");
+}
+int new_skill_value(int sk) {
+  float f = 1000.0;
+  float k = 0.3;
+  if(sk == 0)
+    return 0;
+  return to_int(f * log( 1.0 + sk/(f + sk * k) ) + 0.5);
+}
+void change_skills_zeta( object thing ) {
+   mapping skills;
+   string *bits, bit;
+   skills = thing->query_skills();
+   if (!sizeof(skills))
+      return ;
+   bits = keys(skills);
+   tell_object(thing, "A small blue frog appears and says: I'm just updating "
+         "your skill levels, this won't take a second.\n");
+   foreach(bit in bits) {
+     if(bit[0..13] != "other.language" &&
+        SKILL_OB->query_immediate_children(bit) == ({ })) {
+       skills[bit] = new_skill_value(skills[bit]);
+       skills = recalc_parents(skills, bit);
+     }
+   }
+   thing->set_skills( skills );
+   tell_object(thing, "The frog says: Ok, all done now.\n");
+}
+void fixup_stats(object thing) {
+  mapping values;
+  mapping changes;
+  int stat_total;
+  string str;
+  changes = ([ ]);
+  values = ([
+    "con" : thing->query_real_con(),
+    "dex" : thing->query_real_dex(),
+    "int" : thing->query_real_int(),
+    "wis" : thing->query_real_wis(),
+    "str" : thing->query_real_str()
+            ]);
+  stat_total = values["con"] + values["dex"] + values["wis"] + values["str"] +
+               values["int"];
+  if (stat_total > 65) {
+     if (thing->query_real_con() > 8) {
+        thing->adjust_con(-1);
+        stat_total--;
+        values["con"]--;
+        changes["con"]++;
+     }
+     if (stat_total > 65 && thing->query_real_dex() > 8) {
+        thing->adjust_dex(-1);
+        stat_total--;
+        values["dex"]--;
+        changes["dex"]++;
+     }
+     while (stat_total > 65) {
+        string highest;
+        int value;
+        string stat;
+        int v;
+        value = 0;
+        foreach (stat, v in values) {
+           if (v > value) {
+              value = v;
+              highest = stat;
+           }
+        }
+        call_other(thing, "adjust_" + highest, -1);
+        values[highest]--;
+        changes[highest]++;
+        stat_total--;
+     }
+  }
+  str = query_multiple_short(map(keys(changes), (: $1 + " changed by " + $2[$1] :), changes));
+  tell_object(thing, "The armadillo says: Stats changed: " + str + "\n");
+}
+void change_skills_eta(object thing) {
+  mapping skills;
+  string bit, effect;
+  class tactics tactics;
+  int eff;
+  tactics = new(class tactics,
+                attitude : "neutral",
+                response : "neutral",
+                parry : "both",
+                parry_unarmed : 0,
+                mercy : "ask",
+                focus_zone : 0,
+                ideal_distance : 0);
+  thing->set_tactics(tactics);
+  skills = thing->query_skills();
+  if(!sizeof(skills))
+    return;
+  tell_object(thing, "An armadillo appears out of nowhere and says: "
+              "I'm just updating your skills, this won't take a second.\n");
+  foreach(bit in keys(ETA_CHANGES)) {
+    tell_object(thing, "Mapping " + bit + " to " + ETA_CHANGES[bit] + ".\n");
+    skills[ETA_CHANGES[bit]] = skills[bit];
+    map_delete(skills, bit);
+  }
+  tell_object(thing, "Adding new skills.\n");
+  foreach(bit in
+          "/std/skills"->query_immediate_children("crafts")) {
+    if(!skills[bit]) {
+      skills[bit] = 0;
+    }
+  }
+  recalc_parents(skills, "crafts.hunting");
+  recalc_parents(skills, "crafts");
+  recalc_parents(skills, "other.movement.riding");
+  recalc_parents(skills, "other.movement.climbing");
+  recalc_parents(skills, "other.movement");
+  recalc_parents(skills, "other.trading.valueing");
+  recalc_parents(skills, "other.trading");
+  recalc_parents(skills, "other");
+  thing->set_skills( skills );
+  foreach(effect in EFFECTS)
+    foreach(eff in thing->effects_matching(effect))
+      catch(thing->delete_effect(eff));
+  tell_object(thing, "Fixing stats.\n");
+  fixup_stats(thing);
+  tell_object(thing, "Granting rearrange.\n");
+   thing->add_known_command("rearrange");
+  if ((thing->query_guild_ob() == "/std/guilds/assassin" &&
+       thing->query_property("assassin") > 1) ||
+      (thing->query_guild_ob() == "/std/guilds/wizard" &&
+       "/obj/handlers/guild_things/wizard_orders"->query_order() == "last")) {
+    tell_object(thing, "Returning PK flag.\n");
+    thing->set_player_killer(1);
+  }
+  thing->remove_property(PKER);
+  thing->remove_property(PKER_MISSPELL);
+  thing->add_property("not real newbie", 1);
+  tell_object(thing, "Removing old combat commands.\n");
+  if(thing->query_known_command("strike"))
+    thing->remove_known_command("strike");
+  if(thing->query_guild_ob() != "/std/guilds/warrior") {
+    thing->remove_known_command("impale");
+    thing->remove_known_command("crush");
+    thing->remove_known_command("behead");
+  }
+  thing->remove_known_command("punch");
+  thing->remove_known_command("kick");
+  tell_object(thing, "The armadillo says: Ok, all done now.\n");
+  "/d/liaison/NEWBIE/choose_land"->fixup_player(this_player());
+}
+void entering( string name, string type ) {
+   object thing;
+   int lvl;
+   if ( type != LOGIN )
+      return;
+   if ( !( thing = find_player( name ) ) )
+      return;
+   switch((string)thing->query_property( "skills version" )) {
+   case VERSION:
+     change_skills( thing );
+   case VERSION_2:
+     change_language_skills( thing, lvl );
+   case VERSION_3:
+     change_skills_epsilon( thing );
+   case VERSION_4:
+     change_skills_zeta(thing);
+   case VERSION_5:
+     change_skills_eta(thing);
+   default:
+     thing->add_property("skills version", VERSION_6);
+     return;
+   }
+}
+string query_version() { return VERSION_5; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/news_handler.c ===
+#include <board.h>
+#include <login_handler.h>
+#define BOARD_NAME "announcements"
+#define DELAY_TIME 30
+int has_unread_announcements( string player ) {
+    mapping news_rc;
+    mixed subjects;
+    news_rc = BOARD_HAND->query_newsrc( player );
+    if ( !news_rc ) {
+        news_rc = ([ ]);
+    }
+    subjects = BOARD_HAND->get_subjects( BOARD_NAME );
+    if ( !sizeof( subjects ) ) {
+        return 0;
+    }
+    return subjects[ <1 ][ B_TIME ] > news_rc[ BOARD_NAME ];
+}
+void show_message( mixed person ) {
+    object player;
+    if ( stringp( person ) ) {
+        player = find_player( person );
+    }
+    else {
+        player = person;
+    }
+    if ( !player ) {
+        return;
+    }
+    if ( has_unread_announcements( player->query_name() ) ) {
+        tell_object( player, "\nThere are %^YELLOW%^NEW%^RESET%^ "
+            "announcements!  You can read them with \"news\".\n\n" );
+    }
+}
+void login_event(mixed person, string type) {
+    if ( type == LOGIN || type == RECONNECT ) {
+        if ( objectp( person ) ) {
+            person = person->query_name();
+        }
+        call_out( (: show_message :), DELAY_TIME, person );
+    }
+}
+void broadcast_announcement() {
+    foreach( object user in users() ) {
+        if ( interactive( user ) ) {
+            show_message( user );
+        }
+    }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/complaints_handler.c ===
+#include <board.h>
+#define SAVEFILE "/save/complaints/complaints_handler.o"
+#define BOARD "complaints"
+int _complaintNumber;
+void save_file() {
+    unguarded( (: save_object( SAVEFILE ) :) );
+}
+void load_file() {
+    unguarded( (: restore_object( SAVEFILE ) :) );
+}
+void create() {
+    seteuid( getuid() );
+    _complaintNumber = 1;
+    load_file();
+}
+int do_submit_complaint( string str ) {
+    int ret = 0;
+    if ( str ) {
+        ret = BOARD_HAND->
+            add_message( BOARD, "Anonymous",
+                         "Anonymous complaint #" + _complaintNumber,
+                         sprintf( "%-=78s\n", str ) );
+        _complaintNumber++;
+        save_file();
+    }
+    return ret;
+}
+int board_access_check( int type, string, object previous, string name ) {
+    switch ( type ) {
+    case B_ACCESS_READ:
+        return ( "/secure/master"->query_lord( name ) );
+    case B_ACCESS_WRITE:
+        return ( ( previous == this_object() ) ||
+                 ( "/secure/master"->query_lord( name ) ) );
+    case B_ACCESS_DELETE :
+        return 0;
+    }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/obj/handlers/script_processor.c ===
+#define RATIO 20
+inherit "/std/object";
+string stage;
+mapping actors;
+void setup() {
+   actors = ([ ]);
+}
+string query_stage() { return stage; }
+void set_stage( string word ) { stage = word; }
+mapping query_actors() { return actors; }
+string query_actor( string word ) { return actors[ word ]; }
+void set_actor( string name, string path ) { actors[ name ] = path; }
+int perform_line( string script, int line ) {
+   int length;
+   string action, name, text;
+   object actor;
+   length = file_length( script );
+   if ( length < 1 ) {
+      write( "Length of file \""+ script +"\" is "+ length +".\n" );
+      return -1;
+   }
+   if ( length < line )
+      return -1;
+   if ( !stage || ( stage == "" ) )
+      return -2;
+   text = read_file( script, line, 1 );
+   if ( sscanf( text, "%s=%s\n", name, action ) == 2 ) {
+      if ( !actors[ name ] )
+         return -3;
+      actor = find_object( actors[ name ] );
+      if ( !actor )
+         return -4;
+      actor->do_command( action );
+   } else {
+      actor = find_object( stage );
+      if ( !actor )
+         return -4;
+      tell_room( actor, text );
+   }
+   if ( length == line )
+      return -5;
+   return strlen( text ) / RATIO;
+}
+void perform_script( string script, int line ) {
+   int next;
+   next = perform_line( script, line );
+   if ( next < 0 ) {
+      if ( find_object( stage ) )
+         stage->script_ended( next );
+      return;
+   }
+   call_out( "perform_script", 2 + next, script, line + 1 );
+}
+int start_script( string script ) {
+   if ( find_call_out( "perform_script" ) != -1 )
+      return 0;
+   call_out( "perform_script", 3, script, 1 );
+   return 1;
+}

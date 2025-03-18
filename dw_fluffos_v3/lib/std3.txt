@@ -1,0 +1,2929 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/move.c ===
+#include <move_failures.h>
+#define DROP 1
+#define GET 2
+private int move_flag;
+varargs int move( mixed dest, string messin, string messout ) {
+   object prev;
+   if ( !objectp( dest ) ) {
+      if ( !stringp( dest ) || !( dest = find_object( dest ) ) ) {
+         return MOVE_EMPTY_DEST;
+      }
+   }
+   if ( !dest->test_add( this_object(), this_object()->get(dest) ) ) {
+      return MOVE_NO_GET;
+   }
+   if(dest == this_object()) {
+      return MOVE_INVALID_DEST;
+   }
+   prev = environment();
+   if ( prev ) {
+      if ( !prev->test_remove( this_object(),
+                               this_object()->drop(dest),
+                               dest ) ) {
+         return MOVE_NO_DROP;
+      } else if (prev != find_object("/room/virtual")) {
+         event( prev, "exit", messout, dest );
+      }
+   }
+   if (dest != environment()) {
+      if( environment() )
+        this_object()->remove_property( "there" );
+      move_object (dest);
+      this_object()->event_move_object( prev, dest );
+   }
+   if (!(dest == find_object("/room/rubbish") || dest == find_object("/room/virtual"))) {
+      event( dest, "enter", messin, prev );
+   }
+   this_object()->remove_hide_invis( "concealed" );
+   this_object()->remove_hide_invis( "secreted" );
+   return MOVE_OK;
+}
+void reset_get() { move_flag |= GET; }
+void set_get() { move_flag &= ~GET; }
+void reset_drop() { move_flag |= DROP; }
+void set_drop() { move_flag &= ~DROP; }
+void dest_me() {
+   if ( environment() ) {
+      event( environment(), "dest_me" );
+   }
+   this_object()->event_destruct();
+   efun::destruct( this_object() );
+}
+nomask mixed dwep() {
+   efun::destruct( this_object() );
+   return "Destructed With Extreme Prejudice";
+}
+int drop( mixed dest ) { return move_flag & DROP; }
+int get( mixed dest ) { return move_flag & GET; }
+void set_move_flag( int i ) { move_flag = i; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/hide_invis.c ===
+#define SKILL "other.perception"
+private nosave mapping _hide_invis;
+void create() {
+  _hide_invis = ([]);
+}
+mapping query_hide_invis() {
+  return copy( _hide_invis );
+}
+int add_hide_invis( string type, object who, mixed see, string *gone ) {
+  if( _hide_invis[type] ) {
+    return 0;
+  }
+  _hide_invis[type] = ({ who, see, gone });
+  if( environment( this_object() ) ) {
+    event( environment( this_object() ), "hide_invis", 1, type, 0 );
+  }
+  return 1;
+}
+varargs int remove_hide_invis( string type, int quiet ) {
+  mixed *gone;
+  if( !_hide_invis[type] ) {
+    return 0;
+  }
+  gone = _hide_invis[type][2];
+  if( sizeof( gone ) == 2 && gone[0] )
+    if( quiet )
+      call_other( gone[0], gone[1], quiet );
+    else
+      call_other( gone[0], gone[1] );
+  map_delete( _hide_invis, type );
+  if( environment( this_object() ) ) {
+    event( environment( this_object() ), "hide_invis", 0, type, quiet );
+  }
+  return 1;
+}
+int perception_check( object thing ) {
+  int perception;
+  perception = thing->query_skill_bonus( SKILL );
+  if( !environment( thing ) || !perception )
+    return perception;
+  switch( thing->check_dark( (int)environment( thing )->query_light() ) ) {
+    case -2:
+    case 2:
+      perception /= 4;
+      break;
+    case -1:
+    case 1:
+      perception /= 2;
+      break;
+    default:
+      break;
+  }
+  return perception;
+}
+int query_visible( object thing ) {
+  int i;
+  string *types;
+  mixed see;
+  if( thing == this_object() ) {
+    return 1;
+  }
+  if( thing->query_creator() || thing->query_property( "demon" ) ) {
+    return 1;
+  }
+  if( thing->query_blinded() ) {
+    return 0;
+  }
+  types = keys( _hide_invis );
+  if( !sizeof( types ) ) {
+    return 1;
+  }
+  for( i = 0; i < sizeof( types ); i++ ) {
+    if( _hide_invis[types[i]][0] == thing ) {
+      continue;
+    }
+    see = _hide_invis[types[i]][1];
+    if( intp( see ) ) {
+      if( perception_check( thing ) > see ) {
+        continue;
+      }
+      return 0;
+    }
+    if( stringp( see ) ) {
+      if( call_other( thing, see ) ) {
+        continue;
+      }
+      return 0;
+    }
+    return 0;
+  }
+  return 1;
+}
+string hide_invis_string() {
+  int i;
+  string list;
+  string *types;
+  types = keys( _hide_invis );
+  if( !sizeof( types ) ) {
+    return "";
+  }
+  list = "";
+  for( i = 0; i < sizeof( types ); i++ ) {
+    list += " ("+ types[i] +")";
+  }
+  return list;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/read_desc.c ===
+#include <language.h>
+#include <nroff.h>
+inherit "/std/basic/desc";
+private nosave mixed *_read_mess = ({ });
+private nosave int _max_size = 100;
+private nosave int _cur_size;
+varargs mixed add_read_mess(mixed str, string type, string lang, int size);
+mixed query_property(string name);
+void set_max_size(int siz) { _max_size = siz; }
+int query_max_size() { return _max_size; }
+void set_cur_size(int siz) { _cur_size = siz; }
+int query_cur_size() { return _cur_size; }
+varargs void set_read_mess(mixed str, string lang, int size) {
+   if ( pointerp( str ) ) {
+      _read_mess = str;
+      return;
+   }
+  if (!lang)
+    return;
+  if (!size)
+    size = 1;
+  if ( str )
+    _read_mess = ({ ({ str, 0, lang, size }) });
+  else
+    _read_mess = ({ });
+}
+mixed *query_read_mess() { return copy( _read_mess ); }
+varargs mixed add_read_mess(mixed str, string type, string lang, int size) {
+  int de_size;
+  if (_cur_size >= _max_size) {
+     return "";
+  }
+  if (!size) {
+    size = 1;
+  }
+  de_size = size*((int)LANGUAGE_HAND->query_language_size(lang, str));
+  if (_cur_size+de_size > _max_size) {
+    str = (string)LANGUAGE_HAND->squidge_text(lang, str,
+                                              (_max_size-_cur_size)/size);
+    if (!strlen(str))
+      return ;
+    _cur_size += size*((int)LANGUAGE_HAND->query_language_size(lang, str));
+  }
+  _read_mess += ({ ({ str, type, lang, size }) });
+  return str;
+}
+int remove_read_mess(string str, string type, string lang) {
+  int i;
+  for (i=0;i<sizeof(_read_mess);i++) {
+    if (str && _read_mess[i][READ_STR] != str)
+      continue;
+    if (type && _read_mess[i][READ_TYPE] != type)
+      continue;
+    if (lang && _read_mess[i][READ_LANG] != lang)
+      continue;
+    _cur_size -= _read_mess[i][READ_SIZE]
+                *((int)LANGUAGE_HAND->query_language_size(lang,
+                                                    _read_mess[i][READ_STR]));
+    _read_mess = _read_mess[0..i - 1] + _read_mess[i + 1..];
+    return 1;
+  }
+  return 0;
+}
+string query_readable_message(object player, int ignore_labels) {
+  string message;
+  string file;
+  string type;
+  string lang;
+  mixed mess;
+  mixed *bit;
+  mixed *read_mess;
+  int pos;
+  if(!player)
+    player = this_player();
+  read_mess = query_read_mess();
+  if ( !sizeof( read_mess ) ) {
+    return 0;
+  }
+  message = "";
+  foreach ( bit in read_mess ) {
+    mess = bit[ READ_MESS ];
+    type = bit[ READ_TYPE ];
+    lang = bit[ READ_LANG ];
+    if ( functionp( mess ) ) {
+      mess = evaluate( mess );
+    }
+    if ( stringp( mess ) ) {
+      if ( sscanf( mess, "$$%s$$", file ) ) {
+        mess = unguarded( (: read_file, file +".txt" :) );
+        if ( !mess ) {
+          mess = unguarded( (: NROFF_HAND->cat_file($(file)+"_nroff", 1) :) );
+          if(!mess) {
+            unguarded((: NROFF_HAND->create_nroff($(file),
+                                                  $(file)+"_nroff") :));
+            mess = unguarded((: NROFF_HAND->cat_file($(file)+"_nroff", 0) :));
+            if(!mess)
+              mess = "Warning: text file cannot be read!";
+          }
+        }
+      }
+    }
+    mess = LANGUAGES->garble_text(lang, mess, this_object(), player);
+#ifdef DISABLED
+    if (stringp(mess)) {
+      pos = strsrch(mess, "Written in ");
+      while (pos != -1) {
+        if ((pos == 0 && !type) || (pos > 0 && mess[pos-1] == '\n')) {
+          mess = mess[0..pos-1] + "---> " + mess[pos..pos + 4] + " " +
+            mess[pos + 5..];
+        } else {
+          mess = mess[0..pos + 4] + " " +
+            mess[pos + 5..];
+        }
+        pos = strsrch(mess[pos + 5..], "Written in ");
+      }
+    }
+#endif
+    if ( !LANGUAGES->query_language_magic( lang ) ) {
+      if ( !type && player && (lang == player->query_default_language())) {
+        mess += "\n";
+      } else {
+        if (stringp(lang)) {
+          mess = "Written"+ ( type ? " in "+ type : "" ) +
+            ( lang != "general" ? " in "+ capitalize(lang) : "" ) +
+            ": "+ mess +"\n";
+        } else {
+          mess = "Written in some weird broken language: " + mess + "\n";
+        }
+      }
+    }
+    message += mess;
+  }
+  return message;
+}
+string query_read_short(object player, int ignore_labels) {
+   string id;
+   string *read_mess;
+   read_mess = query_read_mess();
+   if ( !arrayp(read_mess) || !sizeof( read_mess ) ) {
+      return 0;
+   }
+   id = query_property("read id");
+   if (id) {
+      id += " $name$";
+   } else {
+      id = "$name$";
+   }
+   return id;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/close_lock_container.c ===
+inherit "/std/basic/close_lock";
+void set_closed() {
+   ::set_closed();
+   if (environment()) {
+      environment()->remove_inventory_container(this_object());
+   }
+}
+void reset_closed() {
+   ::set_closed();
+   if (environment()) {
+      environment()->add_inventory_container(this_object());
+   }
+}
+void we_moved(object from, object to) {
+   if (!query_closed()) {
+      if (from) {
+         from->remove_inventory_container(this_object());
+      }
+      if (to) {
+         to->add_inventory_container(this_object());
+      }
+   }
+}
+void dest_me() {
+   if (environment()) {
+      environment()->remove_inventory_container(this_object());
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/help_files.c ===
+#include <room.h>
+#include <nroff.h>
+mixed query_property(string name);
+void add_property(string name, mixed value);
+void add_help_file(string help_file) {
+   string* help;
+   help = query_property(ROOM_HELP_FILE_PROPERTY);
+   if (help) {
+      if (member_array(help_file, help) == -1) {
+         help += ({ help_file });
+      }
+   } else {
+      help = ({ help_file });
+   }
+   add_property(ROOM_HELP_FILE_PROPERTY, help);
+}
+void remove_help_file(string help_file) {
+   string* help;
+   help = query_property(ROOM_HELP_FILE_PROPERTY);
+   if (help) {
+      help -= ({ help_file });
+      add_property(ROOM_HELP_FILE_PROPERTY, help);
+   }
+}
+string query_help_files() {
+   return query_property(ROOM_HELP_FILE_PROPERTY);
+}
+string query_help_file_directory() {
+   return "/doc/unknown/";
+}
+private string nroff_file(string name, int html) {
+   string nroff_fn;
+   string str;
+   if (name[0] != '/') {
+      name = query_help_file_directory() + name;
+   }
+   nroff_fn = NROFF_DIR + replace(name, "/", ".");
+   if (html) {
+      str = NROFF_HAND->html_file(nroff_fn, 1);
+   } else {
+      str = NROFF_HAND->cat_file(nroff_fn, 1);
+   }
+   if (!str) {
+      NROFF_HAND->create_nroff(name, nroff_fn);
+      if (html) {
+         str = NROFF_HAND->html_file(nroff_fn, 0);
+      } else {
+         str = NROFF_HAND->cat_file(nroff_fn, 0);
+      }
+   }
+   return str;
+}
+mixed* help_function() {
+   string* help;
+   string bing;
+   string* ret;
+   help = query_property(ROOM_HELP_FILE_PROPERTY);
+   if (sizeof(help)) {
+      ret = ({ });
+      foreach (bing in help) {
+         ret += ({ ({ replace_string(bing, "_", " "),
+                   (: nroff_file($(bing), 0) :) }) });
+      }
+      return ret;
+   }
+   return 0;
+}
+string help_string() {
+   string *help;
+   string str;
+   string bing;
+   help = query_property(ROOM_HELP_FILE_PROPERTY);
+   if (sizeof(help)) {
+      str = "";
+      foreach (bing in help) {
+        str += nroff_file(bing, 0);
+      }
+      return str;
+   }
+   return 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/surface.c ===
+#include <surface.h>
+nosave object *surface_shadows;
+object *query_surface_shadows() {
+   return surface_shadows;
+}
+void make_shadow( object thing ) {
+  object shadow;
+  shadow = clone_object( SURFACE_SHADOW );
+  shadow->setup_shadow( thing, this_object() );
+  if ( !surface_shadows ) surface_shadows = ({ });
+  surface_shadows += ({ shadow });
+}
+void check_shadows() {
+  int i;
+  for ( i = 0; i < sizeof( surface_shadows ); i++ ) {
+    if ( surface_shadows[ i ] ) {
+      if ( environment() == (object)surface_shadows[ i ]->
+          query_shadowed( surface_shadows[ i ] ) ) {
+        surface_shadows[ i ]->destruct_shadow( surface_shadows[ i ] );
+        surface_shadows = surface_shadows[0..i-1] + surface_shadows[i + 1..];
+        i--;
+      }
+    } else {
+      surface_shadows = surface_shadows[0..i-1] + surface_shadows[i + 1..];
+      i--;
+    }
+  }
+  call_out( "check_environment", 0 );
+}
+void check_environment() {
+  if ( environment() ) {
+     make_shadow( environment() );
+  }
+}
+void dest_me() {
+  int i;
+  for ( i = 0; i < sizeof( surface_shadows ); i++ )
+    if ( surface_shadows[ i ] )
+      surface_shadows[ i ]->destruct_shadow( surface_shadows[ i ] );
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/holdable.c ===
+#include <move_failures.h>
+private int _my_limb;
+private nosave int _no_limbs;
+private object _holder;
+int held_this_item(int held, object holder, mixed arg);
+void set_no_limbs(int num);
+void create() {
+   _no_limbs = 1;
+}
+mixed query_static_auto_load() {
+  return ([ "no limbs" : _no_limbs
+          ]);
+}
+void init_static_arg( mapping arg ) {
+   if (!arg) {
+      return ;
+   }
+   if (arg["no limbs"]) {
+      set_no_limbs(arg["no limbs"]);
+   }
+}
+mixed query_dynamic_auto_load() {
+  return ([ "limb"       : (_holder ? _my_limb : -1),
+            "limbs used" : (_holder ?
+              sizeof(find_member(this_object(),
+                                 _holder->query_holding())) : 0)
+          ]);
+}
+void init_dynamic_arg( mapping arg, mixed new_arg ) {
+   if (!arg) {
+      return ;
+   }
+   if (arg["limb"] != -1) {
+      call_out( function( int pos, mapping arg, mixed new_arg ) {
+         if ( environment() ) {
+            environment()->set_hold(this_object(), pos,
+                                    arg["limbs used"]);
+         }
+         held_this_item(2, environment(), new_arg);
+      }, 0, arg["limb"], arg, new_arg);
+   }
+}
+int held_this_item(int held, object holder, mixed arg) {
+   return 1;
+}
+int set_holder(object ob, int limb) {
+   if (ob && environment() != ob) {
+      return 0;
+   }
+   this_object()->remove_hide_invis( "concealed" );
+   if ( !ob ||
+        ob != _holder) {
+      if (!held_this_item(0, _holder, 0)) {
+         return 0;
+      }
+   }
+   if (ob) {
+      if (!held_this_item(1, ob, 0)) {
+         return 0;
+      }
+   }
+   _holder = ob;
+   _my_limb = limb;
+   return 1;
+}
+int query_my_limb() { return _my_limb; }
+int query_no_limbs() { return _no_limbs; }
+void set_no_limbs(int num) {
+   if (num < 0) {
+      return ;
+   }
+   _no_limbs = num;
+}
+int move( mixed ob) {
+   if ( ob != _holder && _holder ) {
+      if ( !sizeof( _holder->set_unhold( this_object() ) ) ) {
+         return MOVE_NO_UNHOLD;
+      }
+   }
+   return MOVE_OK;
+}
+object query_wielded() { return _holder; }
+object query_holder() { return _holder; }
+void dest_me() {
+   if (_holder) {
+      _holder->set_unhold(this_object());
+   }
+}
+varargs int *hold_item( object who, int pos ) {
+   object ob;
+   object *held_things;
+   object *dropped_things = ({ });
+   int num_limbs;
+  if( !undefinedp( pos ) && pos != -1 ) {
+    if( pos < 0 || pos >= sizeof( who->query_holding() ) )
+      return ({});
+    ob = who->query_holding()[ pos ];
+    if( ob ) {
+      if( !sizeof( who->set_unhold( ob ) ) )
+        return ({});
+      else dropped_things += ({ ob });
+    }
+    held_things = who->query_holding()[pos..] +
+                  who->query_holding()[0..pos-1];
+  }
+  else {
+    held_things = who->query_holding();
+    pos = -1;
+  }
+  if (pos == -1)  num_limbs = this_object()->query_no_limbs();
+  else num_limbs = 1;
+  tell_creator( who, "FL: %d, NL: %d, ob: %O\n", who->query_free_limbs(),
+      num_limbs, this_object() );
+  tell_creator( who, "Dropped things: %O\n", dropped_things );
+  for( int i = 0; who->query_free_limbs() <
+      num_limbs && i < sizeof( held_things ); i++ ) {
+    tell_creator( who, "freeing limbs\n" );
+    ob = held_things[i];
+    if( ob && sizeof( who->set_unhold( ob ) ) )
+      dropped_things += ({ ob });
+  }
+  if ( sizeof( dropped_things ) )
+    tell_object( who, "You put down " + query_multiple_short(
+        dropped_things ) + ".\n" );
+  if( who->query_free_limbs() >= num_limbs ) {
+     return who->set_hold( this_object(), pos, num_limbs );
+  }
+   tell_object( who, "You can't free up enough limbs to use "+
+       this_object()->a_short() + ".\n" );
+   return ({ });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/extra_look.c ===
+private nosave object *extra_looks;
+void create() {
+  extra_looks = ({ });
+}
+string calc_extra_look() {
+  int i;
+  string s1, s2;
+  s1 = "";
+  if (!extra_looks) {
+    extra_looks = ({ });
+  }
+  for (i = 0; i < sizeof(extra_looks); i++) {
+    if (extra_looks[i]) {
+      s2 = (string)((extra_looks[i])->extra_look(this_object()));
+      if(s2)
+        s1 += s2;
+    } else {
+      extra_looks = delete(extra_looks, i, 1);
+      i--;
+    }
+  }
+  return s1;
+}
+void add_extra_look(object ob) {
+  if(member_array(ob, extra_looks) != -1) {
+    return;
+  }
+  if(stringp(ob))
+    ob = find_object((string)ob);
+  extra_looks += ({ ob });
+}
+void remove_extra_look(object ob) {
+  int i;
+  i = member_array(ob, extra_looks);
+  if (i < 0) {
+    return;
+  }
+  extra_looks = delete(extra_looks, i, 1);
+}
+object *query_extra_look_list() {
+  return extra_looks;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/scroll_book_react.c ===
+#include <tasks.h>
+#define SKILL "magic.items.scroll"
+#define CONTROL_SKILL "magic.spells.special"
+void destroy_this_scroll() {
+}
+void check_react(object player) {
+   object ob;
+   int level;
+   int ac;
+   string check_spell;
+   object paper;
+   object *items;
+   object env;
+   if (!environment(player)) {
+      return;
+   }
+   env = environment(player);
+   while (env && !living(env)) {
+      env = environment(env);
+   }
+   if (env && !userp(env) && !env->query_owner()) {
+      return ;
+   }
+   items = filter(deep_inventory(environment(player)),
+                  (: $1->query_magic_scroll() ||
+                     $1->query_spell_book() :));
+   foreach (paper in items) {
+      level += paper->query_spell_power_level();
+   }
+   if (random(sqrt(level)) <= 5 + random(5)) {
+      return;
+   }
+   ob = environment(player);
+   while(ob) {
+      if(living(ob)) {
+         break;
+      } else {
+         ob = environment(ob);
+      }
+   }
+   if(!ob || !living(ob)) {
+      return;
+   }
+   if(ob) {
+      switch(TASKER->perform_task(ob, CONTROL_SKILL, level*2 + random(4),
+                                  TM_FREE)) {
+      case AWARD:
+         tell_object(ob, "Suddenly the spell "+
+                      this_object()->query_spell_name()+ " on the "+
+                     player->the_short()+" gets out of control and tries to go "
+                     "wild.\n");
+         tell_room(environment(ob), "Suddenly " + ob->one_short() +
+                   " looks very startled as the spell " +
+                   this_object()->query_spell_name() +
+                   " on "+player->the_short()+" gets out of control and "
+                   "tries to go wild.\n", ob);
+         write("%^YELLOW%^You feel you have a better grasp of controlling "
+               "spells on scrolls.\n.%^RESET%^\n" );
+      case SUCCEED:
+         return;
+      default:
+         tell_object(ob, "Suddenly the spell " +
+                     this_object()->query_spell_name() + " on the "+
+                     player->the_short() +
+                     " gets out of control and tries to go wild.\n");
+         tell_room(environment(ob), "Suddenly " + ob->one_short() +
+                   " looks very startled as the spell " +
+                   this_object()->query_spell_name() +
+                   " on " + player->the_short() + " gets out of control and "
+                   "tries to go wild.\n", ob);
+         tell_object(ob, "Unfortunately you cannot get control of it and "
+                     "before flying away into nowhere it tears wildly at "
+                     "your mind.\n");
+         tell_room(environment(ob), "Unfortunately "+ob->one_short()+" cannot "
+                   "get control of it and it flies away to freedom.\n", ob);
+         ac = (int)ob->query_ac("magic", level * 10);
+         level -= ac;
+         ob->adjust_hp(-level, this_object());
+         ob->adjust_tmp_int(-2 + random(2));
+         destroy_this_scroll();
+         break;
+      }
+   }
+}
+string query_death_reason() {
+   return " a spell going wild and getting out of control.";
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/print_object.c ===
+varargs string print_object(mixed ob, int off) {
+  int i;
+  write("                   "[0..off]);
+  if (intp(ob)) {
+    write(ob+"\n");
+    return "int";
+  }
+  if (stringp(ob)) {
+    write("\""+ob+"\"\n");
+    return "string";
+  }
+  if (objectp(ob)) {
+    write(file_name(ob)+"  ");
+    if (ob->short())
+      write("(short) "+ob->short()+"\n");
+    else if (ob->query_name())
+      write("(name)  "+ob->query_name()+"\n");
+    else
+      write("(Argghhhh)\n");
+    return "object";
+  }
+  if (pointerp(ob)) {
+    if (!sizeof(ob))
+      write("({ })\n");
+    else {
+      write("({  -- size "+sizeof(ob)+"\n");
+      for (i=0;i<sizeof(ob);i++)
+        print_object(ob[i], off+3);
+      write("                       "[0..off]+"})\n");
+    }
+    return "pointer";
+  }
+  return "oh dear";
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/consecrate.c ===
+private string _god;
+void set_god( string deity ) {
+  if ( stringp( deity ) )
+    deity = lower_case( deity );
+  _god =  deity;
+  return;
+}
+void set_deity( string deity ) {
+  if ( stringp( deity ) )
+    deity = lower_case( deity );
+  _god = deity;
+  return;
+}
+string query_god() { return _god; }
+string query_deity() { return _god; }
+int query_consecrated( string god ) {
+  if ( !stringp( god ) )
+    return 0;
+  god = lower_case( god );
+  if ( _god )
+    return god == _god;
+  return this_object()->query_property( god );
+}
+mixed *stats() {
+   return
+      ({
+         ({ "consecrated", _god }),
+      });
+}
+mapping query_static_auto_load() {
+   return ([
+      "god" : _god
+   ]);
+}
+void init_static_arg( mapping map ) {
+   if ( !undefinedp( map[ "god" ] ) )
+      _god = map[ "god" ];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/virtual_quit_control.c ===
+protected string find_start_pos(object player, object place) {
+   mixed quit_env;
+   string last_pos, name;
+   mixed test_char;
+   if ( place ) {
+      quit_env = place->query_quit_handler( player );
+      if (arrayp(quit_env)) {
+         last_pos = quit_env[0];
+      } else {
+         last_pos = (string)quit_env;
+      }
+      if ( last_pos ) {
+         last_pos->player_quitting( player, place );
+      } else {
+         last_pos = file_name( place );
+      }
+   } else {
+      last_pos = player->query_start_pos();
+   }
+   if (last_pos && last_pos[ 0 .. 2 ] == "/w/" && last_pos != "/w/common.c") {
+      test_char = player->query_property( "test character" );
+      if ( !stringp( test_char ) ) {
+          name = player->query_name();
+      }
+      else {
+          name = test_char;
+      }
+      if (!sscanf(last_pos, "/w/"+ name +"%*s") ) {
+         if (!player->query_creator() ||
+              !last_pos->query_valid_save( player->query_name() )) {
+            last_pos = player->query_start_pos();
+         }
+      }
+   }
+   return last_pos;
+}
+protected int * find_start_coord(object player, object place) {
+   mixed quit_env;
+   string last_pos, name;
+   mixed test_char;
+   if ( place ) {
+      quit_env = place->query_quit_handler();
+      if (arrayp(quit_env)) {
+         return quit_env[1];
+      } else {
+         last_pos = (string)quit_env;
+      }
+      if ( !last_pos ) {
+         last_pos = file_name( place );
+      }
+   } else {
+      last_pos = player->query_start_pos();
+   }
+   if (last_pos[ 0 .. 2 ] == "/w/" && last_pos != "/w/common.c") {
+      test_char = player->query_property( "test character" );
+      if ( !stringp( test_char ) ) {
+          name = player->query_name();
+      }
+      else {
+          name = test_char;
+      }
+      if (!sscanf(last_pos, "/w/"+ name +"%*s") ) {
+         if( !( player->query_creator() ||
+                player->query_property( "test character" ) ) ||
+              !last_pos->query_valid_save( player->query_name() )) {
+            last_pos = player->query_start_pos();
+         }
+      }
+   }
+   return last_pos->query_co_ord();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/close_lock.c ===
+#include <move_failures.h>
+#include <tasks.h>
+#include <clothing.h>
+#define MAX_INVENT 40
+#define C_CLOSED 1
+#define C_TRANS 2
+#define C_OPAQUE 1
+#define LOCKED        1
+#define CLOSED        2
+#define CLOSED_LOCKED 3
+#define SKILL "covert.manipulation.sleight-of-hand"
+#define STEALTH_NONE        0
+#define STEALTH_FAILED      1
+#define STEALTH_SUCCEEDED   2
+#define TP this_player()
+#define TO this_object()
+int do_open();
+int do_close();
+int do_lock(object *keys);
+int do_unlock(object *keys);
+private int _locked;
+private int _closed;
+private string _pick_skill;
+private nosave int _stuck;
+private nosave int _trans;
+private nosave int _difficulty;
+private nosave int _autolock;
+private nosave string _trap_open_func;
+private nosave string _trap_lock_func;
+private nosave object _trap_open_ob;
+private nosave object _trap_lock_ob;
+private nosave mixed _key;
+void create() {
+  _difficulty = 5;
+  _pick_skill = "covert.lockpick.doors";
+}
+void set_open() {
+    if (!_closed)
+        return;
+    _closed = 0;
+    _locked = 0;
+    if (environment()) {
+      event( ({ environment(), TO, }), "open", TP);
+    } else if (TO->query_my_room()) {
+      event( ({ TO->query_my_room(), TO, }), "open", TP);
+    }
+}
+void set_closed() {
+    if (_closed)
+        return;
+    _closed = 1;
+    if (environment()) {
+      event( ({ environment(), TO, }), "close", TP);
+    } else if (TO->query_my_room()) {
+      event( ({ TO->query_my_room(), TO, }), "close", TP);
+    }
+}
+int query_closed() {
+  return _closed;
+}
+int query_open() {
+  return !_closed;
+}
+void set_locked() {
+    if (!_closed)
+        return;
+    if (_locked)
+        return;
+    _locked = 1;
+    if (environment()) {
+        event( ({ environment(), TO, }), "lock", TP);
+    } else if (TO->query_my_room()) {
+        event( ({ TO->query_my_room(), TO, }), "lock", TP);
+    }
+}
+void set_unlocked() {
+    if (!_locked)
+        return;
+    _locked = 0;
+    if (environment()) {
+        event( ({ environment(), TO, }), "unlock", TP);
+    } else if (TO->query_my_room()) {
+        event( ({ TO->query_my_room(), TO, }), "unlock", TP);
+    }
+}
+int query_locked() {
+  return _locked;
+}
+int query_unlocked() {
+  return !_locked;
+}
+void set_autolock(int number) { _autolock = number; }
+int query_autolock() { return _autolock; }
+void set_key(mixed val) {
+    if (!stringp(val) && !functionp(val))
+        return;
+    _key = val;
+}
+string query_key() {
+    if (stringp(_key))
+        return _key;
+    if (functionp(_key))
+        return evaluate(_key);
+    return 0;
+}
+void set_pick_skill(string str) {
+  _pick_skill = str;
+}
+string query_pick_skill() {
+  return _pick_skill;
+}
+void set_difficulty(int i) {
+  _difficulty = i;
+}
+int query_difficulty() {
+  return _difficulty;
+}
+void set_stuck(int i) {
+  _stuck = i;
+}
+int query_stuck() {
+  return _stuck;
+}
+void set_transparent() {
+  _trans = C_TRANS;
+}
+void reset_transparent() {
+  _trans = 0;
+}
+int query_transparent() {
+  return _trans;
+}
+void set_open_trap(object ob, string func) {
+  _trap_open_func =  func;
+  _trap_open_ob = ob;
+}
+string query_open_trap_func() {
+  return _trap_open_func;
+}
+object query_open_trap_ob() {
+  return _trap_open_ob;
+}
+void set_lock_trap(object ob, string func) {
+  _trap_lock_func = func;
+  _trap_lock_ob = ob;
+}
+string query_lock_trap_func() {
+  return _trap_lock_func;
+}
+object query_lock_trap_ob() {
+  return _trap_lock_ob;
+}
+int query_closed_locked_status() {
+    if (_closed && _locked) {
+        return CLOSED_LOCKED;
+    }
+    if (_closed) {
+        return CLOSED;
+    }
+    if (_locked) {
+        return LOCKED;
+    }
+    return 0;
+}
+void add_close_lock_commands(object player) {
+  if(!player)
+    return;
+    player->add_command("open", TO,
+        "<direct:object:me-here>",
+        (: do_open() :) );
+    player->add_command("close", TO,
+        "<direct:object:me-here>",
+        (: do_close() :) );
+    if (TO->query_key()) {
+        player->add_command("lock", TO,
+            "<direct:object:me-here>",
+            (: do_lock(0) :) );
+        player->add_command("lock", TO,
+            "<direct:object:me-here> with <indirect:object:me>",
+            (: do_lock($1) :) );
+        player->add_command("unlock", TO,
+            "<direct:object:me-here>",
+            (: do_unlock(0) :) );
+        player->add_command("unlock", TO,
+            "<direct:object:me-here> with <indirect:object:me>",
+            (: do_unlock($1) :) );
+    }
+}
+void init() {
+    add_close_lock_commands(this_player());
+}
+string short_status() {
+    return "";
+}
+string long_status() {
+    if (TO->query_stuck())
+        return "";
+    switch (query_closed_locked_status()) {
+        case CLOSED_LOCKED:
+            return "It is closed and locked.\n";
+        case CLOSED:
+            return "It is closed.\n";
+        default:
+            return "It is open.\n";
+    }
+}
+int check_stealth() {
+    mapping hide_invis;
+    int hiding, sneaking, difficulty, light, my_light, items_blocking;
+    hide_invis = (mapping) TP->query_hide_invis();
+    hiding = undefinedp(hide_invis["hiding"]) ? 0 : 1;
+    sneaking = TP->query_sneak_level() ? 1 : 0;
+    if (!hiding && !sneaking)
+        return STEALTH_NONE;
+    my_light = TP->query_light();
+    light = environment(TP)->query_light();
+    difficulty = light + (4 * my_light) / (light + 1);
+    items_blocking = sizeof(CLOTHING_HANDLER->query_items_blocking(TO, TP));
+    if (items_blocking) {
+        difficulty += 50 * items_blocking;
+    }
+    debug_printf( "Difficulty = %d.\n Skill = %s\n Bonus = %d\n",
+                  difficulty, SKILL, TP->query_skill_bonus( SKILL ) );
+    switch (TASKER->perform_task(TP, SKILL, difficulty, TM_FREE)) {
+        case AWARD:
+            write("%^YELLOW%^" + ({
+                "You discover something that lets your fingers move more nimbly.",
+                "You find yourself capable of deceiving the eye with greater ease "
+                "than before.",
+                "You realise how to deceive the eye more effectively."
+                })[ random(3) ] + "%^RESET%^\n" );
+        case SUCCEED :
+            return STEALTH_SUCCEEDED;
+        default :
+            return STEALTH_FAILED;
+    }
+}
+int do_unlock(object *keys) {
+    object *gkeys = ({ });
+    string key = TO->query_key();
+    int inv = 0;
+    if (!_locked) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=isn't,aren't$V$ locked.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_stuck) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ stuck.\n",
+            ({ }) );
+        return 0;
+    }
+    if (!_closed) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=isn't,aren't$V$ closed.\n",
+            ({ }) );
+        return 0;
+    }
+    if (!key) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=doesn't,don't$V$ have a lock.\n",
+            ({ }) );
+        return 0;
+    }
+    if (key != "by hand") {
+        if (!keys || !sizeof(keys)) {
+            keys = all_inventory(TP);
+            inv = 1;
+        }
+        gkeys = filter(keys, (: $1->query_property( $(key) ) :) );
+        if (!sizeof(gkeys)) {
+            if (!inv) {
+                TP->add_failed_mess(TO,
+                    "You cannot $V $D with $I.\n",
+                        keys);
+                return 0;
+            }
+            TP->add_failed_mess(TO,
+                "You cannot $V $D.\n",
+                ({ }) );
+            return 0;
+        }
+        gkeys[0]->use_key(TO);
+    }
+    if (_trap_lock_func && _trap_lock_ob) {
+        if (!call_other(_trap_lock_ob, _trap_lock_func, "unlock", TO, TP)) {
+            return 0;
+        }
+    }
+    set_unlocked();
+    switch (check_stealth()) {
+        case STEALTH_SUCCEEDED:
+          if (sizeof (gkeys)) {
+            TP->add_succeeded_mess(TO, ({
+                "$N $V $D with $I, managing to stay unnoticed.\n",
+                "", }),
+                ({ ( gkeys[0] ) }) );
+          } else {
+            TP->add_succeeded_mess(TO, ({
+                "$N $V $D, managing to stay unnoticed.\n",
+                "", }),
+                ({ }) );
+          }
+            break;
+        case STEALTH_FAILED:
+            TP->add_succeeded_mess(TO,
+                "$N unsuccessfully tr$y to " + query_verb() + " $D while "
+                "staying unnoticed.\n", ({ }) );
+            break;
+        default:
+            if (sizeof (gkeys)) {
+              TP->add_succeeded_mess(TO,
+                 "$N $V $D with $I.\n", ({ gkeys[0] }) );
+            } else {
+              TP->add_succeeded_mess (TO, "$N $V $D.\n", ({ }));
+            }
+            break;
+    }
+    return 1;
+}
+int do_lock(object *keys) {
+    object *gkeys = ({ });
+    string key = TO->query_key();
+    int inv = 0;
+    if (_locked) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ already locked.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_stuck) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ stuck.\n",
+            ({ }) );
+        return 0;
+    }
+    if (!_closed && !do_close()) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=isn't,aren't$V$ closed.\n",
+            ({ }) );
+        return 0;
+    }
+    if (!key) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=doesn't,don't$V$ have a lock.\n",
+            ({ }) );
+        return 0;
+    }
+    if (key != "by hand") {
+        if (!keys || !sizeof(keys)) {
+            keys = all_inventory(TP);
+            inv = 1;
+        }
+        gkeys = filter(keys, (: $1->query_property( $(key) ) :) );
+        if (!sizeof(gkeys)) {
+            if (!inv) {
+                TP->add_failed_mess(TO, "You cannot lock $D with $I.\n", keys);
+                return 0;
+            }
+            TP->add_failed_mess(TO, "You cannot lock $D.\n", ({ }) );
+            return 0;
+        }
+        gkeys[0]->use_key(TO);
+    }
+    if (_trap_lock_func && _trap_lock_ob) {
+        if (!call_other(_trap_lock_ob, _trap_lock_func, "lock", TO, TP)) {
+            return 0;
+        }
+    }
+    set_locked();
+    switch (check_stealth()) {
+    case STEALTH_SUCCEEDED:
+          if (sizeof (gkeys)) {
+            TP->add_succeeded_mess(TO, ({
+                "$N lock$s $D with $I, managing to stay unnoticed.\n",
+                "", }),
+                ({ ( gkeys[0] ) }) );
+          } else {
+            TP->add_succeeded_mess(TO, ({
+                "$N lock$s $D, managing to stay unnoticed.\n",
+                "", }),
+                ({ }) );
+          }
+        break;
+      case STEALTH_FAILED:
+        TP->add_succeeded_mess(TO, "$N unsuccessfully tr$y to " +
+                               "lock $D while staying unnoticed.\n",
+                               ({ }) );
+        break;
+      default:
+        if (sizeof (gkeys)) {
+          TP->add_succeeded_mess(TO,
+                                 "$N lock$s $D with $I.\n", ({ gkeys[0] }) );
+        } else {
+          TP->add_succeeded_mess (TO, "$N lock$s $D.\n", ({ }));
+        }
+        break;
+    }
+    return 1;
+}
+int pick_lock(object player) {
+    if (_trap_lock_ob
+     && !call_other(_trap_lock_ob, _trap_lock_func, "pick", TO, player)) {
+        return 0;
+    }
+    set_locked();
+    return 1;
+}
+int pick_unlock(object player) {
+    if (_trap_lock_ob
+     && !call_other(_trap_lock_ob, _trap_lock_func, "pick", TO, player)) {
+        return 0;
+    }
+    set_unlocked();
+    return 1;
+}
+int do_open() {
+    if (!_closed) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ already open.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_stuck) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ stuck.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_locked && !do_unlock(0)) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ locked.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_trap_open_func && _trap_open_ob) {
+        if (!call_other(_trap_open_ob, _trap_open_func, "open", TO, TP)) {
+            return 0;
+        }
+    }
+    set_open();
+    if (!TO->query_door_name()) {
+        switch (check_stealth()) {
+            case STEALTH_SUCCEEDED:
+                TP->add_succeeded_mess(TO, ({
+                    "$N $V $D, managing to stay unnoticed.\n",
+                    "", }),
+                    ({ }) );
+                break;
+            case STEALTH_FAILED:
+                TP->add_succeeded_mess(TO,
+                    "$N unsuccessfully tr$y to " + query_verb() + " $D while "
+                    "staying unnoticed.\n", ({ }) );
+                break;
+            default:
+                TP->add_succeeded_mess(TO,
+                    "$N $V $D.\n",
+                    ({ }) );
+                break;
+        }
+    }
+    return 1;
+}
+int do_close() {
+    if (_closed) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ already closed.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_stuck) {
+        TP->add_failed_mess(TO,
+            "$D $V$0=is,are$V$ stuck.\n",
+            ({ }) );
+        return 0;
+    }
+    if (_trap_open_func && _trap_open_ob) {
+        if (!call_other(_trap_open_ob, _trap_open_func, "close", TO,TP)) {
+            return 0;
+        }
+    }
+    set_closed();
+    if (_autolock)
+        set_locked();
+    if (!TO->query_door_name()) {
+        switch (check_stealth()) {
+            case STEALTH_SUCCEEDED:
+                TP->add_succeeded_mess(TO, ({
+                    "$N $V $D, managing to stay unnoticed.\n",
+                    "", }),
+                    ({ }) );
+                break;
+            case STEALTH_FAILED:
+                TP->add_succeeded_mess(TO,
+                    "$N unsuccessfully tr$y to " + query_verb() + " $D while "
+                    "staying unnoticed.\n", ({ }) );
+                break;
+            default:
+                TP->add_succeeded_mess(TO,
+                    "$N $V $D.\n",
+                    ({ }) );
+                break;
+        }
+    }
+    return 1;
+}
+string *parse_command_adjectiv_id_list() {
+    switch( query_closed_locked_status() ) {
+        case CLOSED_LOCKED:
+            return ({ "closed", "locked" });
+        case CLOSED:
+            return ({ "closed", "unlocked" });
+        case LOCKED:
+            return ({ "open", "locked" });
+        default:
+            return ({ "open", "unlocked" });
+    }
+}
+mixed *stats() {
+  return ({
+    ({"closed", query_closed()}),
+    ({"transparent", query_transparent()}),
+    ({"key", query_key()}),
+    ({"difficulty", query_difficulty()}),
+    ({"locked", query_locked()}),
+    ({"stuck", query_stuck()}),
+    ({"open trapped", _trap_open_func != 0}),
+    ({"lock trapped", _trap_lock_func != 0}),
+    ({"pick skill", query_pick_skill()}),});
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/version.c ===
+nosave mapping version_control = ([ ]);
+void create() {
+  version_control[ base_name( this_object() ) ] = ctime( time() );
+  foreach( object temp in inherit_list( this_object() ) )
+    version_control[ base_name( temp ) ] = temp->query_version();
+}
+void query_version_control() {
+  write( "File:\tTime:\n" );
+  foreach( string temp in keys( version_control ) )
+    printf( "%s\t%s.\n", temp, version_control[ temp ] );
+  return;
+}
+string query_version() {
+  return version_control[ base_name( this_object() ) ];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/virtual_update.c ===
+#include <virtual.h>
+mixed query_property(string name);
+void add_property(string name, mixed prop);
+void init_static_arg(mapping data);
+void replace_me()
+{
+   object receipt;
+   mixed als;
+   receipt = clone_object("/obj/misc/al_receipt");
+   receipt->set_name("receipt");
+   receipt->set_object(file_name(this_object()));
+   receipt->set_virtobname(query_property(VIRTUAL_NAME_PROP));
+   receipt->set_value(this_object()->query_value());
+   als = "/global/auto_load"->fragile_auto_str_ob(this_object());
+   als[0] = 1;
+   receipt->set_static_save(als);
+   receipt->set_short("destructed item receipt");
+   receipt->add_adjective(({ "destructed", "item" }));
+   receipt->set_long("This seems to be a small piece of paper.\n");
+   receipt->set_read_mess("According to our sources, your " +
+                          this_object()->query_short() +
+                          " was not " "allowed to exist.  Have a nice day.");
+   receipt->move(environment());
+   receipt->set_weight(1);
+   destruct(this_object());
+}
+void init_virtual_object()
+{
+   mapping stat_temp;
+   string virt_name;
+   string new_name;
+   virt_name = query_property(VIRTUAL_NAME_PROP);
+   if (virt_name) {
+      if (file_size(virt_name) == -1) {
+         new_name = (CLONER)->other_file(virt_name);
+         if (stringp(new_name) && (new_name != virt_name)) {
+            add_property(VIRTUAL_NAME_PROP, new_name);
+            virt_name = new_name;
+         } else {
+            if (VIRTUAL_HANDLER->query_forbidden(virt_name)) {
+               call_out("replace_me", 1);
+            } else {
+               VIRTUAL_HANDLER->add_missing(virt_name);
+            }
+         }
+      }
+      if (file_size(virt_name) != -1 &&
+          query_property("virtual time") < stat(virt_name)[1]) {
+         stat_temp = (VIRTUAL_HANDLER)->new_data(virt_name);
+         if (mapp(stat_temp)) {
+            init_static_arg(stat_temp);
+            add_property("virtual time", time());
+         }
+      }
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/artifact.c ===
+#include <artifacts.h>
+int charges, level, total_charges;
+string type, zapper;
+string query_artifact_type() { return type; }
+void set_artifact_type( string word ) { type = word; }
+int query_charges() { return charges; }
+void set_charges( int number ) { charges = number; }
+int adjust_charges( int number ) {
+  charges += number;
+  if ( number > 0 )
+    total_charges += number;
+  if ( charges < 0 )
+    charges = 0;
+  return charges;
+}
+int query_total_charges() { return total_charges; }
+void set_total_charges( int number ) { total_charges = number; }
+int query_level() { return level; }
+void set_level( int number ) { level = number; }
+string query_zapper() { return zapper; }
+void set_zapper( string word ) {
+   zapper = word;
+   call_out( "zapper_init", 1, this_object() );
+}
+void zapper_init( object thing ) {
+   if ( !thing )
+      return;
+   zapper->init_artifact( thing );
+}
+int break_on_charging() {
+  int top, chance;
+  top = 1000 / ( 32 + level );
+  if ( total_charges > top )
+    chance = 6 * ( total_charges - top ) * ( total_charges - top );
+  top = 14 - level / 7;
+  if ( top < 0 )
+    top = 0;
+  if ( charges > top )
+    chance += 3 * ( charges - top ) * ( charges - top );
+  chance += 1;
+  if ( random( 100 ) < chance )
+    return 1;
+  return 0;
+}
+string long( int word, int dark ) {
+  string a_name, start;
+  a_name = (string)call_other( zapper, "query_"+ type +"_name" );
+  if ( !ARTIFACT_HAND->query_known( (string)this_player()->query_name(),
+      a_name ) )
+    return "";
+   start = "You recognise "+ this_object()->the_short() +" to be ";
+  if ( a_name[ 0 .. 0 ] == lower_case( a_name[ 0 .. 0 ] ) )
+    return start + add_a( a_name ) +".  ";
+  return start + a_name +".  ";
+}
+mixed *stats() {
+  return ({
+    ({ "charges", charges +" ("+ total_charges +")", }),
+    ({ "level", level, }),
+    ({ "zapper", zapper, }),
+  });
+}
+mapping query_dynamic_auto_load() {
+  return ([
+    "charges" : charges,
+    "total charges" : total_charges,
+  ]);
+}
+mapping query_static_auto_load() {
+  return ([
+    "level" : level,
+    "zapper" : zapper,
+  ]);
+}
+void init_dynamic_arg( mapping map ) {
+  charges = map[ "charges" ];
+  total_charges = map[ "total charges" ];
+}
+void init_static_arg( mapping map ) {
+  if ( map[ "level" ] )
+    level = map[ "level" ];
+  if ( map[ "zapper" ] )
+    zapper = map[ "zapper" ];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/effects.c ===
+#include <effect.h>
+class effect_shadow {
+   object shad_ob;
+   int idnum;
+}
+class effect_event {
+   int inctime;
+   mixed func;
+   int eff_ob_num;
+   mixed interval;
+   int flags;
+   mixed eff_ev_args;
+}
+#undef DEBUG
+#ifdef DEBUG
+nosave int logging_effects;
+void set_logging_effects(int i) { logging_effects = i; }
+int query_logging_effects() { return logging_effects; }
+#endif
+class effect_data {
+   int current_enum;
+   int next_id;
+   int next_event_time;
+   class effect_shadow* shadows;
+}
+void delete_effect(int i);
+private nosave class effect_data _data;
+private class effect *effs;
+private class effect_event *eeq;
+protected void create() {
+  effs = ({ });
+  eeq = ({ });
+  _data = new(class effect_data);
+  _data->shadows = ({ });
+  _data->next_id = 0;
+  _data->current_enum = -1;
+  _data->next_event_time = 0;
+#ifdef DEBUG
+  logging_effects = 0;
+#endif
+}
+void reset_effects() {
+   effs = ({ });
+   eeq = ({ });
+   _data->shadows = ({ });
+   _data->current_enum = -1;
+   _data->next_event_time = 0;
+   remove_call_out("effect_timer");
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) reset_effects:remove_call_out( \"effect_timer\" )\n",
+               time() % 1000,
+               this_object()->query_name(),
+               _data->current_enum);
+#endif
+}
+object affected_object() {
+   object this, other;
+   other = this_object();
+   this = other;
+   while (objectp(other)) {
+      this = other;
+      other = query_shadowing(this);
+   }
+   return this;
+}
+void effect_freeze() {
+   remove_call_out( "effect_timer" );
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) effect_freeze:remove_call_out( \"effect_timer\" )=%d\n",
+               time() % 1000,this_object()->query_name(),_data->current_enum,timeleft);
+#endif
+   if ( sizeof( eeq ) && _data->next_event_time) {
+      if (_data->next_event_time <= time()) {
+         eeq[ 0 ]->inctime = 1;
+      } else {
+         eeq[ 0 ]->inctime = _data->next_event_time - time();
+      }
+   }
+}
+void effects_saving() {
+   int i, neffs;
+   string effn;
+   mixed arg;
+   neffs = sizeof( effs );
+   for ( i = 0; i < neffs; i++ ) {
+      effn = effs[ i ]->ob_name;
+      arg = effs[ i ]->arg;
+      if ( pointerp( arg ) && ( sizeof( arg ) == 3 ) &&
+          ( arg[ 2 ] == BOGUS_OLD_ARG ) ) {
+         arg = arg[ 1 ];
+      }
+      if ( effn ) {
+         catch( (void)effn->saving( affected_object(), arg, i ) );
+      }
+   }
+}
+void effects_quiting() {
+   int i, neffs;
+   string effn;
+   mixed arg;
+   neffs = sizeof( effs );
+   for ( i = 0; i < neffs; i++ ) {
+      effn = effs[ i ]->ob_name;
+      arg = effs[ i ]->arg;
+      if ( pointerp( arg ) && ( sizeof( arg ) == 3 ) &&
+          ( arg[ 2 ] == BOGUS_OLD_ARG ) ) {
+         arg = arg[ 1 ];
+      }
+      if ( effn ) {
+         catch( (void)effn->quiting( affected_object(), arg, i ) );
+      }
+   }
+}
+void effects_desting() {
+   int i, neffs;
+   string effn;
+   mixed arg;
+   neffs = sizeof( effs );
+   for ( i = 0; i < neffs; i++ ) {
+      effn = effs[ i ]->ob_name;
+      arg = effs[ i ]->arg;
+      if ( pointerp( arg ) && ( sizeof( arg ) == 3 ) &&
+          ( arg[ 2 ] == BOGUS_OLD_ARG ) ) {
+         arg = arg[ 1 ];
+      }
+      if ( effn ) {
+         catch( (void)effn->desting( affected_object(), arg, i ) );
+      }
+   }
+}
+void effect_unfreeze() {
+   if ( sizeof( eeq ) ) {
+#ifdef DEBUG
+      if ( logging_effects )
+         log_file( "EFFECT_WOBBLE",
+                  "%d:%s(%d) effect_unfreeze:call_out( \"effect_timer\", %d)\n",
+                  time() % 1000,this_object()->query_name(),_data->current_enum,eeq[ 0 ]->inctime);
+#endif
+      remove_call_out( "effect_timer" );
+      _data->next_event_time = time() + eeq[ 0 ]->inctime;
+      call_out( "effect_timer", eeq[ 0 ]->inctime );
+   }
+}
+protected int int_submit_ee( int eff_ob_num, mixed fun, mixed
+      interval, int flags, mixed event_args ) {
+   int i, ntime;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) int_submit_ee:( %d, %O, %O, %s, %O )\n",
+               time() % 1000,this_object()->query_name(),_data->current_enum,
+               eff_ob_num, fun, interval,
+               ({"once","remove","continuous"})[flags], event_args );
+#endif
+   if (intp(interval))
+      ntime = interval;
+   else if (pointerp(interval)) {
+      switch (sizeof(interval)) {
+       case 0:
+         return -1;
+       case 1:
+         ntime = interval[0];
+         break;
+       case 2:
+         ntime = interval[0] + random(interval[1] - interval[0] + 1);
+         break;
+       case 3:
+         ntime = 0;
+         for (i = 0; i < interval[2]; i++) {
+            ntime += interval[0] + random(interval[1] - interval[0] + 1);
+         }
+         ntime += (interval[2]/2);
+         ntime /= interval[2];
+         break;
+       default:
+         return -1;
+      }
+   } else return -1;
+   if (flags == EE_REMOVE) {
+      for(i = 0; i < sizeof(eeq); i++) {
+         if ((eeq[i]->eff_ob_num == eff_ob_num) &&
+             (eeq[i]->flags == EE_REMOVE)) {
+            eeq = eeq[0..i-1] + eeq[i+1..];
+            break;
+         }
+      }
+   }
+   if ( ntime < 0 ) {
+      return 0;
+   }
+   for (i = 0; i < sizeof(eeq); i++) {
+      if (ntime < eeq[i]->inctime) {
+         eeq[i]->inctime -= ntime;
+         eeq = eeq[0..i-1] +
+            ({ new(class effect_event, inctime : ntime, func : fun,
+                   eff_ob_num : eff_ob_num, interval : interval,
+                   flags : flags, eff_ev_args : event_args ) }) + eeq[i..];
+         break;
+      }
+      ntime -= eeq[i]->inctime;
+   }
+   if ((i == sizeof(eeq)) && eeq) {
+      eeq += ({ new(class effect_event, inctime : ntime, func : fun,
+                    eff_ob_num : eff_ob_num, interval : interval,
+                    flags : flags, eff_ev_args : event_args ) });
+   } else if ( !sizeof(eeq) ) {
+      eeq = ({ new(class effect_event, inctime : ntime, func : fun,
+                   eff_ob_num : eff_ob_num, interval : interval,
+                   flags : flags, eff_ev_args : event_args ) });
+   }
+   return i;
+}
+varargs void submit_ee(mixed fun, mixed interval, int flags, mixed
+    event_args ) {
+  int enumb;
+  if( undefinedp( event_args ) )
+     event_args = 0;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) submit_ee:( %O, %O, %s, %O )\n",
+               time() % 1000,this_object()->query_name(),_data->current_enum,
+               fun, interval, ({"once","remove","continuous"})[flags],
+               event_args );
+#endif
+  enumb = _data->current_enum;
+  if (enumb < 0) {
+    enumb = member_array(1,
+        map(_data->shadows, (: $1 && (((class effect_shadow)$1)->shad_ob == previous_object()) :)));
+    if (enumb < 0) {
+      error("Can not submit from that object");
+    }
+  }
+  effect_freeze();
+  int_submit_ee(enumb, fun, interval, flags, event_args );
+  effect_unfreeze();
+}
+varargs void submit_ee2(int enum, mixed fun, mixed interval, int flags,
+    mixed event_args ) {
+  if( undefinedp( event_args ) )
+    event_args = 0;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) int_submit_ee:( %d, %O, %O, %s, %O )\n",
+               time() % 1000,this_object()->query_name(),_data->current_enum,
+               enum, fun, interval, ({"once","remove","continuous"})[flags],
+               event_args );
+#endif
+  if (enum < 0)
+    error("Can't submit from that object");
+  effect_freeze();
+  int_submit_ee(enum, fun, interval, flags, event_args );
+  effect_unfreeze();
+}
+int expected_tt(int flag, int new_enum) {
+  int i, timeleft, enum;
+  if (flag)
+    enum = new_enum;
+  else
+    enum = _data->current_enum;
+  if (enum < 0)
+    return -1;
+  if (!sizeof(eeq))
+    return -1;
+  effect_freeze();
+  for (i = 0; i < sizeof(eeq); i++) {
+    timeleft += eeq[i]->inctime;
+    if ((eeq[i]->eff_ob_num == enum) &&
+        (eeq[i]->flags == EE_REMOVE)) {
+      effect_unfreeze();
+      return timeleft;
+    }
+  }
+  effect_unfreeze();
+  return -1;
+}
+varargs int expected_ee( string func_name, int enum ) {
+  int timeleft = 0;
+  if( undefinedp( enum ) ) {
+    enum = _data->current_enum;
+  }
+  if( !enum ) {
+    return -1;
+  }
+  if( !stringp( func_name ) ) {
+    return -1;
+  }
+  if( !sizeof( eeq ) ) {
+    return -1;
+  }
+  effect_freeze();
+  for( int i = 0; i < sizeof( eeq ); i++) {
+    timeleft += eeq[i]->inctime;
+    if( eeq[i]->eff_ob_num == enum &&
+        eeq[i]->func == func_name ) {
+      effect_unfreeze();
+      return timeleft;
+    }
+  }
+  effect_unfreeze();
+  return -1;
+}
+varargs int *all_expected_ees( string func_name, int *enums ) {
+  int timeleft = 0;
+  int *alltimesleft = ({});
+  if( undefinedp( enums ) ) {
+    enums = ({ _data->current_enum });
+  }
+  if( intp( enums ) ) {
+    enums = ({ enums });
+  }
+  if( !enums ) {
+    return ({});
+  }
+  if( !stringp( func_name ) ) {
+    return ({});
+  }
+  if( !sizeof( eeq ) ) {
+    return ({});
+  }
+  effect_freeze();
+  for( int i = 0; i < sizeof( eeq ); i++) {
+    timeleft += eeq[i]->inctime;
+    if( member_array( eeq[i]->eff_ob_num , enums ) != -1 &&
+        eeq[i]->func == func_name ) {
+      alltimesleft += ({ timeleft });
+    }
+  }
+  effect_unfreeze();
+  return alltimesleft;
+}
+void add_effect(string eff, mixed arg) {
+  string shad;
+  object ob, effob;
+  mixed hbf, res;
+  int i;
+  int old_current_enum;
+  int enum;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) add_effect:(%s,%O)\n",
+               time() % 1000,this_object()->query_name(),current_enum,eff,arg);
+#endif
+  hbf = (mixed)eff->query_secs_between_hb();
+  if (!hbf) {
+    hbf = (mixed) eff->query_heart_beat_frequency();
+    if (hbf) {
+      if (intp(hbf)) hbf *= 60;
+    }
+  }
+  old_current_enum = _data->current_enum;
+  effob = find_object(eff);
+  if (!effob)
+    error("bad effect object");
+  for (i=0; i<sizeof(effs); i++) {
+    if (effs[i]->ob_name == eff) {
+      if (function_exists("merge_effect", effob)) {
+        _data->current_enum = i;
+        if (hbf) {
+          res = (mixed) effob->merge_effect(affected_object(),
+                                            effs[i]->arg[1], arg);
+          if (res)
+            effs[i]->arg[1] = res;
+        } else {
+          res = (mixed) effob->merge_effect(affected_object(),
+                                            effs[i]->arg, arg);
+          if (res)
+            effs[i]->arg = res;
+        }
+        _data->current_enum = old_current_enum;
+        return ;
+      }
+    }
+  }
+  shad = effob->query_shadow_ob();
+  if (shad) {
+    ob = clone_object(shad);
+    if(!ob) {
+      error("Failed to clone shadow object " + shad + ".\n");
+      _data->shadows += ({ new(class effect_shadow, shad_ob : 0, idnum : _data->next_id) });
+    } else {
+      _data->shadows += ({ new(class effect_shadow, shad_ob : ob, idnum : _data->next_id) });
+      ob->attach_to_player(affected_object(), _data->next_id);
+    }
+  } else {
+    _data->shadows += ({ new(class effect_shadow, shad_ob : 0, idnum : _data->next_id) });
+  }
+  _data->current_enum = sizeof(effs);
+  enum = _data->current_enum;
+  if(!effs)
+    effs = ({ });
+  effs += ({ new(class effect, ob_name : eff, arg : arg) });
+  if (function_exists("beginning", effob)) {
+    res = (mixed) effob->beginning(affected_object(), arg, _data->next_id);
+    if (res) {
+      effs[enum]->arg = res;
+    }
+  }
+  _data->next_id++;
+  if (hbf) {
+    submit_ee("effect_heart_beat", hbf, EE_CONTINUOUS | EE_OLD);
+    effs[enum]->arg = ({ 0, effs[<1]->arg, BOGUS_OLD_ARG });
+  }
+  _data->current_enum = old_current_enum;
+}
+#define EFF_OB_NAME 0
+#define EFF_ARG 1
+#define EEQ_INCTIME 0
+#define EEQ_FUNC 1
+#define EEQ_EFF_OB 2
+#define EEQ_INTERVAL 3
+#define EEQ_FLAGS 4
+#define EEQ_ARGS 5
+#define EFF_SIZE 2
+#define EEQ_SIZE 5
+protected void convert_arrays() {
+  int i, neffs, neeq;
+  mixed *old;
+  if (sizeof(effs) && !classp(effs[0])) {
+    old = effs;
+    neffs = sizeof(old) / EFF_SIZE;
+    effs = allocate(neffs);
+    for (i = 0; i < neffs; i++)
+      effs[i] = new(class effect,
+                    ob_name : old[i*EFF_SIZE+EFF_OB_NAME],
+                    arg : old[i*EFF_SIZE+EFF_ARG]);
+  }
+  if (sizeof(eeq) && !classp(eeq[0])) {
+    old = eeq;
+    neeq = sizeof(eeq) / EEQ_SIZE;
+    eeq = allocate(neeq);
+    for (i = 0; i < neeq; i++)
+      eeq[i] = new(class effect_event,
+                   inctime : old[ i * EEQ_SIZE + EEQ_INCTIME ],
+                   func : old[ i * EEQ_SIZE + EEQ_FUNC ],
+                   eff_ob_num : old[ i * EEQ_SIZE + EEQ_EFF_OB ],
+                   interval : old[ i * EEQ_SIZE + EEQ_INTERVAL ],
+                   flags : old[ i * EEQ_SIZE + EEQ_FLAGS ],
+                   eff_ev_args : old[ i * EEQ_SIZE + EEQ_ARGS ] );
+  }
+}
+void init_after_save() {
+  int i;
+  int neffs;
+  string shad;
+  string effn;
+  object ob;
+  mixed arg;
+  int *ee_exists;
+  convert_arrays();
+  for( i = 0; i < sizeof( eeq ); i++ ) {
+    if( classp( eeq[i] ) && sizeof( eeq[i] ) < 6 ) {
+      eeq[i] = new( class effect_event,
+                    inctime : eeq[i]->inctime ,
+                    func : eeq[i]->func ,
+                    eff_ob_num : eeq[i]->eff_ob_num ,
+                    interval : eeq[i]->interval ,
+                    flags : eeq[i]->flags ,
+                    eff_ev_args : 0 );
+    }
+  }
+  neffs = sizeof(effs);
+  _data->shadows = allocate(neffs);
+  for (i = 0; i < neffs; i++) {
+    effn = effs[i]->ob_name;
+    _data->shadows[i] = new(class effect_shadow, idnum : _data->next_id);
+    if (catch(shad = (string)
+              effn->query_shadow_ob())) {
+      continue;
+    }
+    if (shad) {
+      ob = clone_object(shad);
+      _data->shadows[i]->shad_ob = ob;
+      ob->attach_to_player(affected_object(), _data->next_id);
+    }
+    _data->current_enum = i;
+    arg = effs[i]->arg;
+    if (pointerp(arg) && sizeof(arg) == 3 && arg[2] == BOGUS_OLD_ARG) {
+      arg = arg[1];
+    }
+    catch(effn->restart(affected_object(), arg, _data->next_id++));
+  }
+  ee_exists = allocate(sizeof(effs));
+  for (i = 0; i < sizeof(eeq); i++) {
+    ee_exists[eeq[i]->eff_ob_num] = 1;
+  }
+  for (i = sizeof(ee_exists) - 1; i >= 0; i--) {
+    if (catch(ob = load_object(effs[i]->ob_name)) || !ob) {
+      delete_effect(i);
+      continue;
+    }
+    if (!ee_exists[i] && !ob->query_indefinite()) {
+      delete_effect(i);
+    }
+  }
+  _data->current_enum = -1;
+  effect_unfreeze();
+}
+int *effects_matching(string eff) {
+  int i, neffs;
+  int *match;
+  string clas;
+  object ob;
+  match = ({ });
+  neffs = sizeof(effs);
+  for (i = 0; i < neffs; i++) {
+    if (catch(ob = load_object(effs[i]->ob_name)) || !ob) {
+      continue;
+    }
+    clas = (string)ob->query_classification();
+    if (!stringp(clas)) {
+      continue;
+    }
+    if (clas[0..strlen(eff)-1] == eff) {
+      match += ({ i });
+    }
+  }
+  return match;
+}
+void delete_effect(int i) {
+   int id, j;
+   object effect_object, shadow_object;
+   string effect_file;
+   mixed arg;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) delete_effect:(%d) sizeof(eeq)=%d\n",time() % 1000,
+               this_object()->query_name(),current_enum,i, sizeof(eeq));
+#endif
+   if ((i < 0) || (i >= sizeof( effs ))) {
+      return;
+   }
+   id = _data->shadows[i]->idnum;
+   arg = effs[i]->arg;
+   effect_freeze();
+   for (j = 0; j < sizeof(eeq); j++) {
+      if (eeq[j]->eff_ob_num == i) {
+         if (sizeof(eeq)-1 > j)
+            eeq[j+1]->inctime += eeq[j]->inctime;
+         eeq = delete(eeq, j--, 1);
+      } else {
+         if (eeq[j]->eff_ob_num > i)
+            eeq[j]->eff_ob_num--;
+      }
+   }
+   effect_file = effs[i]->ob_name;
+   effs = delete(effs, i, 1);
+   shadow_object = _data->shadows[i]->shad_ob;
+   _data->shadows = delete(_data->shadows, i, 1);
+   effect_unfreeze();
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) delete_effect: before end\n",time() % 1000,
+               this_object()->query_name(),current_enum);
+#endif
+   effect_object = find_object(effect_file);
+   if (!effect_object)
+      catch(effect_object = load_object(effect_file));
+   if (effect_object)
+      if (pointerp(arg) && (sizeof(arg) == 3) &&
+          (arg[2] == BOGUS_OLD_ARG))
+         effect_object->end(affected_object(), arg[1], id);
+   else
+      effect_object->end(affected_object(), arg, id);
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) delete_effect: after end\n",time() % 1000,
+               this_object()->query_name(),_data->current_enum);
+#endif
+   if (objectp(shadow_object))
+      shadow_object->remove_effect_shadow(id);
+}
+int sid_to_enum(int sid) {
+   return member_array(1,
+      map(_data->shadows, (: classp($1) &&
+                      ((class effect_shadow)$1)->idnum == $(sid) :)));
+}
+int enum_to_sid(int enum) {
+  return _data->shadows[enum]->idnum;
+}
+string eff_of(int enum) {
+  return effs[enum]->ob_name;
+}
+mixed arg_of(int enum) {
+  mixed arg;
+  if (sizeof(effs) <= enum)
+    return 0;
+  arg = effs[enum]->arg;
+  if (arrayp(arg) && sizeof(arg) == 3)
+    if (arg[2] == BOGUS_OLD_ARG)
+      return copy(arg[1]);
+  return copy(arg);
+}
+void set_arg_of(int enum, mixed newarg) {
+  effs[enum]->arg = newarg;
+}
+class effect *query_effs() { return effs; }
+class effect_shadow *query_effect_shadows() { return _data->shadows; }
+class effect_event *query_eeq() { return eeq; }
+void effect_timer() {
+   int enum;
+   object effect_object;
+   mixed res, last_flags;
+   class effect_event thisee;
+#ifdef DEBUG
+   if ( logging_effects )
+      log_file( "EFFECT_WOBBLE",
+               "%d:%s(%d) effect_timer:() sizeof(eeq)=%d\n",time() % 1000,
+               this_object()->query_name(),current_enum,sizeof(eeq));
+#endif
+   _data->next_event_time = 0;
+   if (!sizeof(eeq)) {
+      return;
+   }
+   thisee = eeq[0];
+   eeq = eeq[1..];
+   enum = _data->current_enum = thisee->eff_ob_num;
+   if (enum >= sizeof(effs)) {
+      effect_unfreeze();
+      if (this_object()->query_creator()) {
+         tell_object(this_object(), "Effect number out of range, "
+                     "ignoring.\n");
+      }
+      return;
+   }
+   if (thisee->flags & EE_CANCELLED) {
+      effect_unfreeze();
+      return;
+   }
+   if (thisee->flags & EE_CONTINUOUS) {
+      last_flags = int_submit_ee(enum, thisee->func, thisee->interval,
+                                 thisee->flags, thisee->eff_ev_args );
+   }
+   effect_unfreeze();
+   effect_object = find_object(effs[enum]->ob_name);
+   if (!effect_object) {
+      catch {
+         effect_object = load_object(effs[enum]->ob_name);
+      };
+   }
+   if (!effect_object) {
+      if (this_object()->query_creator() ) {
+         tell_object( this_object(), "Non-existent effect "+
+                     effs[enum]->ob_name +", deleting.\n" );
+      }
+      delete_effect(enum);
+      _data->current_enum = -1;
+      return;
+   }
+   if (thisee->flags & EE_OLD) {
+      res = (mixed)effect_object->
+         effect_heart_beat(this_object(), ++effs[enum]->arg[0],
+                           effs[enum]->arg[1], _data->shadows[enum]->idnum);
+      if (res == REMOVE_THIS_EFFECT) {
+         delete_effect(enum);
+      } else {
+         effs[enum]->arg[1] = res;
+      }
+   } else {
+      if (stringp(thisee->func)) {
+         res = call_other(effect_object, thisee->func, affected_object(),
+                          effs[enum]->arg, _data->shadows[enum]->idnum, enum,
+                          thisee->eff_ev_args );
+         if (res == REMOVE_THIS_EFFECT) {
+            delete_effect(enum);
+         } else {
+            if (res == CANCEL_THIS_EE) {
+               eeq[last_flags]->flags |= EE_CANCELLED;
+            }
+         }
+      } else if (functionp(thisee->func)) {
+         res = evaluate(thisee->func, affected_object(), effs[enum]->arg,
+                     _data->shadows[enum]->idnum, enum, thisee->eff_ev_args );
+         if (res == REMOVE_THIS_EFFECT) {
+            delete_effect(enum);
+         } else if (res == CANCEL_THIS_EE) {
+               eeq[last_flags]->flags |= EE_CANCELLED;
+         }
+      }
+   }
+   if (thisee->flags & EE_REMOVE)
+      delete_effect(enum);
+   _data->current_enum = -1;
+}
+mixed *stats() {
+   mixed *sr;
+   int i;
+   object ob;
+   sr = ({ });
+   for (i = 0; i < sizeof(effs); i++) {
+      if (catch(ob = load_object(effs[i]->ob_name)) || !ob) {
+         sr += ({ ({ "effect#" + i, " (buggered)" }) });
+         continue;
+      }
+      if (intp(effs[i]->arg) || stringp(effs[i]->arg)) {
+         sr += ({ ({ "effect#" + i,
+                       effs[i]->ob_name->query_classification() +
+                       " (" + effs[i]->ob_name + ") (" +
+                       effs[i]->arg + ")" }) });
+      } else {
+         sr += ({ ({ "effect#"+i, effs[i]->ob_name->query_classification() +
+               " (complex)" }) });
+      }
+   }
+   return sr;
+}
+void effects_thru_death() {
+   int i;
+   int id;
+   object ob;
+   i = sizeof( effs );
+   while ( i-- ) {
+      id = _data->shadows[i]->idnum;
+      if ( catch( ob = load_object(effs[i]->ob_name)) || !ob ||
+          !ob->survive_death( affected_object(), effs[i]->arg, id) ) {
+         delete_effect(i);
+      }
+   }
+}
+int query_current_effect_enum() {
+   return _data->current_enum;
+}
+protected void set_effs( mixed *args ) {
+  int i, neffs;
+  if ( sizeof( args ) && !classp( args[ 0 ] ) ) {
+    neffs = sizeof( args ) / EFF_SIZE;
+    effs = allocate( neffs );
+    for (i = 0; i < neffs; i++) {
+      effs[ i ] = new( class effect,
+                       ob_name : args[ i * EFF_SIZE + EFF_OB_NAME ],
+                       arg : args[ i * EFF_SIZE + EFF_ARG ] );
+    }
+  } else {
+    effs = args;
+  }
+}
+protected void set_eeq( mixed *args ) {
+  int i, neeq;
+  if ( sizeof( args ) && !classp( args[ 0 ] ) ) {
+    neeq = sizeof( args ) / EEQ_SIZE;
+    eeq = allocate( neeq );
+    for (i = 0; i < neeq; i++) {
+      eeq[ i ] = new( class effect_event,
+                      inctime : args[ i * EEQ_SIZE + EEQ_INCTIME ],
+                      func : args[ i * EEQ_SIZE + EEQ_FUNC ],
+                      eff_ob_num : args[ i * EEQ_SIZE + EEQ_EFF_OB ],
+                      interval : args[ i * EEQ_SIZE + EEQ_INTERVAL ],
+                      flags : args[ i * EEQ_SIZE + EEQ_FLAGS ],
+                      eff_ev_args : args[ i * EEQ_SIZE + EEQ_ARGS ] );
+    }
+  } else {
+    eeq = args;
+  }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/desc.c ===
+inherit "/std/basic/hide_invis";
+nosave mixed short_d;
+nosave mixed plural_d;
+nosave mixed long_d;
+private nosave string short_desc;
+void set_short(mixed words) {
+  if (functionp(words)) {
+    if (!short_d)
+      plural_d = (: pluralize(evaluate(short_d)) :);
+  } else {
+     if ( !short_d && words && ( words != "" ) )
+        plural_d = pluralize( words );
+  }
+   short_d = words;
+}
+void set_long(mixed str) { long_d = str; }
+void set_main_plural(mixed str) { plural_d = str; }
+mixed query_main_plural() { return plural_d; }
+mixed query_short() {
+   if ( functionp( short_d ) )  {
+      return evaluate(short_d);
+   }
+   else return short_d;
+}
+string query_short_desc() {
+  string tmp;
+  if(!short_desc) {
+    short_desc = "";
+    if(this_object()->query_str() > 16)
+      short_desc += "strapping ";
+    else if(this_object()->query_dex() > 16)
+      short_desc += "nimble ";
+    else if(this_object()->query_int() > 16)
+      short_desc += "studious ";
+    else if(this_object()->query_wis() > 16)
+      short_desc += "pious ";
+    short_desc += "young ";
+    switch(this_object()->query_guild_ob()) {
+    case "/std/guilds/warrior":
+      short_desc += (this_object()->query_gender() == 2? "female " : "male ") +
+        "warrior";
+      break;
+    case "/std/guilds/thief":
+      tmp = "/std/guilds/thief"->query_guild_data();
+      if(tmp)
+        short_desc += (this_object()->query_gender() == 2? "female ": "male ")+
+          tmp;
+      else
+        short_desc += (this_object()->query_gender() == 2? "female ": "male ")+
+          "thief";
+      break;
+    case "/std/guilds/wizard":
+      short_desc += (this_object()->query_gender() == 2? "female " : "male ") +
+        "wizard";
+      break;
+    case "/std/guilds/witch":
+      short_desc += "witch";
+      break;
+    case "/std/guilds/assassin":
+      short_desc += (this_object()->query_gender() == 2? "female " : "male ") +
+        "assassin";
+      break;
+    default:
+      short_desc += (this_object()->query_gender() == 2? "lass" : "lad");
+    }
+  }
+  return short_desc;
+}
+string query_plural_desc() {
+    return pluralize( query_short_desc() );
+}
+varargs mixed query_long(string str, int dark) {
+  if (functionp(long_d))
+    return evaluate(long_d);
+  return long_d;
+}
+string query_long_details(string arg, int dark, object looker) {
+   return 0;
+}
+varargs string short(int dark) {
+  if (functionp(short_d))
+    return (string)evaluate(short_d);
+  return short_d;
+}
+string long(string str, int dark) {
+  if (!long_d)
+    return "You see nothing particularly interesting.\n";
+  if (functionp(long_d))
+    return (string)evaluate(long_d);
+  return long_d;
+}
+varargs string query_plural( int dark ) {
+  if (!plural_d)
+    if (!short( dark ))
+      return 0;
+    else
+      return pluralize(short( dark ));
+  if (functionp(plural_d))
+    return (string)evaluate(plural_d);
+  return plural_d;
+}
+string query_determinate(object thing) {
+  if(query_visible(thing)) {
+#ifdef USE_ROLE_PLAYING_SHORTS
+    if(interactive(this_object()) &&
+      thing->query_role_playing() &&
+       !thing->is_friend(this_object()->query_name()))
+      return "a ";
+#endif
+    return (string)this_object()->query_property( "determinate" );
+  }
+  return "";
+}
+varargs string pretty_short( object thing ) {
+   int dark, verbose;
+   if ( objectp( thing ) ) {
+      dark = (int)thing->check_dark( (int)this_object()->query_light() );
+      if(userp(thing))
+        verbose = thing->query_verbose("names");
+   }
+   return (string)this_object()->short( dark, verbose );
+}
+varargs string pretty_plural( object thing ) {
+   int dark;
+   if ( objectp( thing ) )
+      dark = (int)thing->check_dark( (int)this_object()->query_light() );
+   return (string)this_object()->query_plural( dark );
+}
+varargs string a_short( int flag ) {
+   if ( this_object() == this_player() && !flag )
+      this_object()->remove_hide_invis( "hiding" );
+   return "$a_short:"+ file_name( this_object() ) +"$";
+}
+varargs string one_short( int flag ) {
+   if ( this_object() == this_player() && !flag )
+      this_object()->remove_hide_invis( "hiding" );
+   return "$one_short:"+ file_name( this_object() ) +"$";
+}
+varargs string poss_short( int flag ) {
+   if ( this_object() == this_player() && !flag )
+      this_object()->remove_hide_invis( "hiding" );
+   return "$poss_short:"+ file_name( this_object() ) +"$";
+}
+varargs string the_poss_short( int flag ) {
+   if ( this_object() == this_player() && !flag )
+      this_object()->remove_hide_invis( "hiding" );
+   return "$the_poss_short:"+ file_name( this_object() ) +"$";
+}
+varargs string the_short( int flag ) {
+   if ( this_object() == this_player() && !flag )
+      this_object()->remove_hide_invis( "hiding" );
+   return "$the_short:"+ file_name( this_object() ) +"$";
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/theft_callback.c ===
+class theft_callback {
+     string func_name;
+     string path;
+}
+class theft_callback *calls = ({ });
+void event_theft( object command_ob, object thief, object victim,
+                  object *stolen ) {
+  if ( !sizeof( calls ) )
+    return;
+  if ( !stolen ) {
+    foreach( class theft_callback temp in calls ) {
+      if ( stringp( temp->path ) && stringp( temp->func_name ) )
+        call_other( temp->path, temp->func_name, this_object(), thief, victim );
+    }
+  }
+  return;
+}
+int add_theft_callback( string func_name, string path ) {
+class theft_callback temp = new( class theft_callback, func_name: func_name,
+  path: path );
+  if ( !stringp( func_name ) || !stringp( path ) )
+    return -1;
+  debug_printf( "Added theft callback: %s %s.\n", func_name, path );
+  calls += ({ temp });
+  return sizeof( calls ) - 1;
+}
+int remove_theft_callback( int id ) {
+  if ( id >= sizeof( calls ) || id < 0 )
+    return -1;
+  debug_printf( "Deleting callback: %s %s.\n", calls[id]->func_name,
+    calls[id]->path );
+  calls -= ({ calls[id] });
+  return 1;
+}
+string query_theft_callbacks() {
+string ret = "";
+int count = 0;
+  if ( !sizeof( calls ) )
+    return "No theft callbacks found!\n";
+  foreach( class theft_callback temp in calls ) {
+    ret += sprintf( "%d. %s: %s.\n", count, temp->func_name, temp->path );
+    count++;
+  }
+  return ret;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/stat_adjustments.c ===
+#include <effects/stat_adjustment.h>
+private nosave mapping _adjs;
+void create() {
+   _adjs = ([ ]);
+}
+void set_stat_adjustment(object player, mapping adjs) {
+   _adjs[player] = adjs;
+   player->add_effect(STAT_ADJUSTMENT_EFFECT, ({ this_object(), adjs }));
+}
+void remove_stat_adjustment(object player) {
+   STAT_ADJUSTMENT_EFFECT->remove_stat_adjustment_ob(player, this_object());
+   map_delete(_adjs, player);
+}
+void remove_all_stat_adjustments() {
+   mapping adj;
+   object play;
+   foreach (play, adj in _adjs) {
+      STAT_ADJUSTMENT_EFFECT->remove_stat_adjustment_ob(play, this_object());
+      map_delete(_adjs, play);
+   }
+   _adjs = ([ ]);
+}
+mapping query_stat_adjustments(object play) {
+   return _adjs[play];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/condition.c ===
+#include <armoury.h>
+#include <move_failures.h>
+#define DAMAGE_NORM 200
+private nosave int cond, max_cond, lowest_cond, damage_chance, hide_cond;
+void create() {
+   max_cond = 1;
+}
+void break_me() {
+  if(environment(this_object())) {
+    if(living(environment(this_object())))
+      tell_object(environment(this_object()),
+                  capitalize(this_object()->the_short()) + " breaks!\n");
+    else
+      tell_room(environment(this_object()),
+                capitalize(this_object()->the_short()) + " breaks!\n");
+  }
+  if((int)this_object()->move("/room/rubbish") != MOVE_OK)
+    move_object("/room/rubbish");
+}
+string cond_string() {
+   string pronoun;
+   string verb;
+   if ( cond > max_cond ) {
+      cond = max_cond;
+   }
+   if ( hide_cond )
+      return "";
+   pronoun = capitalize(this_object()->query_pronoun());
+   verb = this_object()->query_is_pair() ? " are" : " is";
+   switch ( ( 100 * cond ) / max_cond ) {
+      case 91 .. 100 :
+         return pronoun + verb + " in excellent condition.\n";
+      case 81 .. 90 :
+         return pronoun + verb + " in very good condition.\n";
+      case 71 .. 80 :
+         return pronoun + verb + " in good condition.\n";
+      case 61 .. 70 :
+         return pronoun + verb + " in decent condition.\n";
+      case 51 .. 60 :
+         return pronoun + verb + " in fairly good condition.\n";
+      case 41 .. 50 :
+         return pronoun + verb + " in fairly poor condition.\n";
+      case 31 .. 40 :
+         return pronoun + verb + " in poor condition.\n";
+      case 21 .. 30 :
+         return pronoun + verb + " in really poor condition.\n";
+      case 11 .. 20 :
+         return pronoun + verb + " in very poor condition.\n";
+      case 1 .. 10 :
+         return pronoun + verb + " in atrocious condition.\n";
+      default :
+         return pronoun + verb + " a complete wreck.\n";
+   }
+}
+void set_max_cond(int i) { max_cond = i; }
+void set_cond(int i) {
+   cond = i;
+   if (cond < 0) {
+      cond = 0;
+   }
+   if (cond < lowest_cond) {
+      lowest_cond = cond;
+   }
+   if ( cond <= 0 ) {
+      if ( environment( this_object() ) &&
+          !environment( this_object() )->query_property("don't break contents")) {
+         this_object()->break_me();
+      }
+      return 0;
+   }
+}
+int adjust_cond( int i ) {
+   cond += i;
+   if (cond < 0)
+      cond = 0;
+   if ( cond < lowest_cond )
+      lowest_cond = cond;
+   if ( cond > max_cond )
+      cond = max_cond;
+   if ( cond <= 0 ) {
+      if ( !environment()->query_property( "don't break contents" ) )
+         this_object()->break_me();
+      return 0;
+   }
+   return cond;
+}
+void set_lowest_cond(int i) { lowest_cond = i; }
+void set_hide_cond(int i) { hide_cond = i; }
+int query_cond() {
+  if ( cond > max_cond ) {
+    cond = max_cond;
+  }
+  return cond;
+}
+int query_max_cond() { return max_cond; }
+int query_lowest_cond() { return lowest_cond; }
+int query_hide_cond() { return hide_cond; }
+void set_percentage(int i) {
+   if (i > 100) {
+      i = 100;
+   }
+   set_cond((query_max_cond() * i) / 100);
+   set_lowest_cond((query_cond()*(random(30) + 70)) / 100);
+}
+int query_damage_chance() { return damage_chance; }
+void set_damage_chance( int number ) { damage_chance = number; }
+void do_damage( string type, int amount ) {
+   int wholes, parts;
+   wholes = amount * ( 1 + random( damage_chance ) + random( damage_chance ) );
+   parts = wholes % DAMAGE_NORM;
+   wholes /= DAMAGE_NORM;
+   if ( random( DAMAGE_NORM ) < parts )
+      wholes++;
+   adjust_cond( -wholes );
+}
+mixed *stats() {
+   return
+      ({
+         ({ "condition", cond }),
+         ({ "max cond", max_cond }),
+         ({ "lowest cond", lowest_cond }),
+         ({ "damage chance", damage_chance }),
+         ({ "hide cond", hide_cond }),
+      });
+}
+mapping query_static_auto_load() {
+   return ([
+      "max cond" : max_cond,
+      "damage chance" : damage_chance,
+      "hide cond" : hide_cond
+   ]);
+}
+void init_static_arg( mapping map ) {
+   if ( !undefinedp( map[ "max cond" ] ) )
+      max_cond = map[ "max cond" ];
+   if ( !undefinedp( map[ "damage chance" ] ) )
+      damage_chance = map[ "damage chance" ];
+   if ( !undefinedp( map[ "hide cond" ] ) )
+      hide_cond = map[ "hide cond" ];
+}
+mapping query_dynamic_auto_load() {
+   if ( cond > max_cond ) {
+      cond = max_cond;
+   }
+   if ( lowest_cond > cond ) {
+      lowest_cond = cond;
+   }
+   return ([
+      "cond" : cond,
+      "lowest cond" : lowest_cond
+   ]);
+}
+void init_dynamic_arg( mapping map, object ) {
+   if ( !undefinedp( map[ "cond" ] ) )
+      cond = map[ "cond" ];
+   if ( !undefinedp( map[ "lowest cond" ] ) )
+      lowest_cond = map[ "lowest cond" ];
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/light.c ===
+private nosave int _light;
+private nosave int _my_light;
+private nosave int _need_recalculate;
+private nosave object *_inform_of_change;
+void new_recalc_light();
+mixed query_property(string name);
+void add_property(string name, mixed value);
+void remove_property(string name);
+void create() {
+    _inform_of_change = ({ });
+}
+int query_light() {
+    if (_need_recalculate) {
+        _need_recalculate = 0;
+        new_recalc_light();
+    }
+    return _light;
+}
+int query_light_needs_inform() {
+    return _light || _need_recalculate;
+}
+int query_my_light() { return _my_light; }
+varargs void new_recalc_light() {
+    object *obs;
+    object ob;
+    int tmp_light;
+    _need_recalculate = 0;
+    _light = _my_light * _my_light;
+    if (_my_light < 0)  _light = -_light;
+    if ( !this_object()->query_opaque() ) {
+        obs = all_inventory(this_object());
+        foreach (ob in obs) {
+            if (ob->query_opaque()) {
+                tmp_light = ob->query_my_light();
+            } else {
+                tmp_light = ob->query_light();
+            }
+            if (tmp_light >= 0)  _light += tmp_light * tmp_light;
+            else  _light -= tmp_light * tmp_light;
+        }
+    }
+    if (_light >= 0)  _light = sqrt(_light);
+    else  _light = -sqrt(-_light);
+    _inform_of_change->event_light_change(this_object(), 0, _light);
+}
+void light_level_changed() {
+    _need_recalculate = 1;
+}
+void inform_of_light_level_change(object ob) {
+    if (ob) {
+        ob->light_level_changed();
+    }
+    while (ob && !ob->query_opaque()) {
+        ob->light_level_changed();
+        ob = environment(ob);
+    }
+}
+void add_inform_light_change(object ob) {
+    _inform_of_change += ({ ob });
+}
+void remove_inform_light_change(object ob) {
+    _inform_of_change -= ({ ob });
+}
+void set_opaque() {
+    add_property( "opaque", 1 );
+}
+void reset_opaque() {
+    remove_property( "opaque" );
+}
+int query_opaque() {
+    return query_property("opaque");
+}
+int adjust_light( int number ) {
+    if (number) {
+        _my_light += number;
+        inform_of_light_level_change(this_object());
+    }
+    return _light;
+}
+int set_light(int number) {
+    return adjust_light(number - _my_light);
+}
+mixed *stats() {
+    return ({
+      ({ "light", _light, }),
+      ({ "my light", _my_light, }),
+    });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/basic/scroll_base.c ===
+#include <tasks.h>
+inherit "/std/basic/scroll_book_react";
+#define SKILL "magic.items.scroll"
+#define CONTROL_SKILL "magic.spells.special"
+private string _spell;
+string long( string word, int dark ) {
+   int i;
+   int j;
+   int chance;
+   int level;
+   int width;
+   string spell_name;
+   level = 2 * (int)_spell->query_power_level();
+   width = sqrt( level );
+   chance = (int)this_player()->query_skill_bonus( SKILL ) - ( level - width );
+   chance = ( 100 * chance ) / ( 2 * width + 1 );
+   spell_name = "$"+ (string)_spell->query_name() +"$";
+   j = strlen( spell_name ) - 1;
+   for ( i = 1; i < j; i++ ) {
+      if ( random( 100 ) > chance ) {
+         switch ( spell_name[ i ] ) {
+            case 32 :
+               break;
+            case 65 .. 90 :
+               spell_name = spell_name[ 0 .. i - 1 ] +
+                     sprintf( "%c", 65 + random( 26 ) ) +
+                     spell_name[ i + 1 .. j ];
+               break;
+            case 97 .. 122 :
+               spell_name = spell_name[ 0 .. i - 1 ] +
+                     sprintf( "%c", 97 + random( 26 ) ) +
+                     spell_name[ i + 1 .. j ];
+               break;
+            default :
+               spell_name = spell_name[ 0 .. i - 1 ] +
+                     spell_name[ i + 1 .. j ];
+               j--;
+         }
+      }
+   }
+   spell_name = spell_name[ 1 .. j - 1 ];
+   return spell_name;
+}
+int query_magic_scroll() { return 1; }
+int query_binding_force() { return 5; }
+string query_spell() { return _spell; }
+int query_spell_power_level() {
+   if (_spell) {
+      return _spell->query_power_level();
+   }
+}
+void set_spell( string word ) { _spell = word; }
+string query_spell_name() { return (string)_spell->query_name(); }
+int test_skill() {
+   int level;
+   level = 2 * (int)( _spell->query_power_level() ) + 1;
+   return (int)TASKER->perform_task(this_player(), SKILL, level, TM_FREE);
+}
+void clear_spell( int award ) {
+   if ( award ) {
+     write( "%^YELLOW%^"+ ({ "A piece of lore concerning scrolls becomes "
+             "clearer for you", "You manage to grasp one of the principles "
+             "of magic scrolls more firmly", "A sudden flash of insight "
+             "allows you to understand process of casting a spell from a "
+             "scroll a little better" })[ random( 3 ) ] +".%^RESET%^\n" );
+   }
+}
+int cast_spell( string words ) {
+   int outcome;
+   if ( !words ) {
+      words = "";
+   }
+   outcome = test_skill();
+   if ( outcome == FAIL ) {
+      return notify_fail( "You can't figure out how to use the scroll.\n" );
+   }
+   if ( !( _spell->cast_spell( words, 1 ) ) ) {
+      return 0;
+   }
+   clear_spell( outcome == AWARD );
+   return 1;
+}
+int cast_spell_new( string words , object* targets, object* using ) {
+   int outcome;
+   if ( !words ) {
+      words = "";
+   }
+   outcome = test_skill();
+   if ( outcome == FAIL ) {
+      return notify_fail( "You can't figure out how to use the scroll.\n" );
+   }
+   if ( !( _spell->cast_spell_new( words, 1, targets, using ) ) ) {
+      return 0;
+   }
+   clear_spell( outcome == AWARD );
+   return 1;
+}
+string query_death_reason() {
+   return " a spell going wild and getting out of control.";
+}

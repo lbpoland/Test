@@ -1,0 +1,2851 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/stats.c ===
+#include <move_failures.h>
+#include <skills.h>
+#include <living.h>
+#include <config.h>
+#define BASE 20
+#define ORD1T 1
+#define ORD1B 1
+#define ORD2T 1
+#define ORD2B 5
+#define SCALING_DATA ({ 650, 150, 10, 5 })
+#define DIVISOR 700
+#define DEATH_WAIT_TIME 5
+#define INIT_GP_INC -20
+int Con, Dex, Int, Str, Wis,
+    contmp, dextmp, inttmp, strtmp, wistmp,
+    height, base_weight;
+nosave int conbon, dexbon, intbon, strbon, wisbon, no_check;
+nosave string to_zap;
+nosave int gp_inc = INIT_GP_INC, hp_inc;
+mixed query_property(string name);
+string stats_to_zap() {
+   string temp;
+   temp = to_zap;
+   to_zap = 0;
+   return temp;
+}
+void zap_stat( string word ) {
+   string dummy;
+   if ( !to_zap ) {
+      to_zap = word;
+      if ( find_call_out( "zap_stat_cache" ) == -1 )
+         call_out( "zap_stat_cache", 1 );
+   }
+   if ( sscanf( to_zap, "%s"+ word +"%s", dummy, dummy ) != 2 )
+      to_zap += word;
+}
+int query_no_check() { return no_check; }
+void set_no_check( int i ) { no_check = i; }
+int hp_base() {
+  int base;
+  base = 150 + 10 * (int)this_object()->query_con();
+  if ( base < 5 ) base = 5;
+  return base;
+}
+int hp_gradient() { return 4; }
+int scaled_weight() {
+  int i, actual, scaled;
+  actual = (int)this_object()->query_weight(1);
+  if ( actual < SCALING_DATA[ 0 ] )
+    return actual;
+  scaled += SCALING_DATA[ 0 ];
+  actual -= SCALING_DATA[ 0 ];
+  i = 1;
+  while ( actual && ( ( i * SCALING_DATA[ 2 ] ) < 100 ) ) {
+    if ( actual >= SCALING_DATA[ 1 ] ) {
+      scaled += ( ( 100 - SCALING_DATA[ 2 ] * i ) * SCALING_DATA[ 1 ] )
+          / 100;
+      scaled += ( SCALING_DATA[ 3 ] * SCALING_DATA[ 1 ] ) / 1000;
+      actual -= SCALING_DATA[ 1 ];
+    } else {
+      scaled += ( ( 100 - SCALING_DATA[ 2 ] * i ) * actual ) / 100;
+      scaled += ( SCALING_DATA[ 3 ] * actual ) / 1000;
+      actual = 0;
+    }
+    i += 1;
+  }
+  if ( actual )
+    scaled += ( SCALING_DATA[ 3 ] * actual ) / 1000;
+  return scaled;
+}
+void reset_hp() {
+  int new_max, skill_bon;
+  string report;
+  if ( no_check )
+    return;
+  skill_bon = (int)this_object()->query_skill_bonus( "other.health" );
+  new_max = hp_base() + skill_bon * hp_gradient();
+  if ( !base_weight ) {
+    if ( (string)this_object()->query_name() == "object" )
+      return;
+    report = file_name( this_object() ) +" ("+
+        (string)this_object()->query_name() +"): race object is "+
+        (string)this_object()->query_race_ob();
+    if ( environment() ) {
+      if ( file_name( environment() ) == "/room/void" )
+        return;
+      report += "; in "+ file_name( environment() );
+      this_object()->move( "/room/void", "$N gets booted into the void for "+
+          "being a bad NPC." );
+    }
+    report += ".\n";
+    log_file( "BAD_NPC", ctime(time()) + " " + report );
+    return;
+  }
+   new_max = ( new_max * scaled_weight() ) / DIVISOR;
+   if ( new_max < 1 )
+      this_object()->set_max_hp( 1 );
+   else
+      this_object()->set_max_hp( new_max );
+}
+void reset_gp() {
+   string guild_ob;
+   if ( no_check )
+      return;
+   guild_ob = (string)this_object()->query_guild_ob();
+   if (!guild_ob) {
+      guild_ob = query_property("backup guild");
+   }
+   if ( !guild_ob ) {
+      this_object()->set_max_gp( 50 +
+            (int)this_object()->query_skill_bonus( "other.points" ) );
+   } else {
+      guild_ob->set_gp( this_object() );
+   }
+}
+void calc_inc_rates() {
+   string guild_ob;
+   hp_inc = sqrt((int)this_object()->stat_modify(100, "other.health")) - 7;
+   guild_ob = (string)this_object()->query_guild_ob();
+   if ( !guild_ob ) {
+     guild_ob = query_property("backup guild");
+     if (!guild_ob) {
+       guild_ob = CONFIG_DEFAULT_GUILD;
+     }
+   }
+   gp_inc = sqrt((int)this_object()->stat_modify(100,
+         (string)guild_ob->query_gp_skill())) - 7;
+   if(hp_inc < 0) {
+     hp_inc = 0;
+   }
+   if(gp_inc < 0) {
+     gp_inc = 0;
+   }
+}
+int *query_inc_rates() { return ({ gp_inc, hp_inc }); }
+void heart_beat() {
+   int hp;
+   int calling_death;
+   hp = this_object()->query_hp();
+   if ( hp < 0 ) {
+       calling_death = this_object()->query_callingdeath();
+        if ( calling_death ) {
+           if ( time() > calling_death + DEATH_WAIT_TIME ) {
+                this_object()->do_death();
+            }
+        } else {
+            this_object()->do_death();
+        }
+   }
+   else {
+      if ( gp_inc == INIT_GP_INC ) {
+         calc_inc_rates();
+      }
+      this_object()->adjust_gp( gp_inc );
+      this_object()->adjust_hp( hp_inc );
+   }
+}
+void reset_carry_cap() {
+   int i, hst_num, hst_wei, new_cap, old_loc, tot_str;
+   object *contents, *dropped;
+   if ( no_check ) return;
+   old_loc = (int)this_object()->query_loc_weight();
+   tot_str = Str + strtmp + strbon;
+   new_cap = BASE;
+   new_cap += ( ORD1T * tot_str ) / ORD1B;
+   new_cap += ( ORD2T * tot_str * tot_str ) / ORD2B;
+   new_cap = ( new_cap * (int)this_object()->query_weight(1) ) / 100;
+   if ( !new_cap )
+      new_cap = 1;
+   this_object()->set_max_weight( new_cap );
+   if ( new_cap >= old_loc ) return;
+   this_object()->dest_hide_shadow();
+   contents = all_inventory( this_object() ) -
+      (object *)this_object()->query_armours();
+   dropped = ({ });
+   while ( ( old_loc > new_cap ) && sizeof( contents ) ) {
+      hst_num = 0;
+      hst_wei = 0;
+      for ( i = 0; i < sizeof( contents ); i++ )
+         if ( (int)contents[ i ]->query_complete_weight() > hst_wei ) {
+            hst_wei = (int)contents[ i ]->query_complete_weight();
+            hst_num = i;
+         }
+      if ( (int)contents[ hst_num ]->move( environment() ) == MOVE_OK ) {
+         dropped += ({ contents[ hst_num ] });
+         old_loc -= hst_wei;
+      }
+      contents = delete( contents, hst_num, 1 );
+   }
+   if ( sizeof( dropped ) ) {
+      tell_room( environment(), capitalize( (string)this_object()->short() ) +
+                " drops "+ query_multiple_short( dropped ) +" under strain.\n",
+                this_object() );
+      tell_object( this_object(), "Your fading strength makes you drop "+
+                  query_multiple_short( dropped ) +".\n" );
+   }
+   this_object()->update_loc_weight();
+   this_object()->calc_burden();
+   if ( new_cap >= old_loc ) return;
+   return;
+}
+void check_stats_zero() {
+   if ( Int + inttmp + intbon <= 0 ||
+        Wis + wistmp + wisbon <= 0 ) {
+      this_object()->add_property( PASSED_OUT, 1, 500 );
+      tell_object( this_object(), "You fall asleep.\n" );
+   }
+}
+void reset_all() { zap_stat( "CDISW" ); }
+void reset_all2() {
+   no_check = 0;
+   reset_hp();
+   reset_gp();
+   reset_carry_cap();
+   calc_inc_rates();
+   check_stats_zero();
+   this_object()->do_burden_call();
+}
+int query_con() { return Con + contmp + conbon; }
+int query_dex() { return Dex + dextmp + dexbon; }
+int query_int() { return Int + inttmp + intbon; }
+int query_str() { return Str + strtmp + strbon; }
+int query_wis() { return Wis + wistmp + wisbon; }
+int query_real_con() { return Con; }
+int query_real_dex() { return Dex; }
+int query_real_int() { return Int; }
+int query_real_str() { return Str; }
+int query_real_wis() { return Wis; }
+int check( int number ) { return ( number <= 28 ); }
+int set_con( int number ) {
+  if ( !check( number ) ) number = 28;
+  if ( Con != number )
+    zap_stat( "C" );
+  Con = number;
+  return Con;
+}
+int set_dex( int number ) {
+  if ( !check( number ) ) number = 28;
+  if ( Dex != number )
+    zap_stat( "D" );
+  Dex = number;
+  return Dex;
+}
+int set_int( int number ) {
+  if ( !check( number ) ) number = 28;
+  if ( Int != number )
+    zap_stat( "I" );
+  Int = number;
+  return Int;
+}
+int set_str( int number ) {
+  if ( !check( number ) ) number = 28;
+  if ( Str != number )
+    zap_stat( "S" );
+  Str = number;
+  return Str;
+}
+int set_wis( int number ) {
+  if ( !check( number ) ) number = 28;
+  if ( Wis != number )
+    zap_stat( "W" );
+  Wis = number;
+  return Wis;
+}
+int adjust_con( int number ) {
+  if ( check( number + Con ) ) {
+    Con += number;
+    if ( number )
+      zap_stat( "C" );
+  }
+  return Con;
+}
+int adjust_dex( int number ) {
+  if ( check( number + Dex ) ) {
+    Dex += number;
+    if ( number )
+      zap_stat( "D" );
+  }
+  return Dex;
+}
+int adjust_int( int number ) {
+  if ( check( number + Int ) ) {
+    Int += number;
+    if ( number )
+      zap_stat( "I" );
+  }
+  return Int;
+}
+int adjust_str( int number ) {
+  if ( check( number + Str ) ) {
+    Str += number;
+    if ( number )
+      zap_stat( "S" );
+  }
+  return Str;
+}
+int adjust_wis( int number ) {
+  if ( check( number + Wis ) ) {
+    Wis += number;
+    if ( number )
+      zap_stat( "W" );
+  }
+  return Wis;
+}
+int query_tmp_con() { return contmp; }
+int query_tmp_dex() { return dextmp; }
+int query_tmp_int() { return inttmp; }
+int query_tmp_str() { return strtmp; }
+int query_tmp_wis() { return wistmp; }
+int adjust_tmp_con( int number ) {
+  contmp += number;
+  if ( number )
+    zap_stat( "C" );
+   if ( contmp && !dextmp && !inttmp && !strtmp && !wistmp )
+      call_out( "update_tmps", 900 );
+  return contmp;
+}
+int adjust_tmp_dex( int number ) {
+  dextmp += number;
+  if ( number )
+    zap_stat( "D" );
+   if ( !contmp && dextmp && !inttmp && !strtmp && !wistmp )
+      call_out( "update_tmps", 900 );
+  return dextmp;
+}
+int adjust_tmp_int( int number ) {
+  inttmp += number;
+  if ( number )
+    zap_stat( "I" );
+   if ( !contmp && !dextmp && inttmp && !strtmp && !wistmp )
+      call_out( "update_tmps", 900 );
+  return inttmp;
+}
+int adjust_tmp_str( int number ) {
+  strtmp += number;
+  if ( number )
+    zap_stat( "S" );
+   if ( !contmp && !dextmp && !inttmp && strtmp && !wistmp )
+      call_out( "update_tmps", 900 );
+  return strtmp;
+}
+int adjust_tmp_wis( int number ) {
+  wistmp += number;
+  if ( number )
+    zap_stat( "W" );
+   if ( !contmp && !dextmp && !inttmp && !strtmp && wistmp )
+      call_out( "update_tmps", 900 );
+  return wistmp;
+}
+int query_bonus_con() { return conbon; }
+int query_bonus_dex() { return dexbon; }
+int query_bonus_int() { return intbon; }
+int query_bonus_str() { return strbon; }
+int query_bonus_wis() { return wisbon; }
+int adjust_bonus_con( int number ) {
+  conbon += number;
+  if ( number )
+    zap_stat( "C" );
+  return conbon;
+}
+int adjust_bonus_dex( int number ) {
+  dexbon += number;
+  if ( number )
+    zap_stat( "D" );
+  return dexbon;
+}
+int adjust_bonus_int( int number ) {
+  intbon += number;
+  if ( number )
+    zap_stat( "I" );
+  return intbon;
+}
+int adjust_bonus_str( int number ) {
+  strbon += number;
+  if ( number )
+    zap_stat( "S" );
+  return strbon;
+}
+int adjust_bonus_wis( int number ) {
+  wisbon += number;
+  if ( number )
+    zap_stat( "W" );
+  return wisbon;
+}
+void update_tmps() {
+  if ( contmp ) {
+    zap_stat( "C" );
+    contmp = contmp / 2;
+  }
+  if ( dextmp ) {
+    zap_stat( "D" );
+    dextmp = dextmp / 2;
+  }
+  if ( inttmp ) {
+    zap_stat( "I" );
+    inttmp = inttmp / 2;
+  }
+  if ( strtmp ) {
+    zap_stat( "S" );
+    strtmp = strtmp / 2;
+  }
+  if ( wistmp ) {
+    zap_stat( "W" );
+    wistmp = wistmp / 2;
+  }
+   if ( contmp || dextmp || inttmp || strtmp || wistmp )
+      call_out( "update_tmps", 900 );
+}
+int query_height() { return height; }
+void set_height( int number ) {
+  if ( number > 0 ) height = number;
+}
+int query_base_weight() { return base_weight; }
+void set_base_weight( int number ) {
+   if ( number > 0 )
+      base_weight = number;
+}
+int query_weight(int) {
+  int adjust_weight;
+  adjust_weight = ( ( ( Con + 3 * Str ) / 4 ) - 13 ) * ( base_weight / 30 );
+  return base_weight + adjust_weight;
+}
+mixed *stats() {
+  return ({
+    ({ "Con", Con + conbon + contmp }),
+    ({ "Dex", Dex + dexbon + dextmp }),
+    ({ "Int", Int + intbon + inttmp }),
+    ({ "Str", Str + strbon + strtmp }),
+    ({ "Wis", Wis + wisbon + wistmp }),
+    ({ "tmp Con", contmp }),
+    ({ "tmp Dex", dextmp }),
+    ({ "tmp Int", inttmp }),
+    ({ "tmp Str", strtmp }),
+    ({ "tmp Wis", wistmp }),
+    ({ "bonus Con", conbon }),
+    ({ "bonus Dex", dexbon }),
+    ({ "bonus Int", intbon }),
+    ({ "bonus Str", strbon }),
+    ({ "bonus Wis", wisbon }),
+    ({ "hp rate", hp_inc }),
+    ({ "gp rate", gp_inc }),
+    ({ "height", height }),
+  });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/living.eff_shad.c ===
+#include <dirs.h>
+#include <drinks.h>
+#include <living.h>
+#include <move_failures.h>
+#include <player.h>
+#include <tune.h>
+#include <position.h>
+#include <obj_parser.h>
+inherit "/std/container";
+inherit "/std/living/armour";
+inherit "/std/living/carrying";
+inherit "/std/living/combat";
+inherit "/std/living/effects";
+inherit "/std/living/force";
+inherit "/std/living/gender";
+inherit "/std/living/health";
+inherit "/std/living/holding";
+inherit "/std/living/money";
+inherit "/std/living/skills";
+inherit "/std/living/spells";
+inherit "/std/living/crafts";
+inherit "/std/living/stats";
+inherit "/std/living/respond_cmd";
+inherit "/std/living/nationality";
+#define VERBOSE_TYPES ({"combat", "look", "score", "names", "htell", "finger"})
+#define MAX_FAVOUR 100
+class living_data {
+  int handicap;
+  int burden;
+  object* followers;
+  class obj_match_context it_them;
+  object* to_drop;
+  int burden_call;
+}
+class messages {
+   string msgout;
+   string msgin;
+   string mmsgout;
+   string mmsgin;
+}
+private int alignment;
+private class messages _messages;
+private mixed *facing;
+private mapping verbose;
+private mapping abs_facing = ABS_FACING;
+private mapping lengthen = LENGTHEN;
+private string deity;
+private mapping deity_favour;
+private nosave class living_data _liv_data;
+void return_to_default_position(int leaving);
+void set_position(string name);
+void set_position_on(mixed ob);
+void set_position_multiple(int mult);
+void set_position_type(string type);
+object query_position_on();
+protected mixed command(string);
+private nosave string position;
+private nosave mixed default_position;
+private
+nosave int always_use_default_position;
+private nosave mixed position_on;
+void create() {
+   string t;
+   _liv_data = new(class living_data);
+   _messages = new(class messages);
+   crafts::create();
+   container::create();
+   armour::create();
+   combat::create();
+   effects::create();
+   health::create();
+   holding::create();
+   skills::create();
+   spells::create();
+   respond_cmd::create();
+   enable_commands();
+   reset_can_export_inventory();
+   reset_effects();
+   _messages->msgin = "$N arrive$s from $F.";
+   _messages->msgout = "$N leave$s $T.";
+   _messages->mmsgin = "$N appear$s out of the ground.";
+   _messages->mmsgout = "$N disappear$s in a puff of smoke.";
+   _liv_data->followers = ({ });
+   verbose = ([ ]);
+   set_max_items(50);
+   _liv_data->to_drop = ({ });
+   foreach(t in VERBOSE_TYPES) {
+      verbose[t] = 1;
+   }
+   facing = ({ 0, ({ "north", "northeast", "east", "southeast", "south",
+         "southwest", "west", "northwest" }), ({ "up", "down" }) });
+   position = STANDING;
+   add_adjective("living");
+}
+void heart_beat() {
+  stats::heart_beat();
+  combat::heart_beat();
+}
+string query_pronoun() {
+   return gender::query_pronoun();
+}
+string query_possessive() {
+   return gender::query_possessive();
+}
+string query_objective() {
+   return gender::query_objective();
+}
+varargs int query_weight(int actual) {
+  if(!actual && this_object()->query_property("dead"))
+    return 0;
+  return stats::query_weight();
+}
+int query_burden() {
+  return _liv_data->burden;
+}
+int query_handicap() { return _liv_data->handicap; }
+void calc_burden() {
+  int new_handicap;
+  int burden;
+  object thing;
+  mapping hands;
+  _liv_data->burden_call = 0;
+  update_loc_weight();
+  burden = query_loc_weight();
+  foreach(thing in query_wearing())
+    burden -= (int)thing->query_complete_weight() / 2;
+  hands = ([ ]);
+  foreach(thing in query_holding())
+    if(objectp(thing))
+      hands[thing]++;
+  foreach(thing in keys(hands))
+    burden += (int)thing->query_complete_weight() / hands[thing];
+  if(!query_max_weight()) {
+    this_object()->reset_carry_cap();
+    _liv_data->burden = 50;
+  } else
+    _liv_data->burden = (100 * burden) / query_max_weight();
+  new_handicap = (_liv_data->burden / 25) - 1;
+  if(new_handicap < 0)
+    new_handicap = 0;
+  if ( _liv_data->handicap != new_handicap ) {
+    adjust_bonus_dex( _liv_data->handicap - new_handicap );
+    _liv_data->handicap = new_handicap;
+  }
+}
+string burden_string() {
+  switch (_liv_data->handicap) {
+  case 0 :
+    return "unburdened";
+  case 1 :
+    return "burdened";
+  case 2 :
+    return "heavily burdened";
+  case 3 :
+    return "very heavily burdened";
+  default :
+    return "incredibly heavily burdened";
+  }
+}
+void add_effect( string eff, mixed arg ) { effects::add_effect( eff, arg ); }
+void living_commands() {
+#if efun_defined(add_action)
+   add_action( "exit_command", "*", 1 );
+#endif
+}
+void eat_this( object food ) {
+  this_object()->bypass_queue();
+  command( "eat " + file_name( food ) );
+}
+int test_add(object ob, int flag) {
+  if(sizeof(all_inventory(this_object())) > query_max_items())
+    return 0;
+  return !flag;
+}
+int test_remove( object ob, int flag, mixed dest ) {
+   object thing;
+   if ( flag ) {
+      return 0;
+   }
+   if ( !this_player() || ( this_player() == this_object() ) ) {
+      return !flag;
+   }
+   if ( stringp( dest ) ) {
+      thing = find_object( dest );
+   }
+   if ( objectp( dest ) ) {
+      thing = dest;
+      dest = file_name( dest );
+   }
+   if ( thing->query_corpse() || ( dest == "/room/rubbish" ) ) {
+      return !flag;
+   }
+   if ( sizeof( filter_array( previous_object( -1 ),
+         (: $1->query_theft_command() :) ) ) ) {
+      return !flag;
+   }
+   if ( !query_property( PASSED_OUT ) ) {
+      return 0;
+   }
+   if ( !pk_check( this_player(), this_object() ) ) {
+      event( environment( this_player() ), "theft", this_player(),
+            this_object(), ob );
+      return !flag;
+   }
+   write( "An unseen force stays your hand.\n" );
+   return 0;
+}
+int query_al() { return alignment; }
+void set_al( int number ) { alignment = number; }
+int adjust_al( int number ) {
+   alignment += number;
+   if ( alignment < -MAX_AL ) {
+      alignment = -MAX_AL;
+   }
+   if ( alignment > MAX_AL ) {
+      alignment = MAX_AL;
+   }
+   return alignment;
+}
+int adjust_alignment( int number ) {
+  int change;
+  change = - (number + alignment/5);
+  change /= 20;
+  return adjust_al( change );
+}
+string align_string() {
+   switch ( alignment ) {
+      case -MAX_AL .. -5001 : return "extremely good"; break;
+      case -5000 .. -2501 : return "very good"; break;
+      case -2500 .. -1251 : return "quite good"; break;
+      case -1250 .. -601 : return "good"; break;
+      case -600 .. -301 : return "barely good"; break;
+      case -300 .. 300 : return "neutral"; break;
+      case 301 .. 600 : return "barely evil"; break;
+      case 601 .. 1250 : return "evil"; break;
+      case 1251 .. 2500 : return "quite evil"; break;
+      case 2501 .. 5000 : return "very evil"; break;
+      default : return "extremely evil"; break;
+   }
+}
+string query_deity() { return deity; }
+void set_deity( string word ) { deity = word; }
+string query_msgin() { return _messages->msgin; }
+string query_msgout() { return _messages->msgout; }
+int set_msgin(string str) {
+   if (strsrch(str, "$N") == -1 || strsrch(str, "$F") == -1) {
+      return 0;
+   }
+   _messages->msgin = str;
+   return 1;
+}
+int set_msgout(string str) {
+   if (strsrch(str, "$N") == -1 || strsrch(str, "$T") == -1) {
+      return 0;
+   }
+   _messages->msgout = str;
+   return 1;
+}
+string query_mmsgin() { return _messages->mmsgin; }
+string query_mmsgout() { return _messages->mmsgout; }
+int set_mmsgin(string str) {
+   if (strsrch(str, "$N") == -1) {
+      return 0;
+   }
+   _messages->mmsgin = str;
+   return 1;
+}
+int set_mmsgout(string str) {
+   if (strsrch(str, "$N") == -1) {
+      return 0;
+   }
+   _messages->mmsgout = str;
+   return 1;
+}
+mixed *query_facing() { return copy( facing ); }
+void set_facing( mixed *args ) { facing = args; }
+string find_rel( string word, int from ) {
+  int i;
+  i = member_array( word, facing[ 1 ] );
+  if ( i != -1 ) {
+    i = ( i + 8 - facing[ 0 ] ) % 8;
+    return REL_DIRS[ 3 * i + from ];
+  }
+  i = member_array( word, facing[ 2 ] );
+  if ( i != -1 ) {
+    return ({ "up", "down" })[ i ];
+  }
+  return word;
+}
+string find_abs( string word ) {
+  int i;
+  i = member_array( word, REL_DIRS );
+  if ( i != -1 ) {
+    i = ( i / 3 + facing[ 0 ]) % 8;
+    return facing[ 1 ][ i ];
+  }
+  i = member_array( word, ({ "up", "down" }) );
+  if ( i != -1 ) {
+    return facing[ 2 ][ i ];
+  }
+  return word;
+}
+string reorient_rel( string word ) {
+  int i;
+  i = member_array( word, REL_DIRS );
+  if ( i != -1 ) {
+    i = ( i / 3 + facing[ 0 ] ) % 8;
+    facing[ 0 ] = i;
+    return facing[ 1 ][ i ];
+  }
+  i = member_array( word, ({ "up", "down" }) );
+  if ( i != -1 ) {
+    return facing[ 2 ][ i ];
+  }
+  return word;
+}
+void reorient_abs( string verb ) {
+  if ((ABS_FACING)[verb]) {
+    facing[0] = (ABS_FACING)[verb] % 8;
+  }
+}
+void set_dragging( object thing ) { add_property("dragging", thing); }
+object query_dragging() { return query_property("dragging"); }
+void reset_dragging() { add_property("dragging", 0); }
+int room_look() {
+   if ( query_property( UNKNOWN_MOVE ) || !( interactive( this_object() ) ||
+         this_object()->query_slave() ) )
+      return 0;
+   if(!mapp(verbose))
+     verbose = ([ ]);
+   if(verbose && verbose["look"]) {
+      this_object()->ignore_from_history( "look" );
+      this_object()->bypass_queue();
+      command( "look" );
+   } else {
+      this_object()->ignore_from_history( "glance" );
+      this_object()->bypass_queue();
+      command( "glance" );
+   }
+   return 1;
+}
+int query_verbose(string type) {
+  if(!verbose || !mapp(verbose)) {
+    verbose = ([ ]);
+  }
+  return verbose[type];
+}
+void set_verbose(string type, int val) {
+  if(!verbose || !mapp(verbose)) {
+    verbose = ([ ]);
+  }
+  if(member_array(type, VERBOSE_TYPES) != -1) {
+    verbose[type] = val;
+  }
+}
+string *query_verbose_types() {
+  return VERBOSE_TYPES;
+}
+varargs int move_with_look( mixed dest, string messin, string messout ) {
+   return_to_default_position(1);
+   if ( (int)this_object()->move( dest, messin, messout ) != MOVE_OK )
+      return 0;
+   room_look();
+   return_to_default_position(1);
+   return 1;
+}
+varargs int exit_command( string word, mixed verb, object thing, int redirection ) {
+   string special_mess, *bits, *exits, redirect;
+   int temp;
+   if ( !environment() ) {
+      return 0;
+   }
+   if ( !verb ) {
+      verb = word;
+      bits = explode( word, " " );
+      if ( sizeof( bits ) > 1 ) {
+         word = implode( bits[ 1 .. ], " " );
+      } else {
+         word = "";
+      }
+   } else {
+      if ( pointerp( verb ) ) {
+         special_mess = verb[ 1 ];
+         verb = verb[ 0 ];
+      }
+      bits = explode( verb, " " );
+      if ( sizeof( bits ) > 1 ) {
+         word = implode( bits[ 1 .. ], " " );
+      } else {
+         word = "";
+      }
+   }
+   if ( lengthen[ verb ] ) {
+      verb = lengthen[ verb ];
+   }
+   exits = (string *)environment()->query_exits();
+   if ( !exits ) {
+      return 0;
+   }
+   if ( member_array( verb, exits ) != -1 ) {
+     if ( environment()->query_relative( verb ) ) {
+       return 0;
+     }
+     if ((abs_facing)[verb]) {
+       facing[0] = (abs_facing)[verb] % 8;
+     }
+   } else {
+     if (member_array(find_abs(verb), exits ) == -1 ) {
+       return 0;
+     }
+     verb = reorient_rel(verb);
+   }
+   if ( !thing ) {
+      thing = this_object();
+   }
+    if ( !redirection ) {
+        if ( stringp( redirect = thing->query_exit_redirection( word ) ) ) {
+            if ( temp = this_object()->exit_command( verb, redirect, thing, 1 ) )
+                return temp;
+        }
+    }
+   return (int)"/obj/handlers/room_handler"->exit_move( verb, word,
+         special_mess, thing );
+}
+void become_flummoxed() {
+   int will;
+   will = query_int() * query_wis();
+   if ( will < random( WILL_POWER ) )
+      this_object()->interrupt_ritual();
+   if ( will < random( WILL_POWER ) )
+      this_object()->interrupt_spell();
+   if ( will < random( WILL_POWER ) )
+      this_object()->stop_all_fight();
+}
+int run_away() {
+   int i;
+   object old_env;
+   mixed *direcs;
+   direcs = (mixed *)environment()->query_dest_dir(this_object());
+   old_env = environment();
+   while ( sizeof( direcs ) ) {
+      i = random( sizeof( direcs ) / 2 ) * 2;
+      if ( exit_command( direcs[i] ) ) {
+          event( old_env, "run_away", direcs[ i ], direcs[ i + 1 ] );
+          return 1;
+      }
+      direcs = delete( direcs, i, 2 );
+   }
+   return 0;
+}
+mixed *stats() {
+   return container::stats() + stats::stats() + ({
+           ({ "max_hp", max_hp }),
+           ({ "hp",  hp }),
+           ({ "max_gp", max_gp }),
+           ({ "gp", gp }),
+           ({ "alcohol", drink_info[ D_ALCOHOL ] }),
+           ({ "food", drink_info[ D_FOOD ] }),
+           ({ "drink", drink_info[ D_DRINK ] }),
+           ({ "gender", query_gender_string() }),
+           ({ "alignment", this_object()->query_al() }),
+           ({ "deity", deity }),
+           ({ "total money", query_value() }),
+           ({ "xp", query_xp() }),
+   }) + armour::stats() + combat::stats() + (mixed *)effects::stats();
+}
+class obj_match_context query_it_them() { return _liv_data->it_them; }
+void set_it_them( class obj_match_context args) { _liv_data->it_them = args; }
+int add_follower(object ob) {
+  if (ob == this_object()) {
+    return 0;
+  }
+  if (member_array(ob, _liv_data->followers) == -1) {
+    _liv_data->followers += ({ ob });
+  }
+  return 1;
+}
+int remove_follower(object ob) {
+  int i;
+  i = member_array(ob, _liv_data->followers);
+  if (i != -1) {
+    _liv_data->followers = delete(_liv_data->followers, i, 1);
+    return 1;
+  }
+  return 0;
+}
+int check_doing_follow(object thing, string verb, string special) {
+   return 1;
+}
+object query_current_room() { return environment(); }
+mixed *query_followers() { return copy(_liv_data->followers - ({ 0 })); }
+varargs void adjust_money(mixed amt, string type) {
+  return money::adjust_money(amt, type);
+}
+mixed *query_money_array() {
+  return money::query_money_array();
+}
+int query_money(string type) {
+  return money::query_money(type);
+}
+int query_value() { return money::query_value(); }
+void do_burden_call() {
+  if(_liv_data->burden_call)
+    remove_call_out(_liv_data->burden_call);
+  _liv_data->burden_call = call_out("calc_burden", 1);
+}
+int query_burden_limit() {
+  if (this_object()->query_creator()) {
+    return MAX_CREATOR_INVEN;
+  } else {
+    return MAX_INVEN;
+  }
+}
+void event_enter( object thing, string mess, object from ) {
+  if(environment( thing ) == this_object()) {
+    do_burden_call();
+    if(sizeof(all_inventory()) > query_burden_limit() ) {
+      _liv_data->to_drop += ({ thing });
+      remove_call_out("test_number_of_items");
+      call_out("test_number_of_items", 5 + random(5));
+    }
+  }
+}
+void event_exit( object thing, string mess, object to ) {
+  if(environment(thing) == this_object()) {
+    do_burden_call();
+  }
+}
+void test_number_of_items() {
+   int how_many;
+   object thing, *things, *dropped;
+   things = all_inventory() - query_armours() - query_holding();
+   how_many = sizeof(things) - query_burden_limit();
+   if ( how_many < 1 ) {
+      return;
+   }
+   _liv_data->to_drop -= ({ 0 });
+   dropped = ({ });
+   while(how_many > 0 && sizeof(things)) {
+      if (sizeof(_liv_data->to_drop)) {
+         thing = _liv_data->to_drop[random(sizeof(_liv_data->to_drop))];
+      } else {
+         thing = things[random(sizeof(things))];
+      }
+      things -= ({ thing });
+      _liv_data->to_drop -= ({ thing });
+      if(!thing || !thing->short() || thing->drop() ||
+         thing->query_property("cannot fumble") ||
+         thing->id("coin") ||
+         environment(thing) != this_object()) {
+        continue;
+      }
+      if((int)thing->move(environment()) == MOVE_OK) {
+        how_many--;
+        dropped += ({ thing });
+      }
+   }
+   _liv_data->to_drop = ({ });
+   if(sizeof(dropped)) {
+     tell_object( this_object(), "Whoops!  You tried to carry too many "
+                  "things and fumbled "+
+                  query_multiple_short( dropped ) +".\n" );
+     this_object()->dest_hide_shadow();
+     tell_room( environment(), capitalize( the_short() ) +" juggles "+
+                "around "+ query_possessive() +" stuff and fumbles "+
+                query_multiple_short( dropped ) +".\n", this_object() );
+   }
+}
+void force_burden_recalculate() {
+   do_burden_call();
+   remove_call_out("test_number_of_items");
+   call_out("test_number_of_items", 5 + random(5));
+}
+object *find_inv_match( string words, object looker ) {
+   return sort_array( container::find_inv_match( words, looker ),
+         (: ( member_array( $1, query_holding() ) != -1 ? -1 : 0 ) :) );
+}
+int attack_by(object ob) {
+   return_to_default_position(0);
+   return ::attack_by(ob);
+}
+int attack_ob(object ob) {
+   return_to_default_position(0);
+   return ::attack_ob(ob);
+}
+void set_always_use_default_position(int flag) {
+   always_use_default_position = flag;
+}
+int query_always_use_default_position() {
+   return always_use_default_position;
+}
+string query_default_position() {
+   mixed pos;
+   if (stringp(default_position) &&
+              default_position->query_position_command()) {
+      pos = default_position;
+   } else if (pointerp(default_position) &&
+              (sizeof(default_position) == POSITION_MESS_SIZE ||
+               sizeof(default_position) == POSITION_ONLY_TYPE_SIZE)) {
+      pos = default_position;
+   } else if (functionp(default_position)) {
+      pos = default_position;
+   }
+   if (!pos) {
+      pos = STANDING_CMD;
+   }
+   return pos;
+}
+void set_default_position(mixed str) {
+   if (stringp(str) && str->query_position_command() && str != STANDING_CMD) {
+      default_position = str;
+   } else if (!str || str == STANDING_CMD) {
+      default_position = 0;
+   } else if (pointerp(str) && (sizeof(str) == POSITION_ONLY_TYPE_SIZE ||
+                                sizeof(str) == POSITION_MESS_SIZE)) {
+      default_position = str;
+   } else if (functionp(str)) {
+      default_position = str;
+   }
+}
+void return_to_default_position(int leaving) {
+   mixed pos;
+   if (query_always_use_default_position()) {
+      pos = query_default_position();
+   } else {
+      pos = 0;
+      if (environment()) {
+         pos = environment()->query_default_position(this_object());
+      }
+      if (!pos) {
+         pos = query_default_position();
+      }
+   }
+   if (functionp(pos)) {
+      if (!evaluate(pos, this_object(), leaving)) {
+         pos = 0;
+         if (environment()) {
+            pos = environment()->query_default_position(this_object());
+         }
+         if (!pos) {
+            pos = STANDING_CMD;
+         }
+      }
+   }
+   if (stringp(pos)) {
+      if (position != pos->query_position_type() ||
+          (leaving && query_position_on())) {
+         if (leaving) {
+            catch(pos->position_floor(this_object()));
+         } else {
+            catch(pos->position(this_object()));
+         }
+      }
+   } else if (pointerp(pos) && position != pos[POSITION_TYPE_INDEX]) {
+      if (sizeof(pos) > 1) {
+         if (pos[POSITION_ME_MESS_INDEX]) {
+            tell_object(this_object(), pos[POSITION_ME_MESS_INDEX]);
+         }
+         if (pos[POSITION_REST_MESS]) {
+            tell_room(environment(), pos[POSITION_REST_MESS], this_object());
+         }
+      }
+      set_position(pos[POSITION_TYPE_INDEX]);
+      set_position_on(0);
+      set_position_type(0);
+      set_position_multiple(0);
+   }
+}
+void set_position(string name) {
+   position = name;
+}
+string query_position() {
+   return position;
+}
+void set_position_on(mixed ob) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_ON_OBJECT] = ob;
+}
+void set_position_multiple(int mult) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_MULTIPLE] = mult;
+}
+int query_position_multiple() {
+   if (!position_on) {
+      return 0;
+   }
+   return position_on[POS_MULTIPLE];
+}
+void set_position_type(string type) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_TYPE] = type;
+}
+string query_position_type() {
+   if (!position_on ||
+       !position_on[POS_TYPE]) {
+      return "on";
+   }
+   return position_on[POS_TYPE];
+}
+object query_position_on() {
+   if (!position_on) {
+      return 0;
+   }
+   return position_on[POS_ON_OBJECT];
+}
+string query_position_on_short() {
+   if (!position_on || !position_on[POS_ON_OBJECT]) {
+      return "";
+   }
+   if (stringp(position_on[POS_ON_OBJECT])) {
+      return position_on[POS_ON_OBJECT];
+   }
+   return position_on[POS_ON_OBJECT]->the_short();
+}
+string query_position_long() {
+   if (position != STANDING || position_on) {
+      if (position_on) {
+         return query_pronoun() + " is " + query_position_type() + " "+
+                query_position_on_short()+".\n";
+      }
+      return query_pronoun()+" is "+position+" on the floor.\n";
+   }
+   return "";
+}
+string query_position_short() {
+   if (!position_on ||
+       !position_on[POS_ON_OBJECT]) {
+      return position;
+   }
+   return position + " " + query_position_type() + " " +
+          query_position_on_short();
+}
+varargs int cannot_walk( string verb, mixed *dest_other) {
+   return 0;
+}
+string *query_arcane_shields() { return ({ }); }
+int can_find_match_reference_inside_object(object thing, object looker) {
+   if (member_array(thing, query_wearing_hidden(looker, 0)) != -1) {
+      return 0;
+   }
+   return 1;
+}
+int query_deity_favour( string god ) {
+  if ( !mapp( deity_favour ) )
+    return 0;
+  if ( !undefinedp( deity_favour[ god ] ) )
+    return 0;
+  return deity_favour[ god ];
+}
+void adjust_deity_favour( string god, int amount ) {
+  if ( !mapp( deity_favour ) )
+    deity_favour = ([ ]);
+  if ( !undefinedp( deity_favour[ god ] ) )
+    deity_favour[ god ] = amount;
+  deity_favour[ god ] += amount;
+  if ( deity_favour[ god ] > MAX_FAVOUR )
+    deity_favour[ god ] = MAX_FAVOUR;
+  if ( deity_favour[ god ] < -MAX_FAVOUR )
+    deity_favour[ god ] = -MAX_FAVOUR;
+  return;
+}
+mapping query_all_deity_favour() { return deity_favour; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/living.c ===
+#include <dirs.h>
+#include <drinks.h>
+#include <living.h>
+#include <move_failures.h>
+#include <player.h>
+#include <tune.h>
+#include <position.h>
+#include <obj_parser.h>
+inherit "/std/container";
+inherit "/std/living/armour";
+inherit "/std/living/carrying";
+inherit "/std/living/combat";
+inherit "/std/living/force";
+inherit "/std/living/gender";
+inherit "/std/living/health";
+inherit "/std/living/holding";
+inherit "/std/living/money";
+inherit "/std/living/skills";
+inherit "/std/living/spells";
+inherit "/std/living/crafts";
+inherit "/std/living/stats";
+inherit "/std/living/respond_cmd";
+inherit "/std/living/nationality";
+#define VERBOSE_TYPES ({"combat", "look", "score", "names", "htell", "finger", "errors", "quit"})
+#define MAX_FAVOUR 100
+class living_data {
+  int handicap;
+  int burden;
+  object* followers;
+  class obj_match_context it_them;
+  object* to_drop;
+  int burden_call;
+}
+class messages {
+   string msgout;
+   string msgin;
+   string mmsgout;
+   string mmsgin;
+}
+private int alignment;
+private class messages _messages;
+private mixed *facing;
+private mapping verbose;
+private mapping abs_facing = ABS_FACING;
+private mapping lengthen = LENGTHEN;
+private string deity;
+private mapping deity_favour;
+private nosave class living_data _liv_data;
+void return_to_default_position(int leaving);
+void set_position(string name);
+void set_position_on(mixed ob);
+void set_position_multiple(int mult);
+void set_position_type(string type);
+object query_position_on();
+protected mixed command(string);
+private nosave string position;
+private nosave mixed default_position;
+private
+nosave int always_use_default_position;
+private nosave mixed position_on;
+void create() {
+   string t;
+   _liv_data = new(class living_data);
+   _messages = new(class messages);
+   crafts::create();
+   container::create();
+   armour::create();
+   combat::create();
+   health::create();
+   holding::create();
+   skills::create();
+   spells::create();
+   respond_cmd::create();
+   enable_commands();
+   reset_can_export_inventory();
+   reset_effects();
+   _messages->msgin = "$N arrive$s from $F.";
+   _messages->msgout = "$N leave$s $T.";
+   _messages->mmsgin = "$N appear$s out of the ground.";
+   _messages->mmsgout = "$N disappear$s in a puff of smoke.";
+   _liv_data->followers = ({ });
+   verbose = ([ ]);
+   set_max_items(50);
+   _liv_data->to_drop = ({ });
+   foreach(t in VERBOSE_TYPES) {
+      verbose[t] = 1;
+   }
+   facing = ({ 0, ({ "north", "northeast", "east", "southeast", "south",
+         "southwest", "west", "northwest" }), ({ "up", "down" }) });
+   position = STANDING;
+   add_adjective("living");
+}
+void heart_beat() {
+  stats::heart_beat();
+  combat::heart_beat();
+}
+string query_pronoun() {
+   return gender::query_pronoun();
+}
+string query_possessive() {
+   return gender::query_possessive();
+}
+string query_objective() {
+   return gender::query_objective();
+}
+varargs int query_weight(int actual) {
+  if(!actual && this_object()->query_property("dead"))
+    return 0;
+  return stats::query_weight();
+}
+int query_burden() {
+  return _liv_data->burden;
+}
+int query_handicap() { return _liv_data->handicap; }
+void calc_burden() {
+  int new_handicap;
+  int burden;
+  object thing;
+  mapping hands;
+  _liv_data->burden_call = 0;
+  update_loc_weight();
+  burden = query_loc_weight();
+  foreach(thing in query_wearing())
+    burden -= (int)thing->query_complete_weight() / 2;
+  hands = ([ ]);
+  foreach(thing in query_holding())
+    if(objectp(thing))
+      hands[thing]++;
+  foreach(thing in keys(hands))
+    burden += (int)thing->query_complete_weight() / hands[thing];
+  if(!query_max_weight()) {
+    this_object()->reset_carry_cap();
+    _liv_data->burden = 50;
+  } else
+    _liv_data->burden = (100 * burden) / query_max_weight();
+  new_handicap = (_liv_data->burden / 25) - 1;
+  if(new_handicap < 0)
+    new_handicap = 0;
+  if ( _liv_data->handicap != new_handicap ) {
+    adjust_bonus_dex( _liv_data->handicap - new_handicap );
+    _liv_data->handicap = new_handicap;
+  }
+}
+string burden_string() {
+  switch (_liv_data->handicap) {
+  case 0 :
+    return "unburdened";
+  case 1 :
+    return "burdened";
+  case 2 :
+    return "heavily burdened";
+  case 3 :
+    return "very heavily burdened";
+  default :
+    return "incredibly heavily burdened";
+  }
+}
+void living_commands() {
+#if efun_defined(add_action)
+   add_action( "exit_command", "*", 1 );
+#endif
+}
+void eat_this( object food ) {
+  this_object()->bypass_queue();
+  command( "eat " + file_name( food ) );
+}
+int test_add(object ob, int flag) {
+  if(sizeof(all_inventory(this_object())) > query_max_items())
+    return 0;
+  return !flag;
+}
+int test_remove( object ob, int flag, mixed dest ) {
+   object thing;
+   if ( flag ) {
+      return 0;
+   }
+   if ( !this_player() || ( this_player() == this_object() ) ) {
+      return !flag;
+   }
+   if ( stringp( dest ) ) {
+      thing = find_object( dest );
+   }
+   if ( objectp( dest ) ) {
+      thing = dest;
+      dest = file_name( dest );
+   }
+   if ( thing->query_corpse() || ( dest == "/room/rubbish" ) ) {
+      return !flag;
+   }
+   if ( sizeof( filter_array( previous_object( -1 ),
+         (: $1->query_theft_command() :) ) ) ) {
+      return !flag;
+   }
+   if ( !query_property( PASSED_OUT ) ) {
+      return 0;
+   }
+   if ( !pk_check( this_player(), this_object() ) ) {
+      event( environment( this_player() ), "theft", this_player(),
+            this_object(), ob );
+      return !flag;
+   }
+   write( "An unseen force stays your hand.\n" );
+   return 0;
+}
+int query_al() { return alignment; }
+void set_al( int number ) { alignment = number; }
+int adjust_al( int number ) {
+   alignment += number;
+   if ( alignment < -MAX_AL ) {
+      alignment = -MAX_AL;
+   }
+   if ( alignment > MAX_AL ) {
+      alignment = MAX_AL;
+   }
+   return alignment;
+}
+int adjust_alignment( int number ) {
+  int change;
+  change = - (number + alignment/5);
+  change /= 20;
+  return adjust_al( change );
+}
+string align_string() {
+   switch ( alignment ) {
+      case -MAX_AL .. -5001 : return "extremely good"; break;
+      case -5000 .. -2501 : return "very good"; break;
+      case -2500 .. -1251 : return "quite good"; break;
+      case -1250 .. -601 : return "good"; break;
+      case -600 .. -301 : return "barely good"; break;
+      case -300 .. 300 : return "neutral"; break;
+      case 301 .. 600 : return "barely evil"; break;
+      case 601 .. 1250 : return "evil"; break;
+      case 1251 .. 2500 : return "quite evil"; break;
+      case 2501 .. 5000 : return "very evil"; break;
+      default : return "extremely evil"; break;
+   }
+}
+string query_deity() { return deity; }
+void set_deity( string word ) { deity = word; }
+string query_msgin() { return _messages->msgin; }
+string query_msgout() { return _messages->msgout; }
+int set_msgin(string str) {
+   if (strsrch(str, "$N") == -1 || strsrch(str, "$F") == -1) {
+      return 0;
+   }
+   _messages->msgin = str;
+   return 1;
+}
+int set_msgout(string str) {
+   if (strsrch(str, "$N") == -1 || strsrch(str, "$T") == -1) {
+      return 0;
+   }
+   _messages->msgout = str;
+   return 1;
+}
+string query_mmsgin() { return _messages->mmsgin; }
+string query_mmsgout() { return _messages->mmsgout; }
+int set_mmsgin(string str) {
+   if (strsrch(str, "$N") == -1) {
+      return 0;
+   }
+   _messages->mmsgin = str;
+   return 1;
+}
+int set_mmsgout(string str) {
+   if (strsrch(str, "$N") == -1) {
+      return 0;
+   }
+   _messages->mmsgout = str;
+   return 1;
+}
+mixed *query_facing() { return copy( facing ); }
+void set_facing( mixed *args ) { facing = args; }
+string find_rel( string word, int from ) {
+  int i;
+  i = member_array( word, facing[ 1 ] );
+  if ( i != -1 ) {
+    i = ( i + 8 - facing[ 0 ] ) % 8;
+    return REL_DIRS[ 3 * i + from ];
+  }
+  i = member_array( word, facing[ 2 ] );
+  if ( i != -1 ) {
+    return ({ "up", "down" })[ i ];
+  }
+  return word;
+}
+string find_abs( string word ) {
+  int i;
+  i = member_array( word, REL_DIRS );
+  if ( i != -1 ) {
+    i = ( i / 3 + facing[ 0 ]) % 8;
+    return facing[ 1 ][ i ];
+  }
+  i = member_array( word, ({ "up", "down" }) );
+  if ( i != -1 ) {
+    return facing[ 2 ][ i ];
+  }
+  return word;
+}
+string reorient_rel( string word ) {
+  int i;
+  i = member_array( word, REL_DIRS );
+  if ( i != -1 ) {
+    i = ( i / 3 + facing[ 0 ] ) % 8;
+    facing[ 0 ] = i;
+    return facing[ 1 ][ i ];
+  }
+  i = member_array( word, ({ "up", "down" }) );
+  if ( i != -1 ) {
+    return facing[ 2 ][ i ];
+  }
+  return word;
+}
+void reorient_abs( string verb ) {
+  if ((ABS_FACING)[verb]) {
+    facing[0] = (ABS_FACING)[verb] % 8;
+  }
+}
+void set_dragging( object thing ) { add_property("dragging", thing); }
+object query_dragging() { return query_property("dragging"); }
+void reset_dragging() { add_property("dragging", 0); }
+int room_look() {
+   if ( query_property( UNKNOWN_MOVE ) || !( interactive( this_object() ) ||
+         this_object()->query_slave() ) )
+      return 0;
+   if(!mapp(verbose))
+     verbose = ([ ]);
+   if(verbose && verbose["look"]) {
+      this_object()->ignore_from_history( "look" );
+      this_object()->bypass_queue();
+      command( "look" );
+   } else {
+      this_object()->ignore_from_history( "glance" );
+      this_object()->bypass_queue();
+      command( "glance" );
+   }
+   return 1;
+}
+int query_verbose(string type) {
+  if(!verbose || !mapp(verbose)) {
+    verbose = ([ ]);
+  }
+  return verbose[type];
+}
+void set_verbose(string type, int val) {
+  if(!verbose || !mapp(verbose)) {
+    verbose = ([ ]);
+  }
+  if(member_array(type, VERBOSE_TYPES) != -1) {
+    verbose[type] = val;
+  }
+}
+string *query_verbose_types() {
+  return VERBOSE_TYPES;
+}
+varargs int move_with_look( mixed dest, string messin, string messout ) {
+   return_to_default_position(1);
+   if ( (int)this_object()->move( dest, messin, messout ) != MOVE_OK )
+      return 0;
+   room_look();
+   return_to_default_position(1);
+   return 1;
+}
+varargs int exit_command( string word, mixed verb, object thing, int redirection ) {
+   string special_mess, *bits, *exits, redirect;
+   int temp;
+   if ( !environment() ) {
+      return 0;
+   }
+   if ( !verb ) {
+      verb = word;
+      bits = explode( word, " " );
+      if ( sizeof( bits ) > 1 ) {
+         word = implode( bits[ 1 .. ], " " );
+      } else {
+         word = "";
+      }
+   } else {
+      if ( pointerp( verb ) ) {
+         special_mess = verb[ 1 ];
+         verb = verb[ 0 ];
+      }
+      bits = explode( verb, " " );
+      if ( sizeof( bits ) > 1 ) {
+         word = implode( bits[ 1 .. ], " " );
+      } else {
+         word = "";
+      }
+   }
+   if ( lengthen[ verb ] ) {
+      verb = lengthen[ verb ];
+   }
+   exits = (string *)environment()->query_exits();
+   if ( !exits ) {
+      return 0;
+   }
+   if ( member_array( verb, exits ) != -1 ) {
+     if ( environment()->query_relative( verb ) ) {
+       return 0;
+     }
+     if ((abs_facing)[verb]) {
+       facing[0] = (abs_facing)[verb] % 8;
+     }
+   } else {
+     if (member_array(find_abs(verb), exits ) == -1 ) {
+       return 0;
+     }
+     verb = reorient_rel(verb);
+   }
+   if ( !thing ) {
+      thing = this_object();
+   }
+    if ( !redirection ) {
+        if ( stringp( redirect = thing->query_exit_redirection( word ) ) ) {
+            if ( temp = this_object()->exit_command( verb, redirect, thing, 1 ) )
+                return temp;
+        }
+    }
+   return (int)"/obj/handlers/room_handler"->exit_move( verb, word,
+         special_mess, thing );
+}
+void become_flummoxed() {
+   int will;
+   will = query_int() * query_wis();
+   if ( will < random( WILL_POWER ) )
+      this_object()->interrupt_ritual();
+   if ( will < random( WILL_POWER ) )
+      this_object()->interrupt_spell();
+   if ( will < random( WILL_POWER ) )
+      this_object()->stop_all_fight();
+}
+int run_away() {
+   int i;
+   object old_env;
+   mixed *direcs;
+   direcs = (mixed *)environment()->query_dest_dir(this_object());
+   old_env = environment();
+   while ( sizeof( direcs ) ) {
+      i = random( sizeof( direcs ) / 2 ) * 2;
+      if ( exit_command( direcs[i] ) ) {
+          event( old_env, "run_away", direcs[ i ], direcs[ i + 1 ] );
+          return 1;
+      }
+      direcs = delete( direcs, i, 2 );
+   }
+   return 0;
+}
+mixed *stats() {
+   return container::stats() + stats::stats() + ({
+           ({ "max_hp", max_hp }),
+           ({ "hp",  hp }),
+           ({ "max_gp", max_gp }),
+           ({ "gp", gp }),
+           ({ "alcohol", drink_info[ D_ALCOHOL ] }),
+           ({ "food", drink_info[ D_FOOD ] }),
+           ({ "drink", drink_info[ D_DRINK ] }),
+           ({ "gender", query_gender_string() }),
+           ({ "alignment", this_object()->query_al() }),
+           ({ "deity", deity }),
+           ({ "total money", query_value() }),
+           ({ "xp", query_xp() }),
+   }) + armour::stats() + combat::stats();
+}
+class obj_match_context query_it_them() { return _liv_data->it_them; }
+void set_it_them( class obj_match_context args) { _liv_data->it_them = args; }
+int add_follower(object ob) {
+  if (ob == this_object()) {
+    return 0;
+  }
+  if (member_array(ob, _liv_data->followers) == -1) {
+    _liv_data->followers += ({ ob });
+  }
+  return 1;
+}
+int remove_follower(object ob) {
+  int i;
+  i = member_array(ob, _liv_data->followers);
+  if (i != -1) {
+    _liv_data->followers = delete(_liv_data->followers, i, 1);
+    return 1;
+  }
+  return 0;
+}
+int check_doing_follow(object thing, string verb, string special) {
+   return 1;
+}
+object query_current_room() { return environment(); }
+mixed *query_followers() { return copy(_liv_data->followers - ({ 0 })); }
+varargs void adjust_money(mixed amt, string type) {
+  return money::adjust_money(amt, type);
+}
+mixed *query_money_array() {
+  return money::query_money_array();
+}
+int query_money(string type) {
+  return money::query_money(type);
+}
+int query_value() { return money::query_value(); }
+void do_burden_call() {
+  if(_liv_data->burden_call)
+    remove_call_out(_liv_data->burden_call);
+  _liv_data->burden_call = call_out("calc_burden", 1);
+}
+int query_burden_limit() {
+  if (this_object()->query_creator()) {
+    return MAX_CREATOR_INVEN;
+  } else {
+    return MAX_INVEN;
+  }
+}
+void event_enter( object thing, string mess, object from ) {
+  if(environment( thing ) == this_object()) {
+    do_burden_call();
+    if(sizeof(all_inventory()) > query_burden_limit() ) {
+      _liv_data->to_drop += ({ thing });
+      remove_call_out("test_number_of_items");
+      call_out("test_number_of_items", 5 + random(5));
+    }
+  }
+}
+void event_exit( object thing, string mess, object to ) {
+  if(environment(thing) == this_object()) {
+    do_burden_call();
+  }
+}
+void test_number_of_items() {
+   int how_many;
+   object thing, *things, *dropped;
+   things = all_inventory() - query_armours() - query_holding();
+   how_many = sizeof(things) - query_burden_limit();
+   if ( how_many < 1 ) {
+      return;
+   }
+   _liv_data->to_drop -= ({ 0 });
+   dropped = ({ });
+   while(how_many > 0 && sizeof(things)) {
+      if (sizeof(_liv_data->to_drop)) {
+         thing = _liv_data->to_drop[random(sizeof(_liv_data->to_drop))];
+      } else {
+         thing = things[random(sizeof(things))];
+      }
+      things -= ({ thing });
+      _liv_data->to_drop -= ({ thing });
+      if(!thing || !thing->short() || thing->drop() ||
+         thing->query_property("cannot fumble") ||
+         thing->id("coin") ||
+         environment(thing) != this_object()) {
+        continue;
+      }
+      if((int)thing->move(environment()) == MOVE_OK) {
+        how_many--;
+        dropped += ({ thing });
+      }
+   }
+   _liv_data->to_drop = ({ });
+   if(sizeof(dropped)) {
+     tell_object( this_object(), "Whoops!  You tried to carry too many "
+                  "things and fumbled "+
+                  query_multiple_short( dropped ) +".\n" );
+     this_object()->dest_hide_shadow();
+     tell_room( environment(), capitalize( the_short() ) +" juggles "+
+                "around "+ query_possessive() +" stuff and fumbles "+
+                query_multiple_short( dropped ) +".\n", this_object() );
+   }
+}
+void force_burden_recalculate() {
+   do_burden_call();
+   remove_call_out("test_number_of_items");
+   call_out("test_number_of_items", 5 + random(5));
+}
+object *find_inv_match( string words, object looker ) {
+   return sort_array( container::find_inv_match( words, looker ),
+         (: ( member_array( $1, query_holding() ) != -1 ? -1 : 0 ) :) );
+}
+int attack_by(object ob) {
+   return_to_default_position(0);
+   return ::attack_by(ob);
+}
+int attack_ob(object ob) {
+   return_to_default_position(0);
+   return ::attack_ob(ob);
+}
+void set_always_use_default_position(int flag) {
+   always_use_default_position = flag;
+}
+int query_always_use_default_position() {
+   return always_use_default_position;
+}
+string query_default_position() {
+   mixed pos;
+   if (stringp(default_position) &&
+              default_position->query_position_command()) {
+      pos = default_position;
+   } else if (pointerp(default_position) &&
+              (sizeof(default_position) == POSITION_MESS_SIZE ||
+               sizeof(default_position) == POSITION_ONLY_TYPE_SIZE)) {
+      pos = default_position;
+   } else if (functionp(default_position)) {
+      pos = default_position;
+   }
+   if (!pos) {
+      pos = STANDING_CMD;
+   }
+   return pos;
+}
+void set_default_position(mixed str) {
+   if (stringp(str) && str->query_position_command() && str != STANDING_CMD) {
+      default_position = str;
+   } else if (!str || str == STANDING_CMD) {
+      default_position = 0;
+   } else if (pointerp(str) && (sizeof(str) == POSITION_ONLY_TYPE_SIZE ||
+                                sizeof(str) == POSITION_MESS_SIZE)) {
+      default_position = str;
+   } else if (functionp(str)) {
+      default_position = str;
+   }
+}
+void return_to_default_position(int leaving) {
+   mixed pos;
+   if (query_always_use_default_position()) {
+      pos = query_default_position();
+   } else {
+      pos = 0;
+      if (environment()) {
+         pos = environment()->query_default_position(this_object());
+      }
+      if (!pos) {
+         pos = query_default_position();
+      }
+   }
+   if (functionp(pos)) {
+      if (!evaluate(pos, this_object(), leaving)) {
+         pos = 0;
+         if (environment()) {
+            pos = environment()->query_default_position(this_object());
+         }
+         if (!pos) {
+            pos = STANDING_CMD;
+         }
+      }
+   }
+   if (stringp(pos)) {
+      if (position != pos->query_position_type() ||
+          (leaving && query_position_on())) {
+         if (leaving) {
+            catch(pos->position_floor(this_object()));
+         } else {
+            catch(pos->position(this_object()));
+         }
+      }
+   } else if (pointerp(pos) && position != pos[POSITION_TYPE_INDEX]) {
+      if (sizeof(pos) > 1) {
+         if (pos[POSITION_ME_MESS_INDEX]) {
+            tell_object(this_object(), pos[POSITION_ME_MESS_INDEX]);
+         }
+         if (pos[POSITION_REST_MESS]) {
+            tell_room(environment(), pos[POSITION_REST_MESS], this_object());
+         }
+      }
+      set_position(pos[POSITION_TYPE_INDEX]);
+      set_position_on(0);
+      set_position_type(0);
+      set_position_multiple(0);
+   }
+}
+void set_position(string name) {
+   position = name;
+}
+string query_position() {
+   return position;
+}
+void set_position_on(mixed ob) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_ON_OBJECT] = ob;
+}
+void set_position_multiple(int mult) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_MULTIPLE] = mult;
+}
+int query_position_multiple() {
+   if (!position_on) {
+      return 0;
+   }
+   return position_on[POS_MULTIPLE];
+}
+void set_position_type(string type) {
+   if (!position_on) {
+      position_on = allocate(POSITION_ARRAY_SIZE);
+   }
+   position_on[POS_TYPE] = type;
+}
+string query_position_type() {
+   if (!position_on ||
+       !position_on[POS_TYPE]) {
+      return "on";
+   }
+   return position_on[POS_TYPE];
+}
+object query_position_on() {
+   if (!position_on) {
+      return 0;
+   }
+   return position_on[POS_ON_OBJECT];
+}
+string query_position_on_short() {
+   if (!position_on || !position_on[POS_ON_OBJECT]) {
+      return "";
+   }
+   if (stringp(position_on[POS_ON_OBJECT])) {
+      return position_on[POS_ON_OBJECT];
+   }
+   return position_on[POS_ON_OBJECT]->the_short();
+}
+string query_position_long() {
+   if (position != STANDING || position_on) {
+      if (position_on) {
+         return query_pronoun() + " is " + query_position_type() + " "+
+                query_position_on_short()+".\n";
+      }
+      return query_pronoun()+" is "+position+" on the floor.\n";
+   }
+   return "";
+}
+string query_position_short() {
+   if (!position_on ||
+       !position_on[POS_ON_OBJECT]) {
+      return position;
+   }
+   return position + " " + query_position_type() + " " +
+          query_position_on_short();
+}
+varargs int cannot_walk( string verb, mixed *dest_other) {
+   return 0;
+}
+string *query_arcane_shields() { return ({ }); }
+int can_find_match_reference_inside_object(object thing, object looker) {
+   if (member_array(thing, query_wearing_hidden(looker, 0)) != -1) {
+      return 0;
+   }
+   return 1;
+}
+int query_deity_favour( string god ) {
+  if ( !mapp( deity_favour ) )
+    return 0;
+  if ( !undefinedp( deity_favour[ god ] ) )
+    return 0;
+  return deity_favour[ god ];
+}
+void adjust_deity_favour( string god, int amount ) {
+  if ( !mapp( deity_favour ) )
+    deity_favour = ([ ]);
+  if ( !undefinedp( deity_favour[ god ] ) )
+    deity_favour[ god ] = amount;
+  deity_favour[ god ] += amount;
+  if ( deity_favour[ god ] > MAX_FAVOUR )
+    deity_favour[ god ] = MAX_FAVOUR;
+  if ( deity_favour[ god ] < -MAX_FAVOUR )
+    deity_favour[ god ] = -MAX_FAVOUR;
+  return;
+}
+mapping query_all_deity_favour() { return deity_favour; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/corpse.c ===
+#include <player.h>
+int alter_corpse( object corpse, object weapon, string attack ) {
+  object head;
+  string *heads;
+  string behead_message = "";
+  if (!attack) attack = "attack";
+  switch (attack) {
+    case "behead" :
+      heads =
+        this_object()->query_race_ob( this_object() )->query_possible_bits( "head" );
+      if (sizeof(heads) == 0)
+        break;
+      head = corpse->make_bit(heads[random(sizeof(heads))] );
+      head->move( environment( corpse ) );
+      switch(random(6)) {
+        case 0 : behead_message = head->a_short() +
+          " drops onto the ground and rolls head over, well, head "
+          "for a bit before coming to a rest.\n";
+           break;
+        case 1 : behead_message = head->a_short() +
+          " sails through the air in a graceful arc before landing "
+          "with a very soggy *squish*.\n";
+          break;
+        case 2 : behead_message = head->a_short() +
+          " quivers a bit as it remains in place, perched atop its owner's "
+          "corpse for a moment, then falls to pieces.\n";
+          break;
+        case 3 : behead_message = head->a_short() +
+          " tips off to the left to hang by a small bit of flesh, before "
+          "gravity has something to say about the matter and pulls it "
+          "completely off the corpse, landing with a small bounce.\n";
+          break;
+        case 4 : behead_message = head->a_short() +
+          " slides off its owner's corpse, upends, and lands upside "
+          "down, helping to keep some of the blood from spilling.\n";
+          break;
+        case 5 : behead_message = head->a_short() +
+          " drops onto the ground like a ball, *bouncy* *bouncy*.\n";
+          break;
+        case 6 :
+        case 7 :
+        case 8 :
+        case 9 :
+        default : behead_message = "oops, the mushrooms have turned.\n";
+      }
+      tell_room( environment( corpse ), behead_message );
+      break;
+    default :
+      break;
+  }
+  return 1;
+}
+object make_corpse() {
+   int i;
+   object corpse, *armour, *weapons, race;
+   race = find_object(this_object()->query_race_ob());
+   if(race && function_exists("make_corpse", race))
+     return race->make_corpse();
+   corpse = clone_object( "/obj/corpse" );
+   corpse->set_owner( 0, this_object() );
+   corpse->set_ownership( (string)this_object()->query_name() );
+   if ( this_object()->query_property( "player" ) ) {
+      corpse->add_property( "player", 1 );
+   }
+   corpse->set_race_name( (string)this_object()->query_race() );
+   if ( !this_object()->query_race_ob() ) {
+      corpse->set_race_ob( "/std/races/unknown" );
+   } else {
+      corpse->set_race_ob( (string)this_object()->query_race_ob() );
+   }
+   corpse->add_adjective( (string *)this_object()->query_adjectives() );
+   corpse->add_adjective("dead");
+   corpse->remove_adjective("living");
+   corpse->start_decay();
+   corpse->set_max_weight(this_object()->query_max_weight());
+   corpse->set_length(this_object()->query_height() / 2);
+   armour = (object *)this_object()->query_armours();
+   this_object()->clear_armours();
+   weapons = (object *)this_object()->query_weapons();
+   all_inventory( this_object() )->set_tracked_item_status_reason( "DIED" );
+   all_inventory( this_object() )->move( corpse );
+   armour -= ({ 0 });
+   for ( i = 0; i < sizeof( armour ); i++ ) {
+      if ( environment( armour[ i ] ) != corpse ) {
+         armour = delete( armour, i, 1 );
+         i--;
+      }
+   }
+   corpse->set_armours( armour );
+   armour->set_worn_by( corpse );
+   weapons -= ({ 0 });
+   for ( i = 0; i < sizeof( weapons ); i++ ) {
+      if ( environment( weapons[ i ] ) != corpse ) {
+         weapons = delete( weapons, i, 1 );
+         i--;
+      }
+   }
+   corpse->set_holding( weapons );
+   weapons->set_holder( corpse );
+   return corpse;
+}
+mixed *death_helper(object thing, int death) {
+   int shift, my_level, att_wimpy, att_level, xp, txp;
+   string *messages;
+   object *things, tmp;
+   mixed *retval;
+   retval = ({ });
+   this_object()->remove_property(PASSED_OUT_PROP);
+   this_object()->remove_hide_invis( "hiding" );
+#ifdef USE_SURRENDER
+   _surrender->refusers = ({ });
+   _surrender->to = ({ });
+#endif
+   things = filter(this_object()->query_attacker_list(),
+                   (:  living($1) && !$1->query_property("dead") :));
+   if(environment()) {
+     if (death) {
+       messages = this_object()->query_property("death messages");
+       if(!messages)
+         messages = ({ "$K dealt the death blow to $D.\n",
+                         "You killed $D.\n", "$D dies.\n" });
+     } else {
+       messages = this_object()->query_property( "surrender messages" );
+       if (!messages)
+         messages = ({ "$K accepted the surrender of $D.\n",
+                         "You subdued $D.\n", "$D surrenders.\n" });
+     }
+     event( ({ environment() }) + deep_inventory( environment() ), "death",
+            things, thing, (thing ? messages[0] : messages[2]), messages[1]);
+   }
+   if(sizeof(things)) {
+     foreach(tmp in things) {
+#if DEBUG == 2
+       int x, y;
+       x = tmp->query_al();
+#endif
+       shift = (int)this_object()->query_al() ;
+       if (!death)
+         shift -= (shift / 2);
+       tmp->adjust_alignment(shift);
+#if DEBUG == 2
+       y = tmp->query_al();
+       if(interactive(tmp))
+         log_file("DEATH_ALIGN", "%s %s adjusted from %d to %d by %s [%d]\n",
+                  ctime(time()), tmp->query_name(), x, y,
+                  this_object()->query_name(), shift);
+#endif
+     }
+     xp = this_object()->query_death_xp();
+     if(xp > 0) {
+       shift = 50 + xp / sizeof( things );
+       debug_printf("%O Death XP: %O", this_object(), xp);
+       my_level = this_object()->query_level();
+       foreach(tmp in things) {
+         att_wimpy = tmp->query_wimpy();
+         att_level = tmp->query_level();
+         if(att_level <= my_level)
+           txp = shift / 2;
+         else
+           txp = ((shift/2) * my_level) / att_level;
+         if(att_wimpy > 0)
+           txp -= (txp * att_wimpy) / 100;
+         tmp->adjust_xp(txp, 1);
+       }
+       return ({ ({ things }), shift/2 });
+     }
+   }
+   return ({ });
+}
+varargs object do_death(object thing, object weapon, string attack) {
+  object corpse, ob;
+  mixed xp_leftover, sec_life;
+#if DEBUG == 2
+  combat_debug("Do death called.");
+#endif
+  this_object()->reset_callingdeath();
+  if ( this_object()->query_property( "dead" ) ) {
+    if ( !userp( this_object() ) ) {
+      if(file_name(environment()) != "/room/rubbish") {
+        this_object()->move("/room/rubbish");
+      }
+      return 0;
+    }
+    else
+      return 0;
+  }
+  this_object()->end_combat();
+  this_object()->add_property("xp before death", this_object()->query_xp());
+  xp_leftover = death_helper(thing, 1);
+  catch(sec_life = this_object()->second_life());
+  if(sec_life) {
+    if(xp_leftover && sizeof(xp_leftover) == 2 && xp_leftover[1] > 0) {
+      foreach(ob in xp_leftover[0]) {
+        ob->adjust_xp(xp_leftover[1], 1);
+      }
+    }
+    this_object()->stop_all_fight();
+    if( objectp( sec_life ) ) {
+      return sec_life;
+    } else {
+      return 0;
+    }
+  }
+  this_object()->add_property( "dead", time() );
+  catch(DEATH->someone_died( this_object() ) );
+  catch(this_object()->effects_thru_death() );
+  this_object()->reset_protectors();
+  if ( environment() ) {
+    corpse = this_object()->make_corpse();
+    if (corpse) {
+      corpse->move(environment());
+      corpse->add_property("XP", xp_leftover, 300);
+      debug_printf("Command: %O", this_object()->query_last_action());
+      if (!(alter_corpse( corpse, weapon, attack ))) {
+      }
+    }
+  }
+  this_object()->move( "/room/rubbish" );
+  this_object()->stop_all_fight();
+  return corpse;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/mon_actions.c ===
+#include "monster.h"
+#undef DEBUG
+mixed *mon_actions;
+void create() {
+  mon_actions = ({ });
+}
+void do_shadow() {
+  int i;
+  object ob;
+  string fname;
+  this_object()->shadow_death();
+  fname = (string)MONSTER_HAND->query_shadow_name();
+  rm(fname+".c");
+  for (i=0;i<sizeof(mon_actions);i+=2)
+    write_file(fname+".c",
+               "inherit \"/std/trigger/"+mon_actions[i]+"\";\n");
+  write_file(fname+".c", read_file("/std/living/mon-shadow.c"));
+  ob = clone_object(fname);
+  ob->setup_shadow(this_object());
+  rm(fname+".c");
+}
+int add_triggered_action(string name, string trigger, mixed ob,
+                         string func) {
+  int i, j;
+#ifdef DEBUG
+  log_file("TRIGGERED", ctime(time())+": "+
+           file_name(this_object())+"  prev: "+
+      implode( map_array( previous_object( -1 ), (: file_name( $1 ) :) ),
+      ", " ) +"\n" );
+#endif
+  if ((i=member_array(trigger, mon_actions)) == -1) {
+    mon_actions += ({ trigger, ({ name, ({ ob, func }) }) });
+    do_shadow();
+  } else if ((j=member_array(name, mon_actions[i+1])) == -1)
+    mon_actions[i+1] += ({ name, ({ ob, func }) });
+  else
+    mon_actions[i+1][j+1] = ({ ob, func });
+}
+int remove_trigger(string name) {
+  int i;
+  if ((i=member_array(name, mon_actions)) == -1)
+    return 0;
+  mon_actions = delete(mon_actions, i, 2);
+  if (!sizeof(mon_actions))
+    this_object()->shadow_death();
+  else
+    do_shadow();
+  return 1;
+}
+int remove_triggered_action(string trigger, string name) {
+  int i, j;
+  if ((i=member_array(trigger, mon_actions)) == -1)
+    return 0;
+  if ((j=member_array(name, mon_actions[i+1])) == -1)
+    return 0;
+  mon_actions[i+1] = delete(mon_actions[i+1], i, 2);
+  if (!sizeof(mon_actions[i+1]))
+    remove_trigger(trigger);
+  return 1;
+}
+mixed *query_actions(string trigger) {
+  int i;
+  if ((i=member_array(trigger, mon_actions)) == -1)
+    return ({ });
+  return mon_actions[i+1];
+}
+mixed *query_mon_actions() { return mon_actions; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/gender.c ===
+int gender;
+nosave int womens_day;
+int query_female() { return (gender == 2) || womens_day; }
+int query_gender() { return (womens_day?2:gender); }
+int query_male() { return gender == 1 && !womens_day; }
+int query_neuter() { return !gender && !womens_day; }
+string query_gender_string() {
+    if (!gender && !womens_day) return "neuter";
+    else if (gender == 1 && !womens_day) return "male";
+    else return "female";
+}
+string query_gender_title() {
+    if (!gender && !womens_day) return "creature";
+    else if (gender == 1 && !womens_day) return "sir";
+    else return "madam";
+}
+string query_gender_name() {
+    if (!gender && !womens_day) return "neuter";
+    else if (gender == 1 && !womens_day) return "man";
+    else return "woman";
+}
+string query_objective() {
+    if (!gender && !womens_day)
+        return "it";
+    else if (gender == 1 && !womens_day)
+        return "him";
+    else return "her";
+}
+string query_possessive() {
+    if (!gender && !womens_day)
+        return "its";
+    else if (gender == 1 && !womens_day)
+        return "his";
+    else return "her";
+}
+string query_pronoun() {
+    if (!gender && !womens_day)
+        return "it";
+    else if (gender == 1 && !womens_day)
+        return "he";
+    else return "she";
+}
+void set_gender(mixed arg) {
+  if(stringp(arg)) {
+    if(arg == "male")
+      gender = 1;
+    else if(arg == "female")
+      gender = 2;
+    else
+      gender = 0;
+  } else {
+    gender = arg;
+  }
+}
+void set_womens_day(int bing) {
+  womens_day = bing;
+}
+int query_womens_day() {
+    return womens_day;
+}
+nomask int query_real_gender() {
+   return gender;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/respond_cmd.c ===
+private nosave mapping _respond_cmd;
+class respond_data {
+   object ob;
+   mixed data;
+}
+void remove_respond_command(string type, object ob);
+mapping query_respond_cmd_data() { return _respond_cmd; }
+void create() {
+   _respond_cmd = ([ ]);
+}
+void add_respond_command(string type, object ob, mixed data) {
+   class respond_data frog;
+   remove_respond_command(type, ob);
+   frog = new (class respond_data);
+   frog->ob = ob;
+   frog->data = data;
+   if (!_respond_cmd[type]) {
+      _respond_cmd[type] = ({ });
+   }
+   _respond_cmd[type] += ({ frog });
+}
+mixed query_respond_command(string type, object ob) {
+   class respond_data frog;
+   if (_respond_cmd[type]) {
+      foreach (frog in _respond_cmd[type]) {
+         if (frog->ob == ob) {
+            return frog->data;
+         }
+      }
+   }
+   return 0;
+}
+void remove_respond_command(string type, object ob) {
+   class respond_data frog;
+   int i;
+   if (_respond_cmd[type]) {
+      for (i = 0; i < sizeof(_respond_cmd[type]); i++) {
+         frog = _respond_cmd[type][i];
+         if (frog->ob == ob) {
+            _respond_cmd[type] = _respond_cmd[type][0..i - 1] +
+                                 _respond_cmd[type][i+1..];
+            i--;
+         }
+      }
+   }
+}
+void clear_respond_commands() {
+   _respond_cmd = ([ ]);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/money.c ===
+#include "money.h"
+object query_money_object(int force) {
+   object money;
+   money = present( MONEY_ALIAS, this_object() );
+   if (!money && force) {
+      money = MONEY_VAULT->get_money_ob();
+      money->move( this_object() );
+   }
+   return money;
+}
+varargs void adjust_money( mixed amount, string type ) {
+   if (!amount) return;
+   query_money_object( 1 )->adjust_money( amount, type );
+   this_object()->do_burden_call();
+}
+mixed *query_money_array() {
+   return query_money_object(1)->query_money_array();
+}
+void set_money_array( mixed *new_array ) {
+   query_money_object(1)->set_money_array( new_array );
+}
+int query_value() {
+   object money;
+   money = query_money_object(0);
+   if ( ! money ) {
+      return 0;
+   }
+   return money->query_value();
+}
+int query_value_in( string where ) {
+   object money;
+   money = query_money_object(0);
+   if ( ! money ) {
+      return 0;
+   }
+   return (int)money->query_value_in( where );
+}
+int query_money( string type ) {
+   object money;
+   money = query_money_object(0);
+   if ( ! money ) {
+      return 0;
+   }
+   return (int)money->query_money( type );
+}
+varargs void pay_money( mixed m_array, string where ) {
+   int i, j;
+   object money;
+   mixed *p_array;
+   money = query_money_object(0);
+   if ( !money ) {
+      return;
+   }
+   for ( i = 0; i < sizeof( m_array ); i += 2 ) {
+      p_array = (mixed *)MONEY_HAND->make_payment( m_array[ i ],
+         m_array[ i + 1 ], money, where );
+      if ( !pointerp( p_array ) ) {
+         continue;
+      }
+      if ( sizeof( p_array[ 1 ] ) ) {
+         money->adjust_money( p_array[ 1 ] );
+      }
+      for ( j = 0; j < sizeof( p_array[ 0 ] ); j += 2 ) {
+         money->adjust_money( - p_array[ 0 ][ j + 1 ], p_array[ 0 ][ j ] );
+      }
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/spells.c ===
+#include <spells.h>
+class spell_process {
+   mapping spells;
+   mapping process;
+}
+private mixed spells;
+void create() {
+   spells = ([ ]);
+}
+string help_spell(string str) {
+   if (!mapp(spells)) {
+     spells = ([ ]);
+   }
+   if (!m_sizeof(spells)) {
+      return 0;
+   }
+   if (!spells[str]) {
+      return 0;
+   }
+   return (string)spells[str][S_OBJECT]->help(str);
+}
+mapping query_spells() {
+   if (!mapp(spells)) {
+      spells = ([ ]);
+   }
+   return spells;
+}
+mapping query_spells_nocase() {
+  mapping lc_spells = ([]);
+  filter( this_object()->query_spells(),
+                 (: $3 += ([ lower_case( $1 ) : $2 ]) :), lc_spells );
+  return lc_spells;
+}
+int add_spell(string name, mixed ob, mixed func) {
+   int i;
+   mapping tmp;
+   if (pointerp(spells)) {
+      tmp = ([ ]);
+      for (i=0;i<sizeof(spells);i+=2)
+         tmp[spells[i]] = spells[i+1];
+      spells = tmp;
+   }
+   if (!mapp(spells)) {
+      spells = ([ ]);
+   }
+   spells[name] = ({ ob, func });
+   return 1;
+}
+int remove_spell(string name) {
+  string spell, name_lc;
+  if ( !name ) {
+      map_delete( spells, 0 );
+      return 1;
+  }
+  name_lc = lower_case(name);
+  foreach (spell in keys(spells)) {
+     if (lower_case(spell) == name_lc) {
+        map_delete(spells, spell);
+     }
+  }
+  return 1;
+}
+mixed query_spell( string word ) {
+   mapping tmp_spells;
+   string test_spell;
+   if ( !mapp( spells ) ) {
+      return 0;
+   }
+   tmp_spells = query_spells_nocase();
+   test_spell = lower_case(this_object()->expand_nickname(word));
+   return tmp_spells[test_spell];
+}
+protected void reset_spells() {
+   spells = ([ ]);
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/armour.c ===
+#include <clothing.h>
+#include <function.h>
+#include <race.h>
+#include <armour.h>
+inherit "/std/armour_logic";
+#undef INFORM 1
+nosave string skin;
+nosave object *wearing;
+nosave mixed stopped;
+nosave mixed *_armour_callbacks;
+nosave int *_cids;
+void create() {
+   skin = "morphological field";
+   wearing = ({ });
+   if(!_armour_callbacks)
+     _armour_callbacks = ({ ({ }), ({ }), ({ }) });
+   if(!_cids)
+     _cids = ({ 0, 0, 0 });
+   ::create();
+}
+int register_armour_callback(int level, mixed callback, mixed data) {
+  _armour_callbacks[level] += ({ new(class armour_callback,
+                                     id : ++(_cids[level]),
+                                     callback: callback,
+                                     data : data) });
+  return _cids[level];
+}
+int remove_armour_callback(int level, int id) {
+  int i;
+  for(i=0; i<sizeof(_armour_callbacks[level]); i++) {
+    if((_armour_callbacks[level][i])->id == id) {
+      _armour_callbacks[level] -= ({ _armour_callbacks[level][i] });
+      return 1;
+    }
+  }
+  return 0;
+}
+int update_armour_callback(int level, int id, mixed data) {
+  int i;
+  for(i=0; i<sizeof(_armour_callbacks[level]); i++) {
+    if((_armour_callbacks[level][i])->id == id) {
+      _armour_callbacks[level][i]->data = data;
+      return 1;
+    }
+  }
+  return 0;
+}
+mixed *query_armour_callbacks() { return copy(_armour_callbacks); }
+string query_skin() { return skin; }
+void set_skin( string word ) { skin = word; }
+object *query_wearing() {
+   wearing = filter(wearing, (: $1 && environment($1) == this_object() :));
+   return copy( wearing );
+}
+object *query_armours() {
+   return query_wearing();
+}
+void clear_armours() {
+   wearing->set_worn_by( 0 );
+   wearing = ({ });
+}
+mixed query_stopped() {
+   return stopped;
+}
+void set_stopped( mixed arg ) { stopped = arg; }
+protected int equivalent_armour_types( mixed comp, string type ) {
+   string word;
+   if ( stringp( comp ) ) {
+      if ( CLOTHING_HANDLER->query_equivilant_type( comp ) ) {
+         return CLOTHING_HANDLER->query_equivilant_type( comp ) == type;
+      }
+      return comp == type;
+   }
+   foreach ( word in comp ) {
+      if ( equivalent_armour_types( word, type ) )
+         return 1;
+   }
+   return 0;
+}
+string wear_armour( object armour, int doing_hold ) {
+   int no_limbs;
+   string type, word, fail_mess;
+   mixed types;
+   object thing;
+   mapping things;
+   if (environment(armour) != this_object()) {
+      return "must be in your inventory";
+   }
+   wearing -= ({ 0 });
+   if (member_array(armour, wearing) > -1)
+     return "since you already have " + armour->query_objective() + " on";
+   types = armour->query_type();
+   word = this_object()->not_allowed_to_wear( types );
+   if ( word ) {
+      return word;
+   }
+   things = ([ ]);
+   if ( stringp( types ) ) {
+      types = ({ types });
+   }
+   if ( !pointerp( types ) ) {
+      return "oh dear";
+   }
+   foreach ( type in types ) {
+      if ( CLOTHING_HANDLER->query_equivilant_type( type ) ) {
+         type = CLOTHING_HANDLER->query_equivilant_type( type );
+      }
+      things[ type ] = ({ });
+      foreach ( thing in wearing ) {
+         if ( equivalent_armour_types( (mixed)thing->query_type(), type ) )  {
+            things[ type ] += ({ thing });
+         }
+      }
+   }
+   word = (string)this_object()->query_race_ob();
+   if ( !word )
+     return "no race object";
+   foreach ( type in keys( things ) ) {
+      if ( (int)word->query_number_worn( type ) <= sizeof( things[ type ] ) ) {
+         return "since you are already wearing "+
+               query_multiple_short( things[ type ] );
+      }
+   }
+   no_limbs = (int)armour->query_no_limbs();
+   if ( no_limbs && !doing_hold ) {
+      if ( member_array( armour,
+            (object *)this_object()->query_holding() ) != -1 ) {
+         return "already wearing";
+      }
+      if( sizeof( (int *)armour->hold_item( this_object(), -1 ) ) ) {
+         return 0;
+      } else {
+         return "already holding";
+      }
+   }
+   if ( !armour->set_worn_by( this_object() ) ) {
+      if( fail_mess = armour->query_wear_failure_mess() )
+         return fail_mess;
+      else
+         return "oh dear";
+   }
+   wearing += ({ armour });
+   this_object()->do_burden_call();
+   return 0;
+}
+int remove_armour( object thing ) {
+   int i;
+   wearing -= ({ 0 });
+   i = member_array( thing, wearing );
+   if ( i == -1 ) {
+      return 1;
+   }
+   if ( !thing->set_worn_by( 0 ) ) {
+      return 1;
+   }
+   if ( member_array( thing, (object *)this_object()->query_holding() ) != -1 ) {
+      if ( !sizeof( (int *)this_object()->set_unhold( thing ) ) ) {
+         return 1;
+      }
+   }
+   wearing = delete( wearing, i, 1 );
+   this_object()->do_burden_call();
+   return 0;
+}
+varargs int query_ac( string type, int amount, string zone ) {
+  int part, total, i, max;
+  string word, *types;
+  mixed most;
+  object thing;
+  object *defenses;
+  stopped = 0;
+#ifdef INFORM
+  event( environment(), "inform", "zone "+ zone, "combat" );
+#endif
+  if ( !zone ) {
+    switch(random(21)) {
+    case 0..1: zone = "head"; break;
+    case 2: zone = "neck"; break;
+    case 3..6: zone="chest"; break;
+    case 7..9: zone="abdomen"; break;
+    case 10..12: zone = "arms"; break;
+    case 13..14:
+      zone = "hands"; break;
+    case 15..18: zone = "legs"; break;
+    case 19: zone = "feet"; break;
+    case 20: zone = "back"; break;
+    }
+#ifdef INFORM
+    event( environment(), "inform", "picked zone "+ zone,
+           "combat" );
+#endif
+  }
+  if(sizeof(_armour_callbacks[ARM_OUTER]) && amount) {
+    for(i=0; i<sizeof(_armour_callbacks[ARM_OUTER]); i++) {
+      if(!_armour_callbacks[ARM_OUTER][i]->callback[0])
+        remove_armour_callback(ARM_OUTER,
+                               _armour_callbacks[ARM_OUTER][i]->id);
+      else {
+        part = call_other(_armour_callbacks[ARM_OUTER][i]->callback[0],
+                          _armour_callbacks[ARM_OUTER][i]->callback[1],
+                          this_object(),
+                          type, amount, zone,
+                          _armour_callbacks[ARM_OUTER][i]->data);
+        if(part > max) {
+          max = part;
+          most = stopped;
+        }
+        total += part;
+        amount -= part;
+        if(amount < 1)
+          break;
+      }
+    }
+  }
+  if(zone != "self" && amount > 0) {
+    types = CLOTHING_HANDLER->query_clothing_zone( zone );
+    if(!types) {
+      log_file("ARMOUR_DEBUG", "No types for zone: %s", zone);
+      return 0;
+    }
+    foreach ( word in  types) {
+      wearing -= ({ 0 });
+      defenses = wearing + filter_array(this_object()->query_holding(),
+                                        (: $1 && $1->query_armour() :));
+      foreach ( thing in defenses )
+        if ( equivalent_armour_types( (mixed)thing->query_type(), word ) ) {
+#ifdef INFORM
+          event( environment(), "inform", "testing object "+
+                 thing->short(), "combat" );
+#endif
+          part = (int)thing->query_ac( type, amount, zone );
+          if (!stopped && part)
+            stopped = thing;
+          if(part > max) {
+            max = part;
+            most = stopped;
+          }
+          total += part;
+          amount -= part;
+        }
+      if (amount < 1)
+        break;
+    }
+  }
+  if(sizeof(_armour_callbacks[ARM_INNER]) && amount > 0) {
+    for(i=0; i<sizeof(_armour_callbacks[ARM_INNER]); i++) {
+      if(!_armour_callbacks[ARM_INNER][i]->callback[0])
+        remove_armour_callback(ARM_INNER,
+                               _armour_callbacks[ARM_INNER][i]->id);
+      else {
+        part = call_other(_armour_callbacks[ARM_INNER][i]->callback[0],
+                          _armour_callbacks[ARM_INNER][i]->callback[1],
+                          this_object(),
+                          type, amount, zone,
+                          _armour_callbacks[ARM_INNER][i]->data);
+        if(part > max) {
+          max = part;
+          most = stopped;
+        }
+        total += part;
+        amount -= part;
+        if(amount < 1)
+          break;
+      }
+    }
+  }
+  if(amount > 0 && this_object()->query_race_ob() &&
+     function_exists("query_ac", load_object(this_object()->query_race_ob()))){
+    part = (this_object()->query_race_ob())->query_ac(type, amount, zone);
+    if(part > max) {
+      max = part;
+      most = stopped;
+    }
+    total += part;
+    amount -= part;
+  }
+  if(amount > 0) {
+    if(!stopped && type != "skin")
+      stopped = skin;
+    if(type == "fire") {
+      if(this_object()->effects_matching("body.wetness") &&
+         sizeof((int *)this_object()->effects_matching("body.wetness"))) {
+        this_object()->add_effect("/std/effects/other/wetness", -amount );
+      }
+    }
+    part = ::query_ac(type, amount, zone);
+    if(part > max) {
+      max = part;
+      most = stopped;
+    }
+    total += part;
+    amount -= part;
+  }
+  if(amount > 0 && most) {
+    stopped = most;
+  }
+  return total;
+}
+mixed *stats() {
+   return ::stats() + ({
+      ({ "skin", skin }),
+   });
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/living/mon-shadow.c ===
+object npc;
+void setup_shadow(object ob) {
+  shadow(ob,1);
+  npc = ob;
+}
+void death_shadow() { destruct( this_object() ); }
+object query_npc() { return npc; }
