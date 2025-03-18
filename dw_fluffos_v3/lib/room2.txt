@@ -1,0 +1,1101 @@
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/outside.c ===
+#include <weather.h>
+inherit "/std/room/basic_room";
+#define FAST_CLEAN_UP 15
+nosave int current_day;
+nosave object sunlight;
+nosave int day_light;
+nosave string _climate;
+nosave int next_weather_update;
+nosave string weather_str;
+private nosave string _weather_handler;
+nosave int callout_handle;
+nosave int room_stabilize;
+private nosave int room_create_time;
+private nosave int _fast_clean_up;
+int clean_up_room( int flag );
+int query_fast_clean_up();
+void set_fast_clean_up(int fast_clean_up);
+void set_weather_handler( string handler ) {
+    _weather_handler = handler ;
+}
+string query_weather_handler() {
+    return _weather_handler ;
+}
+int set_climate(string climate) {
+  if(member_array(climate, CLIMATES) == -1)
+    return 0;
+  _climate = climate;
+  return 1;
+}
+string query_climate() {
+  if(!_climate)
+    return DEFAULT_CLIMATE;
+  return _climate;
+}
+void set_light_change(string s) {
+    add_property("light change", s);
+}
+string query_light_change() {
+    return query_property("light change");
+}
+string snow_look() {
+   return _weather_handler->snow_string(this_object()) + ".";
+}
+string rain_look() {
+   return _weather_handler->rain_string(this_object()) + ".";
+}
+string sleet_look() {
+   return _weather_handler->sleet_string(this_object()) + ".";
+}
+string cloud_look() {
+   return _weather_handler->cloud_string(this_object()) + ".";
+}
+void create() {
+  set_fast_clean_up(1);
+  do_setup++;
+  ::create();
+  do_setup--;
+  set_room_size( 50 );
+  add_property( "location", "outside" );
+  add_property( "here", "on the ground" );
+  _weather_handler = WEATHER ;
+  if ( !do_setup ) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+  room_create_time = time();
+  room_stabilize = 0;
+}
+int query_light() {
+  int new_light;
+  new_light = ( day_light * (int)_weather_handler->query_darkness
+    ( this_object() ) ) / 100;
+  if ( new_light != query_my_light() ) {
+    ::set_light(new_light);
+  }
+  return ::query_light();
+}
+int query_visibility() {
+   return _weather_handler->query_visibility(this_object());
+}
+int query_day_light() { return day_light; }
+int set_light( int number ) {
+  ::set_light(number);
+  day_light = number;
+}
+string long( string word, int dark ) {
+   int day_time;
+   string ret;
+   string obscure;
+   mixed bit;
+   ret = ::long( word, dark );
+   day_time = (int)_weather_handler->query_day( this_object() );
+   if ( day_time != current_day ) {
+      if ( query_light_change() ) {
+         call_other( this_object(), query_light_change(), current_day );
+      }
+   }
+   obscure = this_object()->query_weather_obscured(day_time);
+   if ( !day_time )
+   {
+      bit = query_night_long();
+      if (functionp(bit)) {
+         bit = evaluate(bit, word, dark);
+      }
+      ret = replace(ret, "$long$", bit);
+      if (!obscure) {
+         ret = (string)_weather_handler->query_moon_string() + ret;
+      }
+   } else {
+      bit = query_long();
+      if (functionp(bit)) {
+         bit = evaluate(bit, word, dark);
+      }
+      ret = replace( ret, "$long$", bit);
+   }
+   if ( time() > next_weather_update ) {
+      weather_str = _weather_handler->weather_string(this_object(), obscure) +".\n";
+      next_weather_update = (int)_weather_handler->next_update();
+   }
+   return replace(ret, "$weather$",
+                  this_player()->colour_event("weather", "%^ORANGE%^")+
+                  weather_str+ "%^RESET%^");
+}
+mixed *stats() {
+  return ::stats() + ({
+    ({ "day light", day_light, }),
+  });
+}
+object *find_inv_match( string word, object looker ) {
+  int daylight;
+  if((word == "sunlight") || (word == "daylight"))
+  {
+    daylight = this_object()->query_light();
+    if(daylight == 0)
+    {
+      if(sunlight)
+      {
+        remove_hidden_object(sunlight);
+        sunlight->dest_me();
+        sunlight = 0;
+      }
+      return ::find_inv_match( word, looker );
+    }
+    if(!sunlight)
+    {
+      sunlight = clone_object("/std/object");
+      sunlight->set_name("sunlight");
+      sunlight->set_weight(0);
+      sunlight->reset_get();
+      sunlight->add_alias("daylight");
+      add_hidden_object(sunlight);
+    }
+    if(daylight < 25)
+    {
+      sunlight->set_long("The light here is currently quite dim.\n");
+    } else {
+      sunlight->set_long("What do you want to look at the light for?  "+
+        "It's... well, light really.\n");
+    }
+  }
+  return ::find_inv_match( word, looker );
+}
+void dest_me() {
+  if(sunlight) {
+    sunlight->dest_me();
+  }
+  ::dest_me();
+}
+#ifdef FAST_CLEAN_UP
+void event_exit(object ob, string message, object to) {
+  if(!room_stabilize) {
+    remove_call_out(callout_handle);
+    callout_handle = call_out("clean_up_room", FAST_CLEAN_UP, 0);
+  }
+}
+string *query_zones() {
+  if(!room_stabilize)
+    callout_handle = call_out("clean_up_room", FAST_CLEAN_UP, 0) ;
+  return ::query_zones();
+}
+int clean_up_room(int flag) {
+  object *obs, ob;
+  int elapsed_time = time() - room_create_time;
+  if(room_stabilize || !query_fast_clean_up() ||
+     this_object()->query_keep_room_loaded())
+    return 0;
+  callout_handle = 0 ;
+  obs = filter(all_inventory(this_object()),
+               (: !living($1) || (userp($1)) ||
+                !$1->query_property("transient") ||
+                sizeof($1->query_attacker_list()) ||
+                $1->cannot_walk() :));
+  if(sizeof(all_inventory(this_object())) ||
+     elapsed_time > (FAST_CLEAN_UP * 3)) {
+    room_stabilize = 1;
+    return 1;
+  }
+  obs = filter(all_inventory(this_object()),
+               (: $1->query_property("transient") :));
+  foreach(ob in obs)
+    if(ob->query_property("hospital"))
+      ob->move(ob->query_property("hospital"), "$N wander$s in.",
+               "$N wander$s out.");
+  dest_me();
+  return 0;
+}
+void set_fast_clean_up(int number) {
+   _fast_clean_up = number;
+}
+int query_fast_clean_up() {
+   return _fast_clean_up;
+}
+#endif
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/newspaper_subscription.c ===
+#define USE_LOGIN 1
+#include <room/newspaper.h>
+#include <move_failures.h>
+#include <mail.h>
+#include <money.h>
+#include <player_handler.h>
+#define ISSUES_PER_BOX 12
+inherit "/std/room/basic_room";
+private mapping _subscribers;
+private string _region;
+private string _paper;
+private string _parcel;
+private nosave string _savefile;
+void create() {
+   ::create();
+   add_help_file( "newspaper_subscription" );
+   if( !_subscribers ) {
+      _subscribers = ([ ]);
+   }
+}
+int query_price_per_issue_subscriber() {
+   int deposit_cost = 400;
+   return deposit_cost + ( NEWSPAPER_HANDLER->query_paper_cost( _paper ) * 2 );
+}
+int query_price_per_issue_box() {
+   return NEWSPAPER_HANDLER->query_paper_cost( _paper );
+}
+int query_price_newspaper_box() {
+   return load_object( NEWSPAPER_SUBSCRIPTION_OB )->query_value() +
+           ISSUES_PER_BOX * NEWSPAPER_HANDLER->query_paper_cost( _paper );
+}
+int query_price_international_newspaper_box() {
+   return (load_object( NEWSPAPER_SUBSCRIPTION_OB )->query_value() +
+           ISSUES_PER_BOX * NEWSPAPER_HANDLER->query_paper_cost( _paper )) * 2;
+}
+private void load_me() {
+   if( !_savefile ||
+       ( file_size( _savefile ) <= 0 && file_size( _savefile + ".o" ) <= 0 ) ) {
+      return;
+   }
+   unguarded( (: restore_object( _savefile + ".o", 1 ) :) );
+}
+private void save_me() {
+   if( !_savefile ) {
+      return;
+   }
+   unguarded( (: save_object( _savefile, 1 ) :) );
+}
+void dest_me() {
+   save_me();
+   ::dest_me();
+}
+private void send_termination_mail( string name, string mess ) {
+   object player;
+   if( ( player = find_living( name ) ) &&
+       environment( player ) ) {
+      tell_room( environment( player ),
+                 "An imp zips past " + player->the_short() + " screaming \"You "
+                 "have mail!\" in its high-pitched voice.\n" );
+   }
+   AUTO_MAILER->auto_mail( name,
+                           _paper,
+                           "Your subscription for " + _paper,
+                           0,
+                           "Greetings.\n"
+                           "\n"
+                           "Your subscription for " + _paper +
+                           " has ended.\n"
+                           "\n" +
+                           mess + "\n" );
+}
+private int withdraw_from_account( string name, int price ) {
+   string bank;
+   int amount = 0;
+   int amount_in_account;
+   foreach( bank in BANK_HANDLER->query_accounts( name ) ) {
+      if( BANK_HANDLER->query_account( name, bank ) >= price ) {
+         BANK_HANDLER->adjust_account( name, bank, -price );
+         return 1;
+      } else {
+         amount += BANK_HANDLER->query_account( name, bank );
+      }
+   }
+   if( amount >= price ) {
+      foreach( bank in BANK_HANDLER->query_accounts( name ) ) {
+         amount_in_account = BANK_HANDLER->query_account( name, bank );
+         if( amount_in_account < amount ) {
+            amount -= amount_in_account;
+            BANK_HANDLER->adjust_account( name, bank, -amount_in_account );
+         } else {
+            BANK_HANDLER->adjust_account( name, bank, -amount );
+            return 1;
+         }
+      }
+   }
+   send_termination_mail( name, "You failed to pay for an issue of " + _paper +
+                                "." );
+   return 0;
+}
+private void deliver_issue( string name, int issue ) {
+   int* editions;
+   object player;
+   object ob;
+   editions = PLAYER_HANDLER->test_property( name, "Paper " + _paper );
+   if( !editions ) {
+      editions = ({ });
+   }
+   if( member_array( issue, editions ) == -1 ) {
+      editions += ({ issue });
+#ifdef USE_LOGIN
+      "/secure/login"->special_add_property( name, "Paper " + _paper,
+                                             editions );
+#endif
+#ifdef USE_PLAYER_HANDLER
+      PLAYER_HANDLER->special_add_property( name, "Paper " + _paper,
+                                             editions );
+#endif
+      NEWSPAPER_HANDLER->add_edition_paper_sold( _paper, issue,
+                         NEWSPAPER_HANDLER->query_paper_cost( _paper ) );
+   } else {
+      NEWSPAPER_HANDLER->add_edition_revenue( _paper, issue,
+                         NEWSPAPER_HANDLER->query_paper_cost( _paper ) );
+   }
+   ob = clone_object( NEWSPAPER_OB );
+   ob->set_paper( _paper );
+   ob->set_edition( issue );
+   if( _parcel ) {
+      MAIL_PARCEL_HANDLER->deposit( name, _paper, _parcel, ({ ob }) );
+   }
+   if( ( player = find_living( name ) ) &&
+       environment( player ) ) {
+      tell_room( environment( player ),
+                 "An imp rushes up to " + player->the_short() + " and squeaks "
+                 "something that very much sounds like \"You have mail!\" "
+                 "before zipping away again.\n" );
+   }
+   AUTO_MAILER->auto_mail( name,
+                           _paper,
+                           "A new issue of " + _paper,
+                           0,
+                           "Greetings.\n"
+                           "\n"
+                           "Issue " + issue + " of " + _paper + " has been "
+                           "deposited for you at the " + _parcel +
+                           " post-office.\n"
+                           "\n"
+                           "Enjoy.\n" );
+}
+void event_publish_paper(string paper) {
+   string name;
+   int issues;
+   int price;
+   int last_issue = NEWSPAPER_HANDLER->query_last_edition_num( _paper );
+   if (paper != _paper) {
+      return ;
+   }
+   price = query_price_per_issue_subscriber();
+   if( _subscribers ) {
+      foreach( name in keys( _subscribers ) ) {
+         if( !PLAYER_HANDLER->test_user( name ) ) {
+            map_delete( _subscribers, name );
+         } else {
+            issues = _subscribers[ name ];
+            if( issues == -1 ) {
+               if( withdraw_from_account( name, price ) ) {
+                  deliver_issue( name, last_issue );
+               } else {
+                  map_delete( _subscribers, name );
+               }
+            } else if( issues >= 1 ) {
+               deliver_issue( name, last_issue );
+               _subscribers[ name ]--;
+               if( _subscribers[ name ] == 0 ) {
+                  map_delete( _subscribers, name );
+                  send_termination_mail( name,
+                                         "All issues of " + _paper + " that "
+                                         "you have paid for have been "
+                                         "delivered." );
+               }
+            }
+         }
+      }
+   }
+}
+void set_money_place( string new_region ) {
+   _region = new_region;
+}
+string query_money_place() {
+   return _region;
+}
+protected void set_paper( string new_paper ) {
+   if (_paper) {
+      NEWSPAPER_HANDLER->remove_newspaper_inform(_paper, file_name(this_object()));
+   }
+   _paper = new_paper;
+   NEWSPAPER_HANDLER->add_newspaper_inform(_paper, file_name(this_object()));
+}
+protected void set_savefile( string filename ) {
+   _savefile = filename;
+   if (_savefile) {
+      load_me();
+   }
+}
+protected void set_parcel( string parcel_region ) {
+   _parcel = parcel_region;
+}
+int do_subscribe( int numbers ) {
+   string name;
+   int price;
+   string mess;
+   if( !numbers || !this_player() || numbers < -1 ) {
+      return 0;
+   }
+   name = this_player()->query_name();
+   price = query_price_per_issue_subscriber();
+   if( !_subscribers ) {
+      _subscribers = ([ ]);
+   }
+   if( !undefinedp( _subscribers[ name ] ) && _subscribers[ name ] == -1 ) {
+      add_failed_mess( "You already have a subscription for " + _paper +
+                       ", so there is no need to re-subscribe.\n" );
+      return 0;
+   }
+   if( numbers == -1 ) {
+      _subscribers[ name ] = -1;
+      add_succeeded_mess( ({"You subscribe to " + _paper + ".\n"
+                            "Your bank-account(s) will be billed whenever a "
+                            "new issue is released, until you unsubscribe.\n",
+                            "$N fill$s out a subscription form.\n"
+                          }) );
+      save_me();
+      return 1;
+   }
+   price *= numbers;
+   if( this_player()->query_value_in( _region ) < price ) {
+      add_failed_mess( "You cannot afford to pay for this many issues of " +
+                       _paper + ".  It would cost you " +
+                       MONEY_HAND->money_value_string( price, _region ) +
+                       ".\n" );
+      return 0;
+   }
+   if( undefinedp( _subscribers[ name ] ) ) {
+      _subscribers[ name ] = numbers;
+      if( numbers == 1 ) {
+         mess = "one issue ";
+      } else {
+         mess = numbers + " issues ";
+      }
+   } else {
+      _subscribers[ name ] += numbers;
+      if( numbers == 1 ) {
+         mess = "an additional issue ";
+      } else {
+         mess = "an additional " + numbers + " issues ";
+      }
+   }
+   this_player()->pay_money( MONEY_HAND->create_money_array( price, _region ),
+                            _region );
+   add_succeeded_mess( ({"You subscribe to " + mess + "of " + _paper +
+                         " and pay " + MONEY_HAND->money_value_string( price,
+                         _region ) + ".\n",
+                         "$N fill$s out a subscription form.\n"
+                       }) );
+   save_me();
+   return 1;
+}
+int do_unsubscribe() {
+   if( undefinedp( _subscribers[ this_player()->query_name() ] ) ) {
+      add_failed_mess( "You don't have a subscription for " + _paper +
+                       ", so you cannot unsubscribe.\n" );
+      return 0;
+   }
+   map_delete( _subscribers, this_player()->query_name() );
+   add_succeeded_mess( ({"You successfully unscubscribe from " + _paper + ".\n",
+                         "$N fill$s out a subscription form.\n"
+                       }) );
+   save_me();
+   return 1;
+}
+int do_buy( int international ) {
+   object box;
+   int price;
+   if( international == 1 ) {
+      price = query_price_international_newspaper_box();
+   } else {
+      price = query_price_newspaper_box();
+   }
+   if( !this_player() ) {
+      return 0;
+   }
+   if( this_player()->query_value_in( _region ) < price ) {
+      add_failed_mess( "You are too poor to afford this.\n" );
+      return 0;
+   } else {
+      this_player()->pay_money( MONEY_HAND->create_money_array(
+                                  price, _region ), _region );
+      add_succeeded_mess( "$N purchase$s a newspaper box.\n" );
+      box = clone_object( NEWSPAPER_SUBSCRIPTION_OB );
+      box->set_paper( _paper );
+      box->set_international( international );
+      box->set_issues_left( ISSUES_PER_BOX );
+      box->set_last_issue( NEWSPAPER_HANDLER->query_last_edition_num( _paper ));
+      if( box->move( this_player() ) != MOVE_OK ) {
+         box->move( environment( this_player() ) );
+         write( "You cannot carry the box.  It has been put on the "
+                      "floor.\n" );
+      }
+      return 1;
+   }
+}
+int do_check() {
+   int i;
+   if( !this_player() ) {
+      return 0;
+   }
+   if( undefinedp( _subscribers[ this_player()->query_name() ] ) ) {
+      add_succeeded_mess( ({"You have no subscription for " + _paper + ".\n",
+                            "$N check$s something on a list.\n"
+                          }) );
+      return 1;
+   }
+   i = _subscribers[ this_player()->query_name() ];
+   if( i == -1 ) {
+      add_succeeded_mess( ({"Your subscription for " + _paper +
+                            " will continue until you unsubscribe again.\n",
+                            "$N check$s something on a list.\n"
+                          }) );
+      return 1;
+   } else if( i == 1 ) {
+      add_succeeded_mess( ({"Your subscription for " + _paper +
+                            " will expire after the next issue.\n",
+                            "$N check$s something on a list.\n"
+                          }) );
+      return 1;
+   } else {
+     add_succeeded_mess( ({ "Your subscription for " + _paper + " covers " + i +
+                            " more issues.\n",
+                            "$N check$s something on a list.\n"
+                         }) );
+      return 1;
+   }
+}
+int do_list( string subscription_type ) {
+   string* subscriber_list;
+   string name;
+   subscriber_list = ({ });
+   if( !this_player() || !subscription_type ) {
+      return 0;
+   }
+   if( subscription_type == "all" ) {
+      foreach( name in keys( _subscribers ) ) {
+         subscriber_list += ({ name });
+      }
+   } else if( subscription_type == "pre-paid" ) {
+      foreach( name in keys( _subscribers ) ) {
+         if( _subscribers[ name ] > 0 ) {
+            subscriber_list += ({ name });
+         }
+      }
+   } else if( subscription_type == "unlimited" ) {
+      foreach( name in keys( _subscribers ) ) {
+         if( _subscribers[ name ] == -1 ) {
+            subscriber_list += ({ name });
+         }
+      }
+   }
+   if( sizeof( subscriber_list ) == 0 ) {
+      subscriber_list += ({ "none" });
+   }
+   add_succeeded_mess( ({"The following people have a this kind of "
+                         "subscription for " + _paper + ":\n" +
+                         query_multiple_short( subscriber_list ) +
+                         "\n",
+                         "$N check$s some lists.\n"
+                       }) );
+   return 1;
+}
+void init() {
+   string _office;
+   object office = 0;
+   add_command( "subscribe",
+                "[to] <number> [issue|issues] of " + _paper,
+                (: do_subscribe( $4[0] ) :) );
+   add_command( "subscribe",
+                "[to] " + _paper,
+                (: do_subscribe( -1 ) :) );
+   add_command( "unsubscribe",
+                "[from] " + _paper,
+                (: do_unsubscribe() :) );
+   add_command( "buy",
+                "[a] newspaper box",
+                (: do_buy( 0 ) :) );
+   add_command( "buy",
+                "[an] international newspaper box",
+                (: do_buy( 1 ) :) );
+   add_command( "check",
+                "subscription",
+                (: do_check() :) );
+   if( _office = NEWSPAPER_HANDLER->query_paper_office( _paper ) ) {
+      office = load_object( _office );
+   }
+   if( this_player()->query_creator() ||
+       ( office && office->is_editor(this_player()->query_name()) ) ) {
+      add_command( "list",
+                   "{all|unlimited|pre-paid} subscriptions",
+                   (: do_list( $4[0] ) :) );
+   }
+   if( !this_player()->query_creator() ) {
+      return;
+   }
+   if( !_parcel ) {
+      write("%^WHITE%^%^BOLD%^Warning: This room's _parcel - variable "
+                   "isn't set.%^RESET%^\n" );
+   }
+   if( !_region ) {
+      write("%^WHITE%^%^BOLD%^Warning: This room's _region - variable "
+                   "isn't set.%^RESET%^\n" );
+   }
+   if( !_paper ) {
+      write("%^WHITE%^%^BOLD%^Warning: This room's _paper - variable "
+                   "isn't set.%^RESET%^\n" );
+   }
+      if( !_savefile ) {
+      tell_object( this_player(),
+                   "%^WHITE%^%^BOLD%^Warning: This room's _savefile - variable "
+                   "isn't set.%^RESET%^\n" );
+   }
+   ::init();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/graffbase.c ===
+#include <language.h>
+#define GRAFFITI "graffiti"
+#define ETP environment(this_player())
+#define TO this_object()
+object writing_on;
+string type;
+object old;
+string olds;
+string query_drawingwith();
+int do_check();
+int done_check();
+string query_drawingwith() { return "something"; }
+int do_check() { return 0; }
+int done_check() { return 0; }
+void init() {
+ this_player()->add_command( "scrawl", this_object(), "with charcoal on wall");
+ this_player()->add_command( "scrawl", this_object(), "on wall with charcoal");
+}
+int do_scrawl( object *things ) {
+    string language;
+    if ( !ETP->query_property( GRAFFITI) ) {
+        this_player()->add_failed_mess( this_object(), "You can't scrawl on "+
+          "this wall.\n");
+        return 0;
+    }
+    language = (string)this_player()->query_current_language();
+    if ( !LANGUAGE_HAND->query_language_written( language ) ) {
+        this_player()->add_failed_mess( this_object(), "You can't scrawl on "
+          "a wall when you're not using a language that can be "+
+          "scrawling on a wall with.\n",({writing_on}));
+        return 0;
+    }
+    if(( old = present("graffiti",ETP)) && !interactive(old))
+    {
+        olds = old->query_property("graffiti");
+    }
+    if ( writing_on ) {
+        this_player()->add_failed_mess( this_object(), "The writing "+
+          "spot seems to be busy at the moment.\n",
+          ({writing_on}));
+        return 0;
+    }
+    this_player()->add_succeeded_mess( this_object(), ({"You start scrawling "+
+      "on a wall with some charcoal.\n", "$N starts scrawling on a wall with "
+      "some charcoal.\n"}) );
+    writing_on = ETP;
+    call_out( "begin_writing", 0, this_player() );
+    return 1;
+}
+void begin_writing( object writer ) {
+    if ( !writer ) {
+        writing_on = 0;
+        return;
+    }
+    writer->do_edit( 0, "end_writing" );
+}
+void end_writing( string words ) {
+    string language;
+    string extra;
+    if ( !words || ( words == "" ) ) {
+        write( "You don't scrawl anything on "+
+         "the wall.\n");
+        say( (string)this_player()->the_short() +" doesn't "+
+          "scrawl anything after all.\n" );
+        writing_on = 0;
+        return;
+    }
+    language = (string)this_player()->query_current_language();
+    if ( !LANGUAGE_HAND->query_language_written( language ) ) {
+        write( "You seem to have changed to using a non-written language.\n" );
+        say( (string)this_player()->the_short() +" seems "+
+          "linguistically-challenged.\n" );
+        writing_on = 0;
+        return;
+    }
+    if ( !writing_on ) {
+        write( "You seem to have lost what you were scrawling on.\n" );
+        say( (string)this_player()->the_short() +" looks around "+
+          "in puzzlement.\n" );
+        return;
+    }
+    if (  writing_on != ETP ) {
+        write("The wall seems to have run away from you.\n" );
+        say( (string)this_player()->the_short() +" looks like "+
+          (string)this_player()->query_pronoun() +"'s lost something.\n" );
+        writing_on = 0;
+        return;
+    }
+    if(!stringp(olds)) olds = "";
+    words = olds +"\n"+"%^MAGENTA%^Scrawled with rough charcoal, you "
+             "read the words:%^RESET%^\n\n"+
+    words;
+    if(old) old->move("/room/rubbish");
+    extra = TO->extra_stuff();
+    if(!strlen(extra))extra = "Some disreputable character has scrawled "
+        "graffiti over this wall.  You may be able to \"read\" it.\n";
+    ETP->add_sign(
+      extra,
+      words,
+      "graffiti",
+      ({"graffiti","scrawl"}),
+      language
+    );
+    old = present("graffiti",ETP);
+    old->add_property("determinate","some ");
+    old->add_property("there","on the wall");
+    if(old) old->add_property("graffiti",words);
+    write( "As you finish scrawling on the wall, the piece of charcoal "
+           "breaks.\n" );
+    say( (string)this_player()->the_short() +" finishes scrawling "+
+      "on the wall.\n" );
+    this_object()->done_check();
+    writing_on = 0;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/npcroom.c ===
+#define FLAG 0
+#define DELAY 1
+#define CLONE 2
+#define MESS 3
+#define REMOVABLE 0
+#define FIXED 1
+#define UNIQUE 2
+nosave mixed  *reset_definitions;
+nosave object *reset_objects;
+void add_cloned_object( int flag, int delay, mixed clone_info,
+                       string entry_mess ) {
+   if ( !sizeof( reset_definitions ) )
+      reset_definitions = ({ ({ flag, delay, clone_info, entry_mess }) });
+   else
+      reset_definitions += ({ ({ flag, delay, clone_info, entry_mess }) });
+}
+mixed *query_cloned_objects() {
+   return reset_objects + ({ });
+}
+mixed *query_cloned_definitions() {
+   return reset_definitions + ({ });
+}
+private object make_clone( mixed func ) {
+   if ( stringp( func ) ) {
+      return clone_object( func );
+   } else if ( functionp( func ) ) {
+      return evaluate( func );
+   } else
+      return 0;
+}
+private void make_object( int i ) {
+   switch ( reset_definitions[ i ][ FLAG ] ) {
+    case REMOVABLE:
+    case FIXED:
+      reset_objects[ i ] = make_clone( reset_definitions[ i ][ CLONE ] );
+      reset_objects[ i ]->move( this_object(),
+            reset_definitions[ i ][ MESS ] );
+      break;
+    case UNIQUE:
+      if ( !stringp( reset_definitions[ i ][ CLONE ] ) )
+         return;
+      reset_definitions[ i ][ CLONE ]->move( this_object(),
+            reset_definitions[ i ][ MESS ] );
+      reset_objects[ i ] = find_object( reset_definitions[ i ][ CLONE ] );
+   }
+}
+void reset() {
+   int i;
+   if ( !sizeof( reset_definitions ) )
+      return;
+   if ( !sizeof( reset_objects ) )
+      reset_objects = allocate( sizeof( reset_definitions ) );
+   for ( i = sizeof( reset_definitions ); i--; ) {
+      switch ( reset_definitions[ i ][ FLAG ] ) {
+       case REMOVABLE:
+         if ( !reset_objects[ i ] ||
+             ( environment( reset_objects[ i ] ) != this_object() ) ) {
+            if ( reset_definitions[ i ][ DELAY ] >= 0 )
+               call_out( "make_object", reset_definitions[ i ][ DELAY ], i );
+            else
+               make_object( i );
+         }
+         break;
+       case FIXED:
+       case UNIQUE:
+         if ( !reset_objects[ i ] ) {
+            if ( reset_definitions[ i ][ DELAY ] >= 0 )
+               call_out( "make_object", reset_definitions[ i ][ DELAY ], i );
+            else
+               make_object( i );
+         }
+      }
+   }
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/water_outside.c ===
+inherit "/std/room/outside";
+inherit "/std/room/basic/water";
+private int _setting_water_light = 0;
+void init() {
+  water::init();
+  outside::init();
+}
+int is_allowed_position(string poss) {
+  return water::is_allowed_position(poss);
+}
+mixed *query_default_position(object ob) {
+  return water::query_default_position(ob);
+}
+int add_exit(string direc, mixed dest, string type) {
+  int retval = outside::add_exit(direc, dest, type);
+  water::add_exit(direc, dest, type);
+  return retval;
+}
+int query_light() {
+  update_water_light();
+  if (query_surface()) {
+    return ::query_light();
+  }
+  return ::query_light()*query_clarity()/100;
+}
+int set_water_light(int number) {
+  _setting_water_light = 1;
+  set_light(number);
+  _setting_water_light = 0;
+}
+int adjust_light(int number) {
+  if (!_setting_water_light) {
+    set_use_surface_light(0);
+  }
+  return ::adjust_light(number);
+}
+mixed query_property(string tag) {
+  if ("location" == tag && !query_surface()) {
+    return "underwater";
+  }
+  return ::query_property(tag);
+}
+int attack_speed() { return 5; }
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/guild-outside.c ===
+inherit "/std/room/outside";
+inherit "/std/room/inherit/guild";
+void create() {
+  guild::create();
+  outside::create();
+}
+void init() {
+  outside::init();
+  guild::init();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/delivery_room.c ===
+inherit "/std/room/basic_room";
+inherit "/std/delivery";
+void create() {
+    delivery::create();
+    basic_room::create();
+}
+void dest_me() {
+    delivery::dest_me();
+    basic_room::dest_me();
+}
+mixed *stats() {
+    return delivery::stats() + basic_room::stats();
+}
+int query_delivery_room() {
+    return 1;
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/council_archive.c ===
+inherit "/std/room/basic_room";
+inherit "/std/room/inherit/council_base";
+#define NOMIC_SYSTEM_CASE_CLASSES
+#include <nomic_system.h>
+#include <player_handler.h>
+#include <mail.h>
+void create() {
+   ::create();
+   add_help_file("council_archive");
+}
+string query_case_short(class nomic_case the_case) {
+   string ret;
+   ret = "Case #" + the_case->id + " \"" +
+         the_case->short + "\" opened by " + the_case->opener +
+         " against " + query_multiple_short(the_case->people) + " at " +
+         ctime(the_case->time_opened);
+   return ret;
+}
+int do_list_all_cases() {
+   int* cases;
+   string ret;
+   int id;
+   cases = NOMIC_HANDLER->query_closed_cases(query_council_area());
+   if (!sizeof(cases)) {
+      add_failed_mess("There are no open cases.\n");
+      return 0;
+   }
+   ret = "Currently closed cases:\n";
+   foreach (id in cases) {
+      ret += "$I$5=$C$Case #" + id;
+      ret += "\n";
+   }
+   this_player()->more_string(ret, "closed cases");
+   return 1;
+}
+int do_list_case(int case_id) {
+   string ret;
+   class nomic_case the_case;
+   class nomic_case_note note;
+   class nomic_case_event event;
+   int id;
+   ret = "";
+   the_case = NOMIC_HANDLER->query_closed_case(query_council_area(), case_id);
+   if (!the_case) {
+      add_failed_mess("Unable to find the case.\n");
+      return 0;
+   }
+   ret += "$I$3=" + query_case_short(the_case);
+   if (sizeof(the_case->events)) {
+      ret += "\n";
+      ret += "$I$0=%^YELLOW%^Events%^RESET%^:\n";
+      foreach (event in the_case->events) {
+         ret += "$I$6=   " +
+                capitalize(NOMIC_HANDLER->query_event_name(event->type)) +
+                " " +
+                "by " + event->person + " at " + ctime(event->event_time) +
+                " " +
+                event->mess + "\n";
+      }
+   }
+   if (sizeof(the_case->notes)) {
+      ret += "\n";
+      ret += "$I$0=%^YELLOW%^Notes%^RESET%^:\n";
+      foreach (id in the_case->notes) {
+         note = NOMIC_HANDLER->query_note(id);
+         ret += "$I$6=   Note by " + note->person + " at " +
+                ctime(note->time_created) +
+                ".\n" + note->text + "\n\n";
+      }
+   }
+   this_player()->more_string(ret, "closed case");
+   return 1;
+}
+int do_list_citizens() {
+    object* cits;
+    string ret;
+    string area;
+    area = this_object()->query_council_area();
+    cits = filter( users(), (: NOMIC_HANDLER->is_citizen_of(
+       this_object()->query_council_area(), $1->query_name() ) &&
+       $1->query_visible( this_player() ) :) );
+    cits = sort_array(cits, (: strcmp($1->query_name(), $2->query_name()) :));
+    ret = "The online citizens (and magistrates) of " + area + " are:\n\n";
+    ret += query_multiple_short(cits);
+    write("$P$Citizens Online$P$" + ret);
+    return 1;
+}
+void init() {
+   add_command("list", "", (: do_list_all_cases() :));
+   add_command("list", "[case] <number>", (: do_list_case($4[0]) :));
+   add_command("list", "citizens", (: do_list_citizens() :));
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/room_rental.c ===
+#include <room/room_rental.h>
+inherit "/std/room/basic_room";
+inherit ROOM_RENTAL_INHERIT_ROOM;
+void create() {
+   basic_room::create();
+}
+void init() {
+   basic_room::init();
+}
+
+=== /mnt/home2/test/Test/dw_fluffos_v3/lib/std/room/player_housing_outside.c ===
+#include <dirs.h>
+#include <housing.h>
+#include <login_handler.h>
+#include <player.h>
+inherit "/std/room/outside";
+inherit "/std/room/inherit/player_housing";
+void create() {
+  add_help_file("player_housing");
+  do_setup++;
+  outside::create();
+  player_housing::create();
+  do_setup--;
+  if ( !do_setup ) {
+    this_object()->setup();
+    this_object()->reset();
+  }
+  seteuid("Room");
+  add_property("no burial", 1);
+}
+string query_long() {
+  return player_housing::query_long();
+}
+string query_owner() {
+   return HOUSING->query_owner(base_name(this_object()));
+}
+int add_exit(string direc, mixed dest, string type) {
+  int tmp;
+  tmp = ::add_exit(direc, dest, type);
+  setup_exit(direc, 0);
+  return tmp;
+}
+string process_non_living(object *int_non_livings, int start) {
+  object *not_positioned;
+  not_positioned = player_housing::my_process_non_living(int_non_livings);
+  return ::process_non_living(not_positioned, start);
+}
+void init() {
+  player_housing::init();
+  outside::init();
+}
+void event_exit(object ob, string message, object to) {
+  outside::event_exit(ob, message, to);
+  player_housing::event_exit(ob, message, to);
+}
+int query_keep_room_loaded() { return 1; }
+void dest_me() {
+  player_housing::dest_me();
+  outside::dest_me();
+}
+int test_remove(object thing, int flag, mixed dest) {
+  object thief;
+  mixed *stuff;
+  if(!outside::test_remove(thing, flag, dest))
+    return 0;
+  thief = this_player();
+  if(!thief)
+    return player_housing::test_remove(thing, flag, dest);
+  if(thief->query_caster())
+    thief = find_player(thief->query_caster());
+  else if(thief->query_owner())
+    thief = thief->query_owner();
+  stuff = thing->query_property("dropped");
+  if(thief &&
+     test_save(thing) &&
+     !test_occupier(thief->query_name()) &&
+     (!stuff || stuff[0] != thief->query_name())) {
+    log_file("HOUSING_THEFT", "%s: %s stole %s from %s in %s\n",
+             ctime( time() )[4..18], (string)thief->query_short(),
+             thing->query_short(),
+             (string)query_owner(), file_name());
+    event(this_object(), "theft", thief, this_object(), ({ thing }));
+  }
+  return player_housing::test_remove(thing, flag, dest);
+}
+int test_add( object ob, int flag) {
+  int retval;
+  retval = outside::test_add(ob, flag);
+  if(retval)
+    retval = player_housing::test_add(ob, flag);
+  return retval;
+}
